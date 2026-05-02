@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mintkey.local/contracts/events/change-event.schema.json",
+  "title": "Mintkey ChangeEvent",
+  "description": "Reference-only event published on the Postgres LISTEN/NOTIFY change channel (per ADR-0010) and returned by `GET /v1/changes` for reconciliation. Body fields are *references* (ids, key versions); subscribers fetch full state from the Admin REST API or DB on demand.\n\nThe 8 kB Postgres NOTIFY payload limit forces references-only payloads; this schema keeps the envelope deliberately compact.\n\nStability tier: experimental.",
+  "x-mintkey-stability": "experimental",
+  "x-mintkey-version": "0.1.0-experimental",
+  "type": "object",
+  "$defs": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "change_id": {
+      "type": "string",
+      "pattern": "^change_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "actor_id": {
+      "type": "string",
+      "pattern": "^[a-z]+_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Any prefixed-ULID actor id (operator_…, agent_…, system)."
+    },
+    "target_id": {
+      "type": "string",
+      "pattern": "^[a-z]+_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "Prefixed-ULID id of the affected resource (svc_…, cred_…, agent_…, token jti)."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "envelope": {
+      "type": "object",
+      "description": "Common envelope for every change event.",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/change_id"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/tenant_id"
+        },
+        "actor_id": {
+          "$ref": "#/$defs/actor_id"
+        },
+        "target_id": {
+          "$ref": "#/$defs/target_id"
+        },
+        "key_version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional. Present on credential.rotated and credential.revoked."
+        },
+        "at": {
+          "$ref": "#/$defs/timestamp_utc"
+        },
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "operator",
+            "agent",
+            "system",
+            "platform_admin"
+          ],
+          "description": "Kind of actor that triggered the event."
+        }
+      },
+      "required": [
+        "event_id",
+        "event_type",
+        "tenant_id",
+        "actor_id",
+        "target_id",
+        "at",
+        "actor_type"
+      ]
+    },
+    "ev_service_registered": {
+      "type": "object",
+      "description": "A new service was registered. Subscribers (Kong-syncer) fetch full state via `GET /v1/tenants/{tid}/services/{target_id}`.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.registered"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_service_updated": {
+      "type": "object",
+      "description": "A service's metadata changed.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.updated"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_service_removed": {
+      "type": "object",
+      "description": "A service was soft-deleted.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.removed"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_credential_rotated": {
+      "type": "object",
+      "description": "A new credential `key_version` superseded the previous one. Egress Proxy plugin invalidates `(tenant_id, service_id, *)` cache entries.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "credential.rotated"
+        },
+        "key_version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "event_type",
+        "key_version"
+      ]
+    },
+    "ev_credential_revoked": {
+      "type": "object",
+      "description": "A credential `key_version` was soft-deleted.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "credential.revoked"
+        },
+        "key_version": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "event_type",
+        "key_version"
+      ]
+    },
+    "ev_agent_revoked": {
+      "type": "object",
+      "description": "Agent was revoked. Egress Proxy plugin denies all subsequent tokens with matching `sub`.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.revoked"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_token_revoked": {
+      "type": "object",
+      "description": "A specific token (`jti`) was revoked. `target_id` is the JWT's `jti` (encoded as ULID).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "token.revoked"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ev_service_registered"
+    },
+    {
+      "$ref": "#/$defs/ev_service_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_service_removed"
+    },
+    {
+      "$ref": "#/$defs/ev_credential_rotated"
+    },
+    {
+      "$ref": "#/$defs/ev_credential_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_token_revoked"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "event_type",
+    "mapping": {
+      "service.registered": "#/$defs/ev_service_registered",
+      "service.updated": "#/$defs/ev_service_updated",
+      "service.removed": "#/$defs/ev_service_removed",
+      "credential.rotated": "#/$defs/ev_credential_rotated",
+      "credential.revoked": "#/$defs/ev_credential_revoked",
+      "agent.revoked": "#/$defs/ev_agent_revoked",
+      "token.revoked": "#/$defs/ev_token_revoked"
+    }
+  },
+  "x-mintkey-channels": {
+    "description": "All change-channel events fan out on global Postgres LISTEN/NOTIFY channels per ADR-0014.1. Tenant filtering is enforced by subscribers at the application layer using the tenant_id field in the payload.",
+    "channels": [
+      {
+        "name": "mintkey:service",
+        "carries": [
+          "service.registered",
+          "service.updated",
+          "service.removed"
+        ]
+      },
+      {
+        "name": "mintkey:credential",
+        "carries": [
+          "credential.rotated",
+          "credential.revoked"
+        ]
+      },
+      {
+        "name": "mintkey:agent",
+        "carries": [
+          "agent.revoked",
+          "token.revoked"
+        ]
+      },
+      {
+        "name": "mintkey:heartbeat",
+        "carries": [
+          "(periodic liveness; no business event)"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "event_id": "change_01HX5J9F8V8H8V0CG3F2Y5J6X1",
+      "event_type": "credential.rotated",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3",
+      "target_id": "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4",
+      "key_version": 4,
+      "at": "2026-05-10T14:00:00Z"
+    },
+    {
+      "event_id": "change_01HX5J9F8V8H8V0CG3F2Y5J6X2",
+      "event_type": "service.registered",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3",
+      "target_id": "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1",
+      "at": "2026-05-10T13:55:00Z"
+    },
+    {
+      "event_id": "change_01HX5J9F8V8H8V0CG3F2Y5J6X3",
+      "event_type": "agent.revoked",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3",
+      "target_id": "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1",
+      "at": "2026-05-10T14:05:00Z"
+    },
+    {
+      "event_id": "change_01HX5J9F8V8H8V0CG3F2Y5J6X4",
+      "event_type": "token.revoked",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "system_01HX5J9F8V8H8V0CG3F2Y5J6Z0",
+      "target_id": "token_01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+      "at": "2026-05-10T14:05:01Z"
+    }
+  ],
+  "x-mintkey-no-hash-chain": "Change events have no per-event hash chain because they are best-effort fan-out: subscribers reconcile via the audit-event chain (which is hash-chained). Per OQ-021."
+}

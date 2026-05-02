@@ -1,0 +1,91 @@
+{
+  "templateVersion": "0.1.0",
+  "completed": true,
+  "completedAt": "2026-05-10",
+  "phases": {
+    "identity": { "done": true },
+    "product": { "done": true },
+    "architecture": { "done": true },
+    "governance": { "done": true },
+    "optional": { "done": true }
+  },
+  "answers": {
+    "Q1_codename": "mintkey",
+    "Q2_client_org": "Self-funded product (no external client)",
+    "Q3_business_goal": "AI agents increasingly need to call third-party services but today's patterns leave the live credential in the agent's process memory, provide no per-request audit, and make rotation a code change. Mintkey solves this by brokering access: agents discover services via MCP, receive a scoped short-lived JWT, and call backends through an egress proxy that injects the real credential — which the agent never sees.",
+    "Q4_architect": "Alexandru Iacobescu <alexandru.iacobescu@mintkey.dev>",
+    "Q5_phase": "MVP",
+    "Q6_regulated": "Light (privacy only)",
+    "Q7_tenancy": "Multi-tenant shared",
+    "Q8_deployment": ["On-prem customer"],
+    "Q9_backend_languages": ["Python", "Go", "TypeScript-Node"],
+    "Q10_frontend": "SPA",
+    "Q11_persistence": ["Relational"],
+    "Q12_api_contract": ["OpenAPI", "gRPC"],
+    "Q13_ai_ml": "No",
+    "Q14_eventing": "Yes — broker chosen: Postgres LISTEN/NOTIFY (ADR-0010)",
+    "Q15_branching": "GitHub Flow",
+    "Q16_steering_depth": "Full (pre-MVP)",
+    "Q17_observability": "OpenTelemetry default (deferred — defaulting per ADR-0005)",
+    "Q18_identity_provider": "OIDC external — Keycloak default (ADR-0005)",
+    "Q19_schema_driven_ui": false,
+    "Q20_geospatial": false,
+    "Q21_codeowners": "Architect-only initial",
+    "Q22_test_data": "defer",
+    "Q23_compliance_frameworks": ["None"],
+    "Q24_squad_count": "unknown",
+    "Q25_risks": [
+      {
+        "id": "R-001",
+        "title": "Egress Proxy compromise exposes plaintext credentials",
+        "what_breaks": "Attacker with code execution in the proxy plugin reads plaintext credentials from process memory during request mutation",
+        "evidence": "docs/architecture/01-architecture/05-threat-model.md §Top architectural risks #1",
+        "affected_component": "Egress Proxy plugin (D1)"
+      },
+      {
+        "id": "R-002",
+        "title": "JWT signing key compromise enables arbitrary token minting",
+        "what_breaks": "Attacker with the Ed25519 private key can mint valid JWTs for any agent, service, and tenant — bypassing all permission checks",
+        "evidence": "docs/architecture/01-architecture/05-threat-model.md §Top architectural risks #2",
+        "affected_component": "Credential Broker (C5)"
+      },
+      {
+        "id": "R-003",
+        "title": "Audit coverage gap allows undetected state mutation",
+        "what_breaks": "A code path that mutates state without calling audit.emit() creates a silent gap; forensic investigation misses the event; compliance audit fails",
+        "evidence": "docs/architecture/01-architecture/05-threat-model.md §Top architectural risks #4; architecture test listed as not-yet-written in docs/architecture/00-vision/07-kiro-readiness.md §Quality gates",
+        "affected_component": "Audit Service (C7) and all state-change handlers"
+      }
+    ],
+    "Q26_ba_artifacts": "None yet"
+  },
+  "filesWritten": [
+    ".kiro/steering/product.md",
+    ".kiro/steering/structure.md",
+    ".kiro/steering/architecture-principles.md",
+    ".kiro/steering/tech.md",
+    ".kiro/steering/security-and-tenancy.md",
+    "docs/architecture/risk-register.md",
+    "docs/architecture/open-questions.md",
+    ".kiro/setup-state.json"
+  ],
+  "filesSkipped": [
+    {
+      "file": "data-lifecycle-and-idempotency.md",
+      "reason": "Q13=No (no AI/ML in critical path); eventing is internal change-channel only, not async inference"
+    },
+    {
+      "file": "frontend-conventions.md",
+      "reason": "Q10=SPA but frontend is COTS AdminJS — conventions are minimal and covered in tech.md; generate when custom frontend work begins"
+    },
+    {
+      "file": "branching-and-release.md",
+      "reason": "Deferred — tracked as WQ-004 in open-questions.md"
+    },
+    {
+      "file": "CODEOWNERS",
+      "reason": "Deferred — tracked as WQ-003 in open-questions.md; must be created before first developer onboards"
+    }
+  ],
+  "openQuestionsLogged": ["WQ-001", "WQ-002", "WQ-003", "WQ-004", "WQ-005", "WQ-006"]
+}

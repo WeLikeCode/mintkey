@@ -1,0 +1,1 @@
+../01-architecture/adr/0015-liquibase-schema-source-of-truth.md

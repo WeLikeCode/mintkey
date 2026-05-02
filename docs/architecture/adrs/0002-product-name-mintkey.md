@@ -1,0 +1,1 @@
+../01-architecture/adr/0002-product-name-mintkey.md

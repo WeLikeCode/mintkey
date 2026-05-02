@@ -1,0 +1,16 @@
+# CODEOWNERS — Mintkey
+# Architect owns governance artifacts. Developers own implementation.
+# Update the GitHub handle below to match your actual GitHub username.
+
+# Architecture docs and steering — architect-only
+docs/architecture/         @ciprianiacobescu
+.kiro/steering/            @ciprianiacobescu
+.kiro/skills/              @ciprianiacobescu
+
+# Contracts — architect approves; developers implement
+contracts/                 @ciprianiacobescu
+docs/architecture/contracts/ @ciprianiacobescu
+
+# Bootstrap and tooling — architect-owned
+bootstrap/                 @ciprianiacobescu
+tools/                     @ciprianiacobescu

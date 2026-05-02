@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ProjectSetupState",
+  "description": "Tracks progress of the project-setup skill. Written to .kiro/setup-state.json. Reentrant: skill resumes from last completed phase.",
+  "type": "object",
+  "required": ["schema_version", "completed", "phases"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "completed": {
+      "type": "boolean",
+      "description": "True only when all mandatory phases are done and steering files are written. Skill exits immediately if true."
+    },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "template_version": { "type": "string" },
+    "phases": {
+      "type": "object",
+      "properties": {
+        "identity":      { "$ref": "#/definitions/phase" },
+        "product":       { "$ref": "#/definitions/phase" },
+        "architecture":  { "$ref": "#/definitions/phase" },
+        "governance":    { "$ref": "#/definitions/phase" },
+        "team":          { "$ref": "#/definitions/phase" }
+      }
+    },
+    "answers": {
+      "type": "object",
+      "description": "Keyed by question ID (q1..q25). Values are the architect's answers. Never contains client names in keys.",
+      "additionalProperties": { "type": ["string", "array", "boolean", "null"] }
+    },
+    "files_written": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths of steering files written by this skill run."
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Questions answered with TBD or deferred; logged to docs/architecture/open-questions.md."
+    }
+  },
+  "definitions": {
+    "phase": {
+      "type": "object",
+      "required": ["done"],
+      "properties": {
+        "done": { "type": "boolean" },
+        "completed_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+../01-architecture/adr/0010-change-channel-postgres-listen-notify.md

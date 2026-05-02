@@ -1,0 +1,1 @@
+../01-architecture/adr/0012-python-stack-pin.md

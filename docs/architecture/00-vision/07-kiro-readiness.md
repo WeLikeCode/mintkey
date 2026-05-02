@@ -1,0 +1,288 @@
+# Kiro readiness
+
+> *What does Kiro need from us in order to take a feature description and produce correct **requirements**, **design**, and **tasks** — and then generate code and tests that pass?*
+
+This is the checklist for **Phase 5** of the [roadmap](06-roadmap.md), but several items are useful before Phase 5 — they unblock Phase 1 development too. The items are ordered from "nice to have" to "needed for Kiro to function effectively"; the priority column flags the gating ones.
+
+## What Kiro needs (at a glance)
+
+```mermaid
+flowchart TB
+    subgraph CTX["1. Project context"]
+        readme["README"]
+        vision["Vision + personas + glossary"]
+        arch["Architecture views"]
+        adrs["ADRs"]
+        kiroMd["KIRO.md project conventions"]
+    end
+    subgraph CON["2. Contracts (the source of truth)"]
+        openapi["REST OpenAPI 3.1"]
+        mcp["MCP tool schemas"]
+        events["Event schemas"]
+        schema["DB schema (Liquibase)"]
+    end
+    subgraph SPEC["3. Per-component Kiro specs"]
+        req["Requirements"]
+        design["Design"]
+        tasks["Tasks (TDD)"]
+    end
+    subgraph LIB["4-7. Reusable libraries"]
+        patterns["Pattern library"]
+        stubs["Stub services"]
+        fixtures["Test fixtures"]
+        styleguide["Coding conventions"]
+    end
+    subgraph QA["8. Quality gates"]
+        ci["CI pipeline"]
+        sec["Security scans"]
+        archtest["Architecture tests"]
+    end
+
+    CTX --> SPEC
+    CON --> SPEC
+    SPEC --> LIB
+    LIB --> QA
+```
+
+---
+
+## 1. Project context
+
+| Item | Status | Where it lives |
+|---|---|---|
+| Top‑level README | ✅ | [`/README.md`](../../README.md) |
+| Vision (problem, vision, personas, glossary, iteration plan, roadmap) | ✅ | [`/docs/00-vision/`](.) |
+| Architecture views (system context, container view, quality attributes, threat model, *Views and Beyond*) | ✅ | [`/docs/01-architecture/`](../01-architecture/) |
+| ADRs (7 accepted) | ✅ | [`/docs/01-architecture/adr/`](../01-architecture/adr/) |
+| **`KIRO.md` project conventions** at the repo root | ⏳ | `/KIRO.md` (Phase 5; gating) |
+
+`KIRO.md` is the single document Kiro reads first. It must contain:
+- One‑paragraph product summary (lifted from the vision).
+- Tech stack at a glance (Python + FastAPI; AdminJS; Go for security‑critical components; Postgres + Liquibase; Kong + Go plugin; Keycloak default).
+- Directory map of the repo.
+- "How to make a change" — the change → proposal → ADR → implementation pipeline.
+- Coding conventions per language (link to the style guides).
+- Test‑driven workflow expectations.
+- "How to add an X" pointers (link to the pattern library).
+- Audit chokepoint rule: every state‑change handler emits an audit event.
+
+---
+
+## 2. Contracts (the source of truth for code generation)
+
+Kiro generates server stubs, client SDKs, test fixtures, and validation logic from these. They are the single source of truth.
+
+| Contract | Status | Location | Owner |
+|---|---|---|---|
+| REST OpenAPI 3.1 | ⏳ Iteration 4 | [`/docs/contracts/rest/openapi.yaml`](../contracts/rest/) | Admin REST API + MCP server emit it |
+| MCP tool schemas | ⏳ Iteration 4 | [`/docs/contracts/mcp/`](../contracts/mcp/) | MCP Server |
+| Event schemas (audit + OTel attributes) | ⏳ Iteration 4 | [`/docs/contracts/events/`](../contracts/events/) | Audit Service |
+| DB schema (Liquibase changelog) | ⏳ Phase 1 | `/admin-api/db/changelog/` | Admin REST API |
+| JWT claim schema | ✅ in [ADR‑0006](../01-architecture/adr/0006-token-format-and-binding.md) | inline | Credential Broker |
+| Vault Adapter gRPC IDL | ⏳ Iteration 4 | [`/docs/contracts/vault-adapter/`](../contracts/) | Vault Adapter |
+
+### Contract conventions
+- **Schema‑first**: contracts are written before code.
+- **Versioning**: every contract has an explicit `version` field; breaking changes require a new path/tool name and a deprecation window.
+- **Stability tiers**: `experimental` → `stable` → `deprecated`. Stability is per surface, not per project.
+- **Generated artefacts**: client SDKs and server stubs are generated from the contract; we do not hand‑maintain them.
+- **Round‑trip check**: CI verifies that the running services emit OpenAPI matching the checked‑in contract.
+
+---
+
+## 3. Per‑component Kiro specs
+
+For each container in [`02-container-view.md`](../01-architecture/02-container-view.md), Kiro needs a spec triple: **requirements**, **design**, **tasks**. Specs live under `docs/specs/<component>/`.
+
+| Component | Requirements | Design | Tasks |
+|---|---|---|---|
+| Admin REST API (FastAPI) | ⏳ | ⏳ | ⏳ |
+| Admin UI (AdminJS) | ⏳ | ⏳ | ⏳ |
+| MCP Server | ⏳ | ⏳ | ⏳ |
+| Credential Broker | ⏳ | ⏳ | ⏳ |
+| Vault Adapter (file backend; v2 Vault; v3 SQL+KMS) | ⏳ | ⏳ | ⏳ |
+| Egress Proxy plugin | ⏳ | ⏳ | ⏳ |
+| Kong‑syncer | ⏳ | ⏳ | ⏳ |
+| Audit Service (or as a section of Admin API) | ⏳ | ⏳ | ⏳ |
+| Seed job | ⏳ | ⏳ | ⏳ |
+
+### Spec template (Kiro pattern)
+**`docs/specs/<component>/requirements.md`**
+- One‑line goal.
+- User stories ("As an X, I want Y, so that Z").
+- Functional requirements (numbered).
+- Non‑functional requirements (mapped to quality‑attribute scenarios `S-*-*`).
+- Out of scope.
+- Acceptance criteria — each functional requirement maps to at least one test.
+
+**`docs/specs/<component>/design.md`**
+- Architecture context (which container, which interfaces).
+- Internal module structure.
+- Data model (with references to the DB schema).
+- Public interface (with references to contracts).
+- Internal dependencies (Vault Adapter, Identity, Audit, Change channel, …).
+- ADRs invoked.
+- Failure modes and how the component handles them.
+
+**`docs/specs/<component>/tasks.md`**
+- Sequenced TDD tasks: `[ ] Test X`, `[ ] Implement X`, `[ ] Refactor`, `[ ] Integration test Y`.
+- Estimated complexity per task (S/M/L).
+- Cross‑task dependencies marked.
+
+The smallest Phase 5 unit is **one component spec triple**. The first one to write is the **Vault Adapter** because it has the clearest interface and the smallest scope; specs for the others can follow the same template.
+
+---
+
+## 4. Pattern library
+
+"How to do X" reference for common operations. One page each. Lives under `docs/patterns/`.
+
+| Pattern | Purpose | Status |
+|---|---|---|
+| `add-rest-endpoint.md` | Add a new endpoint to the Admin REST API (FastAPI route → Pydantic models → service call → audit emission → tests) | ⏳ |
+| `add-mcp-tool.md` | Add a new tool to the MCP server (schema → handler → tests) | ⏳ |
+| `add-audit-event.md` | Add a new audit event type (schema → emission → consumers) | ⏳ |
+| `add-auth-scheme.md` | Add a new backend auth scheme to the Vault Adapter + Kong plugin (per [S‑MOD‑1](../01-architecture/03-quality-attributes.md)) | ⏳ |
+| `add-service-validation.md` | Add a service registration validation rule | ⏳ |
+| `add-liquibase-changelog.md` | Add a DB migration | ⏳ |
+| `add-kong-plugin-phase.md` | Add behavior in a new Kong plugin phase hook | ⏳ |
+| `add-adminjs-resource.md` | Add a new resource to AdminJS | ⏳ |
+| `add-otel-span.md` | Add an OTel span (with the attribute allowlist) | ⏳ |
+| `add-vault-backend.md` | Add a new Vault Adapter backend (e.g., v2 HashiCorp Vault) | ⏳ |
+| `add-mcp-tool-family.md` | Add an "MCP for X" family (e.g., MCP for SQL) | ⏳ Phase 4 |
+
+Each pattern has six sections:
+1. **Goal** — one sentence.
+2. **Where the change lives** — file paths with relative imports.
+3. **Step‑by‑step** — TDD‑ordered.
+4. **Tests to write** — with sample test code.
+5. **Common pitfalls** — what we've already learned.
+6. **References** — ADRs, contracts.
+
+---
+
+## 5. Stub service library
+
+For development and CI, Kiro generates code that should be testable without external services. Stubs go under `tests/stubs/`.
+
+| Stub | Purpose | Status |
+|---|---|---|
+| `vault-adapter` | In‑memory Vault Adapter; deterministic outputs; supports rotation | ⏳ |
+| `kong` | HTTP server that records requests; returns canned responses | ⏳ |
+| `backend-rest` | Echo or canned responses; OpenAPI‑example‑driven | ⏳ |
+| `backend-grpc` | gRPC server; echo or canned responses (Phase 3) | ⏳ |
+| `identity` | Predefined operators, agents, permissions | ⏳ |
+| `oidc` | Mock Keycloak; canned ID tokens with configurable claims | ⏳ |
+| `change-channel` | In‑memory pub/sub | ⏳ |
+| `otel-collector` | Records span attributes for assertion | ⏳ |
+| `email-provider` | Mock email provider for MCP for Email (Phase 4) | ⏳ Phase 4 |
+
+Stubs follow a uniform pattern:
+- Implements the same interface as the real service.
+- Configuration via env vars or a YAML file.
+- Records all inbound calls so tests can assert on them.
+- "Time machine" mode: clock can be advanced for testing TTLs and rotations.
+
+---
+
+## 6. Test fixtures
+
+Loadable fixtures Kiro can use to set up scenarios. Live under `tests/fixtures/`.
+
+| Fixture | Contents | Status |
+|---|---|---|
+| `services.yaml` | Sample services: 1 REST, 1 gRPC (Phase 3), 1 WebSocket (Phase 3) | ⏳ |
+| `credentials.yaml` | Sample credentials: API key, OAuth2, basic, OIDC client | ⏳ |
+| `operators.yaml` | Sample operators: Admin, Auditor, AgentOwner | ⏳ |
+| `agents.yaml` | Sample agents with permissions | ⏳ |
+| `audit-events.yaml` | One sample event per `event_type` | ⏳ |
+| `keycloak-realm.json` | Default Keycloak realm export | ⏳ Phase 1 |
+
+Fixtures are versioned with the contracts. A breaking contract change requires a fixture update.
+
+---
+
+## 7. Coding conventions
+
+| Language / area | Tool / config | Status |
+|---|---|---|
+| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ⏳ |
+| Go | `gofmt` + `golangci-lint` config; `errcheck`, `goimports`, `revive` | ⏳ |
+| AdminJS / TypeScript | `eslint` + `prettier` config; strict TS | ⏳ |
+| SQL | `sqlfluff` config (Postgres dialect) | ⏳ |
+| Liquibase | Changelog naming and structure conventions | ⏳ |
+| Resource ID style | ULID (`agent_…`, `svc_…`, `cred_…`, `perm_…`); see glossary | ✅ implicit, document in Phase 5 |
+| Error envelope | RFC 7807 Problem Details for the REST API | ⏳ Iteration 4 contract |
+| Audit emission idiom | Single `audit.emit(event_type, actor, target, before, after)` helper | ⏳ |
+
+---
+
+## 8. Quality gates
+
+| Gate | Tool / approach | Status |
+|---|---|---|
+| Per‑language linter in CI | ruff, golangci-lint, eslint, sqlfluff | ⏳ |
+| Per‑language type checker | mypy, Go's compiler, tsc | ⏳ |
+| Unit tests | pytest, go test, jest | ⏳ |
+| Integration tests | testcontainers (Postgres, Kong, Keycloak) | ⏳ |
+| Security scan | `govulncheck`, `pip-audit`, `npm audit`, container image scan | ⏳ |
+| License compatibility | FOSSA or scancode‑toolkit (manual policy) | ⏳ |
+| Architecture test | Custom: assert no module bypasses the audit chokepoint; assert no plaintext credential outside Vault Adapter or proxy plugin request scope | ⏳ |
+| Contract round‑trip | Diff between OpenAPI emitted by FastAPI and `docs/contracts/rest/openapi.yaml` | ⏳ |
+| Mermaid lint in docs | `mermaid-cli` validates fenced blocks (CI) | ⏳ |
+
+---
+
+## 9. Kiro‑specific scaffolding
+
+| Item | Status |
+|---|---|
+| Kiro project pointer (`.kiro/project.yaml` or equivalent) | ⏳ Phase 5 |
+| Kiro template: "add a new feature" prompt | ⏳ Phase 5 |
+| Kiro template: "fix a bug" prompt | ⏳ Phase 5 |
+| Documentation of the spec‑driven workflow | ⏳ Phase 5 |
+
+The "add a new feature" template should accept inputs like:
+- Feature description (one or two sentences).
+- Affected components (list).
+- Quality attributes that must hold (list of `S-*-*` references).
+- Acceptance criteria (one or more sentences).
+
+…and produce:
+- A draft proposal under `docs/proposal/P-NNN-…md` (if a decision is needed).
+- A draft Kiro spec triple under `docs/specs/<component>/`.
+- Updated contracts under `docs/contracts/`.
+- A draft PR description.
+
+---
+
+## How to use this document
+1. Pick an item from a table above.
+2. Open the relevant directory (or create it).
+3. Mark the checkbox `✅` when the deliverable is in place.
+4. When all items in a phase are checked, that phase's exit criterion is met.
+
+---
+
+## Status (as of 2026-05-10)
+
+| Area | Status |
+|---|---|
+| Project context | ✅ substantially complete; needs `KIRO.md` |
+| ADRs | ✅ 7 accepted (ADR‑0001..0007) |
+| Contracts | ⚠ skeleton only; full population in iteration 4 |
+| Per‑component specs | ❌ not started; first target is the **Vault Adapter** |
+| Pattern library | ❌ not started |
+| Stub services | ❌ not started |
+| Test fixtures | ❌ not started |
+| Coding conventions | ❌ not started |
+| Quality gates | ❌ not started |
+| Kiro scaffolding | ❌ not started |
+
+## Fastest path to "Kiro can develop new features"
+1. **Finish iteration 4 contracts** (the schemas) — this unblocks every code‑generation step.
+2. **Write the Vault Adapter spec** as the first per‑component Kiro spec — it's the smallest container with the clearest interface.
+3. **Write the top 3 pattern library entries** — `add-rest-endpoint`, `add-mcp-tool`, `add-audit-event` — these cover most CRUD work.
+4. **Write the stub services** for Vault Adapter, Kong, and OIDC — these unblock CI for the rest.
+5. **Write `KIRO.md`** at the repo root — make Kiro readable.
+6. From this point, **Kiro can scaffold the rest** (other component specs, other patterns, other stubs).

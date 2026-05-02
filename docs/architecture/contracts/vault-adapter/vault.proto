@@ -1,0 +1,319 @@
+// vault.proto -- Mintkey Vault Adapter gRPC IDL.
+//
+// Stability tier: experimental.
+// Version       : 0.1.0-experimental.
+//
+// This service is the contract between every credential-aware Mintkey
+// component and the Vault Adapter (container C6 in
+// docs/01-architecture/02-container-view.md). The adapter is the only
+// component that handles credential plaintext; consumers never persist
+// plaintext returned by GetCredential and pass it only into per-request
+// header injection (per ADR-0003).
+//
+// Per ADR-0008 (multi-tenancy), every operation is tenant-scoped; the
+// adapter rejects requests whose tenant_id is empty or unknown.
+//
+// !! INTERNAL SERVICE !!
+//   This gRPC service is NEVER exposed beyond the control plane's
+//   trust boundary. It listens on a UDS or loopback gRPC endpoint with
+//   mTLS in v1, with token-based authentication as a future option.
+
+syntax = "proto3";
+
+package mintkey.vault.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mintkey/mintkey/internal/vault/v1;vaultv1";
+option java_package = "io.mintkey.vault.v1";
+option java_multiple_files = true;
+
+// VaultAdapter is the credential storage interface. Backends are
+// pluggable per ADR-0003 (file in v1; HashiCorp Vault in v2; SQL+KMS in
+// v3); all backends expose this same interface.
+service VaultAdapter {
+  // GetCredential returns the plaintext credential value for one
+  // (tenant_id, service_id, key_version) tuple. Used by the Egress
+  // Proxy plugin (per ADR-0004) on every brokered request.
+  //
+  // Pass key_version = 0 to fetch the current credential version
+  // (atomic relative to a credential.rotated event).
+  //
+  // Errors:
+  //   NOT_FOUND       — no credential exists for the tuple.
+  //   PERMISSION_DENIED — caller lacks the read scope for the tenant.
+  //   FAILED_PRECONDITION — credential is revoked.
+  //   UNAVAILABLE     — backend (file/Vault/KMS) is unreachable.
+  rpc GetCredential(GetCredentialRequest) returns (GetCredentialResponse);
+
+  // PutCredential creates or rotates a credential. The adapter assigns
+  // a new monotonic key_version per (tenant_id, service_id) and returns
+  // it. The plaintext sent in the request lives in the adapter's memory
+  // for the duration of the call, is sealed with a fresh DEK, and is
+  // discarded; the cleartext value is NEVER persisted or logged.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT — auth_scheme/value mismatch, missing required
+  //                      fields, or value too large.
+  //   PERMISSION_DENIED — caller lacks the write scope.
+  //   UNAVAILABLE      — backend cannot accept writes.
+  rpc PutCredential(PutCredentialRequest) returns (PutCredentialResponse);
+
+  // RevokeCredential soft-deletes a non-current key_version. The adapter
+  // refuses to revoke the current key_version (caller must rotate first).
+  //
+  // Errors:
+  //   FAILED_PRECONDITION — supplied key_version is the current one.
+  //   NOT_FOUND           — no such version.
+  rpc RevokeCredential(RevokeCredentialRequest) returns (RevokeCredentialResponse);
+
+  // ListVersions returns metadata-only descriptors for all key_versions
+  // of one (tenant_id, service_id). Plaintext is NEVER included.
+  // Used by the Admin REST API and AdminJS for operator inspection.
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  // ValidateServiceIdentity validates a per-service boot secret per ADR-0014.2.
+  // Used by Admin API, MCP Server, Broker, and the proxy plugin to authenticate to
+  // the Vault Adapter on startup.
+  rpc ValidateServiceIdentity(ValidateServiceIdentityRequest) returns (ValidateServiceIdentityResponse);
+
+}
+
+// AuthScheme mirrors the OpenAPI `AuthScheme` enum and the audit-event
+// `auth_scheme` field. The two MUST stay in lockstep — adding a value
+// here requires the same value in docs/contracts/rest/openapi.yaml.
+enum AuthScheme {
+  AUTH_SCHEME_UNSPECIFIED = 0;
+  AUTH_SCHEME_API_KEY_HEADER = 1;
+  AUTH_SCHEME_API_KEY_QUERY = 2;
+  AUTH_SCHEME_BEARER_TOKEN = 3;
+  AUTH_SCHEME_BASIC_AUTH = 4;
+  AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS = 5;
+  AUTH_SCHEME_OIDC_CLIENT_SECRET = 6;
+  AUTH_SCHEME_MTLS = 7;
+}
+
+// CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
+// key_version) tuple.
+enum CredentialStatus {
+  CREDENTIAL_STATUS_UNSPECIFIED = 0;
+  CREDENTIAL_STATUS_ACTIVE = 1;
+  CREDENTIAL_STATUS_REVOKED = 2;
+}
+
+// ----------------------------------------------------------------------
+// GetCredential
+// ----------------------------------------------------------------------
+
+// GetCredentialRequest identifies a credential to fetch.
+message GetCredentialRequest {
+  // ULID-prefixed tenant id (e.g. "tenant_01HX..."). REQUIRED.
+  // Per ADR-0008 the adapter scopes every read to a tenant.
+  string tenant_id = 1;
+
+  // ULID-prefixed service id (e.g. "svc_01HX..."). REQUIRED.
+  string service_id = 2;
+
+  // Specific key_version to fetch. Pass 0 to fetch the current version
+  // (the adapter resolves the current version atomically).
+  uint32 key_version = 3;
+
+  // Optional caller identifier (used for audit emission inside the
+  // adapter). Format: any prefixed-ULID actor id.
+  string caller_actor_id = 4;
+}
+
+// GetCredentialResponse carries the plaintext value plus enough metadata
+// for the proxy plugin to inject the credential per the auth scheme.
+message GetCredentialResponse {
+  // The auth scheme dictates how the proxy injects `value`.
+  AuthScheme auth_scheme = 1;
+
+  // SENSITIVE — plaintext credential bytes. The proxy plugin holds this
+  // in a request-scoped variable, injects it into the outbound request,
+  // and discards. Never logged, never echoed in spans.
+  //
+  // Encoding by auth_scheme:
+  //   API_KEY_HEADER, API_KEY_QUERY, BEARER_TOKEN -> raw secret bytes
+  //   BASIC_AUTH    -> "username:password" UTF-8 bytes
+  //   OAUTH2_CLIENT_CREDENTIALS, OIDC_CLIENT_SECRET ->
+  //         JSON-encoded structured payload (see Cred*ClientSecret
+  //         schemas in docs/contracts/rest/openapi.yaml).
+  bytes value = 2;
+
+  // Optional upstream expiry (e.g. for OAuth2 access tokens cached by
+  // the adapter). Empty for static credentials.
+  google.protobuf.Timestamp expires_at = 3;
+
+  // The version actually returned. Equals the request's key_version
+  // unless that was 0 (then equals the current key_version).
+  uint32 returned_key_version = 4;
+
+  // Current key_version at the time of the read. Useful for the proxy
+  // plugin's cache invalidation logic.
+  uint32 current_key_version = 5;
+
+  // Optional injection hints for header/query schemes (e.g.
+  // header_name="X-API-Key", query_param="api_key"). Set by the adapter
+  // if the operator configured a non-default location.
+  string header_name = 6;
+  string query_param = 7;
+}
+
+// ----------------------------------------------------------------------
+// PutCredential
+// ----------------------------------------------------------------------
+
+// PutCredentialRequest creates a new credential version. Always
+// monotonically advances key_version per (tenant_id, service_id).
+message PutCredentialRequest {
+  // ULID-prefixed tenant id. REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed service id. REQUIRED.
+  string service_id = 2;
+
+  // Auth scheme of the credential. REQUIRED.
+  AuthScheme auth_scheme = 3;
+
+  // SENSITIVE — plaintext to store. Encoded per auth_scheme; same
+  // encoding rules as GetCredentialResponse.value above.
+  // Maximum size: 64 KiB.
+  bytes value = 4;
+
+  // Optional upstream expiry. Stored as-is; the adapter does not
+  // refresh the credential on its own (refresh logic lives in the
+  // adapter's per-scheme handler — covered in iteration-2 P-002 follow-up).
+  google.protobuf.Timestamp expires_at = 5;
+
+  // Optional injection hints (header_name / query_param). Stored with
+  // the credential metadata.
+  string header_name = 6;
+  string query_param = 7;
+
+  // Caller identifier for audit emission.
+  string caller_actor_id = 8;
+}
+
+// PutCredentialResponse returns the new key_version.
+message PutCredentialResponse {
+  // The newly assigned key_version.
+  uint32 key_version = 1;
+
+  // Server-side creation timestamp (defensive-copy of the audit time).
+  google.protobuf.Timestamp created_at = 2;
+}
+
+// ----------------------------------------------------------------------
+// RevokeCredential
+// ----------------------------------------------------------------------
+
+// RevokeCredentialRequest soft-deletes a non-current credential version.
+message RevokeCredentialRequest {
+  // ULID-prefixed tenant id. REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed service id. REQUIRED.
+  string service_id = 2;
+
+  // The version to revoke. Refuses to revoke the current version.
+  uint32 key_version = 3;
+
+  // Free-form reason string (recorded in the audit event payload).
+  string reason = 4;
+
+  // Caller identifier for audit emission.
+  string caller_actor_id = 5;
+}
+
+// RevokeCredentialResponse confirms the revocation.
+message RevokeCredentialResponse {
+  // Always set to CREDENTIAL_STATUS_REVOKED on success.
+  CredentialStatus status = 1;
+
+  // Server-side revocation timestamp.
+  google.protobuf.Timestamp revoked_at = 2;
+}
+
+// ----------------------------------------------------------------------
+// ListVersions
+// ----------------------------------------------------------------------
+
+// ListVersionsRequest enumerates metadata-only descriptors for the
+// versions of one (tenant_id, service_id).
+message ListVersionsRequest {
+  // ULID-prefixed tenant id. REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed service id. REQUIRED.
+  string service_id = 2;
+
+  // Optional pagination — same semantics as the REST API: forward-only
+  // cursor, exclusive of `after_key_version`.
+  uint32 after_key_version = 3;
+
+  // Page size, 1..200, default 50.
+  uint32 limit = 4;
+
+  // Caller identifier for audit emission.
+  string caller_actor_id = 5;
+}
+
+// VersionDescriptor is a metadata-only view of one credential version.
+// NEVER carries plaintext.
+message VersionDescriptor {
+  // ULID-prefixed credential id (cred_…).
+  string credential_id = 1;
+
+  // The key_version (monotonic per service).
+  uint32 key_version = 2;
+
+  // True iff this is the current version of the credential.
+  bool is_current = 3;
+
+  // Active or revoked.
+  CredentialStatus status = 4;
+
+  // Auth scheme of the version.
+  AuthScheme auth_scheme = 5;
+
+  // KEK version that wrapped this DEK at write time. Used by the
+  // operator to track KEK-rotation progress.
+  uint32 kek_version = 6;
+
+  // Server-side timestamps.
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp revoked_at = 8;
+
+  // Optional upstream expiry.
+  google.protobuf.Timestamp expires_at = 9;
+}
+
+// ListVersionsResponse returns one page of version descriptors.
+message ListVersionsResponse {
+  // The descriptors in increasing key_version order.
+  repeated VersionDescriptor versions = 1;
+
+  // Next-page cursor. 0 indicates no further pages.
+  uint32 next_after_key_version = 2;
+
+  // Convenience field — the current key_version at query time.
+  uint32 current_key_version = 3;
+}
+
+// ValidateServiceIdentityRequest authenticates a calling service.
+message ValidateServiceIdentityRequest {
+  // The service identity ID, e.g., svcid_admin_api, svcid_mcp, svcid_broker, svcid_proxy.
+  string service_identity_id = 1;
+  // Raw 32-byte boot secret. Compared in constant time against the Argon2id hash stored
+  // in the Vault Adapter under credential type 'service_identity'.
+  bytes  token              = 2;
+}
+
+// ValidateServiceIdentityResponse describes whether the caller is authentic and what scopes apply.
+message ValidateServiceIdentityResponse {
+  bool ok = 1;
+  // Policy scopes granted to this caller (e.g., "vault.read", "vault.put", "signing_key.read").
+  repeated string scopes = 2;
+  // When the current boot secret expires (during a rotation overlap window). Optional.
+  google.protobuf.Timestamp valid_until = 3;
+}

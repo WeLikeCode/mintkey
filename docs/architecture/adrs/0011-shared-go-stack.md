@@ -1,0 +1,1 @@
+../01-architecture/adr/0011-shared-go-stack.md

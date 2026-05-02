@@ -1,0 +1,4 @@
+{
+  "git.scanRepositories": ["."],
+  "git.repositoryScanMaxDepth": 0
+}

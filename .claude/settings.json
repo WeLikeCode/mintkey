@@ -1,0 +1,6 @@
+{
+  "model": "claude-sonnet-4-6",
+  "env": {
+    "MAX_THINKING_TOKENS": "32000"
+  }
+}

@@ -1,0 +1,574 @@
+###############################################################################
+# Mintkey MCP Server tool catalog (iteration-4 wire contract)
+#
+# Stability tier: experimental.
+# Bumps `server.version` on breaking changes.
+#
+# ---------------------------------------------------------------------------
+# Multi-tenancy (per ADR-0008 / ADR-0009)
+# ---------------------------------------------------------------------------
+#   The agent's tenant is resolved from its authentication context (the
+#   Agent API Key), NOT from a tool input parameter. No MCP tool exposes a
+#   `tenant_id` argument. Cross-tenant calls are impossible by construction.
+#
+# ---------------------------------------------------------------------------
+# Auth (per ADR-0009)
+# ---------------------------------------------------------------------------
+#   Transport       Authentication
+#   --------------  ------------------------------------------------------
+#   HTTP / SSE      `Authorization: Bearer <Agent API Key>` HTTP header.
+#   stdio           `MINTKEY_AGENT_API_KEY` environment variable.
+#
+#   The Agent API Key is the long-lived credential issued by Mintkey at
+#   agent creation time (`mk_live_…`). It is hashed at rest (Argon2id).
+#
+# ---------------------------------------------------------------------------
+# ID prefixes (same conventions as the REST contract)
+# ---------------------------------------------------------------------------
+#   tenant_…    Tenant
+#   operator_…  Operator
+#   agent_…     Agent
+#   svc_…       Service
+#   cred_…      Credential
+#   perm_…      PermissionGrant
+#   audit_…     AuditEvent
+#   change_…    ChangeEvent
+#
+# ---------------------------------------------------------------------------
+# Time
+# ---------------------------------------------------------------------------
+#   All timestamps are RFC 3339 UTC.
+#
+# ---------------------------------------------------------------------------
+# Sensitive fields
+# ---------------------------------------------------------------------------
+#   The brokered JWT returned by `request_token` is sensitive — the agent
+#   should hold it in process memory and not log it. The output schema
+#   marks it with `x-mintkey-sensitive: true`.
+###############################################################################
+
+mcp_version: "2024-11-05"
+server:
+  name: "mintkey"
+  version: "0.1.0-experimental"
+  description: |
+    Discovery and credential-broker tool surface exposed by the Mintkey
+    MCP Server (control-plane container C4 in
+    `docs/01-architecture/02-container-view.md`). Implemented in Python
+    against the Anthropic `mcp` SDK (ADR-0009).
+  vendor: "mintkey"
+  stability: "experimental"
+
+# ---------------------------------------------------------------------------
+# Common subschemas referenced from the per-tool schemas below.
+# ---------------------------------------------------------------------------
+$defs:
+
+  ulid_id:
+    type: string
+    pattern: "^[a-z]+_[0-9A-HJKMNP-TV-Z]{26}$"
+    description: ULID prefixed by resource type.
+
+  service_id:
+    type: string
+    pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+
+  agent_id:
+    type: string
+    pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+
+  timestamp:
+    type: string
+    format: date-time
+    description: RFC 3339 UTC.
+
+  auth_scheme:
+    type: string
+    description: "Auth scheme of the registered backend service. Per ADR-0016.5."
+    enum:
+      - api_key_header
+      - api_key_query
+      - bearer_token
+      - basic_auth
+      - oauth2_client_credentials
+      - oidc_client_secret
+      - mtls
+
+  service_summary:
+    type: object
+    description: |
+      Compact service descriptor returned by `list_services`. Fields are
+      identical to the REST `Service` schema except that `tenant_id` is
+      omitted (the agent's tenant is implicit from auth context).
+    additionalProperties: false
+    properties:
+      service_id:
+        $ref: "#/$defs/service_id"
+      name:
+        type: string
+      display_name:
+        type: string
+      description:
+        type: string
+      base_url:
+        type: string
+        format: uri
+      auth_scheme:
+        $ref: "#/$defs/auth_scheme"
+      actions:
+        type: array
+        items:
+          type: string
+        description: |
+          Granted-to-the-calling-agent subset of the service's actions.
+          Actions the agent has no permission for are filtered out.
+      openapi_url:
+        type: string
+        format: uri
+        nullable: true
+    required:
+      - service_id
+      - name
+      - display_name
+      - base_url
+      - auth_scheme
+      - actions
+
+  service_full:
+    type: object
+    description: |
+      Full service descriptor returned by `describe_service`. Identical to
+      `service_summary` plus optional `current_key_version` and proxy URLs.
+    additionalProperties: false
+    properties:
+      service_id:
+        $ref: "#/$defs/service_id"
+      name:
+        type: string
+      display_name:
+        type: string
+      description:
+        type: string
+      base_url:
+        type: string
+        format: uri
+      auth_scheme:
+        $ref: "#/$defs/auth_scheme"
+      actions:
+        type: array
+        items:
+          type: string
+      openapi_url:
+        type: string
+        format: uri
+        nullable: true
+      current_key_version:
+        type: integer
+        minimum: 0
+      explicit_proxy_url:
+        type: string
+        format: uri
+        description: |
+          Path-based proxy URL — `<proxy>/v1/call/<service_id>/<path>`.
+          The agent appends `<path>` after this prefix.
+      virtual_host_proxy_url:
+        type: string
+        format: uri
+        description: |
+          Virtual-host proxy URL — `https://<service-slug>.<tenant-slug>.proxy.local`.
+    required:
+      - service_id
+      - name
+      - display_name
+      - base_url
+      - auth_scheme
+      - actions
+      - explicit_proxy_url
+      - virtual_host_proxy_url
+
+  error_code:
+    type: string
+    description: |
+      Machine-readable error codes emitted by any MCP tool. Closed enum.
+      Mapping to REST `mintkey:code` documented in ADR-0017.10.
+    enum:
+      - not_authorized
+      - service_not_found
+      - action_not_granted
+      - invalid_argument
+      - rate_limited
+      - tenant_suspended
+      - tenant_deleted
+      - agent_revoked
+      - token_expired
+      - token_revoked
+      - validation_failed
+      - unavailable
+
+# ---------------------------------------------------------------------------
+# Errors emitted by ANY tool (in addition to per-tool error lists).
+# ---------------------------------------------------------------------------
+common_errors:
+  - code: "not_authorized"
+    message: |
+      Agent is not authenticated, or the Agent API Key has been revoked.
+  - code: "tenant_suspended"
+    message: |
+      The agent's tenant has been suspended by the platform admin.
+  - code: "rate_limited"
+    message: |
+      Per-tenant or per-agent rate limit exceeded.
+  - code: "unavailable"
+    message: |
+      A required dependency (DB, Vault Adapter, change channel) is
+      currently unavailable. Retry with backoff.
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+tools:
+
+  # =========================================================================
+  - name: "list_services"
+    description: |
+      List the services this agent has any permissions on. Filtered by
+      tenant (resolved from the agent's API key) and by the agent's
+      permission grants. Pagination by ULID cursor matches the REST API.
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        name_contains:
+          type: string
+          description: |
+            Optional case-insensitive substring filter on the service name.
+          maxLength: 200
+        after:
+          type: string
+          description: |
+            Optional pagination cursor — the `service_id` from the previous
+            page. Exclusive.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/$defs/service_summary"
+        next_cursor:
+          type: string
+          nullable: true
+      required: [services, next_cursor]
+    errors:
+      - code: "invalid_argument"
+        message: "`limit` out of range or `after` is malformed."
+    examples:
+      - name: "list-with-filter"
+        request:
+          name_contains: "crm"
+          limit: 50
+        response:
+          services:
+            - service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+              name: "crm"
+              display_name: "Acme CRM"
+              description: "Internal CRM API."
+              base_url: "https://crm.acme.example/api"
+              auth_scheme: "bearer_token"
+              actions: ["read:contacts", "write:contacts"]
+              openapi_url: "https://crm.acme.example/openapi.json"
+          next_cursor: null
+
+  # =========================================================================
+  - name: "describe_service"
+    description: |
+      Return full metadata for a single service the agent can see. Returns
+      `service_not_found` if the agent has no permissions on the service
+      (tenant-scoped lookup; cross-tenant `service_id`s also fall through
+      to `service_not_found`).
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+      required: [service_id]
+    output_schema:
+      $ref: "#/$defs/service_full"
+    errors:
+      - code: "service_not_found"
+        message: |
+          Service does not exist in this tenant, or the agent has no
+          permissions on it.
+      - code: "invalid_argument"
+        message: "`service_id` is malformed."
+    examples:
+      - name: "describe-crm"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+        response:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          name: "crm"
+          display_name: "Acme CRM"
+          description: "Internal CRM API."
+          base_url: "https://crm.acme.example/api"
+          auth_scheme: "bearer_token"
+          actions: ["read:contacts", "write:contacts"]
+          openapi_url: "https://crm.acme.example/openapi.json"
+          current_key_version: 3
+          explicit_proxy_url: "https://proxy.local/v1/call/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          virtual_host_proxy_url: "https://crm.acme.proxy.local"
+
+  # =========================================================================
+  - name: "get_openapi"
+    description: |
+      Return the service's OpenAPI document — either as a URL (default) or
+      inline (when ≤ 1 MB and the operator has opted in to inline serving).
+      The result is discriminated by `kind`.
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+      required: [service_id]
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      oneOf:
+        - type: object
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [url]
+            openapi_url:
+              type: string
+              format: uri
+            etag:
+              type: string
+              nullable: true
+          required: [kind, openapi_url]
+        - type: object
+          additionalProperties: false
+          properties:
+            kind:
+              type: string
+              enum: [inline]
+            content_type:
+              type: string
+              enum: ["application/json", "application/yaml"]
+            etag:
+              type: string
+              nullable: true
+            document:
+              description: Verbatim OpenAPI document bytes (string-encoded).
+              type: string
+              maxLength: 1048576
+          required: [kind, content_type, document]
+      discriminator:
+        propertyName: kind
+    errors:
+      - code: "service_not_found"
+        message: |
+          Service does not exist in this tenant, or the agent has no
+          permissions on it.
+      - code: "invalid_argument"
+        message: |
+          `service_id` is malformed.
+    examples:
+      - name: "openapi-by-url"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+        response:
+          kind: "url"
+          openapi_url: "https://crm.acme.example/openapi.json"
+          etag: "W/\"6c1b-T3kX\""
+      - name: "openapi-inline-yaml"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S2"
+        response:
+          kind: "inline"
+          content_type: "application/yaml"
+          etag: null
+          document: "openapi: 3.1.0\ninfo: ...\n"
+
+  # =========================================================================
+  - name: "request_token"
+    description: |
+      Mint a brokered JWT for `(service_id, action)`. Per ADR-0006 the JWT
+      is JWS Ed25519, single-scope, audience-bound to the service. Per
+      ADR-0008 the broker stamps the agent's tenant into a `tnt` claim and
+      the proxy enforces tenant match on every request.
+
+      The optional `ttl_seconds` is clamped to the per-service min/max
+      (default 60..3600). The default TTL is 600 (10 minutes) when not
+      supplied.
+
+      The returned `proxy_endpoint` is the path-based form. Use
+      `proxy_endpoint(service_id)` for both URL forms when the agent
+      prefers the virtual-host alias.
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+        action:
+          type: string
+          description: |
+            A single action/scope string. Multiple scopes per token are
+            unsupported in v1; agents request one token per action.
+          minLength: 1
+          maxLength: 200
+        ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+          description: |
+            Optional override of the service's default TTL.
+      required: [service_id, action]
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          x-mintkey-sensitive: true
+          description: |
+            The brokered JWT. JWS Ed25519. Sensitive — do not log.
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_at:
+          $ref: "#/$defs/timestamp"
+        jti:
+          type: string
+          description: ULID-encoded JWT id; matches `jti` in the JWT payload.
+        key_version:
+          type: integer
+          minimum: 1
+          description: |
+            Credential `key_version` the proxy will inject for this token.
+        proxy_endpoint:
+          type: string
+          format: uri
+          description: |
+            Path-based proxy URL the agent should call.
+      required:
+        - token
+        - token_type
+        - expires_at
+        - jti
+        - key_version
+        - proxy_endpoint
+    errors:
+      - code: "service_not_found"
+        message: "Service does not exist in this tenant."
+      - code: "action_not_granted"
+        message: |
+          The agent does not have a permission grant for
+          `(service_id, action)`.
+      - code: "not_authorized"
+        message: "Agent is revoked or the API key is invalid."
+      - code: "rate_limited"
+        message: |
+          Token-issuance rate limit exceeded for this agent or tenant.
+      - code: "invalid_argument"
+        message: "`ttl_seconds` out of range or `action` malformed."
+      - code: "unavailable"
+        message: |
+          The Vault Adapter is unreachable; cannot resolve a credential
+          version.
+    examples:
+      - name: "happy-path"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          action: "read:contacts"
+          ttl_seconds: 600
+        response:
+          token: "eyJhbGciOiJFZERTQSIsImtpZCI6ImJyb2tlci0yMDI2LTA1LTEwIn0..."
+          token_type: "Bearer"
+          expires_at: "2026-05-10T14:10:00Z"
+          jti: "01HX5J9F8V8H8V0CG3F2Y5J6Q1"
+          key_version: 3
+          proxy_endpoint: "https://proxy.local/v1/call/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+
+  # =========================================================================
+  - name: "proxy_endpoint"
+    description: |
+      Return both URL forms the agent may call to reach the proxy for this
+      service (per ADR-0007). Both forms route to the same Kong route +
+      plugin chain; the choice is purely a developer-experience preference.
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+      required: [service_id]
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        explicit_url:
+          type: string
+          format: uri
+          description: |
+            Path-based form — `https://proxy.local/v1/call/<service_id>`.
+            The agent appends the in-service path after this prefix.
+        virtual_host_url:
+          type: string
+          format: uri
+          description: |
+            Virtual-host form — `https://<service-slug>.<tenant-slug>.proxy.local`.
+      required: [explicit_url, virtual_host_url]
+    errors:
+      - code: "service_not_found"
+        message: |
+          Service does not exist in this tenant, or the agent has no
+          permissions on it.
+    examples:
+      - name: "endpoints-for-crm"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+        response:
+          explicit_url: "https://proxy.local/v1/call/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          virtual_host_url: "https://crm.acme.proxy.local"
+
+
+# ---------------------------------------------------------------------------
+# Tenant or agent deletion mid-session (per ADR-0016.7)
+# ---------------------------------------------------------------------------
+# When an agent is revoked or its tenant is deleted while an MCP session is open:
+#   * HTTP/SSE: server emits a final error frame with code `agent_revoked` or
+#     `tenant_deleted`, then closes the connection.
+#   * stdio:    server prints the same error frame, then EOF.
+# Subsequent tool calls bearing the agent's API key receive 401 with the same code.
+# In-flight read-only tool calls (`list_services`, `describe_service`,
+# `get_openapi`) complete with the snapshot they had. State-changing calls
+# (`request_token`) abort with code `tenant_deleted`.
+
+# ---------------------------------------------------------------------------
+# Authentication (per ADR-0009 + ADR-0017)
+# ---------------------------------------------------------------------------
+# Agents authenticate with a Bearer Agent API Key in the HTTP `Authorization`
+# header for HTTP/SSE transport, or via env var for stdio transport.
+# The MCP server:
+#   1. Format-checks the prefix `mk_agent_` (constant time).
+#   2. Looks up the key by its 8-char fingerprint.
+#   3. Verifies via `argon2id` `subtle.ConstantTimeCompare`.
+# Per OQ-015 the verification implementation specifics are pinned in iteration 4 closeout.

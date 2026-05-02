@@ -1,0 +1,1 @@
+../01-architecture/adr/0006-token-format-and-binding.md

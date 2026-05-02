@@ -1,0 +1,1990 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mintkey.local/contracts/events/audit-event.schema.json",
+  "title": "Mintkey AuditEvent",
+  "description": "Append-only audit event emitted by every Mintkey container on every state change or auditable action. Discriminated by `event_type`. Common envelope is shared across all event types; per-event payload schemas are pinned per `event_type`.\n\nStability tier: experimental.",
+  "x-mintkey-stability": "experimental",
+  "x-mintkey-version": "0.1.0-experimental",
+  "type": "object",
+  "$defs": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "prefixed_ulid": {
+      "type": "string",
+      "pattern": "^[a-z]+_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "operator_id": {
+      "type": "string",
+      "pattern": "^operator_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "agent_id": {
+      "type": "string",
+      "pattern": "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "service_id": {
+      "type": "string",
+      "pattern": "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "credential_id": {
+      "type": "string",
+      "pattern": "^cred_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "permission_id": {
+      "type": "string",
+      "pattern": "^perm_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^session_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "audit_id": {
+      "type": "string",
+      "pattern": "^audit_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 UTC."
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "W3C trace-id (32 hex chars)."
+    },
+    "hex_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "actor_type": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "agent",
+        "system",
+        "platform_admin"
+      ]
+    },
+    "target_type": {
+      "type": "string",
+      "enum": [
+        "tenant",
+        "operator",
+        "service",
+        "credential",
+        "agent",
+        "permission",
+        "token",
+        "request",
+        "kek",
+        "session",
+        "audit_chain",
+        "admin_settings",
+        "platform_admin_view"
+      ]
+    },
+    "auth_scheme": {
+      "type": "string",
+      "enum": [
+        "api_key_header",
+        "api_key_query",
+        "bearer_token",
+        "basic_auth",
+        "oauth2_client_credentials",
+        "oidc_client_secret",
+        "mtls"
+      ]
+    },
+    "envelope": {
+      "type": "object",
+      "description": "Fields common to every audit event.",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/audit_id"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/tenant_id"
+        },
+        "actor_id": {
+          "$ref": "#/$defs/prefixed_ulid"
+        },
+        "actor_type": {
+          "$ref": "#/$defs/actor_type"
+        },
+        "target_id": {
+          "$ref": "#/$defs/prefixed_ulid"
+        },
+        "target_type": {
+          "$ref": "#/$defs/target_type"
+        },
+        "at": {
+          "$ref": "#/$defs/timestamp_utc"
+        },
+        "request_id": {
+          "$ref": "#/$defs/ulid",
+          "description": "Optional ULID identifying the request that produced this event."
+        },
+        "trace_id": {
+          "$ref": "#/$defs/trace_id",
+          "description": "Optional W3C trace-id for cross-service correlation."
+        },
+        "prev_hash": {
+          "$ref": "#/$defs/hex_sha256",
+          "description": "Hash of the previous audit event in the tenant's chain (tamper-evidence)."
+        },
+        "hash": {
+          "$ref": "#/$defs/hex_sha256",
+          "description": "Hash of this event over `prev_hash || event_id || event_type || at || payload`."
+        },
+        "payload": {
+          "description": "Per-event-type payload — see `oneOf` below.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_type",
+        "tenant_id",
+        "actor_id",
+        "actor_type",
+        "target_id",
+        "target_type",
+        "at"
+      ]
+    },
+    "ev_tenant_created": {
+      "type": "object",
+      "description": "A new Tenant was created.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "tenant.created"
+        },
+        "target_type": {
+          "const": "tenant"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tenant_id": {
+              "$ref": "#/$defs/tenant_id"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "display_name": {
+              "type": "string"
+            },
+            "isolation_mode": {
+              "type": "string",
+              "enum": [
+                "row",
+                "database"
+              ]
+            }
+          },
+          "required": [
+            "tenant_id",
+            "slug",
+            "display_name",
+            "isolation_mode"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_tenant_updated": {
+      "type": "object",
+      "description": "A Tenant's metadata was updated.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "tenant.updated"
+        },
+        "target_type": {
+          "const": "tenant"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fields_changed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "display_name",
+                  "status",
+                  "settings"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "fields_changed"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_tenant_deleted": {
+      "type": "object",
+      "description": "A Tenant was soft-deleted.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "tenant.deleted"
+        },
+        "target_type": {
+          "const": "tenant"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reason": {
+              "type": "string"
+            },
+            "cascade_count": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Counts of cascaded resources purged with the tenant. Per ADR-0016.7.",
+              "properties": {
+                "agents": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of agents revoked."
+                },
+                "services": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of services soft-deleted."
+                },
+                "credentials": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of credentials revoked."
+                },
+                "permissions": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of permission grants removed."
+                }
+              },
+              "required": [
+                "agents",
+                "services",
+                "credentials",
+                "permissions"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_operator_created": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "operator.created"
+        },
+        "target_type": {
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "username": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "platform_admin": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "operator_id",
+            "username",
+            "email",
+            "platform_admin"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_operator_permission_granted": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "operator.permission.granted"
+        },
+        "target_type": {
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "tenant_id": {
+              "$ref": "#/$defs/tenant_id"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "Admin",
+                "Auditor",
+                "AgentOwner"
+              ]
+            }
+          },
+          "required": [
+            "operator_id",
+            "tenant_id",
+            "role"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_operator_permission_revoked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "operator.permission.revoked"
+        },
+        "target_type": {
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "tenant_id": {
+              "$ref": "#/$defs/tenant_id"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "Admin",
+                "Auditor",
+                "AgentOwner"
+              ]
+            }
+          },
+          "required": [
+            "operator_id",
+            "tenant_id",
+            "role"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_service_registered": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.registered"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "base_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "auth_scheme": {
+              "$ref": "#/$defs/auth_scheme"
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "display_name": {
+              "type": "string",
+              "description": "Human-readable service display name."
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable service description (optional)."
+            },
+            "openapi_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the service's OpenAPI document, if any."
+            }
+          },
+          "required": [
+            "service_id",
+            "name",
+            "base_url",
+            "auth_scheme",
+            "actions",
+            "display_name"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_service_updated": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.updated"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "fields_changed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "display_name",
+                  "description",
+                  "base_url",
+                  "actions",
+                  "openapi_url",
+                  "status"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "service_id",
+            "fields_changed"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_service_removed": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.removed"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "service_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_credential_registered": {
+      "type": "object",
+      "description": "First credential registration on a brand-new service (no prior version).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "credential.registered"
+        },
+        "target_type": {
+          "const": "credential"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credential_id": {
+              "$ref": "#/$defs/credential_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "key_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "auth_scheme": {
+              "$ref": "#/$defs/auth_scheme"
+            }
+          },
+          "required": [
+            "credential_id",
+            "service_id",
+            "key_version",
+            "auth_scheme"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_credential_rotated": {
+      "type": "object",
+      "description": "A new credential `key_version` superseded the previous one.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "credential.rotated"
+        },
+        "target_type": {
+          "const": "credential"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credential_id": {
+              "$ref": "#/$defs/credential_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "key_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "previous_key_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "auth_scheme": {
+              "$ref": "#/$defs/auth_scheme"
+            }
+          },
+          "required": [
+            "credential_id",
+            "service_id",
+            "key_version",
+            "auth_scheme"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_credential_revoked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "credential.revoked"
+        },
+        "target_type": {
+          "const": "credential"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "credential_id": {
+              "$ref": "#/$defs/credential_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "key_version": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "credential_id",
+            "service_id",
+            "key_version"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_agent_created": {
+      "type": "object",
+      "description": "Agent was created. Payload carries the API key fingerprint, NOT the plaintext key.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.created"
+        },
+        "target_type": {
+          "const": "agent"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "name": {
+              "type": "string"
+            },
+            "api_key_fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "description": "`sha256:<hex>` of the Agent API Key. Plaintext key never appears in audit."
+            }
+          },
+          "required": [
+            "agent_id",
+            "name",
+            "api_key_fingerprint"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_agent_revoked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.revoked"
+        },
+        "target_type": {
+          "const": "agent"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_agent_permission_granted": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.permission.granted"
+        },
+        "target_type": {
+          "const": "permission"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {
+              "$ref": "#/$defs/permission_id"
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "action": {
+              "type": "string"
+            },
+            "constraints": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "ABAC constraints, closed schema per ADR-0016.4.",
+              "properties": {
+                "rate_limit": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Per-agent rate limit on this (service, action) tuple.",
+                  "properties": {
+                    "requests_per_second": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "burst": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                "time_window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "Time-of-day window the permission is valid in, evaluated in the given IANA timezone.",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "description": "IANA tz name, e.g., Europe/Bucharest."
+                    },
+                    "days": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "Mon",
+                          "Tue",
+                          "Wed",
+                          "Thu",
+                          "Fri",
+                          "Sat",
+                          "Sun"
+                        ]
+                      }
+                    },
+                    "start_local": {
+                      "type": "string",
+                      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                    },
+                    "end_local": {
+                      "type": "string",
+                      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                    }
+                  }
+                },
+                "request_path_prefix": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Allowed path prefixes within the registered service."
+                },
+                "source_ip_allowlist": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "cidr"
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "permission_id",
+            "agent_id",
+            "service_id",
+            "action"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_agent_permission_revoked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.permission.revoked"
+        },
+        "target_type": {
+          "const": "permission"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {
+              "$ref": "#/$defs/permission_id"
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "action": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "permission_id",
+            "agent_id",
+            "service_id",
+            "action"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_token_issued": {
+      "type": "object",
+      "description": "A brokered JWT was minted by the Credential Broker.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "token.issued"
+        },
+        "target_type": {
+          "const": "token"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "jti": {
+              "$ref": "#/$defs/ulid",
+              "description": "ULID matching the JWT's `jti` claim."
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "ttl_seconds": {
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 3600
+            },
+            "key_version": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "jti",
+            "agent_id",
+            "service_id",
+            "scope",
+            "ttl_seconds",
+            "key_version"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_token_denied": {
+      "type": "object",
+      "description": "A `request_token` call was denied by the Credential Broker.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "token.denied"
+        },
+        "target_type": {
+          "const": "token"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "reason_code": {
+              "type": "string",
+              "enum": [
+                "action_not_granted",
+                "service_not_found",
+                "agent_revoked",
+                "tenant_suspended",
+                "rate_limited",
+                "invalid_argument",
+                "vault_unavailable"
+              ]
+            }
+          },
+          "required": [
+            "agent_id",
+            "service_id",
+            "scope",
+            "reason_code"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_proxy_hit": {
+      "type": "object",
+      "description": "A request flowed through the Egress Proxy. Recorded after the response.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "proxy.hit"
+        },
+        "target_type": {
+          "const": "request"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "jti": {
+              "$ref": "#/$defs/ulid"
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "request_method": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "PATCH",
+                "DELETE",
+                "HEAD",
+                "OPTIONS"
+              ]
+            },
+            "request_path_template": {
+              "type": "string",
+              "description": "Templated path (e.g. `/v1/users/{id}`); raw path is NOT recorded to avoid PII leakage."
+            },
+            "status_code": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            "latency_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "success",
+                "client_error",
+                "server_error",
+                "denied",
+                "error"
+              ]
+            }
+          },
+          "required": [
+            "jti",
+            "agent_id",
+            "service_id",
+            "request_method",
+            "request_path_template",
+            "status_code",
+            "latency_ms",
+            "outcome"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_proxy_denied": {
+      "type": "object",
+      "description": "A request was denied at the proxy before forwarding (JWT verify/scope/tnt mismatch/revoked).",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "proxy.denied"
+        },
+        "target_type": {
+          "const": "request"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "jti": {
+              "$ref": "#/$defs/ulid",
+              "description": "Optional — may be absent if the token was unparseable."
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "reason_code": {
+              "type": "string",
+              "enum": [
+                "jwt_invalid",
+                "jwt_expired",
+                "jwt_signature_invalid",
+                "tenant_mismatch",
+                "audience_mismatch",
+                "scope_mismatch",
+                "agent_revoked",
+                "token_revoked",
+                "egress_denied",
+                "method_not_allowed"
+              ]
+            }
+          },
+          "required": [
+            "service_id",
+            "reason_code"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_proxy_error": {
+      "type": "object",
+      "description": "A 5xx outcome at the proxy not attributable to denial — backend error, plugin failure, etc.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "proxy.error"
+        },
+        "target_type": {
+          "const": "request"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "jti": {
+              "$ref": "#/$defs/ulid"
+            },
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "error_kind": {
+              "type": "string",
+              "enum": [
+                "backend_unreachable",
+                "backend_5xx",
+                "vault_unavailable",
+                "plugin_panic",
+                "credential_echo_detected"
+              ]
+            },
+            "status_code": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            }
+          },
+          "required": [
+            "service_id",
+            "error_kind"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_kek_rotated": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "kek.rotated"
+        },
+        "target_type": {
+          "const": "kek"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kek_version_from": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "kek_version_to": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "rewrapped_dek_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "instance",
+                "tenant"
+              ],
+              "description": "`instance` = shared-KEK rotation; `tenant` = per-tenant KEK rotation (Phase 2 high-isolation tier)."
+            }
+          },
+          "required": [
+            "kek_version_from",
+            "kek_version_to",
+            "rewrapped_dek_count",
+            "scope"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_auth_login_success": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "auth.login.success"
+        },
+        "target_type": {
+          "const": "session"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "session_id": {
+              "$ref": "#/$defs/session_id"
+            },
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "method": {
+              "type": "string",
+              "enum": [
+                "oidc",
+                "internal"
+              ]
+            },
+            "ip": {
+              "type": "string"
+            },
+            "user_agent": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "session_id",
+            "operator_id",
+            "method"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_auth_login_failed": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "auth.login.failed"
+        },
+        "target_type": {
+          "const": "session"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "type": "string",
+              "enum": [
+                "oidc",
+                "internal"
+              ]
+            },
+            "username_attempted": {
+              "type": "string",
+              "description": "Best-effort attempted identifier; do not log passwords."
+            },
+            "reason_code": {
+              "type": "string",
+              "enum": [
+                "unknown_user",
+                "password_mismatch",
+                "oidc_state_mismatch",
+                "oidc_id_token_invalid",
+                "operator_disabled",
+                "tenant_suspended",
+                "auto_provisioning_disabled"
+              ]
+            },
+            "ip": {
+              "type": "string"
+            },
+            "user_agent": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "reason_code"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_auth_logout": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "auth.logout"
+        },
+        "target_type": {
+          "const": "session"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "session_id": {
+              "$ref": "#/$defs/session_id"
+            },
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            }
+          },
+          "required": [
+            "session_id",
+            "operator_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_audit_chain_verified": {
+      "title": "audit.chain.verified",
+      "description": "Per-tenant audit hash chain successfully verified end to end. Emitted by the verification job.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "audit.chain.verified"
+            },
+            "target_type": {
+              "const": "audit_chain"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "chain_length": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of events verified."
+                },
+                "first_event_id": {
+                  "$ref": "#/$defs/audit_id",
+                  "description": "First event in the verified range."
+                },
+                "last_event_id": {
+                  "$ref": "#/$defs/audit_id",
+                  "description": "Last event in the verified range."
+                },
+                "last_hash": {
+                  "$ref": "#/$defs/hex_sha256"
+                },
+                "verified_at": {
+                  "$ref": "#/$defs/timestamp_utc"
+                }
+              },
+              "required": [
+                "chain_length",
+                "last_event_id",
+                "last_hash",
+                "verified_at"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_audit_chain_tampered": {
+      "title": "audit.chain.tampered",
+      "description": "Per-tenant audit hash chain found inconsistent. Emitted by the verification job. Triggers operator alarm.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "audit.chain.tampered"
+            },
+            "target_type": {
+              "const": "audit_chain"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "first_bad_event_id": {
+                  "$ref": "#/$defs/audit_id"
+                },
+                "expected_hash": {
+                  "$ref": "#/$defs/hex_sha256"
+                },
+                "actual_hash": {
+                  "$ref": "#/$defs/hex_sha256"
+                },
+                "detected_at": {
+                  "$ref": "#/$defs/timestamp_utc"
+                }
+              },
+              "required": [
+                "first_bad_event_id",
+                "expected_hash",
+                "actual_hash",
+                "detected_at"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_settings_updated": {
+      "title": "settings.updated",
+      "description": "Admin-level settings changed (internal_auth, oidc, audit retention, etc.). Per ADR-0016.6.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "settings.updated"
+            },
+            "target_type": {
+              "const": "admin_settings"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "fields_changed": {
+                  "type": "array",
+                  "description": "Dotted setting paths that changed.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "fields_changed"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_platform_admin_access": {
+      "title": "platform_admin.access",
+      "description": "PlatformAdmin cross-tenant read access (audit query, changes feed, list endpoints). Per ADR-0017.4.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "platform_admin.access"
+            },
+            "target_type": {
+              "const": "platform_admin_view"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "resource_type": {
+                  "type": "string",
+                  "description": "services|agents|credentials|audit|changes|operators|tenants|settings|other"
+                },
+                "viewed_tenant_ids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/tenant_id"
+                  },
+                  "description": "Empty array or [\"__all__\"] when reading across all tenants."
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "Canonical OpenAPI operationId of the read."
+                },
+                "result_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Optional operator-supplied justification."
+                }
+              },
+              "required": [
+                "resource_type",
+                "endpoint",
+                "result_count"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_service_test_executed": {
+      "title": "service.test_executed",
+      "description": "Operator clicked the Test button on a service; the broker invoked the registered backend with the current credential. Per F-OP-03.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "service.test_executed"
+            },
+            "target_type": {
+              "const": "service"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE",
+                    "HEAD",
+                    "OPTIONS"
+                  ]
+                },
+                "request_path_template": {
+                  "type": "string",
+                  "description": "Templated path tested (NOT actual values)."
+                },
+                "status_code": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 599,
+                  "description": "0 if no HTTP response was received."
+                },
+                "latency_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "ok": {
+                  "type": "boolean",
+                  "description": "True iff status_code is 2xx and no transport error."
+                },
+                "error": {
+                  "type": "string",
+                  "description": "Transport error category if not ok (e.g., timeout, dns_failure, tls_failure)."
+                }
+              },
+              "required": [
+                "method",
+                "request_path_template",
+                "ok",
+                "latency_ms"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_tenant_bootstrap_completed": {
+      "title": "tenant.bootstrap_completed",
+      "description": "First-time bootstrap of a tenant completed by the seed job. Per F-OP-01.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "tenant.bootstrap_completed"
+            },
+            "target_type": {
+              "const": "tenant"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "isolation_mode": {
+                  "type": "string",
+                  "enum": [
+                    "row",
+                    "database"
+                  ]
+                },
+                "initial_admin_operator_id": {
+                  "$ref": "#/$defs/operator_id"
+                }
+              },
+              "required": [
+                "slug",
+                "isolation_mode",
+                "initial_admin_operator_id"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ev_tenant_created"
+    },
+    {
+      "$ref": "#/$defs/ev_tenant_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_tenant_deleted"
+    },
+    {
+      "$ref": "#/$defs/ev_operator_created"
+    },
+    {
+      "$ref": "#/$defs/ev_operator_permission_granted"
+    },
+    {
+      "$ref": "#/$defs/ev_operator_permission_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_service_registered"
+    },
+    {
+      "$ref": "#/$defs/ev_service_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_service_removed"
+    },
+    {
+      "$ref": "#/$defs/ev_credential_registered"
+    },
+    {
+      "$ref": "#/$defs/ev_credential_rotated"
+    },
+    {
+      "$ref": "#/$defs/ev_credential_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_created"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_permission_granted"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_permission_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_token_issued"
+    },
+    {
+      "$ref": "#/$defs/ev_token_denied"
+    },
+    {
+      "$ref": "#/$defs/ev_proxy_hit"
+    },
+    {
+      "$ref": "#/$defs/ev_proxy_denied"
+    },
+    {
+      "$ref": "#/$defs/ev_proxy_error"
+    },
+    {
+      "$ref": "#/$defs/ev_kek_rotated"
+    },
+    {
+      "$ref": "#/$defs/ev_auth_login_success"
+    },
+    {
+      "$ref": "#/$defs/ev_auth_login_failed"
+    },
+    {
+      "$ref": "#/$defs/ev_auth_logout"
+    },
+    {
+      "$ref": "#/$defs/ev_audit_chain_verified"
+    },
+    {
+      "$ref": "#/$defs/ev_audit_chain_tampered"
+    },
+    {
+      "$ref": "#/$defs/ev_settings_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_platform_admin_access"
+    },
+    {
+      "$ref": "#/$defs/ev_service_test_executed"
+    },
+    {
+      "$ref": "#/$defs/ev_tenant_bootstrap_completed"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "event_type",
+    "mapping": {
+      "tenant.created": "#/$defs/ev_tenant_created",
+      "tenant.updated": "#/$defs/ev_tenant_updated",
+      "tenant.deleted": "#/$defs/ev_tenant_deleted",
+      "operator.created": "#/$defs/ev_operator_created",
+      "operator.permission.granted": "#/$defs/ev_operator_permission_granted",
+      "operator.permission.revoked": "#/$defs/ev_operator_permission_revoked",
+      "service.registered": "#/$defs/ev_service_registered",
+      "service.updated": "#/$defs/ev_service_updated",
+      "service.removed": "#/$defs/ev_service_removed",
+      "credential.registered": "#/$defs/ev_credential_registered",
+      "credential.rotated": "#/$defs/ev_credential_rotated",
+      "credential.revoked": "#/$defs/ev_credential_revoked",
+      "agent.created": "#/$defs/ev_agent_created",
+      "agent.revoked": "#/$defs/ev_agent_revoked",
+      "agent.permission.granted": "#/$defs/ev_agent_permission_granted",
+      "agent.permission.revoked": "#/$defs/ev_agent_permission_revoked",
+      "token.issued": "#/$defs/ev_token_issued",
+      "token.denied": "#/$defs/ev_token_denied",
+      "proxy.hit": "#/$defs/ev_proxy_hit",
+      "proxy.denied": "#/$defs/ev_proxy_denied",
+      "proxy.error": "#/$defs/ev_proxy_error",
+      "kek.rotated": "#/$defs/ev_kek_rotated",
+      "auth.login.success": "#/$defs/ev_auth_login_success",
+      "auth.login.failed": "#/$defs/ev_auth_login_failed",
+      "auth.logout": "#/$defs/ev_auth_logout",
+      "audit.chain.verified": "#/$defs/ev_audit_chain_verified",
+      "audit.chain.tampered": "#/$defs/ev_audit_chain_tampered",
+      "settings.updated": "#/$defs/ev_settings_updated",
+      "platform_admin.access": "#/$defs/ev_platform_admin_access",
+      "service.test_executed": "#/$defs/ev_service_test_executed",
+      "tenant.bootstrap_completed": "#/$defs/ev_tenant_bootstrap_completed"
+    }
+  },
+  "examples": [
+    {
+      "event_id": "audit_01HX5J9F8V8H8V0CG3F2Y5J6E1",
+      "event_type": "credential.rotated",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3",
+      "actor_type": "operator",
+      "target_id": "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4",
+      "target_type": "credential",
+      "at": "2026-05-10T14:00:00Z",
+      "request_id": "01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+      "trace_id": "0af7651916cd43dd8448eb211c80319c",
+      "payload": {
+        "credential_id": "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4",
+        "service_id": "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1",
+        "key_version": 4,
+        "previous_key_version": 3,
+        "auth_scheme": "bearer_token"
+      }
+    },
+    {
+      "event_id": "audit_01HX5J9F8V8H8V0CG3F2Y5J6E2",
+      "event_type": "token.issued",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1",
+      "actor_type": "agent",
+      "target_id": "01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+      "target_type": "token",
+      "at": "2026-05-10T14:01:02Z",
+      "trace_id": "0af7651916cd43dd8448eb211c80319c",
+      "payload": {
+        "jti": "01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+        "agent_id": "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1",
+        "service_id": "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1",
+        "scope": "read:contacts",
+        "ttl_seconds": 600,
+        "key_version": 4
+      }
+    },
+    {
+      "event_id": "audit_01HX5J9F8V8H8V0CG3F2Y5J6E3",
+      "event_type": "proxy.hit",
+      "tenant_id": "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9",
+      "actor_id": "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1",
+      "actor_type": "agent",
+      "target_id": "01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+      "target_type": "request",
+      "at": "2026-05-10T14:01:05Z",
+      "trace_id": "0af7651916cd43dd8448eb211c80319c",
+      "payload": {
+        "jti": "01HX5J9F8V8H8V0CG3F2Y5J6Q1",
+        "agent_id": "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1",
+        "service_id": "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1",
+        "request_method": "GET",
+        "request_path_template": "/contacts/{id}",
+        "status_code": 200,
+        "latency_ms": 87,
+        "outcome": "success"
+      }
+    }
+  ]
+}

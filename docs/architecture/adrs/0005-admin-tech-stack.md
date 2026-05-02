@@ -1,0 +1,1 @@
+../01-architecture/adr/0005-admin-tech-stack.md

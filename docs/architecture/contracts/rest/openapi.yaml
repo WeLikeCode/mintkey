@@ -1,0 +1,3039 @@
+openapi: 3.1.0
+info:
+  title: Mintkey Admin REST API
+  version: "0.1.0-experimental"
+  summary: Operator-facing control-plane HTTP surface for Mintkey.
+  description: |
+    Mintkey is a credential broker for AI agents. This API is consumed by:
+      - The Admin Console (AdminJS) for sensitive operations.
+      - Operator-owned tooling (CI, scripts) using API tokens.
+      - Internal subscribers calling `/v1/changes` for reconciliation
+        (per ADR-0010 change-channel model).
+
+    Stability tier: **experimental**. Breaking changes will bump the major
+    `info.version`; surface stability is per-resource and called out in each
+    operation `description` where it differs from the document-level tier.
+
+    ## ID conventions
+
+    All identifiers are **ULIDs** (Crockford base32, 26 characters) prefixed
+    by their resource type. Tenants are addressed at the wire by their prefixed ULID `tenant_…` on
+    every entity for RLS purposes (ADR-0008).
+
+    | Prefix          | Resource                          |
+    | --------------- | --------------------------------- |
+    | `tenant_…`      | Tenant                            |
+    | `operator_…`    | Operator                          |
+    | `agent_…`       | Agent                             |
+    | `svc_…`         | Service                           |
+    | `cred_…`        | Credential (key-version envelope) |
+    | `perm_…`        | PermissionGrant                   |
+    | `audit_…`       | AuditEvent                        |
+    | `change_…`      | ChangeEvent                       |
+    | `session_…`     | Session                           |
+
+    ## Multi-tenancy
+
+    Every domain object carries `tenant_id` (ULID with prefix `tenant_`). The **explicit** URL form
+    `/v1/tenants/{tenant_id}/...` is canonical (ADR-0008). The **implicit**
+    form `/v1/...` is also accepted and resolves the active tenant from the
+    operator session cookie or operator API token. Cross-tenant
+    operations require the `PlatformAdmin` flag on the Operator.
+
+    ## Time format
+
+    All timestamps are RFC 3339 UTC (e.g. `2026-05-10T14:23:45Z`).
+
+    ## Errors
+
+    Errors use RFC 7807 `application/problem+json` augmented with two
+    Mintkey-specific extension members:
+      - `mintkey:code` — a machine-readable error code (snake_case).
+      - `mintkey:trace_id` — the W3C `traceparent` `trace-id` value of the
+        request, included for ops correlation.
+
+    ## Sensitive fields
+
+    Plaintext credential material and Agent API Keys are returned **only on
+    the immediate creation response**, never again. The OpenAPI extension
+    `x-mintkey-sensitive: true` marks every property whose value must be
+    redacted from logs and never echoed in subsequent reads.
+
+    ## Pagination
+
+    List endpoints use **forward-only cursor pagination**:
+      - `?after=<id>` resumes after the supplied ULID (exclusive).
+      - `?limit=<n>` defaults to 50, max 200.
+      - Responses contain `data: [...]` and `next_cursor: <ulid|null>`.
+
+  contact:
+    name: Mintkey maintainers
+    url: https://example.invalid/mintkey
+    email: maintainers@example.invalid
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  x-mintkey-stability: experimental
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (docker-compose)
+  - url: https://admin.mintkey.local
+    description: Self-hosted production (operator-defined hostname)
+
+tags:
+  - name: Auth
+    description: |
+      Operator authentication — OIDC redirect flow (Keycloak default per
+      ADR-0005), internal username+password fallback, and session
+      introspection.
+  - name: Tenants
+    description: |
+      Tenant CRUD. Only operators with the `PlatformAdmin` flag may create
+      or delete tenants. All other operations are tenant-scoped through the
+      explicit URL form.
+  - name: Services
+    description: |
+      Backend services registered for brokered access. Each service has a
+      base URL, an authentication scheme, and zero-or-more OpenAPI URLs.
+  - name: Credentials
+    description: |
+      Credential-version lifecycle for a service. Plaintext credential
+      material is returned **only** on the immediate POST response.
+      Subsequent GETs return metadata only.
+  - name: Agents
+    description: |
+      Agents are autonomous processes (LLM-driven or otherwise) that
+      consume Mintkey through MCP. Each is identified by a long-lived
+      Agent API Key — returned plaintext **once** at creation.
+  - name: Permissions
+    description: |
+      Permission grants tying an agent to a `(service, action)` tuple.
+      Cannot be created if the service or agent are in a different tenant.
+  - name: Audit
+    description: |
+      Append-only audit log query. Filter by event type, actor, time range.
+      Cross-tenant queries are restricted to `PlatformAdmin`.
+  - name: Changes
+    description: |
+      Reconciliation endpoint (ADR-0010). Subscribers call this on startup
+      and after a disconnect from the Postgres LISTEN/NOTIFY change channel
+      to catch up.
+  - name: Health
+    description: |
+      Liveness and readiness probes. `/v1/health` is unconditional;
+      `/v1/ready` exercises Postgres, the change channel, and the Vault
+      Adapter.
+  - name: Discovery
+    description: |
+      Public discovery endpoints. `/.well-known/jwks.json` is the broker's
+      public-key set, consumed by the Egress Proxy plugin.
+
+security:
+  - OperatorSession: []
+  - OperatorBearer: []
+
+paths:
+
+  ###########################################################################
+  # Auth
+  ###########################################################################
+
+  /v1/auth/login:
+    get:
+      tags: [Auth]
+      operationId: authLoginRedirect
+      summary: Begin OIDC login.
+      description: |
+        Generates an OIDC `state` and a PKCE `code_verifier`, stores them in
+        the pending-session table, and returns a `302` redirect to the
+        configured OIDC provider's authorization endpoint.
+      security: []
+      parameters:
+        - in: query
+          name: redirect_uri
+          required: false
+          schema:
+            type: string
+            format: uri
+          description: |
+            Optional post-login destination on the Admin Console. Validated
+            against an allow-list. Ignored if not on the allow-list.
+      responses:
+        "302":
+          description: Redirect to the configured OIDC provider.
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: The OIDC provider authorize endpoint with `state` and `code_challenge` query parameters.
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /v1/auth/callback:
+    get:
+      tags: [Auth]
+      operationId: authLoginCallback
+      summary: OIDC callback.
+      description: |
+        Receives the authorization code and `state`, exchanges the code for
+        tokens, verifies the ID token, looks up the operator by
+        `oidc_sub`, and (if found) issues a session cookie.
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: OIDC authorization code returned by the IdP.
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+          description: Opaque state value generated by `/v1/auth/login`.
+      responses:
+        "302":
+          description: "Redirect to the post-login destination, with `Set-Cookie: mintkey_session=…`."
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly Secure SameSite=Strict session cookie.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/auth/internal-login:
+    post:
+      tags: [Auth]
+      operationId: authInternalLogin
+      summary: Internal username + password login (bootstrap and break-glass).
+      description: |
+        Per ADR-0005, an internal Argon2id-hashed credential is provisioned
+        for the bootstrap admin and remains available as a break-glass when
+        the configured OIDC IdP is unreachable. Disabled when the operator
+        toggles `internal_auth.enabled = false`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalLoginRequest"
+            example:
+              username: "admin@local"
+              password: "SX7-correct-horse-battery-staple"
+      responses:
+        "200":
+          description: Login successful; session cookie set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly Secure SameSite=Strict session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Whoami"
+              example:
+                operator:
+                  id: "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3"
+                  username: "admin@local"
+                  email: "admin@local"
+                  platform_admin: true
+                  created_at: "2026-05-10T10:15:00Z"
+                  updated_at: "2026-05-10T10:15:00Z"
+                active_tenant:
+                  id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M0"
+                  slug: "t_default"
+                  display_name: "Default Tenant"
+                memberships:
+                  - tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M0"
+                    tenant_slug: "default"
+                    role: "Admin"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: authLogout
+      summary: Log the current operator out.
+      description: |
+        Invalidates the server-side session row, clears the session cookie,
+        and (if OIDC) issues a Keycloak end-session redirect URL the Admin
+        Console may follow.
+      responses:
+        "204":
+          description: Logout successful.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Cookie cleared with `Max-Age=0`.
+
+  /v1/auth/whoami:
+    get:
+      tags: [Auth]
+      operationId: authWhoami
+      summary: Resolve the calling operator and the active tenant.
+      description: |
+        Returns the operator record, the active tenant, and the operator's
+        full membership set. Used by AdminJS after OIDC login (per ADR-0005).
+      responses:
+        "200":
+          description: Resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Whoami"
+              example:
+                operator:
+                  id: "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3"
+                  username: "alice@example.com"
+                  email: "alice@example.com"
+                  platform_admin: false
+                  created_at: "2026-04-20T09:00:00Z"
+                  updated_at: "2026-05-09T14:11:02Z"
+                active_tenant:
+                  id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M0"
+                  slug: "acme"
+                  display_name: "Acme Corp"
+                memberships:
+                  - tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M0"
+                    tenant_slug: "acme"
+                    role: "Admin"
+                  - tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    tenant_slug: "globex"
+                    role: "Auditor"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  ###########################################################################
+  # Tenants (PlatformAdmin only)
+  ###########################################################################
+
+  /v1/tenants:
+    get:
+      tags: [Tenants]
+      operationId: listTenants
+      summary: List tenants.
+      description: |
+        PlatformAdmin only. Paginated. Returns all tenants in the instance,
+        regardless of membership.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/TenantStatus"
+          description: Filter by tenant status.
+      responses:
+        "200":
+          description: A page of tenants.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantPage"
+              example:
+                data:
+                  - id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M0"
+                    slug: "t_default"
+                    display_name: "Default Tenant"
+                    status: "active"
+                    settings: {}
+                    created_at: "2026-04-01T00:00:00Z"
+                    updated_at: "2026-04-01T00:00:00Z"
+                  - id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    slug: "acme"
+                    display_name: "Acme Corp"
+                    status: "active"
+                    settings:
+                      isolation_mode: "row"
+                    created_at: "2026-04-22T09:00:00Z"
+                    updated_at: "2026-05-01T11:42:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Tenants]
+      operationId: createTenant
+      summary: Create a tenant.
+      description: |
+        PlatformAdmin only. The slug must be unique and must match the
+        regex `^[a-z][a-z0-9-]{1,62}[a-z0-9]$`. The seed of an `Admin`
+        operator within the new tenant is performed asynchronously and
+        completes within the S-MT-2 SLO (≤ 60 s).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantRequest"
+            example:
+              slug: "acme"
+              display_name: "Acme Corp"
+              isolation_mode: "row"
+              settings: {}
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              example:
+                id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                slug: "acme"
+                display_name: "Acme Corp"
+                status: "active"
+                settings:
+                  isolation_mode: "row"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/tenants/{tenant_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Tenants]
+      operationId: getTenant
+      summary: Get a tenant by id.
+      description: |
+        PlatformAdmin or any operator with membership in the tenant.
+      responses:
+        "200":
+          description: The tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              example:
+                id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                slug: "acme"
+                display_name: "Acme Corp"
+                status: "active"
+                settings:
+                  isolation_mode: "row"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Tenants]
+      operationId: updateTenant
+      summary: Update tenant metadata.
+      description: |
+        PlatformAdmin only. Slug is immutable after creation. To rename
+        the human-facing string, update `display_name`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantRequest"
+            example:
+              display_name: "Acme Corporation"
+              status: "active"
+              settings:
+                contact: "ops@acme.example"
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+              example:
+                id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                slug: "acme"
+                display_name: "Acme Corporation"
+                status: "active"
+                settings:
+                  isolation_mode: "row"
+                  contact: "ops@acme.example"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T15:11:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Tenants]
+      operationId: deleteTenant
+      summary: Soft-delete a tenant.
+      description: |
+        PlatformAdmin only. The tenant is moved to `status = "deleted"`.
+        The hard-delete and data-purge policy is operator-driven and
+        not exposed via this API.
+      responses:
+        "204":
+          description: Soft-deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  ###########################################################################
+  # Services — explicit form
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/services:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Services]
+      operationId: listServicesByTenant
+      summary: List services in a tenant.
+      description: Paginated list of registered services scoped to the tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: name_contains
+          schema:
+            type: string
+            maxLength: 200
+          description: Substring filter (case-insensitive) on the service name.
+      responses:
+        "200":
+          description: A page of services.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePage"
+              examples:
+                two-services:
+                  value:
+                    data:
+                      - id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                        tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                        name: "crm"
+                        display_name: "Acme CRM"
+                        description: "Internal CRM API."
+                        base_url: "https://crm.acme.example/api"
+                        auth_scheme: "bearer_token"
+                        actions: ["read:contacts", "write:contacts"]
+                        openapi_url: "https://crm.acme.example/openapi.json"
+                        current_key_version: 3
+                        status: "active"
+                        created_at: "2026-04-25T09:00:00Z"
+                        updated_at: "2026-05-08T16:22:00Z"
+                      - id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S2"
+                        tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                        name: "billing"
+                        display_name: "Stripe billing"
+                        description: "Stripe REST API."
+                        base_url: "https://api.stripe.com"
+                        auth_scheme: "api_key_header"
+                        actions: ["read:invoices", "write:invoices"]
+                        openapi_url: null
+                        current_key_version: 1
+                        status: "active"
+                        created_at: "2026-04-26T10:00:00Z"
+                        updated_at: "2026-04-26T10:00:00Z"
+                    next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Services]
+      operationId: createService
+      summary: Register a new service.
+      description: |
+        Operator must have at least `Admin` or `AgentOwner` role in the
+        tenant. Service `name` must be unique within the tenant. Egress
+        allowlisting is anchored to `base_url` per ADR-0007.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceRequest"
+            example:
+              name: "crm"
+              display_name: "Acme CRM"
+              description: "Internal CRM API."
+              base_url: "https://crm.acme.example/api"
+              auth_scheme: "bearer_token"
+              actions: ["read:contacts", "write:contacts"]
+              openapi_url: "https://crm.acme.example/openapi.json"
+      responses:
+        "201":
+          description: Service registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+              example:
+                id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "crm"
+                display_name: "Acme CRM"
+                description: "Internal CRM API."
+                base_url: "https://crm.acme.example/api"
+                auth_scheme: "bearer_token"
+                actions: ["read:contacts", "write:contacts"]
+                openapi_url: "https://crm.acme.example/openapi.json"
+                current_key_version: 0
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/tenants/{tenant_id}/services/{service_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/ServiceId"
+    get:
+      tags: [Services]
+      operationId: getService
+      summary: Describe a service.
+      responses:
+        "200":
+          description: The service.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+              example:
+                id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "crm"
+                display_name: "Acme CRM"
+                description: "Internal CRM API."
+                base_url: "https://crm.acme.example/api"
+                auth_scheme: "bearer_token"
+                actions: ["read:contacts", "write:contacts"]
+                openapi_url: "https://crm.acme.example/openapi.json"
+                current_key_version: 3
+                status: "active"
+                created_at: "2026-04-25T09:00:00Z"
+                updated_at: "2026-05-08T16:22:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Services]
+      operationId: updateService
+      summary: Update non-credential service metadata.
+      description: |
+        `auth_scheme` cannot be changed after creation; rotate the credential
+        and recreate the service if the auth scheme changes upstream. Updates
+        to `base_url` are accepted but trigger a Kong-syncer push.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateServiceRequest"
+            example:
+              display_name: "Acme CRM (prod)"
+              actions: ["read:contacts", "write:contacts", "delete:contacts"]
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+              example:
+                id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "crm"
+                display_name: "Acme CRM (prod)"
+                description: "Internal CRM API."
+                base_url: "https://crm.acme.example/api"
+                auth_scheme: "bearer_token"
+                actions: ["read:contacts", "write:contacts", "delete:contacts"]
+                openapi_url: "https://crm.acme.example/openapi.json"
+                current_key_version: 3
+                status: "active"
+                created_at: "2026-04-25T09:00:00Z"
+                updated_at: "2026-05-10T15:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Services]
+      operationId: deleteService
+      summary: Soft-delete a service.
+      description: |
+        Service is moved to `status = "deleted"`. Active credentials are
+        revoked; outstanding tokens fail at the proxy on the next request
+        once the change channel propagates.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  ###########################################################################
+  # Credentials
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/services/{service_id}/credentials:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/ServiceId"
+    get:
+      tags: [Credentials]
+      operationId: listCredentialVersions
+      summary: List credential versions for a service.
+      description: |
+        Returns metadata only; the plaintext value field is `null` in every
+        item. To reveal a credential, the operator must rotate
+        (`POST /credentials`); the plaintext is returned exactly once on the
+        rotation response.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of credential versions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialPage"
+              example:
+                data:
+                  - id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C3"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                    key_version: 3
+                    auth_scheme: "bearer_token"
+                    is_current: true
+                    status: "active"
+                    value: null
+                    created_at: "2026-05-08T16:22:00Z"
+                    updated_at: "2026-05-08T16:22:00Z"
+                  - id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C2"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                    key_version: 2
+                    auth_scheme: "bearer_token"
+                    is_current: false
+                    status: "active"
+                    value: null
+                    created_at: "2026-05-01T08:00:00Z"
+                    updated_at: "2026-05-01T08:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Credentials]
+      operationId: registerOrRotateCredential
+      summary: Register or rotate a credential.
+      description: |
+        Always creates a new `key_version` (monotonic per service). The
+        plaintext value is returned **exactly once**, in this response.
+        Subsequent reads return `value: null`. The previous key_version
+        is retained until soft-deleted (see `DELETE`).
+
+        The credential is stored encrypted via the Vault Adapter
+        (ADR-0003). A `credential.rotated` audit event is emitted; a
+        `credential.rotated` change event is published on
+        `mintkey:credential` (tenant_id is in payload) (ADR-0010).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterCredentialRequest"
+            examples:
+              api-key-header:
+                value:
+                  auth_scheme: "api_key_header"
+                  value: "<redacted-example-api-key>"
+                  header_name: "X-API-Key"
+              bearer-token:
+                value:
+                  auth_scheme: "bearer_token"
+                  value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              basic-auth:
+                value:
+                  auth_scheme: "basic_auth"
+                  value: "alice:s3cret"
+              oauth2-cc:
+                value:
+                  auth_scheme: "oauth2_client_credentials"
+                  client_id: "abc"
+                  client_secret: "shh"
+                  token_url: "https://oauth.example/token"
+                  scopes: ["api.read"]
+      responses:
+        "201":
+          description: Credential created. Plaintext returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credential"
+              example:
+                id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                key_version: 4
+                auth_scheme: "bearer_token"
+                is_current: true
+                status: "active"
+                value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/tenants/{tenant_id}/services/{service_id}/credentials/{key_version}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/ServiceId"
+      - in: path
+        name: key_version
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        description: Monotonic credential version (1-indexed).
+    delete:
+      tags: [Credentials]
+      operationId: revokeCredentialVersion
+      summary: Soft-delete a non-current credential version.
+      description: |
+        Refuses to delete `is_current = true`. Use rotation
+        (`POST /credentials`) to advance the current version; the prior
+        version may then be soft-deleted via this endpoint.
+
+        Emits a `credential.revoked` audit event and a `credential.revoked`
+        change event.
+      responses:
+        "204":
+          description: Soft-deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            Credential is the current version and cannot be deleted.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "about:blank"
+                title: "Conflict"
+                status: 409
+                detail: "Cannot delete current credential version 4. Rotate first."
+                instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/services/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1/credentials/4"
+                "mintkey:code": "credential_in_use"
+                "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+
+  ###########################################################################
+  # Agents
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/agents:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Agents]
+      operationId: listAgents
+      summary: List agents in a tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgentStatus"
+      responses:
+        "200":
+          description: A page of agents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPage"
+              example:
+                data:
+                  - id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    name: "support-bot"
+                    description: "Customer support triage agent."
+                    status: "active"
+                    api_key_fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+                    api_key: null
+                    created_at: "2026-04-30T11:00:00Z"
+                    updated_at: "2026-04-30T11:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Agents]
+      operationId: createAgent
+      summary: Create a new agent.
+      description: |
+        Generates a fresh Agent API Key. The plaintext key is returned
+        **exactly once**, in this response. The fingerprint of the key is
+        retained for later operator inspection (and embedded in the
+        `agent.created` audit event payload).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+            example:
+              name: "support-bot"
+              description: "Customer support triage agent."
+      responses:
+        "201":
+          description: Agent created. Plaintext API key returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+              example:
+                id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "support-bot"
+                description: "Customer support triage agent."
+                status: "active"
+                api_key_fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+                api_key: "mk_live_T0pSeCr3tDoNotShare1234567890abcdef"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [Agents]
+      operationId: getAgent
+      summary: Describe an agent.
+      responses:
+        "200":
+          description: The agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+              example:
+                id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "support-bot"
+                description: "Customer support triage agent."
+                status: "active"
+                api_key_fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+                api_key: null
+                created_at: "2026-04-30T11:00:00Z"
+                updated_at: "2026-04-30T11:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      tags: [Agents]
+      operationId: revokeAgent
+      summary: Revoke an agent.
+      description: |
+        Idempotent. Marks the agent `revoked`, invalidates all sessions
+        on the MCP Server, and publishes `agent.revoked` to the change
+        channel; the proxy plugin will deny all in-flight tokens with
+        matching `sub` within ≤ 5 s (S-OPS-1).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeAgentRequest"
+            example:
+              reason: "key suspected leaked in CI logs"
+      responses:
+        "200":
+          description: Revoke accepted (or already revoked — idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+              example:
+                id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "support-bot"
+                description: "Customer support triage agent."
+                status: "revoked"
+                api_key_fingerprint: "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+                api_key: null
+                created_at: "2026-04-30T11:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
+  # Permissions
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/permissions:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      tags: [Permissions]
+      operationId: grantPermission
+      summary: Grant a permission to the agent.
+      description: |
+        The grant is a tuple `(agent, service, action, optional constraints)`.
+        The service must belong to the same tenant. Idempotent: granting an
+        existing tuple returns 200 with the existing record (not 409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantPermissionRequest"
+            example:
+              service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+              action: "read:contacts"
+              constraints:
+                rate_limit:
+                  per_minute: 60
+      responses:
+        "201":
+          description: Permission granted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionGrant"
+              example:
+                id: "perm_01HX5J9F8V8H8V0CG3F2Y5J6P1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                agent_id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                action: "read:contacts"
+                constraints:
+                  rate_limit:
+                    per_minute: 60
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "200":
+          description: Permission already exists (idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PermissionGrant"
+              example:
+                id: "perm_01HX5J9F8V8H8V0CG3F2Y5J6P1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                agent_id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                action: "read:contacts"
+                constraints:
+                  rate_limit:
+                    per_minute: 60
+                created_at: "2026-05-09T10:00:00Z"
+                updated_at: "2026-05-09T10:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: permission_id
+        required: true
+        schema:
+          type: string
+          pattern: "^perm_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Permission grant identifier.
+    delete:
+      tags: [Permissions]
+      operationId: revokePermission
+      summary: Revoke a permission.
+      description: |
+        Removes the grant. Outstanding tokens already issued for this
+        `(agent, service, action)` tuple remain valid until `exp`; revoke
+        the token via the agent revocation endpoint if you need immediate
+        effect.
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
+  # Audit
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/audit:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Audit]
+      operationId: queryAudit
+      summary: Query the audit log.
+      description: |
+        Paginated, tenant-scoped audit query. The full audit envelope is
+        defined in `docs/contracts/events/audit-event.schema.json`.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: event_type
+          required: false
+          schema:
+            $ref: "#/components/schemas/AuditEventType"
+        - in: query
+          name: actor_id
+          required: false
+          schema:
+            type: string
+          description: Filter by actor (any ULID-prefixed actor id).
+        - in: query
+          name: from
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive lower bound on event time (RFC 3339).
+        - in: query
+          name: to
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive upper bound on event time (RFC 3339).
+      responses:
+        "200":
+          description: A page of audit events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventPage"
+              example:
+                data:
+                  - event_id: "audit_01HX5J9F8V8H8V0CG3F2Y5J6E1"
+                    event_type: "credential.rotated"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    actor_id: "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3"
+                    actor_type: "operator"
+                    target_id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4"
+                    target_type: "credential"
+                    at: "2026-05-10T14:00:00Z"
+                    request_id: "01HX5J9F8V8H8V0CG3F2Y5J6Q1"
+                    trace_id: "0af7651916cd43dd8448eb211c80319c"
+                    payload:
+                      service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+                      key_version: 4
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
+  # Changes (reconciliation per ADR-0010)
+  ###########################################################################
+
+  /v1/changes:
+    get:
+      tags: [Changes]
+      operationId: listGlobalChanges
+      summary: List change events (PlatformAdmin global).
+      description: |
+        Cross-tenant reconciliation feed. PlatformAdmin only. Returns events
+        in `(at, event_id)` order, after the supplied `since` event id.
+      parameters:
+        - in: query
+          name: since
+          required: false
+          schema:
+            type: string
+          description: |
+            Resume after this `event_id`. Omit on first call. The endpoint
+            is idempotent and tolerant of unknown `since` values (returns
+            from the start with a `Warning` header).
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of change events.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeEventPage"
+              example:
+                data:
+                  - event_id: "change_01HX5J9F8V8H8V0CG3F2Y5J6X1"
+                    event_type: "credential.rotated"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    actor_id: "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3"
+                    target_id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4"
+                    key_version: 4
+                    at: "2026-05-10T14:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/tenants/{tenant_id}/changes:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Changes]
+      operationId: listTenantChanges
+      summary: List change events for one tenant.
+      description: |
+        Tenant-scoped reconciliation feed. Subscribers of `mintkey:*`
+        channels call this on startup or after disconnection.
+      parameters:
+        - in: query
+          name: since
+          required: false
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of change events for this tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeEventPage"
+              example:
+                data:
+                  - event_id: "change_01HX5J9F8V8H8V0CG3F2Y5J6X1"
+                    event_type: "credential.rotated"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    actor_id: "operator_01HX5J9F8V8H8V0CG3F2Y5J6M3"
+                    target_id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C4"
+                    key_version: 4
+                    at: "2026-05-10T14:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
+  # Health and discovery
+  ###########################################################################
+
+  /v1/health:
+    get:
+      tags: [Health]
+      operationId: health
+      summary: Liveness probe.
+      description: |
+        Always returns 200 if the process is responsive. Does not exercise
+        downstream dependencies.
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: "ok"
+                version: "0.1.0-experimental"
+                build_sha: "abc1234"
+
+  /v1/ready:
+    get:
+      tags: [Health]
+      operationId: ready
+      summary: Readiness probe.
+      description: |
+        Exercises Postgres, the change channel, and the Vault Adapter.
+        Returns 200 if all dependencies are healthy; otherwise 503 with a
+        `Problem+json` body listing the failing components.
+      security: []
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+              example:
+                status: "ok"
+                checks:
+                  postgres: "ok"
+                  change_channel: "ok"
+                  vault_adapter: "ok"
+                  vault_backend: "file"
+                  vault_backend_warning: |
+                    The 'file' vault backend is for development and self-host MVP only.
+                version: "0.1.0-experimental"
+                build_sha: "abc1234"
+        "503":
+          description: Not ready.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "about:blank"
+                title: "Service Unavailable"
+                status: 503
+                detail: "Change channel subscriber is not connected."
+                instance: "/v1/ready"
+                "mintkey:code": "change_channel_unavailable"
+                "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+                checks:
+                  postgres: "ok"
+                  change_channel: "fail"
+                  vault_adapter: "ok"
+
+  /.well-known/jwks.json:
+    get:
+      tags: [Discovery]
+      operationId: getJwks
+      summary: Broker JWKS.
+      description: |
+        Returns the broker's current and (during overlap windows) previous
+        Ed25519 public keys, per ADR-0006. Cached by the Egress Proxy plugin
+        with a 5-minute TTL.
+      security: []
+      responses:
+        "200":
+          description: The JWKS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWKS"
+              example:
+                keys:
+                  - kty: "OKP"
+                    crv: "Ed25519"
+                    kid: "broker-2026-05-10"
+                    x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+                    use: "sig"
+                    alg: "EdDSA"
+
+  ###########################################################################
+  # Implicit (session-derived) forms
+  ###########################################################################
+
+  /v1/services:
+    get:
+      tags: [Services]
+      operationId: listServicesImplicit
+      summary: (Implicit) List services in the active tenant.
+      description: |
+        Resolves the active tenant from the operator session cookie or from
+        the tenant most-recently selected via `?tenant=…` on the bearer
+        token. Equivalent to `GET /v1/tenants/{active_tenant}/services`.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of services.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicePage"
+              example:
+                data: []
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Services]
+      operationId: createServiceImplicit
+      summary: (Implicit) Register a service in the active tenant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceRequest"
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+              example:
+                id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S5"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "billing"
+                display_name: "Stripe billing"
+                description: ""
+                base_url: "https://api.stripe.com"
+                auth_scheme: "api_key_header"
+                actions: ["read:invoices"]
+                openapi_url: null
+                current_key_version: 0
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/agents:
+    get:
+      tags: [Agents]
+      operationId: listAgentsImplicit
+      summary: (Implicit) List agents in the active tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of agents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPage"
+              example:
+                data: []
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Agents]
+      operationId: createAgentImplicit
+      summary: (Implicit) Create an agent in the active tenant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Created. Plaintext API key returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+              example:
+                id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A2"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                name: "qa-bot"
+                description: "Internal QA bot."
+                status: "active"
+                api_key_fingerprint: "sha256:0a…"
+                api_key: "mk_live_anotherSecret"
+                created_at: "2026-05-10T14:00:00Z"
+                updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/audit:
+    get:
+      tags: [Audit]
+      operationId: queryAuditImplicit
+      summary: (Implicit) Query the audit log of the active tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: event_type
+          schema:
+            $ref: "#/components/schemas/AuditEventType"
+        - in: query
+          name: actor_id
+          schema:
+            type: string
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: A page of audit events for the active tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditEventPage"
+              example:
+                data: []
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/admin/settings:
+    get:
+      operationId: getAdminSettings
+      tags: [Admin Settings]
+      summary: Get instance-wide admin settings.
+      description: |
+        PlatformAdmin only. Returns the current `AdminSettings` document.
+        Every read by a PlatformAdmin emits a `platform_admin.access` audit
+        event (ADR-0017.4).
+      security:
+        - OperatorSession: []
+        - OperatorBearer:  []
+      responses:
+        "200":
+          description: Current admin settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSettings" }
+              example:
+                internal_auth:
+                  enabled: true
+                  can_be_disabled: false
+                oidc:
+                  issuer: "https://keycloak.example/realms/mintkey"
+                  client_id: "mintkey-admin"
+                  auto_provision_role: "AgentOwner"
+                audit:
+                  retention_days_security_relevant: 365
+                  retention_days_proxy_hits: 30
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    patch:
+      operationId: updateAdminSettings
+      tags: [Admin Settings]
+      summary: Update instance-wide admin settings.
+      description: |
+        PlatformAdmin only. Partial update; missing keys retain their
+        existing value. Server enforces guards (e.g., `internal_auth.enabled`
+        cannot be set to false until `can_be_disabled` is true). Every
+        change emits a `settings.updated` audit event.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminSettings" }
+            example:
+              internal_auth:
+                enabled: false
+      responses:
+        "200":
+          description: Updated settings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: |
+            Settings cannot be applied (e.g., disabling internal auth
+            before OIDC is verified).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: "https://mintkey.dev/problems/internal-auth-cannot-be-disabled"
+                title: "Internal auth cannot be disabled yet"
+                status: 409
+                detail: "OIDC has not been validated; `can_be_disabled` is false."
+                "mintkey:code": "validation_failed"
+                "mintkey:trace_id": "01HXABCDEF…"
+  /v1/tenants/{tenant_id}/services/{service_id}/test:
+    post:
+      operationId: testRunService
+      tags: [Services]
+      summary: Test the registered service using the current credential.
+      description: |
+        Operator-initiated synchronous test (F-OP-03). The Admin API fetches
+        the current credential from the Vault Adapter, builds a request per
+        the service's `auth_scheme`, sends it to `base_url + path`, and
+        returns the result. Subject to per-service rate limit (default
+        10/min). Emits `service.test_executed` (ADR-0017 C-09).
+        Egress allowlisting per ADR-0007 applies (RFC1918 rejected unless
+        explicitly allowed for the service).
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/ServiceId"
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TestRunRequest" }
+            example:
+              method: GET
+              path: "/health"
+              timeout_ms: 5000
+      responses:
+        "200":
+          description: Test executed; see body for ok/error and timing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestRunResponse" }
+              examples:
+                ok:
+                  summary: Backend responded 200.
+                  value:
+                    ok: true
+                    status_code: 200
+                    latency_ms: 42
+                    response_body_truncated: '{"status":"ok"}'
+                upstream_unauthorized:
+                  summary: Backend rejected the credential.
+                  value:
+                    ok: false
+                    status_code: 401
+                    latency_ms: 38
+                    response_body_truncated: '{"error":"invalid api key"}'
+                timeout:
+                  summary: Upstream timed out.
+                  value:
+                    ok: false
+                    latency_ms: 5000
+                    error: "timeout"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: |
+            Test rejected before sending (forbidden destination, invalid
+            input). Body is application/problem+json with mintkey:code
+            either `forbidden_destination` or `validation_failed`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+components:
+
+  ###########################################################################
+  # Security schemes
+  ###########################################################################
+
+  securitySchemes:
+    OperatorSession:
+      type: apiKey
+      in: cookie
+      name: mintkey_session
+      description: |
+        HttpOnly Secure SameSite=Strict session cookie issued by
+        `/v1/auth/internal-login` or `/v1/auth/callback`.
+    OperatorBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Operator-owned API token (PAT) for machine-to-machine calls. Issued
+        from the Admin Console; not exposed in this OpenAPI document. Sent
+        as `Authorization: Bearer …`.
+    AgentApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: mintkey-agent-api-key
+      description: |
+        Long-lived Agent API Key (`mk_live_…`). Used by the few agent-facing
+        REST endpoints; most agent traffic flows through MCP instead.
+
+    AdminUiSignedRequest:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Ed25519 JWT signed by the AdminJS service. Required on every endpoint
+        AdminJS calls on behalf of an operator. Carries claims:
+          iss: "mintkey/admin-ui"
+          sub: <operator_id>
+          tnt: <tenant_id>
+          aud: "mintkey/admin-api"
+          iat, exp (60s TTL)
+          jti (UUID; replay-checked against admin_request_jti per ADR-0016.1)
+        FastAPI verifies the signature against AdminJS's public key fetched from
+        the Vault Adapter under credential type 'admin_ui_signing_key'.
+        Per ADR-0014.6 + ADR-0017.1.
+    ServiceIdentity:
+      type: apiKey
+      in: header
+      name: X-Mintkey-Service-Token
+      description: |
+        Per-service boot secret per ADR-0014.2 / ADR-0017.2. 32-byte random
+        token, Argon2id-hashed at rest in the Vault Adapter under credential
+        type 'service_identity'. Constant-time compared. Used by Admin API,
+        MCP Server, Broker, and the proxy plugin to authenticate to the
+        Vault Adapter and to subscriber-only REST endpoints.
+    CsrfHeader:
+      type: apiKey
+      in: header
+      name: X-Mintkey-Csrf
+      description: |
+        Double-submit CSRF token for browser-originated state changes
+        (ADR-0017.3). Issued on session creation; required on every POST/
+        PATCH/DELETE/PUT. Not required for service-to-service calls (those
+        use AdminUiSignedRequest or ServiceIdentity).
+
+  ###########################################################################
+  # Reusable parameters
+  ###########################################################################
+
+  parameters:
+    CsrfHeaderRequired:
+      in: header
+      name: X-Mintkey-Csrf
+      required: true
+      schema: { type: string }
+      description: |
+        CSRF token (double-submit cookie pattern). Required on every
+        browser-originated state-changing call.
+    TenantId:
+      in: path
+      name: tenant_id
+      required: true
+      schema:
+        type: string
+        pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed tenant identifier.
+    ServiceId:
+      in: path
+      name: service_id
+      required: true
+      schema:
+        type: string
+        pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed service identifier.
+    AgentId:
+      in: path
+      name: agent_id
+      required: true
+      schema:
+        type: string
+        pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed agent identifier.
+    AfterCursor:
+      in: query
+      name: after
+      required: false
+      schema:
+        type: string
+      description: |
+        Cursor — the `id` of the last item from the previous page. Exclusive.
+    Limit:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+      description: Max items to return (1..200, default 50).
+
+  ###########################################################################
+  # Reusable error responses
+  ###########################################################################
+
+  responses:
+    BadRequest:
+      description: Validation error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Bad Request"
+            status: 400
+            detail: "`base_url` must be an absolute https URL."
+            instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/services"
+            "mintkey:code": "validation_failed"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+            errors:
+              - field: "base_url"
+                message: "must be an absolute https URL"
+    Unauthorized:
+      description: No or invalid credentials.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Unauthorized"
+            status: 401
+            detail: "Session cookie missing or invalid."
+            instance: "/v1/auth/whoami"
+            "mintkey:code": "unauthenticated"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    Forbidden:
+      description: Authenticated but not allowed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Forbidden"
+            status: 403
+            detail: "Operator role 'Auditor' cannot create services."
+            instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/services"
+            "mintkey:code": "permission_denied"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Not Found"
+            status: 404
+            detail: "No tenant with id 'tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9'."
+            instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+            "mintkey:code": "tenant_not_found"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    Conflict:
+      description: State conflict.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Conflict"
+            status: 409
+            detail: "A service with name 'crm' already exists in this tenant."
+            instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/services"
+            "mintkey:code": "duplicate_resource"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Too Many Requests"
+            status: 429
+            detail: "Too many failed login attempts. Try again in 60 s."
+            instance: "/v1/auth/internal-login"
+            "mintkey:code": "rate_limited"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    ServiceUnavailable:
+      description: A required dependency is unavailable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Service Unavailable"
+            status: 503
+            detail: "Configured OIDC provider is unreachable."
+            instance: "/v1/auth/login"
+            "mintkey:code": "oidc_unavailable"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+
+  ###########################################################################
+  # Schemas
+  ###########################################################################
+
+  schemas:
+
+    # ----- Errors -----
+
+    Problem:
+      type: object
+      description: |
+        RFC 7807 problem document with two Mintkey-specific extensions:
+        `mintkey:code` (machine-readable error code) and
+        `mintkey:trace_id` (W3C `trace-id` for correlation).
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: "about:blank"
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+        "mintkey:code":
+          type: string
+          description: Machine-readable error code (snake_case).
+          examples:
+            - "tenant_not_found"
+            - "permission_denied"
+            - "credential_in_use"
+            - "duplicate_resource"
+            - "validation_failed"
+            - "unauthenticated"
+            - "rate_limited"
+            - "change_channel_unavailable"
+            - "vault_unavailable"
+            - "oidc_unavailable"
+        "mintkey:trace_id":
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+          description: W3C `trace-id` (32 hex chars).
+        errors:
+          type: array
+          description: Optional list of per-field validation errors.
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              code:
+                type: string
+            required: [field, message]
+      required: [title, status]
+
+    # ----- Common identifiers -----
+
+    UlidId:
+      type: string
+      pattern: "^[a-z]+_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: Crockford-base32 ULID prefixed by the resource name.
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 UTC timestamp.
+
+    # ----- Tenant -----
+
+    TenantStatus:
+      type: string
+      enum: [active, suspended, deleted]
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        slug:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,62}[a-z0-9]$"
+        display_name:
+          type: string
+          maxLength: 200
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        settings:
+          type: object
+          additionalProperties: true
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required: [id, slug, display_name, status, settings, created_at, updated_at]
+
+    CreateTenantRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{1,62}[a-z0-9]$"
+        display_name:
+          type: string
+          maxLength: 200
+        isolation_mode:
+          type: string
+          enum: [row, database]
+          default: row
+        settings:
+          type: object
+          additionalProperties: true
+      required: [slug, display_name]
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 200
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        settings:
+          type: object
+          additionalProperties: true
+
+    TenantPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tenant"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Operator -----
+
+    OperatorRole:
+      type: string
+      enum: [Admin, Auditor, AgentOwner]
+
+    Operator:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^operator_[0-9A-HJKMNP-TV-Z]{26}$"
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        platform_admin:
+          type: boolean
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required: [id, username, email, platform_admin, created_at, updated_at]
+
+    OperatorTenantMembership:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_slug:
+          type: string
+        role:
+          $ref: "#/components/schemas/OperatorRole"
+      required: [tenant_id, tenant_slug, role]
+
+    Whoami:
+      type: object
+      properties:
+        operator:
+          $ref: "#/components/schemas/Operator"
+        active_tenant:
+          $ref: "#/components/schemas/Tenant"
+        memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorTenantMembership"
+      required: [operator, memberships]
+
+    InternalLoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 200
+        password:
+          type: string
+          minLength: 1
+          x-mintkey-sensitive: true
+      required: [username, password]
+
+    # ----- Service -----
+
+    AuthScheme:
+      type: string
+      enum:
+        - api_key_header
+        - api_key_query
+        - bearer_token
+        - basic_auth
+        - oauth2_client_credentials
+        - oidc_client_secret
+      description: |
+        How Mintkey injects the credential into the outbound request.
+        - `api_key_header`: header injection (e.g. `X-API-Key: …`).
+        - `api_key_query`: query-parameter injection (e.g. `?api_key=…`).
+        - `bearer_token`: `Authorization: Bearer …`.
+        - `basic_auth`: `Authorization: Basic base64(user:pass)`.
+        - `oauth2_client_credentials`: token-exchange flow.
+        - `oidc_client_secret`: used for the operator IdP integration only.
+
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,62}$"
+        display_name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        base_url:
+          type: string
+          format: uri
+          description: |
+            Absolute URL the proxy will forward to. Per ADR-0007 the base_url
+            anchors the egress allowlist; HTTP is rejected unless explicitly
+            allowed by `settings.allow_plain_http = true` (dev mode only).
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        actions:
+          type: array
+          items:
+            type: string
+            pattern: "^[a-z0-9_:.\\-]+$"
+        openapi_url:
+          type: [string, "null"]
+          format: uri
+        current_key_version:
+          type: integer
+          minimum: 0
+          description: 0 means no credential has been registered yet.
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - name
+        - display_name
+        - base_url
+        - auth_scheme
+        - actions
+        - current_key_version
+        - status
+        - created_at
+        - updated_at
+
+    CreateServiceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,62}$"
+        display_name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        base_url:
+          type: string
+          format: uri
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        actions:
+          type: array
+          items:
+            type: string
+        openapi_url:
+          type: [string, "null"]
+          format: uri
+      required: [name, display_name, base_url, auth_scheme, actions]
+
+    UpdateServiceRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+        description:
+          type: string
+        base_url:
+          type: string
+          format: uri
+        actions:
+          type: array
+          items:
+            type: string
+        openapi_url:
+          type: [string, "null"]
+          format: uri
+
+    ServicePage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Service"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Credential -----
+
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^cred_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        service_id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        key_version:
+          type: integer
+          minimum: 1
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        is_current:
+          type: boolean
+        status:
+          type: string
+          enum: [active, revoked]
+        value:
+          type: [string, "null"]
+          x-mintkey-sensitive: true
+          description: |
+            Plaintext credential value. Returned **only** on the immediate
+            POST response (rotation/registration). All subsequent reads
+            return `null`.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Optional upstream expiry (e.g. for OAuth2 client_credentials
+            tokens cached in the Vault Adapter).
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - service_id
+        - key_version
+        - auth_scheme
+        - is_current
+        - status
+        - created_at
+        - updated_at
+
+    RegisterCredentialRequest:
+      description: |
+        Discriminated by `auth_scheme`. Plaintext fields are write-only and
+        marked `x-mintkey-sensitive: true`.
+      oneOf:
+        - $ref: "#/components/schemas/CredApiKeyHeader"
+        - $ref: "#/components/schemas/CredApiKeyQuery"
+        - $ref: "#/components/schemas/CredBearerToken"
+        - $ref: "#/components/schemas/CredBasicAuth"
+        - $ref: "#/components/schemas/CredOAuth2ClientCredentials"
+        - $ref: "#/components/schemas/CredOidcClientSecret"
+      discriminator:
+        propertyName: auth_scheme
+        mapping:
+          api_key_header: "#/components/schemas/CredApiKeyHeader"
+          api_key_query: "#/components/schemas/CredApiKeyQuery"
+          bearer_token: "#/components/schemas/CredBearerToken"
+          basic_auth: "#/components/schemas/CredBasicAuth"
+          oauth2_client_credentials: "#/components/schemas/CredOAuth2ClientCredentials"
+          oidc_client_secret: "#/components/schemas/CredOidcClientSecret"
+
+    CredApiKeyHeader:
+      type: object
+      properties:
+        auth_scheme:
+          type: string
+          enum: [api_key_header]
+        value:
+          type: string
+          x-mintkey-sensitive: true
+        header_name:
+          type: string
+          default: "X-API-Key"
+      required: [auth_scheme, value]
+
+    CredApiKeyQuery:
+      type: object
+      properties:
+        auth_scheme:
+          type: string
+          enum: [api_key_query]
+        value:
+          type: string
+          x-mintkey-sensitive: true
+        query_param:
+          type: string
+          default: "api_key"
+      required: [auth_scheme, value]
+
+    CredBearerToken:
+      type: object
+      properties:
+        auth_scheme:
+          type: string
+          enum: [bearer_token]
+        value:
+          type: string
+          x-mintkey-sensitive: true
+      required: [auth_scheme, value]
+
+    CredBasicAuth:
+      type: object
+      properties:
+        auth_scheme:
+          type: string
+          enum: [basic_auth]
+        value:
+          type: string
+          description: "Format: `username:password`."
+          x-mintkey-sensitive: true
+      required: [auth_scheme, value]
+
+    CredOAuth2ClientCredentials:
+      type: object
+      properties:
+        auth_scheme:
+          type: string
+          enum: [oauth2_client_credentials]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          x-mintkey-sensitive: true
+        token_url:
+          type: string
+          format: uri
+        scopes:
+          type: array
+          items:
+            type: string
+        audience:
+          type: [string, "null"]
+      required: [auth_scheme, client_id, client_secret, token_url]
+
+    CredOidcClientSecret:
+      type: object
+      description: |
+        OIDC client_secret used by the *broker itself* to integrate with the
+        operator IdP. Only PlatformAdmin should register one.
+      properties:
+        auth_scheme:
+          type: string
+          enum: [oidc_client_secret]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          x-mintkey-sensitive: true
+        issuer:
+          type: string
+          format: uri
+      required: [auth_scheme, client_id, client_secret, issuer]
+
+    CredentialPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Credential"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Agent -----
+
+    AgentStatus:
+      type: string
+      enum: [active, revoked]
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+        api_key_fingerprint:
+          type: string
+          description: |
+            `sha256:<hex>` fingerprint of the Agent API Key. Stable across
+            reads; used in `agent.created` audit payload.
+        api_key:
+          type: [string, "null"]
+          x-mintkey-sensitive: true
+          description: |
+            Plaintext Agent API Key. Returned **only** on the immediate
+            POST response. All subsequent reads return `null`.
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - name
+        - status
+        - api_key_fingerprint
+        - created_at
+        - updated_at
+
+    CreateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+      required: [name]
+
+    RevokeAgentRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 1000
+          description: Free-form reason recorded in the audit event.
+
+    AgentPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Permission -----
+
+    PermissionGrant:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^perm_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+        service_id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        action:
+          type: string
+        constraints:
+          $ref: "#/components/schemas/Constraints"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - agent_id
+        - service_id
+        - action
+        - created_at
+        - updated_at
+
+    GrantPermissionRequest:
+      type: object
+      properties:
+        service_id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        action:
+          type: string
+        constraints:
+          $ref: "#/components/schemas/Constraints"
+      required: [service_id, action]
+
+    # ----- Audit -----
+
+    ActorType:
+      type: string
+      enum: [operator, agent, system, platform_admin]
+
+    AuditEventType:
+      type: string
+      enum:
+        - tenant.created
+        - tenant.updated
+        - tenant.deleted
+        - operator.created
+        - operator.permission.granted
+        - operator.permission.revoked
+        - service.registered
+        - service.updated
+        - service.removed
+        - credential.registered
+        - credential.rotated
+        - credential.revoked
+        - agent.created
+        - agent.revoked
+        - agent.permission.granted
+        - agent.permission.revoked
+        - token.issued
+        - token.denied
+        - proxy.hit
+        - proxy.denied
+        - proxy.error
+        - kek.rotated
+        - auth.login.success
+        - auth.login.failed
+        - auth.logout
+
+    TargetType:
+      type: string
+      enum:
+        - tenant
+        - operator
+        - service
+        - credential
+        - agent
+        - permission
+        - token
+        - request
+        - kek
+        - session
+
+    AuditEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+          pattern: "^audit_[0-9A-HJKMNP-TV-Z]{26}$"
+        event_type:
+          $ref: "#/components/schemas/AuditEventType"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        actor_id:
+          type: string
+        actor_type:
+          $ref: "#/components/schemas/ActorType"
+        target_id:
+          type: string
+        target_type:
+          $ref: "#/components/schemas/TargetType"
+        at:
+          $ref: "#/components/schemas/Timestamp"
+        request_id:
+          type: [string, "null"]
+        trace_id:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{32}$"
+        prev_hash:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{64}$"
+        hash:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{64}$"
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-event payload. Schemas pinned in
+            `docs/contracts/events/audit-event.schema.json`.
+      required:
+        - event_id
+        - event_type
+        - tenant_id
+        - actor_id
+        - actor_type
+        - target_id
+        - target_type
+        - at
+
+    AuditEventPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Change events -----
+
+    ChangeEventType:
+      type: string
+      enum:
+        - service.registered
+        - service.updated
+        - service.removed
+        - credential.rotated
+        - credential.revoked
+        - agent.revoked
+        - token.revoked
+
+    ChangeEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+          pattern: "^change_[0-9A-HJKMNP-TV-Z]{26}$"
+        event_type:
+          $ref: "#/components/schemas/ChangeEventType"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        actor_id:
+          type: string
+        target_id:
+          type: string
+        key_version:
+          type: [integer, "null"]
+          minimum: 1
+        at:
+          $ref: "#/components/schemas/Timestamp"
+      required: [event_id, event_type, tenant_id, actor_id, target_id, at]
+
+    ChangeEventPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeEvent"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Session -----
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^session_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        operator_id:
+          type: string
+          pattern: "^operator_[0-9A-HJKMNP-TV-Z]{26}$"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        last_used_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        ip:
+          type: [string, "null"]
+        user_agent:
+          type: [string, "null"]
+      required:
+        - id
+        - tenant_id
+        - operator_id
+        - created_at
+        - last_used_at
+        - expires_at
+
+    # ----- JWKS -----
+
+    JWK:
+      type: object
+      properties:
+        kty:
+          type: string
+          enum: [OKP]
+        crv:
+          type: string
+          enum: [Ed25519]
+        kid:
+          type: string
+        x:
+          type: string
+          description: Base64url-encoded Ed25519 public key.
+        use:
+          type: string
+          enum: [sig]
+        alg:
+          type: string
+          enum: [EdDSA]
+      required: [kty, crv, kid, x]
+
+    JWKS:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/JWK"
+      required: [keys]
+
+    # ----- Health -----
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+        build_sha:
+          type: string
+      required: [status, version]
+
+    ReadyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        checks:
+          type: object
+          properties:
+            postgres:
+              type: string
+              enum: [ok, fail]
+            change_channel:
+              type: string
+              enum: [ok, fail]
+            vault_adapter:
+              type: string
+              enum: [ok, fail]
+            vault_backend:
+              type: string
+              enum: [file, vault, sql_kms]
+            vault_backend_warning:
+              type: [string, "null"]
+          required: [postgres, change_channel, vault_adapter]
+        version:
+          type: string
+        build_sha:
+          type: string
+      required: [status, checks]
+
+
+    Constraints:
+      type: object
+      additionalProperties: false
+      description: |
+        ABAC constraints on a permission grant. Closed schema per ADR-0016.4.
+      properties:
+        rate_limit:
+          type: object
+          additionalProperties: false
+          description: Per-agent rate limit on this (service, action) tuple.
+          properties:
+            requests_per_second: { type: integer, minimum: 1 }
+            burst:               { type: integer, minimum: 1 }
+        time_window:
+          type: object
+          additionalProperties: false
+          description: Time-of-day window the permission is valid in.
+          properties:
+            timezone:    { type: string, description: "IANA tz name, e.g., Europe/Bucharest." }
+            days:
+              type: array
+              items: { type: string, enum: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }
+            start_local: { type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$" }
+            end_local:   { type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$" }
+        request_path_prefix:
+          type: array
+          description: Allowed path prefixes within the registered service.
+          items: { type: string }
+        source_ip_allowlist:
+          type: array
+          items: { type: string, format: cidr }
+    MtlsCredentialValue:
+      type: object
+      additionalProperties: false
+      description: |
+        Credential value for the `mtls` auth_scheme (ADR-0016.5). Both
+        `client_cert_pem` and `client_key_pem` are required and are stored
+        as one envelope-encrypted blob by the Vault Adapter. The plain text
+        of `client_key_pem` is returned only at create time (sensitive).
+      properties:
+        client_cert_pem:
+          type: string
+          description: PEM-encoded X.509 client certificate.
+        client_key_pem:
+          type: string
+          description: PEM-encoded private key matching the cert.
+          x-mintkey-sensitive: true
+      required: [client_cert_pem, client_key_pem]
+    AdminSettings:
+      type: object
+      additionalProperties: false
+      description: |
+        Instance-wide admin settings. Toggleable by PlatformAdmin operators
+        only (ADR-0016.6 / ADR-0017). Every change emits a `settings.updated`
+        audit event.
+      properties:
+        internal_auth:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled:         { type: boolean }
+            can_be_disabled:
+              type: boolean
+              readOnly: true
+              description: |
+                Server-set guard: false until at least one operator has
+                successfully logged in via OIDC AND has the Admin role.
+        oidc:
+          type: object
+          additionalProperties: false
+          properties:
+            issuer:    { type: string }
+            client_id: { type: string }
+            auto_provision_role:
+              type: string
+              enum: [Admin, Auditor, AgentOwner, none]
+        audit:
+          type: object
+          additionalProperties: false
+          properties:
+            retention_days_security_relevant:
+              type: integer
+              minimum: 30
+            retention_days_proxy_hits:
+              type: integer
+              minimum: 1
+    TestRunRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Operator-initiated test against a registered service using the current
+        credential. Per F-OP-03 / ADR-0017 (C-11). Subject to per-service
+        rate limit and the egress allowlist (RFC1918 rejected unless
+        explicitly allowed).
+      properties:
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS]
+          default: GET
+        path:
+          type: string
+          default: "/health"
+          description: Path appended to the registered base URL.
+        timeout_ms:
+          type: integer
+          minimum: 100
+          maximum: 30000
+          default: 5000
+        body:
+          type: string
+          description: Optional request body (UTF-8 text only; binary not supported in v1).
+    TestRunResponse:
+      type: object
+      additionalProperties: false
+      description: Result of a service test run (F-OP-03).
+      required: [ok, latency_ms]
+      properties:
+        ok:
+          type: boolean
+          description: True iff status_code is 2xx and no transport error.
+        status_code:
+          type: integer
+          minimum: 0
+          maximum: 599
+        latency_ms:
+          type: integer
+          minimum: 0
+        response_body_truncated:
+          type: string
+          description: First 4 KB of the response body. Truncated if larger.
+        error:
+          type: string
+          description: |
+            Transport error category if not ok (timeout, dns_failure,
+            tls_failure, forbidden_destination, etc.). Absent if ok=true.
+    BrokeredTokenClaims:
+      type: object
+      additionalProperties: false
+      description: |
+        The brokered JWT's claim set. Per ADR-0006 + ADR-0008. JWS over
+        Ed25519. Verified by the Egress Proxy plugin against the broker's
+        JWKS (`/.well-known/jwks.json`).
+      required: [iss, sub, aud, scope, tnt, jti, iat, exp]
+      properties:
+        iss:   { const: "mintkey/broker", description: "Issuer." }
+        sub:   { type: string, pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$", description: "Agent identifier." }
+        aud:   { type: string, pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$",   description: "Audience: bound service." }
+        tnt:   { type: string, pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$", description: "Tenant the bound agent belongs to." }
+        scope: { type: string, description: "Single granted action, e.g., read:contacts." }
+        jti:   { type: string, pattern: "^[0-9A-HJKMNP-TV-Z]{26}$", description: "ULID; unique per token; recorded in audit and revocation channel." }
+        iat:   { type: integer, format: int64 }
+        exp:   { type: integer, format: int64 }
+        cnf:
+          type: object
+          properties:
+            jkt: { type: string, description: "JWK thumbprint of the bound client cert (high-assurance opt-in only)." }
+        kid:   { type: string, description: "Key ID for the broker's signing keypair." }
+
+  # End of round-3 schema additions. Keep `securitySchemes:` as the next sibling.
+
+x-mintkey-error-codes:
+  description: |
+    Stable, machine-readable error codes returned in `mintkey:code`.
+  values:
+    - tenant_not_found
+    - service_not_found
+    - agent_not_found
+    - credential_not_found
+    - permission_denied
+    - permission_not_found
+    - duplicate_resource
+    - validation_failed
+    - unauthenticated
+    - rate_limited
+    - credential_in_use
+    - vault_unavailable
+    - change_channel_unavailable
+    - oidc_unavailable
+    - tenant_suspended
+    - agent_revoked
+    - tenant_deleted
+    - token_expired
+    - token_revoked
+    - permission_denied
+    - action_not_granted
+    - service_not_found
+    - invalid_credentials
+    - since_unknown
+    - forbidden_destination
