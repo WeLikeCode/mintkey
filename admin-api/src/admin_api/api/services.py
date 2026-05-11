@@ -27,6 +27,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -143,6 +144,25 @@ def _forbidden_response() -> JSONResponse:
             "title": "The base_url resolves to a forbidden destination",
         },
     )
+
+
+def _wire_id_to_db_uuid(wire_id: str) -> str:
+    """
+    Convert a wire svc_ ID back to the UUID string stored in the DB.
+
+    The wire form is "svc_" + 32 hex chars (UUID without dashes).
+    The DB form is "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+    Returns the raw hex string if the input does not match the expected pattern
+    (allowing callers to pass raw UUIDs too).
+    """
+    if wire_id.startswith("svc_"):
+        hex_part = wire_id[4:]  # 32 hex chars
+        if len(hex_part) == 32:
+            return (
+                f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                f"-{hex_part[16:20]}-{hex_part[20:]}"
+            )
+    return wire_id
 
 
 def _service_row_to_dict(row: Any) -> dict[str, Any]:
@@ -292,6 +312,113 @@ async def list_services(
     return JSONResponse({"services": services})
 
 
+@router.get("/{service_id}")
+async def get_service(
+    tenant_id: UUID,
+    service_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Describe a single service.
+
+    Source: openapi.yaml operationId=getService; ADR-0008.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    db_uuid = _wire_id_to_db_uuid(service_id)
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, name, slug, display_name, description,"
+            " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
+            " FROM services WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {"sid": db_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+    return JSONResponse(_service_row_to_dict(row))
+
+
+@router.post("/{service_id}/test")
+async def test_service(
+    tenant_id: UUID,
+    service_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Test the registered service using its stored base_url.
+
+    Makes a GET request to base_url using the stored auth_scheme/credential.
+    Returns {"ok": bool, "status_code": int} and optional latency/error fields.
+
+    Source: openapi.yaml operationId=testRunService; ADR-0014.4; S-SEC-1.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    # Fetch the service row
+    db_uuid = _wire_id_to_db_uuid(service_id)
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, name, base_url, auth_scheme"
+            " FROM services WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {"sid": db_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+
+    base_url: str = row.base_url
+    auth_scheme: str = row.auth_scheme
+
+    # SSRF guardrail — S-SEC-1 / ADR-0014.4
+    if _is_forbidden_destination(base_url):
+        return _forbidden_response()
+
+    # Fetch credential from vault (plaintext stays in request scope — ADR-0014.4)
+    from admin_api.services.vault_client import get_vault_client  # noqa: PLC0415
+    vault = await get_vault_client()
+    cred_entry = await vault.get_credential(str(tenant_id), str(row.id))
+
+    # Build request headers based on auth_scheme
+    headers: dict[str, str] = {}
+    if cred_entry and cred_entry.get("plaintext"):
+        plaintext: str = cred_entry["plaintext"]
+        if auth_scheme == "bearer_token":
+            headers["Authorization"] = f"Bearer {plaintext}"
+        elif auth_scheme == "api_key":
+            headers["X-Api-Key"] = plaintext
+
+    # Make outbound HTTP call — timeout 5 s
+    import time as _time  # noqa: PLC0415
+    start = _time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(base_url, headers=headers)
+        latency_ms = int((_time.monotonic() - start) * 1000)
+        ok = 200 <= response.status_code < 300
+        return JSONResponse(
+            {
+                "ok": ok,
+                "status_code": response.status_code,
+                "latency_ms": latency_ms,
+                "response_body_truncated": response.text[:500],
+            }
+        )
+    except httpx.TimeoutException:
+        latency_ms = int((_time.monotonic() - start) * 1000)
+        return JSONResponse({"ok": False, "latency_ms": latency_ms, "error": "timeout"})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)})
+
+
 @router.patch("/{service_id}")
 async def update_service(
     tenant_id: UUID,
@@ -309,6 +436,7 @@ async def update_service(
 
     await set_tenant_context(session, tenant_id)
 
+    db_uuid = _wire_id_to_db_uuid(service_id)
     now = datetime.now(timezone.utc)
 
     # Build the UPDATE using a fixed set of known columns to avoid dynamic SQL.
@@ -337,7 +465,7 @@ async def update_service(
             "openapi_url": body.openapi_url,
             "status": body.status,
             "updated_at": now,
-            "sid": service_id,
+            "sid": db_uuid,
             "tid": str(tenant_id),
         },
     )
@@ -369,7 +497,7 @@ async def update_service(
             " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
             " FROM services WHERE id = :sid AND tenant_id = :tid"
         ),
-        {"sid": service_id, "tid": str(tenant_id)},
+        {"sid": db_uuid, "tid": str(tenant_id)},
     )
     row = result.fetchone()
     if row is None:
@@ -393,9 +521,10 @@ async def delete_service(
     """
     await set_tenant_context(session, tenant_id)
 
+    db_uuid = _wire_id_to_db_uuid(service_id)
     await session.execute(
         text("DELETE FROM services WHERE id = :sid AND tenant_id = :tid"),
-        {"sid": service_id, "tid": str(tenant_id)},
+        {"sid": db_uuid, "tid": str(tenant_id)},
     )
 
     await audit_emit(
