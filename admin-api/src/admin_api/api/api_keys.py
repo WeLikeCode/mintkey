@@ -363,11 +363,11 @@ async def list_api_keys(
     return JSONResponse(status_code=200, content=items)
 
 
-@router.get("/{key_id}")
+@router.get("/{api_key_id}")
 async def get_api_key(
     tenant_id: UUID,
     agent_id: str,
-    key_id: str,
+    api_key_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -385,7 +385,7 @@ async def get_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": key_id},
+        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
     )
     row = row_result.fetchone()
     if row is None:
@@ -412,11 +412,11 @@ async def get_api_key(
     )
 
 
-@router.post("/{key_id}/revoke")
+@router.post("/{api_key_id}/revoke")
 async def revoke_api_key(
     tenant_id: UUID,
     agent_id: str,
-    key_id: str,
+    api_key_id: str,
     body: RevokeRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
@@ -437,7 +437,7 @@ async def revoke_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": key_id},
+        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
     )
     row = row_result.fetchone()
     if row is None:
@@ -460,7 +460,7 @@ async def revoke_api_key(
             "now": now,
             "by": None,
             "reason": body.reason,
-            "kid": key_id,
+            "kid": api_key_id,
             "tid": str(tenant_id),
         },
     )
@@ -474,7 +474,7 @@ async def revoke_api_key(
         target_id=None,
         target_type="api_key",
         payload={
-            "api_key_id": key_id,
+            "api_key_id": api_key_id,
             "agent_id": agent_id,
             "service_id": str(row.service_id) if row.service_id is not None else None,
             "key_fingerprint": row.key_fingerprint,
@@ -489,7 +489,7 @@ async def revoke_api_key(
         {
             "event": "api_key.revoked",
             "tenant_id": str(tenant_id),
-            "api_key_id": key_id,
+            "api_key_id": api_key_id,
             "key_fingerprint": row.key_fingerprint,
             "reason": body.reason,
         },
@@ -498,11 +498,11 @@ async def revoke_api_key(
     return JSONResponse(status_code=200, content={"status": "revoked"})
 
 
-@router.post("/{key_id}/rotate", status_code=201)
+@router.post("/{api_key_id}/rotate", status_code=201)
 async def rotate_api_key(
     tenant_id: UUID,
     agent_id: str,
-    key_id: str,
+    api_key_id: str,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -523,7 +523,7 @@ async def rotate_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": key_id},
+        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
     )
     old_row = row_result.fetchone()
     if old_row is None:
@@ -578,7 +578,7 @@ async def rotate_api_key(
         target_id=new_internal_id,
         target_type="api_key",
         payload={
-            "old_api_key_id": key_id,
+            "old_api_key_id": api_key_id,
             "new_api_key_id": new_key_id,
             "agent_id": agent_id,
             "service_id": old_row.service_id,

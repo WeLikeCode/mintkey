@@ -128,6 +128,22 @@ tags:
     description: |
       Public discovery endpoints. `/.well-known/jwks.json` is the broker's
       public-key set, consumed by the Egress Proxy plugin.
+  - name: Admin Settings
+    description: |
+      Instance-wide settings and audit-chain management. PlatformAdmin only.
+  - name: APIKeys
+    description: |
+      Long-lived classical API keys for services (not agent keys). Used by
+      the Egress Proxy's classical-key auth branch.
+  - name: Internal
+    description: |
+      Internal service-to-service endpoints. Not operator-facing. Called by
+      the MCP Server and Egress Proxy plugin only.
+  - name: Proxy
+    description: |
+      Credential-injecting reverse proxy. Fetches the current credential from
+      the Vault Adapter, injects it per the service `auth_scheme`, and
+      forwards the request to the backend service.
 
 security:
   - OperatorSession: []
@@ -1020,6 +1036,26 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Agents]
+      operationId: deleteAgent
+      summary: Hard-delete an agent.
+      description: |
+        Permanently removes the agent record. Prefer `POST
+        /v1/tenants/{tenant_id}/agents/{agent_id}/revoke` for reversible
+        de-activation. Hard-delete is irreversible; all associated permissions
+        are cascade-deleted. Emits `agent.deleted` audit event.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      responses:
+        "204":
+          description: Agent permanently deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/tenants/{tenant_id}/agents/{agent_id}/revoke:
     parameters:
@@ -1850,6 +1886,429 @@ paths:
                 detail: "OIDC has not been validated; `can_be_disabled` is false."
                 "mintkey:code": "validation_failed"
                 "mintkey:trace_id": "01HXABCDEF…"
+  /v1/auth/oidc/login:
+    get:
+      tags: [Auth]
+      operationId: authOidcLoginJson
+      summary: Begin OIDC login (JSON response variant).
+      description: |
+        Returns a JSON body with `auth_url` and `state` instead of issuing a
+        `302` redirect. Intended for SPA / CLI clients that manage the browser
+        redirect themselves. Equivalent to `/v1/auth/login` in terms of PKCE
+        generation and state storage.
+      security: []
+      responses:
+        "200":
+          description: OIDC authorization URL and state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [auth_url, state]
+                properties:
+                  auth_url:
+                    type: string
+                    format: uri
+                    description: The OIDC provider authorization endpoint with PKCE parameters.
+                  state:
+                    type: string
+                    description: Opaque state value for CSRF protection.
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /v1/auth/oidc/callback:
+    get:
+      tags: [Auth]
+      operationId: authOidcCallbackJson
+      summary: OIDC callback (JSON response variant).
+      description: |
+        Receives the authorization code and `state`, exchanges the code for
+        tokens, verifies the ID token, looks up the operator by `oidc_sub`,
+        and issues a session cookie. Returns JSON instead of a `302` redirect.
+        Equivalent to `/v1/auth/callback` in behavior.
+      security: []
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: OIDC authorization code returned by the IdP.
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+          description: Opaque state value from `/v1/auth/oidc/login`.
+      responses:
+        "200":
+          description: Login successful; session cookie set.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly Secure SameSite=Strict session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, operator_id]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  operator_id:
+                    type: string
+                    pattern: '^operator_[0-9A-HJKMNP-TV-Z]{26}$'
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+
+
+  /v1/admin/audit/verify-chain:
+    post:
+      tags: [Admin Settings]
+      operationId: auditVerifyChain
+      summary: On-demand audit chain verification.
+      description: |
+        PlatformAdmin only. Walks the entire audit event chain for the given
+        tenant and verifies that each `hash` and `prev_hash` are consistent.
+        Returns a pass/fail result with the first bad event ID on failure.
+        Emits a `platform_admin.access` audit event before reading.
+      security:
+        - OperatorSession: []
+        - OperatorBearer:  []
+      parameters:
+        - in: query
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            pattern: '^tenant_[0-9A-HJKMNP-TV-Z]{26}$'
+          description: The tenant whose audit chain to verify.
+      responses:
+        "200":
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                  chain_length:
+                    type: ["integer", "null"]
+                  last_event_id:
+                    type: ["string", "null"]
+                  verified_at:
+                    type: ["string", "null"]
+                    format: date-time
+                  first_bad_event_id:
+                    type: ["string", "null"]
+                  expected_hash:
+                    type: ["string", "null"]
+                  actual_hash:
+                    type: ["string", "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/admin/audit/acknowledge-tamper:
+    post:
+      tags: [Admin Settings]
+      operationId: auditAcknowledgeTamper
+      summary: Acknowledge a tampered audit chain event.
+      description: |
+        PlatformAdmin only. Records a `audit.chain.tamper_acknowledged` audit
+        event for the specified event ID, indicating a human has reviewed and
+        acknowledged the tamper. Idempotent from a risk perspective (each call
+        creates a new acknowledgment record).
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+        - in: query
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            pattern: '^tenant_[0-9A-HJKMNP-TV-Z]{26}$'
+          description: The tenant owning the tampered audit chain.
+        - in: query
+          name: event_id
+          required: true
+          schema:
+            type: string
+          description: The audit event ID that was tampered.
+      responses:
+        "201":
+          description: Acknowledgment recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledged, event_id, tenant_id]
+                properties:
+                  acknowledged:
+                    type: boolean
+                  event_id:
+                    type: string
+                  tenant_id:
+                    type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/internal/validate-agent-key:
+    post:
+      tags: [Internal]
+      operationId: internalValidateAgentKey
+      summary: Validate an agent API key (internal — MCP Server only).
+      description: |
+        Internal endpoint consumed by the MCP Server to validate an agent API
+        key. Lookup is by fingerprint (sha256[:8]); Argon2id verify runs
+        against DUMMY_HASH for unknown agents to equalize timing (ADR-0017.5).
+        Not operator-facing; not subject to CSRF.
+      security:
+        - ServiceIdentity: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key:
+                  type: string
+                  description: The `mk_agent_`-prefixed plaintext agent API key.
+                  x-mintkey-sensitive: true
+      responses:
+        "200":
+          description: Key is valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agent_id, tenant_id, status]
+                properties:
+                  agent_id:
+                    type: string
+                    pattern: '^agent_[0-9A-HJKMNP-TV-Z]{26}$'
+                  tenant_id:
+                    type: string
+                    pattern: '^tenant_[0-9A-HJKMNP-TV-Z]{26}$'
+                  status:
+                    type: string
+                    enum: [active]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/internal/proxy-hit:
+    post:
+      tags: [Internal]
+      operationId: internalProxyHit
+      summary: Record a proxy hit (internal — Egress Proxy only).
+      description: |
+        Internal endpoint called by the Egress Proxy after each proxied
+        request to emit a `proxy.hit` audit event. Also updates
+        `service_api_keys.last_used_at` for classical-key requests (Req 10.5).
+        Not operator-facing; not subject to CSRF.
+      security:
+        - ServiceIdentity: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_id, status_code, method, path_template, latency_ms]
+              properties:
+                service_id:
+                  type: string
+                status_code:
+                  type: integer
+                method:
+                  type: string
+                path_template:
+                  type: string
+                latency_ms:
+                  type: integer
+                tenant_id:
+                  type: ["string", "null"]
+                auth_method:
+                  type: ["string", "null"]
+                  enum: [api_key, brokered_jwt, null]
+                api_key_id:
+                  type: ["string", "null"]
+                key_fingerprint:
+                  type: ["string", "null"]
+                used_at:
+                  type: ["string", "null"]
+                  format: date-time
+      responses:
+        "200":
+          description: Audit event recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+
+  /v1/proxy/call/{service_id}/{path_suffix}:
+    parameters:
+      - in: path
+        name: service_id
+        required: true
+        schema:
+          type: string
+          pattern: '^svc_[0-9A-HJKMNP-TV-Z]{26}$'
+        description: The service ULID.
+      - in: path
+        name: path_suffix
+        required: true
+        schema:
+          type: string
+        description: The downstream path to forward to (appended to the service `base_url`).
+    get:
+      tags: [Proxy]
+      operationId: proxyCallGet
+      summary: Forward a GET request to the backend service with injected credentials.
+      description: |
+        Credential-injecting reverse proxy. Fetches the current credential
+        from the Vault Adapter, injects it per the service `auth_scheme`, and
+        forwards the request to `base_url + path_suffix`. Response is streamed
+        back to the caller. Plaintext credential never leaves request scope
+        (ADR-0014.4). Emits `proxy.hit` audit event on completion.
+      security:
+        - OperatorSession: []
+        - OperatorBearer:  []
+      responses:
+        "200":
+          description: Proxied response from the backend service.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502":
+          description: Backend service unreachable or returned an error.
+    post:
+      tags: [Proxy]
+      operationId: proxyCallPost
+      summary: Forward a POST request to the backend service with injected credentials.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "200":
+          description: Proxied response from the backend service.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502":
+          description: Backend service unreachable or returned an error.
+    put:
+      tags: [Proxy]
+      operationId: proxyCallPut
+      summary: Forward a PUT request to the backend service with injected credentials.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "200":
+          description: Proxied response from the backend service.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502":
+          description: Backend service unreachable or returned an error.
+    patch:
+      tags: [Proxy]
+      operationId: proxyCallPatch
+      summary: Forward a PATCH request to the backend service with injected credentials.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "200":
+          description: Proxied response from the backend service.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502":
+          description: Backend service unreachable or returned an error.
+    delete:
+      tags: [Proxy]
+      operationId: proxyCallDelete
+      summary: Forward a DELETE request to the backend service with injected credentials.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      responses:
+        "200":
+          description: Proxied response from the backend service.
+        "204":
+          description: Proxied response from the backend service (no content).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502":
+          description: Backend service unreachable or returned an error.
+    options:
+      tags: [Proxy]
+      operationId: proxyCallOptions
+      summary: Forward an OPTIONS request to the backend service.
+      security:
+        - OperatorSession: []
+        - OperatorBearer:  []
+      responses:
+        "200":
+          description: Proxied OPTIONS response.
+        "204":
+          description: Proxied OPTIONS response (no content).
+    head:
+      tags: [Proxy]
+      operationId: proxyCallHead
+      summary: Forward a HEAD request to the backend service with injected credentials.
+      security:
+        - OperatorSession: []
+        - OperatorBearer:  []
+      responses:
+        "200":
+          description: Proxied HEAD response (headers only).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /v1/tenants/{tenant_id}/services/{service_id}/test:
     post:
       operationId: testRunService
