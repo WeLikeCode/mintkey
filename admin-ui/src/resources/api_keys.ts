@@ -30,8 +30,9 @@ const _apiKeysResource = new RestResource({
   ],
 });
 
-export const ApiKeysResource: ResourceWithOptions = {
+export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _apiKeysResource } = {
   resource: _apiKeysResource.resource,
+  adminResource: _apiKeysResource,
   options: {
     navigation: { name: "API Keys", icon: "Key" },
     listProperties: [

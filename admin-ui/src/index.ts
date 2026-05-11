@@ -30,13 +30,13 @@ async function main() {
   // AdminJS instance
   const admin = new AdminJS({
     resources: [
-      ServicesResource,
-      CredentialsResource,
-      AgentsResource,
-      ApiKeysResource,
-      PermissionsResource,
-      AuditResource,
-      TenantsResource,
+      { resource: ServicesResource.adminResource, options: ServicesResource.options },
+      { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
+      { resource: AgentsResource.adminResource, options: AgentsResource.options },
+      { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
+      { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
+      { resource: AuditResource.adminResource, options: AuditResource.options },
+      { resource: TenantsResource.adminResource, options: TenantsResource.options },
     ],
     rootPath: "/admin",
     branding: {

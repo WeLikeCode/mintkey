@@ -26,8 +26,9 @@ const _auditResource = new RestResource({
   ],
 });
 
-export const AuditResource: ResourceWithOptions = {
+export const AuditResource: ResourceWithOptions & { adminResource: typeof _auditResource } = {
   resource: _auditResource.resource,
+  adminResource: _auditResource,
   options: {
     navigation: { name: "Audit Log", icon: "ClipboardList" },
     listProperties: ["id", "event_type", "actor_id", "actor_type", "target_id", "target_type", "at"],

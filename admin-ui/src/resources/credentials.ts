@@ -31,8 +31,9 @@ const _credentialsResource = new RestResource({
   ],
 });
 
-export const CredentialsResource: ResourceWithOptions = {
+export const CredentialsResource: ResourceWithOptions & { adminResource: typeof _credentialsResource } = {
   resource: _credentialsResource.resource,
+  adminResource: _credentialsResource,
   options: {
     navigation: { name: "Credentials", icon: "Lock" },
     listProperties: ["id", "service_id", "auth_scheme", "key_version", "status", "created_at"],

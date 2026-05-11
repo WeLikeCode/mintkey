@@ -28,8 +28,9 @@ const _permissionsResource = new RestResource({
   ],
 });
 
-export const PermissionsResource: ResourceWithOptions = {
+export const PermissionsResource: ResourceWithOptions & { adminResource: typeof _permissionsResource } = {
   resource: _permissionsResource.resource,
+  adminResource: _permissionsResource,
   options: {
     navigation: { name: "Permissions", icon: "Shield" },
     listProperties: ["id", "agent_id", "service_id", "action", "created_at"],

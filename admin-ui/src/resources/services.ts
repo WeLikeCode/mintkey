@@ -34,8 +34,9 @@ const _servicesResource = new RestResource({
   ],
 });
 
-export const ServicesResource: ResourceWithOptions = {
+export const ServicesResource: ResourceWithOptions & { adminResource: typeof _servicesResource } = {
   resource: _servicesResource.resource,
+  adminResource: _servicesResource,
   options: {
     navigation: { name: "Services", icon: "Network" },
     listProperties: ["id", "name", "slug", "base_url", "auth_scheme", "status", "created_at"],

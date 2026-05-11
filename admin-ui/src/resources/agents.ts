@@ -35,8 +35,9 @@ const _agentsResource = new RestResource({
   ],
 });
 
-export const AgentsResource: ResourceWithOptions = {
+export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agentsResource } = {
   resource: _agentsResource.resource,
+  adminResource: _agentsResource,
   options: {
     navigation: { name: "Agents", icon: "Bot" },
     listProperties: ["id", "name", "status", "api_key_fingerprint", "rate_limit_rps", "created_at"],

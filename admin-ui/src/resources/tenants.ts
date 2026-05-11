@@ -39,8 +39,9 @@ const _tenantsResource = new RestResource({
   ],
 });
 
-export const TenantsResource: ResourceWithOptions = {
+export const TenantsResource: ResourceWithOptions & { adminResource: typeof _tenantsResource } = {
   resource: _tenantsResource.resource,
+  adminResource: _tenantsResource,
   options: {
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],
