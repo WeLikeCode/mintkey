@@ -15,8 +15,6 @@ Sources: Req 2 AC2/AC3/AC6; ADR-0017.5; design §4.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 
 import argon2
 import pytest
@@ -37,53 +35,48 @@ _VALID_HASH = _ph.hash(_VALID_PASSWORD)
 
 def _seed_tenant_and_operator(admin_app: TestClient) -> None:
     """
-    Insert a tenant row and an operator row into the testcontainer DB.
+    Insert a tenant row and an operator row directly via psycopg2 (sync).
 
-    We reach into the SQLAlchemy session factory that the conftest.py
-    already patched to point at the testcontainer, then run raw SQL to
-    insert the rows.  The function is idempotent via ON CONFLICT DO NOTHING.
+    Using psycopg2 avoids event-loop conflicts with asyncpg — the TestClient
+    runs in its own event loop thread, and asyncio.run() would create a
+    separate loop that invalidates pooled asyncpg connections.
+
+    The function is idempotent via ON CONFLICT DO NOTHING.
     """
-    import asyncio
-    from admin_api.db.session import AsyncSessionLocal  # patched by conftest
-    from sqlalchemy import text
+    import os
+    import psycopg2  # type: ignore[import]
 
-    async def _insert() -> None:
-        async with AsyncSessionLocal() as db:
-            async with db.begin():
-                # Insert a minimal tenant (plan defaults provided by schema).
-                await db.execute(
-                    text(
-                        "INSERT INTO tenants (id, slug, display_name, plan,"
-                        " settings, status, created_at, updated_at)"
-                        " VALUES (:id, :slug, :name, 'free', '{}', 'active',"
-                        " now(), now())"
-                        " ON CONFLICT (id) DO NOTHING"
-                    ),
-                    {"id": _TENANT_ID, "slug": "integration-test-tenant", "name": "Integration Test Tenant"},
-                )
-                # Set RLS context before inserting operator.
-                await db.execute(
-                    text("SELECT set_config('app.current_tenant', :tid, true)"),
-                    {"tid": str(_TENANT_ID)},
-                )
-                await db.execute(
-                    text(
-                        "INSERT INTO operators"
-                        " (id, tenant_id, email, display_name, internal_password_hash,"
-                        " is_platform_admin, status, created_at)"
-                        " VALUES (:id, :tid, :email, :name, :hash, true, 'active', now())"
-                        " ON CONFLICT (id) DO NOTHING"
-                    ),
-                    {
-                        "id": _OPERATOR_ID,
-                        "tid": _TENANT_ID,
-                        "email": _VALID_EMAIL,
-                        "name": "Integration Test Admin",
-                        "hash": _VALID_HASH,
-                    },
-                )
+    # DATABASE_URL is set by conftest to point at the testcontainer.
+    db_url = os.environ["DATABASE_URL"]
+    # Convert asyncpg URL to psycopg2 URL.
+    sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
 
-    asyncio.get_event_loop().run_until_complete(_insert())
+    conn = psycopg2.connect(sync_url)
+    conn.autocommit = False
+    try:
+        with conn.cursor() as cur:
+            # Bypass RLS for seed inserts.
+            cur.execute("SELECT set_config('app.current_tenant', %s, false)", (str(_TENANT_ID),))
+            cur.execute("SELECT set_config('app.platform_admin_view', 'on', false)")
+            # Insert tenant (columns per 001-tenants.yaml).
+            cur.execute(
+                "INSERT INTO tenants (id, slug, display_name, settings, status, created_at, updated_at)"
+                " VALUES (%s, %s, %s, '{}', 'active', now(), now())"
+                " ON CONFLICT (id) DO NOTHING",
+                (str(_TENANT_ID), "integration-test-tenant", "Integration Test Tenant"),
+            )
+            # Insert operator (columns per 002-operators.yaml).
+            cur.execute(
+                "INSERT INTO operators"
+                " (id, tenant_id, email, display_name, internal_password_hash,"
+                " is_platform_admin, status, created_at)"
+                " VALUES (%s, %s, %s, %s, %s, true, 'active', now())"
+                " ON CONFLICT (id) DO NOTHING",
+                (str(_OPERATOR_ID), str(_TENANT_ID), _VALID_EMAIL, "Integration Test Admin", _VALID_HASH),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +113,10 @@ def test_oidc_login_returns_auth_url(admin_app: TestClient) -> None:
     The auth_url points at Keycloak's authorization endpoint with PKCE params.
     The redirect itself is done client-side — the server returns JSON, not a 302.
 
+    OQ-AUTH-01: OpenAPI specifies /v1/auth/login -> 302; implementation uses
+    /v1/auth/oidc/login -> 200 JSON. Testing current implementation behavior
+    pending resolution.
+
     Source: Req 2 AC6; design §4.
     """
     response = admin_app.get("/v1/auth/oidc/login")
@@ -148,28 +145,26 @@ def test_oidc_login_each_call_produces_unique_state(admin_app: TestClient) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_logout_returns_200_and_clears_cookie(admin_app: TestClient) -> None:
+def test_logout_returns_204_and_clears_cookie(admin_app: TestClient) -> None:
     """
-    POST /v1/auth/logout must return 200 {"status": "ok"} and delete the
-    mintkey_session cookie.
+    POST /v1/auth/logout must return 204 No Content (OpenAPI spec) and delete
+    the mintkey_session cookie.
 
     This endpoint is CSRF-exempt (registered via csrf_exempt in main.py).
 
-    Source: design §4 auth.py.
+    Source: OpenAPI /v1/auth/logout -> 204; design §4 auth.py.
     """
     response = admin_app.post("/v1/auth/logout")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 204
     # Cookie should be cleared (Set-Cookie with empty value or max-age=0)
     set_cookie = response.headers.get("set-cookie", "")
-    assert "mintkey_session" in set_cookie or response.status_code == 200
+    assert "mintkey_session" in set_cookie or response.status_code == 204
 
 
-def test_logout_without_session_still_returns_200(admin_app: TestClient) -> None:
+def test_logout_without_session_still_returns_204(admin_app: TestClient) -> None:
     """Logout is idempotent — succeeds even without an active session."""
     response = admin_app.post("/v1/auth/logout")
-    assert response.status_code == 200
-    assert response.json().get("status") == "ok"
+    assert response.status_code == 204
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +212,7 @@ def test_internal_login_missing_fields_returns_422(admin_app: TestClient) -> Non
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/auth/internal-login — success path (mocked fetch_operator)
+# POST /v1/auth/internal-login — success path (real DB)
 # ---------------------------------------------------------------------------
 
 
@@ -226,30 +221,16 @@ def test_internal_login_valid_credentials_returns_session_cookie(admin_app: Test
     POST /v1/auth/internal-login with valid credentials must return 200,
     set a mintkey_session httponly cookie, and set a csrf_token cookie.
 
-    We mock fetch_operator and create_session to avoid needing a seeded
-    operator in the real DB for this path.
+    Exercises real DB operations: fetch_operator and create_session are NOT
+    mocked — a real operator row is seeded via _seed_tenant_and_operator.
 
     Source: Req 2 AC2; ADR-0017.5.
     """
-    from unittest.mock import MagicMock
-
-    op = MagicMock()
-    op.id = _OPERATOR_ID
-    op.tenant_id = _TENANT_ID
-    op.email = _VALID_EMAIL
-    op.internal_password_hash = _VALID_HASH
-    op.is_platform_admin = True
-    op.status = "active"
-
-    with (
-        patch("admin_api.auth.internal.fetch_operator", new=AsyncMock(return_value=op)),
-        patch("admin_api.api.auth.create_session", new=AsyncMock(return_value="mock-session-uuid")),
-        patch("admin_api.auth.internal.clear_failed_attempts", new=AsyncMock()),
-    ):
-        response = admin_app.post(
-            "/v1/auth/internal-login",
-            json={"email": _VALID_EMAIL, "password": _VALID_PASSWORD},
-        )
+    _seed_tenant_and_operator(admin_app)
+    response = admin_app.post(
+        "/v1/auth/internal-login",
+        json={"email": _VALID_EMAIL, "password": _VALID_PASSWORD},
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -269,32 +250,21 @@ def test_internal_login_response_body_shape(admin_app: TestClient) -> None:
     POST /v1/auth/internal-login success response must include
     operator_id, tenant_id, and is_platform_admin fields.
 
+    Exercises real DB operations: fetch_operator and create_session are NOT
+    mocked — a real operator row is seeded via _seed_tenant_and_operator.
+
     Source: design §4 auth.py.
     """
-    from unittest.mock import MagicMock
-
-    op = MagicMock()
-    op.id = _OPERATOR_ID
-    op.tenant_id = _TENANT_ID
-    op.email = _VALID_EMAIL
-    op.internal_password_hash = _VALID_HASH
-    op.is_platform_admin = False
-    op.status = "active"
-
-    with (
-        patch("admin_api.auth.internal.fetch_operator", new=AsyncMock(return_value=op)),
-        patch("admin_api.api.auth.create_session", new=AsyncMock(return_value="mock-session-uuid-2")),
-        patch("admin_api.auth.internal.clear_failed_attempts", new=AsyncMock()),
-    ):
-        response = admin_app.post(
-            "/v1/auth/internal-login",
-            json={"email": _VALID_EMAIL, "password": _VALID_PASSWORD},
-        )
+    _seed_tenant_and_operator(admin_app)
+    response = admin_app.post(
+        "/v1/auth/internal-login",
+        json={"email": _VALID_EMAIL, "password": _VALID_PASSWORD},
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
     assert set(body.keys()) >= {"status", "operator_id", "tenant_id", "is_platform_admin"}
-    assert body["is_platform_admin"] is False
+    assert body["is_platform_admin"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -78,9 +78,9 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
 
 
 @router.post("/logout")
-async def logout(response: Response) -> JSONResponse:
+async def logout(response: Response) -> Response:
     response.delete_cookie("mintkey_session")
-    return JSONResponse({"status": "ok"})
+    return Response(status_code=204)
 
 
 @router.get("/whoami")
