@@ -16,19 +16,11 @@ Architecture constraints honoured:
   ADR-0014.7   — audit event emitted on tenant creation.
   ADR-0017.4   — PlatformAdmin-only gate.
   Req 13 AC1   — PlatformAdmin required.
-
-KNOWN SOURCE BUG:
-  admin_api/api/tenants.py line ~166 INSERTs with column `name` but the
-  tenants table (001-tenants.yaml) has `display_name`, not `name`.
-  Tests that invoke POST /v1/tenants are marked xfail until this is fixed.
-  Fix: rename `name` → `display_name` in the INSERT statement and bind
-  parameter dict in tenants.py create_tenant().
 """
 from __future__ import annotations
 
 import re
 
-import pytest
 from starlette.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -41,16 +33,6 @@ _CSRF_COOKIES = {"csrf_token": _CSRF_TOKEN}
 _PLATFORM_ADMIN = {"X-Platform-Admin": "true"}
 
 _TENANT_ID_RE = re.compile(r"^tenant_[0-9A-HJKMNP-TV-Z]{26}$")
-
-_TENANT_BUG = pytest.mark.xfail(
-    reason=(
-        "admin_api/api/tenants.py INSERTs with column 'name' but tenants table "
-        "has 'display_name' (see 001-tenants.yaml). "
-        "Fix: rename 'name' → 'display_name' in the INSERT in create_tenant()."
-    ),
-    strict=False,
-)
-
 
 def _post(client: TestClient, url: str, **kwargs):
     headers = {**kwargs.pop("headers", {}), **_CSRF_HEADERS}
@@ -108,11 +90,10 @@ def test_create_tenant_missing_slug_returns_422(admin_app: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests that require POST /v1/tenants to succeed — xfail due to source bug
+# Tests that require POST /v1/tenants to succeed
 # ---------------------------------------------------------------------------
 
 
-@_TENANT_BUG
 def test_create_tenant_returns_201(admin_app: TestClient) -> None:
     """POST /v1/tenants with PlatformAdmin → 201 with tenant_id ULID."""
     resp = _platform_post(
@@ -131,7 +112,6 @@ def test_create_tenant_returns_201(admin_app: TestClient) -> None:
     )
 
 
-@_TENANT_BUG
 def test_create_tenant_duplicate_slug_returns_409(admin_app: TestClient) -> None:
     """POST /v1/tenants with duplicate slug → 409 tenant_already_exists."""
     _platform_post(
@@ -149,7 +129,6 @@ def test_create_tenant_duplicate_slug_returns_409(admin_app: TestClient) -> None
     assert body["mintkey:code"] == "tenant_already_exists"
 
 
-@_TENANT_BUG
 def test_create_tenant_emits_audit_event(admin_app: TestClient, postgres_container) -> None:
     """
     Creating a tenant emits a tenant.created audit event — ADR-0014.7.
@@ -188,7 +167,6 @@ def test_create_tenant_emits_audit_event(admin_app: TestClient, postgres_contain
     assert count_row[0] >= 1, f"No tenant.created event for {tenant_uuid}"
 
 
-@_TENANT_BUG
 def test_create_tenant_genesis_hash_initialised(
     admin_app: TestClient, postgres_container
 ) -> None:

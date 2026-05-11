@@ -11,38 +11,11 @@ Architecture constraints honoured:
   ADR-0014.7    — audit event emitted on every state change.
   ADR-0008      — RLS tenant isolation; bound parameters.
   Req 1.3       — allowed_actions ⊆ agent's permission grants.
-
-KNOWN SOURCE BUGS in admin_api/api/api_keys.py:
-  1. list_api_keys(): service_id and created_by are UUID columns returned
-     as Python UUID objects — not JSON serializable. Fix: wrap with str().
-  2. get_api_key(): same UUID serialization issue (service_id, created_by).
-  3. revoke_api_key(): UPDATE sets revoked_by = 'operator' (string) but
-     the revoked_by column is UUID type. Fix: use a valid UUID or NULL.
-  Tests exercising these broken paths are marked xfail.
 """
 from __future__ import annotations
 
 import pytest
 from starlette.testclient import TestClient
-
-_APIKEY_LIST_BUG = pytest.mark.xfail(
-    reason=(
-        "admin_api/api/api_keys.py list_api_keys/get_api_key: service_id and "
-        "created_by are UUID DB columns returned as Python UUID objects without "
-        "str() conversion — JSONResponse raises TypeError. "
-        "Fix: wrap service_id and created_by with str() in the response dicts."
-    ),
-    strict=False,
-)
-
-_APIKEY_REVOKE_BUG = pytest.mark.xfail(
-    reason=(
-        "admin_api/api/api_keys.py revoke_api_key: UPDATE sets "
-        "revoked_by = 'operator' (plain string) but revoked_by column is UUID type. "
-        "Fix: pass a valid UUID or set revoked_by to NULL."
-    ),
-    strict=False,
-)
 
 # ---------------------------------------------------------------------------
 # CSRF helpers (mirrors test_services.py pattern)
@@ -275,7 +248,6 @@ def _get_latest_api_key_uuid(postgres_container, agent_uuid: str, tenant_uuid: s
     return str(row[0])
 
 
-@_APIKEY_LIST_BUG
 def test_list_api_keys_returns_200(
     admin_app: TestClient,
     ak_tenant_uuid: str,
@@ -284,14 +256,7 @@ def test_list_api_keys_returns_200(
     ak_setup,
     postgres_container,
 ) -> None:
-    """
-    GET …/api-keys → 200 list; never contains plaintext — ADR-0018 §1.3.
-
-    NOTE: The list endpoint has a source bug: service_id and created_by
-    are returned as raw UUID objects which are not JSON serializable.
-    This test documents the expected behavior (200 with items) and will
-    fail with a clear server error until the source bug is fixed.
-    """
+    """GET …/api-keys → 200 list; never contains plaintext — ADR-0018 §1.3."""
     # Ensure at least one key exists
     create_resp = _post(
         admin_app,
@@ -304,9 +269,7 @@ def test_list_api_keys_returns_200(
         f"/v1/tenants/{ak_tenant_uuid}/agents/{ak_agent_uuid}/api-keys"
     )
     assert resp.status_code == 200, (
-        f"Expected 200 but got {resp.status_code}. "
-        "KNOWN BUG: list_api_keys returns UUID objects instead of strings "
-        "(service_id, created_by columns) — not JSON serializable."
+        f"Expected 200 but got {resp.status_code}: {resp.text}"
     )
     items = resp.json()
     assert isinstance(items, list)
@@ -320,7 +283,6 @@ def test_list_api_keys_returns_200(
         assert "status" in item
 
 
-@_APIKEY_LIST_BUG
 def test_get_single_api_key_returns_200(
     admin_app: TestClient,
     ak_tenant_uuid: str,
@@ -329,11 +291,7 @@ def test_get_single_api_key_returns_200(
     ak_setup,
     postgres_container,
 ) -> None:
-    """GET …/api-keys/{kid} → 200 with key details (no plaintext).
-
-    Uses the internal UUID from the DB to avoid dependency on the broken list endpoint.
-    The get_api_key route has the same UUID serialization bug as list_api_keys.
-    """
+    """GET …/api-keys/{kid} → 200 with key details (no plaintext)."""
     # Create a key to fetch
     create_resp = _post(
         admin_app,
@@ -342,7 +300,7 @@ def test_get_single_api_key_returns_200(
     )
     assert create_resp.status_code == 201
 
-    # Get internal UUID directly from DB (list endpoint has a source bug)
+    # Get internal UUID directly from DB
     kid = _get_latest_api_key_uuid(postgres_container, ak_agent_uuid, ak_tenant_uuid)
 
     resp = admin_app.get(
@@ -371,7 +329,6 @@ def test_get_single_api_key_unknown_returns_404(
     assert resp.json()["mintkey:code"] == "not_found"
 
 
-@_APIKEY_REVOKE_BUG
 def test_revoke_api_key_returns_200(
     admin_app: TestClient,
     ak_tenant_uuid: str,
@@ -388,7 +345,7 @@ def test_revoke_api_key_returns_200(
     )
     assert create_resp.status_code == 201
 
-    # Get internal UUID from DB directly (list endpoint has a source bug)
+    # Get internal UUID from DB directly
     kid = _get_latest_api_key_uuid(postgres_container, ak_agent_uuid, ak_tenant_uuid)
 
     revoke_resp = _post(

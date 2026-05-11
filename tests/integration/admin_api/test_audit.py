@@ -13,12 +13,6 @@ Covers:
 Architecture constraints honoured:
   ADR-0014.7 — every state change emits an audit event.
   ADR-0008   — RLS tenant isolation.
-
-KNOWN SOURCE BUG:
-  admin_api/api/audit.py line 77 SELECTs `created_at` but the audit_events
-  table column is named `at` (see 007-audit-events.yaml). All GET /audit
-  tests are marked xfail until this bug is fixed. The tests document the
-  expected behavior; fix the source to make them pass.
 """
 from __future__ import annotations
 
@@ -220,24 +214,10 @@ def test_audit_event_has_hash_chain(
 
 
 # ---------------------------------------------------------------------------
-# Tests for GET /v1/tenants/{id}/audit — xfail due to source bug
-#
-# BUG: admin_api/api/audit.py line 77 SELECTs `created_at` but the column
-# is named `at`. The route returns HTTP 500 instead of 200.
-# These tests document expected behavior and will pass once the bug is fixed.
+# Tests for GET /v1/tenants/{id}/audit
 # ---------------------------------------------------------------------------
 
-_AUDIT_BUG = pytest.mark.xfail(
-    reason=(
-        "admin_api/api/audit.py uses `created_at` in SELECT but audit_events "
-        "column is named `at` (see 007-audit-events.yaml). Fix: rename `created_at` "
-        "to `at` in the SELECT and both filter clauses in audit.py."
-    ),
-    strict=False,
-)
 
-
-@_AUDIT_BUG
 def test_audit_list_returns_200_after_state_change(
     admin_app: TestClient,
     audit_tenant_uuid: str,
@@ -256,7 +236,6 @@ def test_audit_list_returns_200_after_state_change(
         assert "tenant_id" in ev
 
 
-@_AUDIT_BUG
 def test_audit_list_empty_for_fresh_tenant(
     admin_app: TestClient,
     audit_tenant_b_uuid: str,
@@ -269,7 +248,6 @@ def test_audit_list_empty_for_fresh_tenant(
     assert body["next_cursor"] is None
 
 
-@_AUDIT_BUG
 def test_audit_cross_tenant_isolation(
     admin_app: TestClient,
     audit_tenant_uuid: str,
