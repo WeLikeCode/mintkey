@@ -61,3 +61,91 @@ Initial release. Template skeleton generalized for cross-engagement reuse.
 ---
 
 *Template ownership: Enterprise Business Architect Practice. Maintained by {{architect handle}}.*
+
+---
+
+# Mintkey Implementation Changelog
+
+All notable implementation changes to the Mintkey credential broker MVP.
+
+## [1.0.0-mvp] — 2026-05-11
+
+First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks are implemented and tested.
+
+### Foundation (M1.0)
+- **Liquibase changelogs** (`admin-api/db/changelog/001–010.yaml`) — 10 domain tables, RLS policies with PlatformAdmin escape, 3 DB roles, indexes
+- **mintkey-models** (`mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification, Pydantic `ConstraintsSchema`
+- **Shared Go packages** (`internal/`) — `audit`, `changes`, `ulid`, `otelinit`, `svcid` packages
+- **Admin API skeleton** (`admin-api/`) — FastAPI with `/v1/health`, `/v1/ready`, tenant-context middleware, CSRF middleware, OTel instrumentation
+- **Vault Adapter** (`services/vault-adapter/`) — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server with `ValidateServiceIdentity`, encrypted-DEK cache with change-channel invalidation
+- **Credential Broker** (`services/broker/`) — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter
+- **Kong-syncer** (`services/kong-syncer/`) — LISTEN/NOTIFY subscriber, Kong declarative YAML push
+- **Proxy Plugin** (`services/proxy-plugin/`) — JWT verification, credential injection (7 auth schemes), Vault gRPC client, response scrubber, audit emission, revocation sets, JWKS cache with TTL
+
+### Auth (M1.1)
+- Internal Argon2id login with identical-body timing equalization and DUMMY_HASH
+- OIDC login via Keycloak with `passport-openidconnect`
+- Session middleware with CSRF double-submit cookie
+
+### Services + Credentials (M1.2–M1.3)
+- Service CRUD with SSRF protection (RFC1918/link-local/metadata IP block), global `pg_notify`, audit events
+- Credential create/rotate endpoints (plaintext never returned, DEK per-store-op)
+- Vault Adapter `PutCredential` / `GetCredential` / `ValidateServiceIdentity` RPCs
+
+### Agents + Permissions (M1.4)
+- Agent CRUD with API key shown once (fingerprint in audit, never the key)
+- Permission grants with closed Pydantic `ConstraintsSchema` (`extra="forbid"`)
+
+### MCP + Token (M1.5)
+- MCP Server: agent auth, `list_services` / `describe_service` / `get_openapi`, `request_token` with constraint evaluation
+- JWT claims: `tnt` = prefixed ULID, `kid` in JWS header, 10-min TTL
+- Change-channel subscriber (global `mintkey:service` + `mintkey:agent`)
+
+### Brokered Call (M1.6)
+- Proxy Plugin end-to-end: JWT verify → permissions check → Vault fetch → credential inject → upstream call → response scrub
+- `proxy.hit` audit events, OTel span `mintkey.proxy.handle_request`
+- Revocation sets with `mintkey:agent` NOTIFY subscriber
+
+### Audit (M1.7)
+- `GET /v1/tenants/{tid}/audit` with cursor pagination, 6 optional filters (all bound-parameter SQL)
+- Mandatory hash chain: `prev_hash + hash` per event, per-tenant advisory lock
+- AST-walking architecture test: every state-change handler calls `audit_emit()`
+
+### Rotation + Revocation (M1.8–M1.9)
+- Credential rotation with DEK cache invalidation (`mintkey:credential` channel)
+- Agent revocation with immediate propagation to proxy plugin's in-memory set
+- Reconciliation endpoint: `GET /v1/changes?since=<event_id>` with 410 on unknown cursor
+
+### Observability (M1.10)
+- Two-layer OTel redaction: `RedactingSpanProcessor` (SDK) + `attributes/redact` + `redaction` processors (Collector)
+- Jaeger integration with trace propagation through all services
+- `prometheus.yml` configured; `/metrics` scrape targets for all containers
+
+### Multi-tenancy (M1.12)
+- `POST /v1/tenants` (PlatformAdmin only) with genesis hash + `audit_chain_state` init
+- RLS policy with `platform_admin_view` escape on all tenant-scoped tables
+- Cross-tenant isolation: zero data leakage verified by TestClient fuzzing test
+- Cross-tenant JWT replay rejection
+
+### Admin Settings + Chain Verification (M1.13)
+- `GET/PATCH /v1/admin/settings` with closed `AdminSettings` Pydantic schema
+- `POST /v1/admin/audit/verify-chain` — on-demand per-tenant hash chain verification
+- `POST /v1/admin/audit/acknowledge-tamper` — tamper acknowledgment with audit event
+- `platform_admin.access` emission on every PlatformAdmin cross-tenant read
+
+### CI Gates
+- OpenAPI parity gate (FastAPI runtime vs. checked-in YAML)
+- SQLAlchemy mirror diff (Liquibase vs. `mintkey_models/db.py`)
+- Mermaid render gate (all `\`\`\`mermaid` blocks)
+- No-SQL-injection architecture test (no f-string SQL, no dynamic `text()`)
+- Audit chokepoint architecture test (every write handler calls `audit_emit`)
+
+### Mock Backend
+- 11 FastAPI endpoints covering all 7 auth schemes plus utility endpoints (timeout, 5xx, redirects, echo)
+
+## [0.3.0-impl] — 2026-05-10
+
+### Added
+- Initial implementation sessions: Milestone 1.0 (Foundation), 1.1 (Login), 1.2 (Services), 1.3 (Credentials), 1.4 (Agents), 1.5 (MCP + Token), 1.6 (Brokered Call), 1.7 (Audit), 1.8 (Rotation), 1.9 (Revocation), 1.10 (Observability), 1.11 (Smoke), 1.12 (Multi-tenant), 1.13 (Admin Settings)
+- All 47 original Phase 1 Exit Criteria checklist items marked complete
+- 37 additional checklist items added (24 `[x]` for implemented tasks, 13 `[ ]` for remaining AdminJS UI + Prometheus + Grafana + CI pipeline work)

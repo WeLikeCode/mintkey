@@ -1,0 +1,63 @@
+{
+  "id": null,
+  "uid": "mintkey-audit",
+  "title": "mintkey-audit",
+  "tags": ["mintkey"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "60s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Audit Events per Second",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_audit_events_total[5m])",
+          "legendFormat": "events/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Audit Events by Type",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_audit_events_total[5m])",
+          "legendFormat": "{{event_type}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Chain Verification Status",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "mintkey_audit_chain_ok"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "PlatformAdmin Cross-Tenant Access",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_audit_events_total{event_type=\"platform_admin.access\"}[5m])",
+          "legendFormat": "platform_admin.access/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12}
+    }
+  ]
+}

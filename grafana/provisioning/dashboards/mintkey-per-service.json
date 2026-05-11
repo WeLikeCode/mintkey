@@ -1,0 +1,74 @@
+{
+  "id": null,
+  "uid": "mintkey-per-service",
+  "title": "mintkey-per-service",
+  "tags": ["mintkey"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "service_id",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(mintkey_proxy_hit_total, service_id)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Proxy Hits by Service",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_proxy_hit_total{service_id=~\"$service_id\"}[5m])",
+          "legendFormat": "{{service_id}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Proxy Added Latency p99 (ms)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(mintkey_proxy_added_latency_seconds_bucket{service_id=~\"$service_id\"}[5m])) by (le, service_id)) * 1000",
+          "legendFormat": "{{service_id}} p99"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Token Issuance Rate",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_token_issued_total[5m])",
+          "legendFormat": "tokens/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Proxy Denied Requests",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(mintkey_proxy_denied_total{service_id=~\"$service_id\"}[5m])",
+          "legendFormat": "{{reason}} {{service_id}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
+}

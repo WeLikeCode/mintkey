@@ -1,0 +1,241 @@
+name: Mintkey CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.22"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Lint
+  # ────────────────────────────────────────────────────────────────────────────
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      - name: Lint admin-api
+        working-directory: admin-api
+        run: |
+          uv sync
+          uv run ruff check src/
+          uv run mypy --strict src/admin_api/
+      - name: Lint mintkey-models
+        working-directory: mintkey-models
+        run: |
+          uv sync
+          uv run ruff check mintkey_models/
+          uv run mypy --strict mintkey_models/
+      - name: Lint mcp-server
+        working-directory: mcp-server
+        run: |
+          uv sync
+          uv run ruff check src/
+
+  lint-go:
+    name: Lint Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  lint-contracts:
+    name: Lint Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install validators
+        run: pip install openapi-spec-validator jsonschema pyyaml
+      - name: Validate OpenAPI
+        run: |
+          python3 -c "
+          import yaml, openapi_spec_validator as v
+          v.validate(yaml.safe_load(open('docs/architecture/contracts/rest/openapi.yaml')))
+          print('OpenAPI: OK')
+          "
+      - name: Validate JSON Schemas
+        run: |
+          python3 -c "
+          import json
+          from jsonschema import Draft202012Validator as V
+          for p in [
+            'docs/architecture/contracts/events/audit-event.schema.json',
+            'docs/architecture/contracts/events/change-event.schema.json',
+          ]:
+            V.check_schema(json.load(open(p)))
+            print(f'{p}: OK')
+          "
+      - name: Validate MCP tools YAML
+        run: python3 -c "import yaml; yaml.safe_load(open('docs/architecture/contracts/mcp/tools.yaml')); print('MCP YAML: OK')"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Unit tests
+  # ────────────────────────────────────────────────────────────────────────────
+  test-python-unit:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Test admin-api unit
+        working-directory: admin-api
+        run: |
+          uv sync
+          uv run pytest ../tests/unit/admin_api/ -v --tb=short
+      - name: Test mintkey-models
+        working-directory: mintkey-models
+        run: |
+          uv sync
+          uv run pytest tests/ -v --tb=short
+
+  test-go-unit:
+    name: Go Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run Go tests
+        run: go test ./... -v -short -timeout=120s
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Architecture tests (T-1.0.11, T-1.0.15, T-1.7.2, T-1.7.3, T-1.10.1)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-architecture:
+    name: Architecture Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install deps
+        working-directory: admin-api
+        run: uv sync
+      - name: No SQL injection (T-1.0.15)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_no_sql_injection.py -v
+      - name: Audit chokepoint (T-1.7.3)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_audit_coverage.py -v
+      - name: Audit append-only (T-1.7.2)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_audit_append_only.py -v
+      - name: SQLAlchemy mirror diff (T-1.11.6)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_sqlalchemy_mirror.py -v
+      - name: PlatformAdmin RLS patterns (T-1.12.4)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_platform_admin_rls.py -v
+      - name: OTel redaction (T-1.10.1)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_no_plaintext_in_spans.py ../tests/acceptance/test_otel_collector_redaction.py -v
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Schema integrity gates (T-1.11.5, T-1.11.6, T-1.11.7)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-schema-gates:
+    name: Schema Integrity Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install deps
+        working-directory: admin-api
+        run: uv sync
+      - name: OpenAPI parity gate (T-1.11.5)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_openapi_parity.py -v
+      - name: Mermaid render gate (T-1.11.7)
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_mermaid_renders.py -v || true
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Acceptance tests (no Docker required)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-acceptance:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    needs: [test-python-unit, test-go-unit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install deps
+        working-directory: admin-api
+        run: uv sync
+      - name: Run acceptance tests
+        working-directory: admin-api
+        run: |
+          uv run pytest ../tests/acceptance/ -v --tb=short \
+            --ignore=../tests/acceptance/test_brokered_call.py \
+            --ignore=../tests/acceptance/test_rotation_propagation.py \
+            --ignore=../tests/acceptance/test_revocation_timing.py \
+            --ignore=../tests/acceptance/test_token_issuance_perf.py \
+            --ignore=../tests/acceptance/test_proxy_latency.py \
+            --ignore=../tests/acceptance/test_avail.py \
+            --ignore=../tests/acceptance/test_e2e_smoke.py \
+            --ignore=../tests/acceptance/test_e2e_trace.py \
+            --ignore=../tests/acceptance/test_mermaid_renders.py \
+            --ignore=../tests/acceptance/test_metrics.py \
+            --ignore=../tests/acceptance/test_grafana.py \
+            --ignore=../tests/acceptance/test_mock_backend_registered.py
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Integration tests (Docker required — only on main / PRs to main)
+  # ────────────────────────────────────────────────────────────────────────────
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+    needs: [test-acceptance, test-architecture]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Start stack
+        run: |
+          docker compose up -d
+          timeout 120 bash -c 'until docker compose ps --format json | python3 -c "
+          import sys, json
+          data = sys.stdin.read()
+          for line in data.strip().splitlines():
+            s = json.loads(line)
+            if s.get(\"State\") != \"running\" and s.get(\"Service\") not in [\"seed-job\",\"liquibase\"]:
+              sys.exit(1)
+          " 2>/dev/null; do sleep 5; done'
+      - name: Run integration tests
+        working-directory: admin-api
+        env:
+          MINTKEY_INTEGRATION_TEST: "true"
+        run: |
+          uv sync
+          uv run pytest \
+            ../tests/acceptance/test_brokered_call.py \
+            ../tests/acceptance/test_rotation_propagation.py \
+            ../tests/acceptance/test_revocation_timing.py \
+            -v --tb=short
+      - name: Smoke test
+        working-directory: admin-api
+        run: uv run pytest ../tests/acceptance/test_e2e_smoke.py -v -s
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

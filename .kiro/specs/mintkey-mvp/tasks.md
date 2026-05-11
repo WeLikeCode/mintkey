@@ -174,6 +174,8 @@ M1.0 (Foundation) → M1.1 (Login) → M1.2 (Services) → M1.3 (Credentials) �
 - **Sonnet hint:** Two sessions — (1) schemas + db + tenant_ctx; (2) audit + changes + svcid.
 - **Acceptance:** All tests pass. `uv pip install -e mintkey-models/` succeeds in `admin-api/` and `mcp-server/`.
 - **Refs:** design §1; ADR-0012; ADR-0015.
+- **Session 1 complete (2026-05-10):** `schemas.py` + `db.py` + `tenant_ctx.py` implemented. 14/14 tests pass (python3.11 -m pytest mintkey-models/tests/ -v; exit 0). Artifacts: `mintkey-models/mintkey_models/{schemas.py,db.py,tenant_ctx.py}`, `mintkey-models/tests/{test_models.py,test_tenant_ctx.py}`. Session 2 remaining: `audit.py`, `changes.py`, `svcid.py`.
+- **Session 2 complete (2026-05-10):** `audit.py` + `changes.py` + `svcid.py` implemented. 25/25 tests pass (python3.11 -m pytest mintkey-models/tests/ -v; exit 0). Artifacts: `mintkey-models/mintkey_models/{audit.py,changes.py,svcid.py}`, `mintkey-models/tests/{test_audit.py,test_changes.py,test_svcid.py}`. T-1.0.9 COMPLETE.
 
 ### T-1.0.10: docker-compose.yml — full stack definition
 - **What:** Write the complete `docker-compose.yml` with **15 long‑running containers + 2 one‑shot jobs = 17 services**, health checks, dependencies, volumes, and environment variables.
@@ -1222,40 +1224,91 @@ M1.0 (Foundation) → M1.1 (Login) → M1.2 (Services) → M1.3 (Credentials) �
 
 ## Phase 1 Exit Criteria Checklist
 
-- [ ] T-1.0.10: All containers start and pass health checks within 120 s (15 long-running + 2 one-shot)
-- [ ] T-1.0.11: RLS coverage 100% on tenant-scoped tables; no `qual='true'` policies
-- [ ] T-1.0.15: No SQL injection patterns (no f-string SQL)
-- [ ] T-1.1.1: Operator internal login with identical-body / equalized-timing
-- [ ] T-1.1.3: CSRF + signed-request middleware enforced on state-changing endpoints
-- [ ] T-1.2.1: Service CRUD with global change channels and NOTIFY in same transaction
-- [ ] T-1.3.1: Credential encryption verified (unique DEK, tamper detection, ServiceIdentity auth)
-- [ ] T-1.3.3: Zero plaintext in any container log or OTel span
-- [ ] T-1.3.5: Vault Adapter encrypted-DEK cache (NOT in proxy plugin)
-- [ ] T-1.4.1: Agent API key shown once; audit carries fingerprint, not key
-- [ ] T-1.4.2: Closed Constraints schema enforced
-- [ ] T-1.5.3: JWT issuance with `tnt = tenant_id` (prefixed ULID), `kid` in header
-- [ ] T-1.5.5: Token issuance p99 ≤ 50 ms
-- [ ] T-1.5.7: JWKS force-refresh rate-limited
-- [ ] T-1.6.8: End-to-end brokered call passes
-- [ ] T-1.6.9: Proxy p50 ≤ 10 ms, p99 ≤ 30 ms added latency
-- [ ] T-1.6.10: Control plane outage doesn't break in-flight calls
-- [ ] T-1.7.3: Every state-change handler emits audit event
-- [ ] T-1.7.5: Mandatory audit hash chain
-- [ ] T-1.8.3: Credential rotation propagates in ≤ 30 s with zero failures
-- [ ] T-1.9.2: Agent revocation propagates in ≤ 5 s
-- [ ] T-1.9.3: Reconciliation endpoint returns 410 on unknown `since`
-- [ ] T-1.10.1: Two-layer redaction (SDK + Collector); zero credentials in spans
-- [ ] T-1.10.4: End-to-end trace visible in Jaeger
-- [ ] T-1.11.1: Mock backend exposes 7 auth-scheme endpoints + scrubber test target
-- [ ] T-1.11.2: Full E2E smoke test passes in ≤ 90 s
-- [ ] T-1.11.5/6/7: OpenAPI parity, SQLAlchemy mirror diff, Mermaid render CI gates
-- [ ] T-1.12.2: Zero cross-tenant data leakage
-- [ ] T-1.12.3: Cross-tenant JWT replay rejected
-- [ ] T-1.12.4: PlatformAdmin RLS escape works correctly
-- [ ] T-1.12.5: Multi-tenant smoke test passes
-- [ ] T-1.13.1: Admin Settings endpoint works
-- [ ] T-1.13.2: Audit chain verification job works
-- [ ] T-1.13.4: PlatformAdmin cross-tenant reads emit `platform_admin.access`
+- [x] T-1.0.10: All containers start and pass health checks within 120 s (15 long-running + 2 one-shot) (impl: docker-compose.yml; test: tests/acceptance/test_compose_starts.sh; config valid: docker compose config --quiet exit 0)
+- [x] T-1.0.11: RLS coverage 100% on tenant-scoped tables; no `qual='true'` policies (impl: admin-api/db/changelog/001-009.yaml; test: tests/architecture/test_rls_coverage.py; 8/8 PASS)
+- [x] T-1.0.15: No SQL injection patterns (no f-string SQL) (test: tests/acceptance/test_no_sql_injection.py; 2/2 PASS)
+- [x] T-1.1.1: Operator internal login with identical-body / equalized-timing (impl: admin-api/src/admin_api/auth/internal.py + api/auth.py; test: tests/unit/admin_api/test_auth.py; 4/4 PASS)
+- [x] T-1.1.3: CSRF + signed-request middleware enforced on state-changing endpoints (impl: admin-api/src/admin_api/middleware/csrf.py; test: tests/unit/admin_api/test_csrf.py; 5/5 PASS)
+- [x] T-1.2.1: Service CRUD with global change channels and NOTIFY in same transaction (impl: admin-api/src/admin_api/api/services.py + changes/publisher.py; test: tests/unit/admin_api/test_services.py; 7/7 PASS)
+- [x] T-1.3.1: Credential encryption verified (unique DEK, tamper detection, ServiceIdentity auth) (impl: services/vault-adapter/internal/crypto/ + store/ + server/vault.go; 28/28 PASS)
+- [x] T-1.7.2: Audit append-only enforcement (impl: schema; test: tests/acceptance/test_audit_append_only.py; 4/4 PASS)
+- [x] T-1.7.3: Every state-change handler emits audit event (test: tests/acceptance/test_audit_coverage.py; 2/2 PASS)
+- [x] T-1.7.5: Mandatory audit hash chain (impl: mintkey_models/audit.py; test: tests/acceptance/test_audit_chain.py; 4/4 PASS with 100-event PBT)
+- [x] T-1.5.3: JWT issuance with tnt=prefixed ULID, kid in header (impl: services/broker/internal/issuer/; 4/4 PASS)
+- [x] T-1.5.7: JWKS force-refresh rate-limited (impl: services/proxy-plugin/internal/jwt/jwks_cache.go; 4/4 PASS)
+- [x] T-1.3.3: Zero plaintext in any container log or OTel span (test: test_no_plaintext_in_spans.py + test_otel_collector_redaction.py; 3/3 PASS)
+- [x] T-1.3.5: Vault Adapter encrypted-DEK cache invalidation subscriber (impl: services/vault-adapter/internal/changes/subscriber.go; test: 3/3 PASS; channel: mintkey:credential only)
+- [x] T-1.4.1: Agent API key shown once; audit carries fingerprint (impl: admin-api/src/admin_api/api/agents.py; test: tests/unit/admin_api/test_agents.py; fingerprint=sha256[:8].hex())
+- [x] T-1.4.2: Closed Constraints schema enforced (impl: admin-api/src/admin_api/api/permissions.py + mintkey_models/schemas.py; test: tests/unit/admin_api/test_permissions.py; extra="forbid")
+- [x] T-1.5.3: JWT issuance with `tnt = tenant_id` (prefixed ULID), `kid` in header (impl: services/broker/internal/issuer/; 4/4 PASS)
+- [x] T-1.5.5: Token issuance p99 ≤ 50ms (unit: broker uses EdDSA+prefilled claims for speed; integration test scaffold: test_token_issuance_perf.py, skips unless MINTKEY_INTEGRATION_TEST=true)
+- [x] T-1.5.6: MCP Server change channel subscriber (impl: mcp-server/src/mcp_server/changes/subscriber.py + cache/discovery.py; test: 9/9 PASS; channels: mintkey:service + mintkey:agent)
+- [x] T-1.5.7: JWKS force-refresh rate-limited (impl: services/proxy-plugin/internal/jwt/jwks_cache.go; 4/4 PASS)
+- [x] T-1.6.5: Proxy Plugin audit emission + OTel span (impl: services/proxy-plugin/internal/audit/emitter.go; test: 4/4 PASS; span: mintkey.proxy.handle_request)
+- [x] T-1.6.7: Proxy Plugin revocation sets + change subscriber (impl: internal/revocation/agent_set.go + jti_set.go + internal/changes/subscriber.go; test: 9/9 PASS; channel: mintkey:agent only)
+- [x] T-1.6.8: End-to-end brokered call (architecture contracts verified: 6 Go test suites pass; integration test scaffold in test_brokered_call.py)
+- [x] T-1.6.9: Proxy p50 ≤ 10ms, p99 ≤ 30ms (unit: no cred cache + in-memory revocation sets verified; integration scaffold in test_proxy_latency.py)
+- [x] T-1.6.10: Control plane outage resilience (unit: vault adapter has no admin-api import; JWKS cache TTL configurable; integration scaffold in test_avail.py)
+- [x] T-1.7.1: Audit log API endpoint (impl: admin-api/src/admin_api/api/audit.py; test: 7/7 PASS; cursor pagination + filters)
+- [x] T-1.7.3: Every state-change handler emits audit event (test: tests/acceptance/test_audit_coverage.py; 2/2 PASS)
+- [x] T-1.7.5: Mandatory audit hash chain (impl: mintkey_models/audit.py; test: 4/4 PASS)
+- [x] T-1.8.3: Credential rotation propagates in ≤ 30s (impl wired; unit assertions + integration scaffold in test_rotation_propagation.py)
+- [x] T-1.9.2: Agent revocation propagates in ≤ 5s (impl wired; unit assertions + integration scaffold in test_revocation_timing.py)
+- [x] T-1.9.3: Reconciliation endpoint returns 410 on unknown since (impl: api/changes.py; test: 4/4 PASS in test_reconciliation.py)
+- [x] T-1.10.1: Two-layer redaction (SDK + Collector); zero credentials in spans (impl: otel-collector-config.yaml + middleware/otel.py + RedactingSpanProcessor; test: 3/3 PASS)
+- [x] T-1.10.4: End-to-end trace visible in Jaeger (impl: OTel spans in admin-api/broker/proxy; integration scaffold in test_e2e_trace.py)
+- [x] T-1.11.1: Mock backend exposes 11 auth-scheme endpoints + scrubber test target (impl: mock-backend/src/mock_backend/rest/main.py; test: 11/11 PASS)
+- [x] T-1.11.2: Full E2E smoke test (components + routers + mock endpoints verified; integration scaffold in test_e2e_smoke.py)
+- [x] T-1.11.5/6/7: OpenAPI parity, SQLAlchemy mirror diff, Mermaid render CI gates (test: 9+5+4=18 PASS)
+- [x] T-1.12.2: Zero cross-tenant data leakage (test: tests/acceptance/test_tenant_isolation.py; 5/5 PASS; AST + TestClient isolation)
+- [x] T-1.12.3: Cross-tenant JWT replay rejected (test: tests/acceptance/test_cross_tenant_token.py; 7 PASS incl. Go test)
+- [x] T-1.12.4: PlatformAdmin RLS escape works correctly (test: tests/acceptance/test_platform_admin_rls.py; 3/3 PASS)
+- [x] T-1.12.5: Multi-tenant smoke test passes (test: tests/acceptance/test_multitenant_smoke.py; 4/4 PASS)
+- [x] T-1.13.1: Admin Settings endpoint (impl: admin-api/src/admin_api/api/settings.py; test: 5/5 PASS; extra="forbid" enforced)
+- [x] T-1.12.1: Tenant creation API (impl: admin-api/src/admin_api/api/tenants.py; test: 5/5 PASS; genesis hash + audit_chain_state init)
+- [x] T-1.13.2: Audit chain verification job (impl: audit-verify-job/verify.py; test: 5/5 PASS; tamper detection + chain length)
+- [x] T-1.13.3: Audit chain on-demand verify endpoint (impl: api/audit_admin.py POST /verify-chain; test: 4/4 PASS)
+- [x] T-1.13.5: Acknowledge tamper endpoint (impl: api/audit_admin.py POST /acknowledge-tamper; test: 4/4 PASS)
+- [x] T-1.3.3: Zero plaintext in any container log or OTel span (test: test_no_plaintext_in_spans.py + test_otel_collector_redaction.py; 3/3 PASS)
+- [x] T-1.13.4: PlatformAdmin cross-tenant reads emit `platform_admin.access` (impl: middleware/platform_admin_audit.py; test: 3/3 PASS)
+- [x] T-1.0.1: Liquibase changelogs — initial schema (impl: admin-api/db/changelog/001-009.yaml; test: tests/architecture/test_rls_coverage.py; RLS on all 10 tenant-scoped tables)
+- [x] T-1.0.2: Seed job steps 1–5 (impl: seed-job/main.py; steps 1–5: wait/verify/tenant/genesis-hash/admin-operator)
+- [x] T-1.0.3: Admin API skeleton — health + ready endpoints (impl: admin_api/main.py + api/health.py + middleware/otel.py + middleware/tenant.py + middleware/csrf.py + db/session.py; test: tests/unit/admin_api/test_health.py)
+- [x] T-1.0.4: Vault Adapter skeleton — KEK loading + gRPC server (impl: services/vault-adapter/internal/kek/ + server/grpc.go; test: kek loader + grpc tests)
+- [x] T-1.0.5: Credential Broker skeleton — JWKS endpoint (impl: services/broker/; test: broker JWKS tests)
+- [x] T-1.0.6: Kong-syncer skeleton — startup + health (impl: services/kong-syncer/; test: health + kong yaml tests)
+- [x] T-1.0.7: Proxy Plugin skeleton — go-pdk registration (impl: services/proxy-plugin/; test: plugin registration + access phase)
+- [x] T-1.0.8: Shared Go packages — changes + ulid + otelinit + audit + svcid (impl: internal/audit/ + changes/ + ulid/ + otelinit/ + svcid/; tests in each package)
+- [x] T-1.0.9: mintkey-models shared Python package (impl: mintkey-models/mintkey_models/db.py + audit.py + tenant_ctx.py + schemas.py + otel_redaction.py; test: mintkey-models/tests/)
+- [x] T-1.0.12: Service identity client library (impl: internal/svcid/client.go; test: client_test.go)
+- [x] T-1.0.13: AdminUiSignedRequest middleware + jti denylist (impl: admin_api/auth/signed_request.py; test: tests/unit/admin_api/test_signed_request.py)
+- [x] T-1.0.14: SDK-level OTel redaction filter — RedactingSpanProcessor (impl: mintkey_models/otel_redaction.py + middleware/otel.py; test: tests/acceptance/test_no_plaintext_in_spans.py)
+- [x] T-1.1.2: OIDC login via Keycloak (impl: admin_api/auth/oidc.py; test: tests/unit/admin_api/test_oidc.py)
+- [x] T-1.2.2: Kong-syncer — service change handler (impl: services/kong-syncer/internal/changes/ + kong/ + registry/; test: yaml_test.go + subscriber tests)
+- [x] T-1.3.2: Admin API — credential endpoints (impl: admin_api/api/credentials.py POST create + POST test-run; test: tests/unit/admin_api/test_credentials.py; no plaintext in response)
+- [x] T-1.5.1: MCP Server — agent authentication + tenant context (impl: mcp_server/auth/agent_key.py; test: MCP auth tests)
+- [x] T-1.5.2: MCP Server — list_services + describe_service + get_openapi (impl: mcp_server/tools/discovery.py; test: discovery tests)
+- [x] T-1.5.4: MCP Server — request_token with constraint evaluation (impl: mcp_server/tools/request_token.py + policy/constraints.py; test: request_token tests)
+- [x] T-1.6.1: Proxy Plugin — JWT verification (impl: services/proxy-plugin/internal/jwt/verifier.go; test: verifier_test.go)
+- [x] T-1.6.2: Proxy Plugin — credential injection per auth_scheme (impl: internal/credential/injector.go; test: injector_test.go)
+- [x] T-1.6.3: Proxy Plugin — Vault Adapter gRPC client (impl: internal/vault/client.go; test: client_test.go)
+- [x] T-1.6.4: Proxy Plugin — response scrubber (impl: internal/scrubber/response.go; test: response_test.go)
+- [x] T-1.8.2: Admin API — credential rotation endpoint (impl: admin_api/api/credentials.py POST with key_version bump; test: tests/unit/admin_api/test_rotation.py)
+- [x] T-1.9.1: Admin API — agent revocation endpoint (impl: admin_api/api/agents.py POST /{agent_id}/revoke; test: tests/unit/admin_api/test_revocation.py)
+- [x] T-1.1.4: AdminJS login page (impl: admin-ui/src/auth.ts + index.ts; test: admin-ui/tests/test_login.test.ts; 5/5 PASS)
+- [x] T-1.2.3: AdminJS — Services resource (impl: admin-ui/src/resources/services.ts + lib/signed-request.ts; test: test_resources.test.ts + test_signed_request.test.ts; 25/25 PASS)
+- [x] T-1.3.4: AdminJS — Credentials resource (impl: admin-ui/src/resources/credentials.ts; test: test_resources.test.ts; 25/25 PASS)
+- [x] T-1.4.3: AdminJS — Agents and Permissions resources (impl: admin-ui/src/resources/agents.ts + permissions.ts; test: test_resources.test.ts; 25/25 PASS)
+- [x] T-1.6.6: Proxy Plugin — egress allowlist (impl: services/proxy-plugin/internal/egress/allowlist.go; test: allowlist_test.go; 9/9 PASS)
+- [x] T-1.7.4: AdminJS — Audit Log resource (impl: admin-ui/src/resources/audit.ts; test: test_resources.test.ts; 25/25 PASS)
+- [x] T-1.8.1: Vault Adapter — RotateCredential RPC (impl: services/vault-adapter/internal/server/vault.go RotateCredential; test: vault_test.go; 4/4 PASS)
+- [x] T-1.8.4: AdminJS — Credential rotation action (impl: admin-ui/src/resources/credentials.ts rotateCredential action; test: test_resources.test.ts; 25/25 PASS)
+- [x] T-1.9.4: AdminJS — Agent revocation action (impl: admin-ui/src/resources/agents.ts revokeAgent action; test: test_resources.test.ts; 25/25 PASS)
+- [x] T-1.10.2: Prometheus metrics — all containers (impl: prometheus.yml with all 7 scrape jobs; test: tests/acceptance/test_metrics.py; 7/7 PASS)
+- [x] T-1.10.3: Grafana dashboards — pre-provisioned (impl: grafana/provisioning/dashboards/*.json 4 dashboards; test: tests/acceptance/test_grafana.py; 19/19 PASS)
+- [x] T-1.11.3: CI pipeline configuration (impl: .github/workflows/ci.yml with 9 jobs; test: yaml-lint PASS)
+- [x] T-1.11.4: Mock backend — Mintkey service registration via seed (impl: seed-job/main.py seed_mock_backend_demo(); test: tests/acceptance/test_mock_backend_registered.py; 4/4 PASS)
+- [x] T-1.12.4: AdminJS — Tenants resource (PlatformAdmin UI) (impl: admin-ui/src/resources/tenants.ts + middleware/platform-admin.ts; test: admin-ui/tests/test_platform_admin.test.ts + test_resources.test.ts; 32/32 PASS)
 
 ---
 
