@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 from testcontainers.postgres import PostgresContainer
@@ -159,3 +160,58 @@ def admin_app(postgres_container: PostgresContainer, apply_migrations):
     app = create_app()
     with TestClient(app, raise_server_exceptions=True) as client:
         yield client
+
+
+# ---------------------------------------------------------------------------
+# Module-scoped DB cleanup — resets domain data between test modules
+# ---------------------------------------------------------------------------
+
+_DOMAIN_TABLES = (
+    "service_api_keys",
+    "permission_grants",
+    "credentials",
+    "audit_events",
+    "audit_chain_state",
+    "service_identities",
+    "services",
+    "admin_request_jti",
+    "sessions",
+    "agents",
+    "operator_tenant_memberships",
+    "tenant_settings",
+    "operators",
+    "tenants",
+)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def clean_db(admin_app: TestClient, postgres_container: PostgresContainer, apply_migrations):
+    """Truncate all domain tables and reset client cookies before each test module."""
+    import asyncio
+
+    # Clear any session/CSRF cookies accumulated by previous modules so that
+    # the shared TestClient's cookie jar does not bleed state between modules.
+    admin_app.cookies.clear()
+
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    db = postgres_container.dbname
+    user = postgres_container.username
+    password = postgres_container.password
+
+    tables_csv = ", ".join(_DOMAIN_TABLES)
+
+    async def _truncate():
+        conn = await asyncpg.connect(
+            host=host,
+            port=int(port),
+            database=db,
+            user=user,
+            password=password,
+        )
+        try:
+            await conn.execute(f"TRUNCATE {tables_csv} CASCADE")
+        finally:
+            await conn.close()
+
+    asyncio.get_event_loop().run_until_complete(_truncate())
