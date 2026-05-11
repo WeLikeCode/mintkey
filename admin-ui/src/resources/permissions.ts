@@ -16,18 +16,20 @@ import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
+const _permissionsResource = new RestResource({
+  id: "permission_grants", name: "Permissions",
+  listPath: "/v1/tenants/{tenantId}/agents",
+  listKey: "agents",
+  idField: "id",
+  properties: [
+    { path: "id", type: "uuid", isId: true },
+    { path: "name", type: "string" },
+    { path: "status", type: "string" },
+  ],
+});
+
 export const PermissionsResource: ResourceWithOptions = {
-  resource: new RestResource({
-    id: "permissions", name: "Permissions",
-    listPath: "/v1/tenants/{tenantId}/agents",
-    listKey: "agents",
-    idField: "id",
-    properties: [
-      { path: "id", type: "uuid", isId: true },
-      { path: "name", type: "string" },
-      { path: "status", type: "string" },
-    ],
-  }),
+  resource: _permissionsResource.resource,
   options: {
     navigation: { name: "Permissions", icon: "Shield" },
     listProperties: ["id", "agent_id", "service_id", "action", "created_at"],

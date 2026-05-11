@@ -13,27 +13,29 @@ import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
+const _servicesResource = new RestResource({
+  id: "services", name: "Services",
+  listPath: "/v1/tenants/{tenantId}/services",
+  getPath: "/v1/tenants/{tenantId}/services/{id}",
+  listKey: "services",
+  idField: "id",
+  properties: [
+    { path: "id", type: "uuid", isId: true },
+    { path: "name", type: "string" },
+    { path: "slug", type: "string" },
+    { path: "base_url", type: "string" },
+    { path: "auth_scheme", type: "string" },
+    { path: "status", type: "string" },
+    { path: "description", type: "string" },
+    { path: "openapi_url", type: "string" },
+    { path: "current_key_version", type: "number" },
+    { path: "created_at", type: "datetime" },
+    { path: "updated_at", type: "datetime" },
+  ],
+});
+
 export const ServicesResource: ResourceWithOptions = {
-  resource: new RestResource({
-    id: "services", name: "Services",
-    listPath: "/v1/tenants/{tenantId}/services",
-    getPath: "/v1/tenants/{tenantId}/services/{id}",
-    listKey: "services",
-    idField: "id",
-    properties: [
-      { path: "id", type: "uuid", isId: true },
-      { path: "name", type: "string" },
-      { path: "slug", type: "string" },
-      { path: "base_url", type: "string" },
-      { path: "auth_scheme", type: "string" },
-      { path: "status", type: "string" },
-      { path: "description", type: "string" },
-      { path: "openapi_url", type: "string" },
-      { path: "current_key_version", type: "number" },
-      { path: "created_at", type: "datetime" },
-      { path: "updated_at", type: "datetime" },
-    ],
-  }),
+  resource: _servicesResource.resource,
   options: {
     navigation: { name: "Services", icon: "Network" },
     listProperties: ["id", "name", "slug", "base_url", "auth_scheme", "status", "created_at"],

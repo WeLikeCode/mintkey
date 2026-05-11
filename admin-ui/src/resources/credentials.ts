@@ -18,19 +18,21 @@ import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
+const _credentialsResource = new RestResource({
+  id: "credentials", name: "Credentials",
+  listPath: "/v1/tenants/{tenantId}/services",
+  listKey: "services",
+  idField: "id",
+  properties: [
+    { path: "id", type: "uuid", isId: true },
+    { path: "name", type: "string" },
+    { path: "slug", type: "string" },
+    { path: "auth_scheme", type: "string" },
+  ],
+});
+
 export const CredentialsResource: ResourceWithOptions = {
-  resource: new RestResource({
-    id: "credentials", name: "Credentials",
-    listPath: "/v1/tenants/{tenantId}/services",
-    listKey: "services",
-    idField: "id",
-    properties: [
-      { path: "id", type: "uuid", isId: true },
-      { path: "name", type: "string" },
-      { path: "slug", type: "string" },
-      { path: "auth_scheme", type: "string" },
-    ],
-  }),
+  resource: _credentialsResource.resource,
   options: {
     navigation: { name: "Credentials", icon: "Lock" },
     listProperties: ["id", "service_id", "auth_scheme", "key_version", "status", "created_at"],

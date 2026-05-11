@@ -25,20 +25,22 @@ function assertPlatformAdmin(context: ActionContext): void {
   }
 }
 
+const _tenantsResource = new RestResource({
+  id: "tenants", name: "Tenants",
+  listPath: "/v1/tenants/{tenantId}/services",
+  listKey: "services",
+  idField: "id",
+  properties: [
+    { path: "id", type: "uuid", isId: true },
+    { path: "slug", type: "string" },
+    { path: "display_name", type: "string" },
+    { path: "isolation_mode", type: "string" },
+    { path: "created_at", type: "datetime" },
+  ],
+});
+
 export const TenantsResource: ResourceWithOptions = {
-  resource: new RestResource({
-    id: "tenants", name: "Tenants",
-    listPath: "/v1/tenants/{tenantId}/services",
-    listKey: "services",
-    idField: "id",
-    properties: [
-      { path: "id", type: "uuid", isId: true },
-      { path: "slug", type: "string" },
-      { path: "display_name", type: "string" },
-      { path: "isolation_mode", type: "string" },
-      { path: "created_at", type: "datetime" },
-    ],
-  }),
+  resource: _tenantsResource.resource,
   options: {
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],

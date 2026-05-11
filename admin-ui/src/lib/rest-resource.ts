@@ -40,6 +40,10 @@ export class RestResource extends BaseResource {
     return this.config.id;
   }
 
+  get resource(): string {
+    return this.config.id;
+  }
+
   name(): string {
     return this.config.name;
   }

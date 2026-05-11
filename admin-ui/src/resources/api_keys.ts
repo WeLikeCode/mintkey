@@ -17,19 +17,21 @@ import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
+const _apiKeysResource = new RestResource({
+  id: "service_api_keys", name: "API Keys",
+  listPath: "/v1/tenants/{tenantId}/agents",
+  listKey: "agents",
+  idField: "id",
+  properties: [
+    { path: "id", type: "uuid", isId: true },
+    { path: "name", type: "string" },
+    { path: "status", type: "string" },
+    { path: "api_key_fingerprint", type: "string" },
+  ],
+});
+
 export const ApiKeysResource: ResourceWithOptions = {
-  resource: new RestResource({
-    id: "api_keys", name: "API Keys",
-    listPath: "/v1/tenants/{tenantId}/agents",
-    listKey: "agents",
-    idField: "id",
-    properties: [
-      { path: "id", type: "uuid", isId: true },
-      { path: "name", type: "string" },
-      { path: "status", type: "string" },
-      { path: "api_key_fingerprint", type: "string" },
-    ],
-  }),
+  resource: _apiKeysResource.resource,
   options: {
     navigation: { name: "API Keys", icon: "Key" },
     listProperties: [
