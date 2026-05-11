@@ -183,15 +183,14 @@ async def create_tenant(
     await session.execute(
         text(
             "INSERT INTO audit_chain_state"
-            " (tenant_id, head_hash, head_event_id, genesis_hash)"
+            " (tenant_id, head_hash, head_event_id)"
             " VALUES"
-            " (:tenant_id, :head_hash, :head_event_id, :genesis_hash)"
+            " (:tenant_id, :head_hash, :head_event_id)"
         ),
         {
             "tenant_id": str(internal_id),
             "head_hash": bytes.fromhex(genesis),
             "head_event_id": None,
-            "genesis_hash": genesis,
         },
     )
 

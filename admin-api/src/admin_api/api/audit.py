@@ -30,7 +30,7 @@ router = APIRouter(prefix="/v1/tenants/{tenant_id}/audit")
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Map an audit_events row to the wire representation."""
     return {
-        "id": row.id,
+        "id": str(row.id),
         "event_type": row.event_type,
         "tenant_id": str(row.tenant_id),
         "payload": row.payload if isinstance(row.payload, dict) else {},
@@ -77,12 +77,12 @@ async def list_audit_events(
             "SELECT id, event_type, tenant_id, payload, hash, prev_hash, at"
             " FROM audit_events"
             " WHERE tenant_id = :tenant_id"
-            " AND (:after IS NULL OR id > :after)"
-            " AND (:event_type IS NULL OR event_type = :event_type)"
-            " AND (:from_ts IS NULL OR at >= CAST(:from_ts AS timestamptz))"
-            " AND (:to_ts IS NULL OR at <= CAST(:to_ts AS timestamptz))"
-            " AND (:agent_id IS NULL OR payload->>'agent_id' = :agent_id)"
-            " AND (:service_id IS NULL OR payload->>'service_id' = :service_id)"
+            " AND (CAST(:after AS uuid) IS NULL OR id > CAST(:after AS uuid))"
+            " AND (CAST(:event_type AS text) IS NULL OR event_type = CAST(:event_type AS text))"
+            " AND (CAST(:from_ts AS timestamptz) IS NULL OR at >= CAST(:from_ts AS timestamptz))"
+            " AND (CAST(:to_ts AS timestamptz) IS NULL OR at <= CAST(:to_ts AS timestamptz))"
+            " AND (CAST(:agent_id AS text) IS NULL OR payload->>'agent_id' = CAST(:agent_id AS text))"
+            " AND (CAST(:service_id AS text) IS NULL OR payload->>'service_id' = CAST(:service_id AS text))"
             " ORDER BY id ASC"
             " LIMIT :limit"
         ),
@@ -100,6 +100,6 @@ async def list_audit_events(
     rows = result.fetchall()
 
     events = [_row_to_dict(r) for r in rows]
-    next_cursor = rows[-1].id if len(rows) == limit else None
+    next_cursor = str(rows[-1].id) if len(rows) == limit else None
 
     return JSONResponse({"events": events, "next_cursor": next_cursor})

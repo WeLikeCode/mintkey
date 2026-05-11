@@ -476,7 +476,7 @@ async def revoke_api_key(
         payload={
             "api_key_id": key_id,
             "agent_id": agent_id,
-            "service_id": row.service_id,
+            "service_id": str(row.service_id) if row.service_id is not None else None,
             "key_fingerprint": row.key_fingerprint,
             "reason": body.reason,
         },

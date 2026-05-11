@@ -196,11 +196,11 @@ def test_create_tenant_genesis_hash_initialised(
     tenant_uuid = str(row[0])
 
     cur.execute(
-        "SELECT genesis_hash FROM audit_chain_state WHERE tenant_id = %s",
+        "SELECT head_hash FROM audit_chain_state WHERE tenant_id = %s",
         (tenant_uuid,),
     )
     chain_row = cur.fetchone()
     cur.close()
     conn.close()
     assert chain_row is not None, "audit_chain_state row missing for new tenant"
-    assert chain_row[0] is not None, "genesis_hash is NULL"
+    assert chain_row[0] is not None, "head_hash is NULL"
