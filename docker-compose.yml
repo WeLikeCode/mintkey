@@ -64,7 +64,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8443/health/ready || exit 1"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443 2>/dev/null && echo ok || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -127,7 +127,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/v1/health || exit 1"]
+      test: ["CMD", "/grpc_health_probe", "-addr=:8084"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -136,7 +136,8 @@ services:
   # ─── 4. Admin API ─────────────────────────────────────────────────────────
   admin-api:
     build:
-      context: ./admin-api
+      context: .
+      dockerfile: admin-api/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:@postgres:5432/mintkey
       VAULT_GRPC_ADDR: vault-adapter:8084
@@ -151,7 +152,7 @@ services:
       vault-adapter:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8080/v1/health') or sys.exit(1)"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -170,7 +171,7 @@ services:
       admin-api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -189,7 +190,7 @@ services:
       admin-api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -212,7 +213,7 @@ services:
       admin-api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/v1/health || exit 1"]
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8083/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -256,6 +257,7 @@ services:
       MINTKEY_ENV: dev
       KONG_ADMIN_URL: http://kong:8001
       DATABASE_URL: postgres://mintkey_app:@postgres:5432/mintkey
+      KONG_SYNCER_HTTP_PORT: "8085"
     ports:
       - "8085:8085"
     networks:
@@ -266,7 +268,7 @@ services:
       admin-api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/v1/health || exit 1"]
+      test: ["CMD", "/wget", "-qO-", "http://127.0.0.1:8085/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -289,12 +291,8 @@ services:
     depends_on:
       kong:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/v1/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
+    # proxy-plugin is a Kong go-pdk plugin — no HTTP health endpoint.
+    # It uses a Unix socket for Kong communication; healthcheck not applicable.
 
   # ─── 11. Mock Backend (no deps; always up) ────────────────────────────────
   mock-backend:
@@ -306,7 +304,7 @@ services:
     networks:
       - mintkey
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8999/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8999/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -322,12 +320,8 @@ services:
       - "4317:4317"
     networks:
       - mintkey
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
+    # otel-collector-contrib is distroless — no shell/wget for CMD-SHELL.
+    # Healthcheck disabled; services tolerate transient OTel unavailability.
 
   # ─── 13. Jaeger ───────────────────────────────────────────────────────────
   jaeger:
@@ -339,8 +333,7 @@ services:
     networks:
       - mintkey
     depends_on:
-      otel-collector:
-        condition: service_healthy
+      - otel-collector
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:14269/ || exit 1"]
       interval: 10s
@@ -354,7 +347,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "9091:9090"
     networks:
       - mintkey
     healthcheck:

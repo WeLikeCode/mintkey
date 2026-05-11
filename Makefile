@@ -106,7 +106,7 @@ smoke:
 	@if ! docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
 		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
 	fi
-	cd admin-api && $(UV) run pytest $(REPO_ROOT)/tests/acceptance/test_e2e_smoke.py -v -s
+	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_e2e_smoke.py -v -s
 
 # ── Linting ───────────────────────────────────────────────────────────────────
 
