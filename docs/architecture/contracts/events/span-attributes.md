@@ -57,6 +57,9 @@ For `mintkey.proxy.handle_request` additionally:
 | `mintkey.jti`                 | string | ULID — the JWT's `jti` claim.                                          |
 | `mintkey.key_version`         | int    | Credential `key_version` injected on this request.                     |
 | `mintkey.outcome`             | string | Enum: `success`, `client_error`, `server_error`, `denied`, `error`.    |
+| `mintkey.auth_method`         | string | Enum: `brokered_jwt`, `api_key`. ADR-0018 §2.6; Req 11.4.             |
+
+Note: `key_fingerprint` is NOT a span attribute — it is audit-only.
 
 ## Allowed attributes (closed allowlist)
 
@@ -87,6 +90,7 @@ deliberately small.
 | `mintkey.vault.kek_version`            | int    | Vault Adapter spans.                                               |
 | `mintkey.error.code`                   | string | `mintkey:code` value when the request failed (matches REST codes). |
 | `mintkey.deny.reason_code`             | string | Set on `mintkey.proxy.handle_request` when `outcome=denied`.       |
+| `mintkey.auth_method`                  | string | Enum: `brokered_jwt`, `api_key`. Proxy only. ADR-0018 §2.6.        |
 | `mintkey.stability_tier`               | string | Constant `experimental` for v1.                                    |
 
 ### OTel semantic-convention (`http.*`, `rpc.*`, `db.*`, `messaging.*`, `error.*`)

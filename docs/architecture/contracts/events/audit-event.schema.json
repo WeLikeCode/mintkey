@@ -43,6 +43,10 @@
       "type": "string",
       "pattern": "^session_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "svckey_id": {
+      "type": "string",
+      "pattern": "^svckey_[0-9A-HJKMNP-TV-Z]{26}$"
+    },
     "audit_id": {
       "type": "string",
       "pattern": "^audit_[0-9A-HJKMNP-TV-Z]{26}$"
@@ -85,7 +89,8 @@
         "session",
         "audit_chain",
         "admin_settings",
-        "platform_admin_view"
+        "platform_admin_view",
+        "api_key"
       ]
     },
     "auth_scheme": {
@@ -1165,6 +1170,23 @@
                 "denied",
                 "error"
               ]
+            },
+            "auth_method": {
+              "type": "string",
+              "enum": ["brokered_jwt", "api_key"],
+              "description": "Authentication mechanism used for this proxy request. ADR-0018 §2.4."
+            },
+            "api_key_id": {
+              "$ref": "#/$defs/svckey_id",
+              "description": "Present when auth_method=api_key. Never present for brokered_jwt."
+            },
+            "key_fingerprint": {
+              "type": "string",
+              "description": "hex(sha256(plaintext)[:8]) — present when auth_method=api_key. Safe in audit."
+            },
+            "used_at": {
+              "$ref": "#/$defs/timestamp_utc",
+              "description": "Coalesced last-used timestamp reported by the proxy (R10.5)."
             }
           },
           "required": [
@@ -1750,6 +1772,138 @@
         }
       ]
     },
+    "ev_api_key_created": {
+      "title": "api_key.created",
+      "description": "A service API key was created. Payload carries the fingerprint, NOT the plaintext. Req 11.3; ADR-0018 §4.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "api_key.created"
+            },
+            "target_type": {
+              "const": "api_key"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api_key_id": {
+                  "$ref": "#/$defs/svckey_id"
+                },
+                "agent_id": {
+                  "$ref": "#/$defs/agent_id"
+                },
+                "service_id": {
+                  "$ref": "#/$defs/service_id"
+                },
+                "key_fingerprint": {
+                  "type": "string",
+                  "description": "hex(sha256(plaintext)[:8]). Plaintext never in payload."
+                },
+                "allowed_actions": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "minItems": 1
+                },
+                "expires_at": {
+                  "$ref": "#/$defs/timestamp_utc"
+                }
+              },
+              "required": ["api_key_id", "agent_id", "service_id", "key_fingerprint", "allowed_actions"]
+            }
+          }
+        }
+      ]
+    },
+    "ev_api_key_revoked": {
+      "title": "api_key.revoked",
+      "description": "A service API key was revoked by an operator. Triggers proxy cache eviction via pg_notify. Req 11.3; ADR-0018 §4.1.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "api_key.revoked"
+            },
+            "target_type": {
+              "const": "api_key"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api_key_id": {
+                  "$ref": "#/$defs/svckey_id"
+                },
+                "agent_id": {
+                  "$ref": "#/$defs/agent_id"
+                },
+                "service_id": {
+                  "$ref": "#/$defs/service_id"
+                },
+                "key_fingerprint": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["api_key_id", "agent_id", "service_id", "key_fingerprint"]
+            }
+          }
+        }
+      ]
+    },
+    "ev_api_key_rotated": {
+      "title": "api_key.rotated",
+      "description": "A service API key was rotated (new key created with same binding; old key NOT revoked). Req 11.3; ADR-0018 §5.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "api_key.rotated"
+            },
+            "target_type": {
+              "const": "api_key"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "old_api_key_id": {
+                  "$ref": "#/$defs/svckey_id"
+                },
+                "new_api_key_id": {
+                  "$ref": "#/$defs/svckey_id"
+                },
+                "agent_id": {
+                  "$ref": "#/$defs/agent_id"
+                },
+                "service_id": {
+                  "$ref": "#/$defs/service_id"
+                },
+                "rotated_by": {
+                  "$ref": "#/$defs/operator_id"
+                }
+              },
+              "required": ["old_api_key_id", "new_api_key_id", "agent_id", "service_id", "rotated_by"]
+            }
+          }
+        }
+      ]
+    },
     "ev_tenant_bootstrap_completed": {
       "title": "tenant.bootstrap_completed",
       "description": "First-time bootstrap of a tenant completed by the seed job. Per F-OP-01.",
@@ -1887,6 +2041,15 @@
       "$ref": "#/$defs/ev_service_test_executed"
     },
     {
+      "$ref": "#/$defs/ev_api_key_created"
+    },
+    {
+      "$ref": "#/$defs/ev_api_key_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_api_key_rotated"
+    },
+    {
       "$ref": "#/$defs/ev_tenant_bootstrap_completed"
     }
   ],
@@ -1923,7 +2086,10 @@
       "settings.updated": "#/$defs/ev_settings_updated",
       "platform_admin.access": "#/$defs/ev_platform_admin_access",
       "service.test_executed": "#/$defs/ev_service_test_executed",
-      "tenant.bootstrap_completed": "#/$defs/ev_tenant_bootstrap_completed"
+      "tenant.bootstrap_completed": "#/$defs/ev_tenant_bootstrap_completed",
+      "api_key.created": "#/$defs/ev_api_key_created",
+      "api_key.revoked": "#/$defs/ev_api_key_revoked",
+      "api_key.rotated": "#/$defs/ev_api_key_rotated"
     }
   },
   "examples": [

@@ -8,9 +8,24 @@
  */
 
 import type { ResourceWithOptions } from "adminjs";
+import { RestResource } from "../lib/rest-resource.js";
 
 export const AuditResource: ResourceWithOptions = {
-  resource: "audit_events",
+  resource: new RestResource({
+    id: "audit_events", name: "Audit Events",
+    listPath: "/v1/tenants/{tenantId}/audit",
+    listKey: "events",
+    idField: "id",
+    properties: [
+      { path: "id", type: "string", isId: true },
+      { path: "event_type", type: "string" },
+      { path: "tenant_id", type: "string" },
+      { path: "payload", type: "string" },
+      { path: "hash", type: "string" },
+      { path: "prev_hash", type: "string" },
+      { path: "created_at", type: "datetime" },
+    ],
+  }),
   options: {
     navigation: { name: "Audit Log", icon: "ClipboardList" },
     listProperties: ["id", "event_type", "actor_id", "actor_type", "target_id", "target_type", "at"],

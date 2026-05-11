@@ -167,6 +167,61 @@ async def test_patch_unknown_key_returns_422() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_settings_has_api_key_section() -> None:
+    """
+    GET /v1/admin/settings must include api_key sub-object with all 5 keys at defaults.
+    Source: task 1.2; Req 7.6; ADR-0018 §8.
+    """
+    app = _create_test_app(is_platform_admin=True)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(SETTINGS_URL, headers={"X-Platform-Admin": "true"})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "api_key" in body, "api_key sub-object missing from AdminSettings"
+    ak = body["api_key"]
+    assert ak["proxy_cache_ttl_seconds"] == 60
+    assert ak["require_expiry"] is False
+    assert ak["allow_no_expiry"] is True
+    assert ak["max_expiry_days"] == 365
+    assert ak["require_ip_allowlist"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_api_key_settings() -> None:
+    """
+    PATCH with api_key sub-fields merges correctly; unknown api_key keys → 422.
+    Source: task 1.2; Req 10.4; ADR-0016.6 extra="forbid".
+    """
+    app = _create_test_app(is_platform_admin=True)
+
+    with patch("admin_api.api.settings.audit_emit", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.patch(
+                SETTINGS_URL,
+                json={"api_key": {"require_expiry": True, "max_expiry_days": 30}},
+                headers={"X-Platform-Admin": "true"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["api_key"]["require_expiry"] is True
+    assert body["api_key"]["max_expiry_days"] == 30
+    assert body["api_key"]["proxy_cache_ttl_seconds"] == 60  # default retained
+
+    # Unknown api_key key → 422 (extra="forbid")
+    with patch("admin_api.api.settings.audit_emit", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp2 = await client.patch(
+                SETTINGS_URL,
+                json={"api_key": {"unknown_flag": True}},
+                headers={"X-Platform-Admin": "true"},
+            )
+    assert resp2.status_code == 422, resp2.text
+
+
+@pytest.mark.asyncio
 async def test_patch_emits_settings_updated_audit() -> None:
     """
     PATCH must call audit_emit with event_type="settings.updated".

@@ -11,10 +11,10 @@ ADR-0017.11 — that translation happens in the API layer, not here).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class TenantOut(BaseModel):
@@ -99,3 +99,59 @@ class AuditEventOut(BaseModel):
     target_type: str | None
     payload: dict[str, Any]
     at: datetime
+
+
+# ---------------------------------------------------------------------------
+# 012-service-api-keys.yaml — ADR-0018; long-lived-api-keys task 1.3
+# ---------------------------------------------------------------------------
+
+
+class ServiceApiKeyCreate(BaseModel):
+    """
+    Request body for POST /v1/tenants/{tid}/agents/{aid}/api-keys.
+    Source: design §4.1; Req 1.1, 8.1.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    service_id: str
+    allowed_actions: List[str]
+    expires_at: Optional[datetime] = None
+    constraints: Optional[dict[str, Any]] = None  # validated as closed Constraints at the API layer
+
+    @field_validator("allowed_actions")
+    @classmethod
+    def actions_non_empty(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("allowed_actions must be non-empty (mirrors CHECK constraint)")
+        return v
+
+
+class ServiceApiKey(BaseModel):
+    """
+    List / show element for a service API key — no plaintext (Req 1.2, 10.1).
+    Source: design §4.1; Req 8.2, 8.3.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    api_key_id: str           # svckey_<ULID> wire form (ADR-0017.11)
+    key_fingerprint: str      # hex(sha256(plaintext)[:8]) — safe in audit/logs
+    service_id: UUID
+    allowed_actions: List[str]
+    constraints: Optional[dict[str, Any]]
+    expires_at: Optional[datetime]
+    last_used_at: Optional[datetime]
+    created_at: datetime
+    created_by: UUID
+    status: str               # "active" | "expired" | "revoked"
+
+
+class ServiceApiKeyCreated(ServiceApiKey):
+    """
+    201 response body — extends ServiceApiKey with plaintext shown ONCE.
+    Source: design §4.2; Req 1.1, 1.2.
+    The plaintext is NOT stored; this model is only used for the one-time 201 response.
+    """
+
+    plaintext_key: str  # mk_svckey_<…> — never stored; show-once at creation/rotation

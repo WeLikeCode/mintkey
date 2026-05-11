@@ -27,6 +27,7 @@ var validPrefixes = map[string]struct{}{
 	"system_":   {},
 	"jti_":      {},
 	"kid_":      {},
+	"svckey_":   {}, // long-lived-api-keys; ADR-0017.11; ADR-0018
 }
 
 // monotonic entropy source ensures ULIDs generated in the same millisecond

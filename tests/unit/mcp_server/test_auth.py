@@ -48,7 +48,7 @@ def app():
     # Add a thin test endpoint that invokes validate_agent_key so we can
     # exercise the auth logic over HTTP without wiring real MCP tools.
     @base.get("/v1/test/agent-auth")
-    async def _agent_auth_check(x_api_key: str = "") -> JSONResponse:
+    async def _agent_auth_check(x_api_key: str = ""):
         from mcp_server.auth.agent_key import validate_agent_key
         ctx, failure = await validate_agent_key(x_api_key)
         if failure is not None:

@@ -209,6 +209,28 @@
       "required": [
         "event_type"
       ]
+    },
+    "ev_api_key_revoked": {
+      "type": "object",
+      "description": "A service API key was revoked. Published on mintkey:agent so the proxy evicts the resolution-cache entry by key_fingerprint. target_id = api_key_id. ADR-0018 §4.1.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "api_key.revoked"
+        },
+        "key_fingerprint": {
+          "type": "string",
+          "description": "hex(sha256(plaintext)[:8]) — used by the proxy to evict the correct cache entry."
+        }
+      },
+      "required": [
+        "event_type",
+        "key_fingerprint"
+      ]
     }
   },
   "oneOf": [
@@ -232,6 +254,9 @@
     },
     {
       "$ref": "#/$defs/ev_token_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_api_key_revoked"
     }
   ],
   "discriminator": {
@@ -243,7 +268,8 @@
       "credential.rotated": "#/$defs/ev_credential_rotated",
       "credential.revoked": "#/$defs/ev_credential_revoked",
       "agent.revoked": "#/$defs/ev_agent_revoked",
-      "token.revoked": "#/$defs/ev_token_revoked"
+      "token.revoked": "#/$defs/ev_token_revoked",
+      "api_key.revoked": "#/$defs/ev_api_key_revoked"
     }
   },
   "x-mintkey-channels": {
@@ -268,7 +294,8 @@
         "name": "mintkey:agent",
         "carries": [
           "agent.revoked",
-          "token.revoked"
+          "token.revoked",
+          "api_key.revoked"
         ]
       },
       {

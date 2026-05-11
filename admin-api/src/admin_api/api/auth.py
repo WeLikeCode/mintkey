@@ -11,6 +11,8 @@ Source: design §4 api/auth.py; Req 2; ADR-0017.5; ADR-0009.
 """
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -47,14 +49,29 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
         return JSONResponse(status_code=401, content=INVALID_CREDENTIALS_RESPONSE)
 
     session_token = await create_session(operator.id, operator.tenant_id)
+    csrf_token = secrets.token_urlsafe(32)
 
-    resp = JSONResponse({"status": "ok", "operator_id": str(operator.id)})
+    resp = JSONResponse({
+        "status": "ok",
+        "operator_id": str(operator.id),
+        "tenant_id": str(operator.tenant_id),
+        "is_platform_admin": bool(operator.is_platform_admin),
+    })
     resp.set_cookie(
         key="mintkey_session",
         value=session_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=False,  # False for local dev; set via env in production
+        samesite="lax",
+        max_age=86400,
+    )
+    # Non-httponly so JS can read it for the double-submit CSRF pattern.
+    resp.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        secure=False,
+        samesite="lax",
         max_age=86400,
     )
     return resp

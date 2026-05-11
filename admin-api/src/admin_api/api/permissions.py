@@ -115,6 +115,7 @@ class PermissionGrantRequest(BaseModel):
     service_id: str
     action: str
     constraints: Optional[Constraints] = None
+    granted_by: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -230,12 +231,13 @@ async def grant_permission(
     now = datetime.now(timezone.utc)
 
     # 5. INSERT permission_grants
+    granted_by = body.granted_by or agent_id
     await session.execute(
         text(
             "INSERT INTO permission_grants"
-            " (id, tenant_id, agent_id, service_id, action, constraints, created_at, updated_at)"
+            " (id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by)"
             " VALUES"
-            " (:id, :tenant_id, :agent_id, :service_id, :action, :constraints::jsonb, :created_at, :updated_at)"
+            " (:id, :tenant_id, :agent_id, :service_id, :action, CAST(:constraints AS jsonb), :created_at, :created_by)"
         ),
         {
             "id": str(internal_id),
@@ -245,7 +247,7 @@ async def grant_permission(
             "action": body.action,
             "constraints": json.dumps(constraints_dict) if constraints_dict is not None else None,
             "created_at": now,
-            "updated_at": now,
+            "created_by": granted_by,
         },
     )
 

@@ -188,6 +188,7 @@ class TestDbTableNames:
             OperatorTenantMembership,
             PermissionGrant,
             Service,
+            ServiceApiKey,
             ServiceIdentity,
             Session,
             Tenant,
@@ -208,6 +209,7 @@ class TestDbTableNames:
             AdminRequestJti: "admin_request_jti",
             ServiceIdentity: "service_identities",
             AuditChainState: "audit_chain_state",
+            ServiceApiKey: "service_api_keys",  # task 1.3; Req 11.5
         }
 
         for cls, expected_name in expected.items():
@@ -215,3 +217,77 @@ class TestDbTableNames:
                 f"{cls.__name__}.__tablename__ should be '{expected_name}', "
                 f"got '{cls.__tablename__}'"
             )
+
+
+# ---------------------------------------------------------------------------
+# Task 1.3 — ServiceApiKey ORM + Pydantic models  (Req 11.5; ADR-0018 §9)
+# ---------------------------------------------------------------------------
+
+
+class TestServiceApiKeySchema:
+    def test_service_api_key_create_validates(self) -> None:
+        """ServiceApiKeyCreate accepts valid request body; rejects extra keys."""
+        from mintkey_models.schemas import ServiceApiKeyCreate
+
+        body = ServiceApiKeyCreate(
+            service_id=str(uuid.uuid4()),
+            allowed_actions=["read:health"],
+        )
+        assert body.allowed_actions == ["read:health"]
+        assert body.expires_at is None
+        assert body.constraints is None
+
+    def test_service_api_key_create_rejects_empty_actions(self) -> None:
+        """allowed_actions must be non-empty (Req 7.2 — CHECK constraint mirror)."""
+        import pytest
+        from pydantic import ValidationError
+        from mintkey_models.schemas import ServiceApiKeyCreate
+
+        with pytest.raises(ValidationError):
+            ServiceApiKeyCreate(service_id=str(uuid.uuid4()), allowed_actions=[])
+
+    def test_service_api_key_out_no_plaintext(self) -> None:
+        """ServiceApiKey (list/show) has no plaintext_key field (Req 1.2, 10.1)."""
+        from mintkey_models.schemas import ServiceApiKey
+
+        data = {
+            "api_key_id": "svckey_01HXYZABC",
+            "key_fingerprint": "a1b2c3d4e5f6a7b8",
+            "service_id": uuid.uuid4(),
+            "allowed_actions": ["read:health"],
+            "constraints": None,
+            "expires_at": None,
+            "last_used_at": None,
+            "created_at": _utcnow(),
+            "created_by": uuid.uuid4(),
+            "status": "active",
+        }
+        key = ServiceApiKey(**data)
+        assert key.status == "active"
+        assert not hasattr(key, "plaintext_key"), "ServiceApiKey must not expose plaintext"
+
+    def test_service_api_key_created_has_plaintext(self) -> None:
+        """ServiceApiKeyCreated (201) carries plaintext_key (shown once)."""
+        from mintkey_models.schemas import ServiceApiKeyCreated
+
+        data = {
+            "api_key_id": "svckey_01HXYZABC",
+            "key_fingerprint": "a1b2c3d4e5f6a7b8",
+            "service_id": uuid.uuid4(),
+            "allowed_actions": ["read:health"],
+            "constraints": None,
+            "expires_at": None,
+            "last_used_at": None,
+            "created_at": _utcnow(),
+            "created_by": uuid.uuid4(),
+            "status": "active",
+            "plaintext_key": "mk_svckey_AAAABBBBCCCCDDDD",
+        }
+        created = ServiceApiKeyCreated(**data)
+        assert created.plaintext_key == "mk_svckey_AAAABBBBCCCCDDDD"
+
+    def test_service_api_key_orm_tablename(self) -> None:
+        """ServiceApiKey ORM class maps to service_api_keys."""
+        from mintkey_models.db import ServiceApiKey as SAK
+
+        assert SAK.__tablename__ == "service_api_keys"

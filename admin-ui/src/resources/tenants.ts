@@ -13,6 +13,7 @@
 import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { buildSignedRequest } from "../lib/signed-request.js";
 import { isPlatformAdminView } from "../middleware/platform-admin.js";
+import { RestResource } from "../lib/rest-resource.js";
 import type { Request } from "express";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
@@ -25,7 +26,19 @@ function assertPlatformAdmin(context: ActionContext): void {
 }
 
 export const TenantsResource: ResourceWithOptions = {
-  resource: "tenants",
+  resource: new RestResource({
+    id: "tenants", name: "Tenants",
+    listPath: "/v1/tenants/{tenantId}/services",
+    listKey: "services",
+    idField: "id",
+    properties: [
+      { path: "id", type: "uuid", isId: true },
+      { path: "slug", type: "string" },
+      { path: "display_name", type: "string" },
+      { path: "isolation_mode", type: "string" },
+      { path: "created_at", type: "datetime" },
+    ],
+  }),
   options: {
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],

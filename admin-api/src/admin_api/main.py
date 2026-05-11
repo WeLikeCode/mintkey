@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agents import router as agents_router
+from admin_api.api.api_keys import router as api_keys_router
 from admin_api.api.audit import router as audit_router
 from admin_api.api.audit_admin import router as audit_admin_router
 from admin_api.api.auth import router as auth_router
@@ -17,6 +18,7 @@ from admin_api.api.credentials import router as credentials_router
 from admin_api.api.health import router as health_router
 from admin_api.api.internal import router as internal_router
 from admin_api.api.permissions import router as permissions_router, validation_error_handler
+from admin_api.api.proxy import router as proxy_router
 from admin_api.api.services import router as services_router
 from admin_api.api.settings import router as settings_router
 from admin_api.api.tenants import router as tenants_router
@@ -31,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(services_router)
     app.include_router(agents_router)
+    app.include_router(api_keys_router)
     app.include_router(changes_router)
     app.include_router(credentials_router)
     app.include_router(internal_router)
@@ -39,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_admin_router)
     app.include_router(settings_router)
     app.include_router(tenants_router)
+    app.include_router(proxy_router)
 
     app.add_exception_handler(RequestValidationError, validation_error_handler)
 
@@ -48,6 +52,11 @@ def create_app() -> FastAPI:
     csrf_exempt("/v1/auth/internal-login")
     csrf_exempt("/v1/auth/logout")
     csrf_exempt("/v1/auth/oidc/callback")
+
+    # Proxy endpoint uses Bearer token auth — CSRF not applicable.
+    # The dynamic path /v1/proxy/call/{service_id}/{path_suffix} requires the
+    # CsrfMiddleware to support prefix matching for full exemption.
+    csrf_exempt("/v1/proxy/call")
 
     app.add_middleware(CsrfMiddleware)
 

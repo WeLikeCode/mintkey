@@ -72,6 +72,13 @@ _STC_EXEMPT_HANDLERS = {
     "create_tenant",
     "validate_agent_key",
     "verify_chain_endpoint",
+    # proxy.py — cross-tenant API-key fingerprint lookup first (platform_admin_view='on'),
+    # then set_tenant_context is called in _proxy_call after tenant is resolved (ADR-0016.3)
+    "proxy_call",
+    # proxy-hit internal endpoint — called from Go proxy plugin, no per-tenant context
+    "proxy_hit",
+    # acknowledge_tamper — platform-admin endpoint
+    "acknowledge_tamper",
 }
 
 _STC_EXEMPT_FILES = {

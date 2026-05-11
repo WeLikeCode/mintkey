@@ -1169,6 +1169,206 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   ###########################################################################
+  # Service API Keys  (ADR-0018; long-lived-api-keys)
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      tags: [APIKeys]
+      operationId: createServiceApiKey
+      summary: Create a service API key for an agent.
+      description: |
+        Generates a long-lived opaque API key (`mk_svckey_…`) scoped to a
+        specific service. The plaintext key is returned **once** in the 201
+        response and is never stored — store it immediately.
+
+        `allowed_actions` must be a subset of the agent's existing permission
+        grants for the service. Operator policies (`AdminSettings.api_key`)
+        may impose additional constraints (require_expiry, max_expiry_days,
+        require_ip_allowlist).
+
+        Req 1.1–1.6, ADR-0018 §4.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceApiKeyCreate"
+      responses:
+        "201":
+          description: Key created. Plaintext shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceApiKeyCreated"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BadRequest"
+    get:
+      tags: [APIKeys]
+      operationId: listServiceApiKeys
+      summary: List service API keys for an agent.
+      description: |
+        Returns all keys (active, expired, revoked) for the agent. Filtered
+        by `service_id` and/or `status` if query params provided.
+        No plaintext is returned. Req 8.2, 8.6.
+      parameters:
+        - in: query
+          name: service_id
+          required: false
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Filter to a specific service.
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [active, expired, revoked]
+          description: Filter by key status.
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Paginated key list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ServiceApiKey"
+                  next_cursor:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/api-keys/{api_key_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: api_key_id
+        required: true
+        schema:
+          type: string
+          pattern: "^svckey_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Service API key identifier.
+    get:
+      tags: [APIKeys]
+      operationId: getServiceApiKey
+      summary: Get a single service API key.
+      description: |
+        Returns key metadata. No plaintext. Req 8.3, 8.6.
+      responses:
+        "200":
+          description: Key metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceApiKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/api-keys/{api_key_id}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: api_key_id
+        required: true
+        schema:
+          type: string
+          pattern: "^svckey_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Service API key identifier.
+    post:
+      tags: [APIKeys]
+      operationId: revokeServiceApiKey
+      summary: Revoke a service API key.
+      description: |
+        Marks the key revoked. Idempotent — already-revoked returns 200.
+        Emits `api_key.revoked` audit event and publishes `pg_notify` so the
+        proxy evicts the cached resolution immediately. Req 4.1, 4.5, 8.4.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 512
+      responses:
+        "200":
+          description: Revoked (or was already revoked).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceApiKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/api-keys/{api_key_id}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: api_key_id
+        required: true
+        schema:
+          type: string
+          pattern: "^svckey_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Service API key identifier.
+    post:
+      tags: [APIKeys]
+      operationId: rotateServiceApiKey
+      summary: Rotate a service API key.
+      description: |
+        Creates a new key with the same binding (agent, service, allowed_actions,
+        constraints). Does NOT revoke the old key — the operator controls
+        overlap. Returns the new key's plaintext once. Emits `api_key.rotated`
+        audit event. Req 5.1, 5.2, 8.5.
+      responses:
+        "201":
+          description: New key created. Plaintext shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceApiKeyCreated"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
   # Audit
   ###########################################################################
 
@@ -2896,6 +3096,100 @@ components:
           description: PEM-encoded private key matching the cert.
           x-mintkey-sensitive: true
       required: [client_cert_pem, client_key_pem]
+    # -----------------------------------------------------------------------
+    # Service API Key schemas  (ADR-0018; Req 8.1–8.5, 1.2)
+    # -----------------------------------------------------------------------
+    ServiceApiKeyCreate:
+      type: object
+      additionalProperties: false
+      description: |
+        Request body for creating a service API key. `allowed_actions` must
+        be a non-empty subset of the agent's permission grants for
+        `service_id`. Req 1.1, 8.1.
+      required: [service_id, allowed_actions]
+      properties:
+        service_id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Service the key is bound to.
+        allowed_actions:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Actions the key may perform (subset of agent grants).
+        expires_at:
+          type: ["string", "null"]
+          format: date-time
+          description: |
+            Optional expiry (RFC 3339 UTC). Must be in the future and
+            honour `AdminSettings.api_key.max_expiry_days`.
+        constraints:
+          $ref: "#/components/schemas/Constraints"
+
+    ServiceApiKey:
+      type: object
+      additionalProperties: false
+      description: |
+        Service API key metadata — no plaintext. Returned by list and get
+        endpoints. Req 1.2, 8.2, 8.3, 10.1.
+      required:
+        - api_key_id
+        - key_fingerprint
+        - service_id
+        - allowed_actions
+        - created_at
+        - created_by
+        - status
+      properties:
+        api_key_id:
+          type: string
+          pattern: "^svckey_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Wire identifier (ADR-0017.11).
+        key_fingerprint:
+          type: string
+          description: "hex(sha256(plaintext)[:8]) — safe in audit and logs."
+        service_id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        allowed_actions:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        constraints:
+          $ref: "#/components/schemas/Constraints"
+        expires_at:
+          type: ["string", "null"]
+          format: date-time
+        last_used_at:
+          type: ["string", "null"]
+          format: date-time
+          description: Last time the key was used at the proxy. Null if never used.
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+          pattern: "^operator_[0-9A-HJKMNP-TV-Z]{26}$"
+        status:
+          type: string
+          enum: [active, expired, revoked]
+
+    ServiceApiKeyCreated:
+      allOf:
+        - $ref: "#/components/schemas/ServiceApiKey"
+        - type: object
+          required: [plaintext_key]
+          properties:
+            plaintext_key:
+              type: string
+              pattern: "^mk_svckey_"
+              x-mintkey-sensitive: true
+              description: |
+                Full plaintext key. Shown **once** at creation or rotation.
+                Never stored — present only in this 201 response. Req 1.2.
+
     AdminSettings:
       type: object
       additionalProperties: false
@@ -2934,6 +3228,38 @@ components:
             retention_days_proxy_hits:
               type: integer
               minimum: 1
+        api_key:
+          type: object
+          additionalProperties: false
+          description: |
+            Operator policies for classical service API keys.
+            ADR-0018 §8; Req 7.6, 10.4.
+          properties:
+            proxy_cache_ttl_seconds:
+              type: integer
+              minimum: 10
+              maximum: 300
+              default: 60
+              description: How long the proxy caches a successful key resolution.
+            require_expiry:
+              type: boolean
+              default: false
+              description: Reject key creation if no `expires_at` is provided.
+            allow_no_expiry:
+              type: boolean
+              default: true
+              description: Allow keys without an expiry date.
+            max_expiry_days:
+              type: integer
+              minimum: 1
+              maximum: 3650
+              default: 365
+              description: Maximum number of days until expiry from creation.
+            require_ip_allowlist:
+              type: boolean
+              default: false
+              description: |
+                Require `source_ip_allowlist` constraint on every created key.
     TestRunRequest:
       type: object
       additionalProperties: false
@@ -3037,3 +3363,12 @@ x-mintkey-error-codes:
     - invalid_credentials
     - since_unknown
     - forbidden_destination
+    - api_key_invalid
+    - api_key_expired
+    - api_key_revoked
+    - api_key_wrong_service
+    - api_key_action_not_allowed
+    - api_key_constraint_failed
+    - api_key_resolution_unavailable
+    - api_key_actions_exceed_grant
+    - api_key_policy_violation

@@ -22,21 +22,31 @@ import (
 // The plugin must NOT subscribe to mintkey:credential per ADR-0014.4.
 const listenChannel = "mintkey:agent"
 
+// ClassicalKeyCache is the subset of classicalkey.Handler used for cache eviction.
+// Accepts nil — calls are no-ops when no classical-key branch is wired.
+type ClassicalKeyCache interface {
+	EvictByFingerprint(fp string)
+	EvictByAgentID(agentID string)
+}
+
 // Subscriber listens on the mintkey:agent PostgreSQL NOTIFY channel.
 // It does NOT listen to mintkey:credential (Vault Adapter owns that).
 type Subscriber struct {
 	dsn    string
 	agents *revocation.AgentRevocationSet
 	jtis   *revocation.JTIRevocationSet
+	cache  ClassicalKeyCache // nil when classical-key branch is not wired
 }
 
 // NewSubscriber constructs a Subscriber with the provided revocation sets.
+// cache may be nil when the classical-key branch is not active.
 func NewSubscriber(
 	dsn string,
 	agents *revocation.AgentRevocationSet,
 	jtis *revocation.JTIRevocationSet,
+	cache ClassicalKeyCache,
 ) *Subscriber {
-	return &Subscriber{dsn: dsn, agents: agents, jtis: jtis}
+	return &Subscriber{dsn: dsn, agents: agents, jtis: jtis, cache: cache}
 }
 
 // Start opens a pq.Listener on listenChannel and blocks dispatching
@@ -86,9 +96,10 @@ func (s *Subscriber) Start(ctx context.Context) error {
 // Exported to allow unit testing without a real database connection.
 func (s *Subscriber) HandleNotification(payload string) error {
 	var evt struct {
-		EventType string `json:"event_type"`
-		AgentID   string `json:"agent_id"`
-		JTI       string `json:"jti"`
+		EventType      string `json:"event_type"`
+		AgentID        string `json:"agent_id"`
+		JTI            string `json:"jti"`
+		KeyFingerprint string `json:"key_fingerprint"`
 	}
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return fmt.Errorf("parse notification payload: %w", err)
@@ -97,8 +108,15 @@ func (s *Subscriber) HandleNotification(payload string) error {
 	switch evt.EventType {
 	case "agent.revoked":
 		s.agents.Add(evt.AgentID)
+		if s.cache != nil {
+			s.cache.EvictByAgentID(evt.AgentID)
+		}
 	case "token.revoked":
 		s.jtis.Add(evt.JTI)
+	case "api_key.revoked":
+		if s.cache != nil {
+			s.cache.EvictByFingerprint(evt.KeyFingerprint)
+		}
 	// Unknown event types are silently ignored — forward compatibility.
 	}
 	return nil

@@ -45,7 +45,9 @@ class CsrfMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Routing hasn't happened yet at middleware time, so check path directly.
-        if request.url.path in _CSRF_EXEMPT_PATHS:
+        # Use startswith so that prefix registrations like /v1/proxy/call match
+        # dynamic segments such as /v1/proxy/call/svc_abc/messages.json.
+        if any(request.url.path == p or request.url.path.startswith(p + "/") for p in _CSRF_EXEMPT_PATHS):
             return await call_next(request)
 
         cookie_token = request.cookies.get(CSRF_COOKIE)

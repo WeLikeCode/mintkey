@@ -28,6 +28,13 @@
     "pino-http": "^10.3.0",
     "uuid": "^11.0.3"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"],
+    "overrides": {
+      "@tiptap/core": "2.27.2",
+      "@tiptap/pm": "2.27.2"
+    }
+  },
   "devDependencies": {
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.0",

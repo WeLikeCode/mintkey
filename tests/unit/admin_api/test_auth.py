@@ -46,9 +46,24 @@ def _make_operator(*, locked: bool = False, password_hash: str = VALID_HASH):
 @pytest.fixture()
 def app():
     import sys, os
+    from unittest.mock import MagicMock, AsyncMock
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../admin-api/src"))
     from admin_api.main import create_app
-    return create_app()
+    from admin_api.db.deps import get_db_session
+
+    _app = create_app()
+
+    # Override DB session so unit tests don't need a real postgres connection
+    mock_session = MagicMock()
+    mock_session.execute = AsyncMock(return_value=MagicMock(fetchone=MagicMock(return_value=None)))
+    mock_session.commit = AsyncMock()
+    mock_session.rollback = AsyncMock()
+
+    async def mock_db():
+        yield mock_session
+
+    _app.dependency_overrides[get_db_session] = mock_db
+    return _app
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +78,7 @@ async def test_valid_credentials_return_session_cookie(app) -> None:
 
     with (
         patch("admin_api.auth.internal.fetch_operator", new=AsyncMock(return_value=operator)),
-        patch("admin_api.auth.sessions.create_session", new=AsyncMock(return_value="test-session-token")),
+        patch("admin_api.api.auth.create_session", new=AsyncMock(return_value="test-session-token")),
         patch("admin_api.auth.internal.record_failed_attempt", new=AsyncMock()),
         patch("admin_api.auth.internal.clear_failed_attempts", new=AsyncMock()),
     ):

@@ -1,5 +1,6 @@
 {
   "agents": "/v1/tenants/{tenant_id}/agents",
+  "api_keys": "/v1/tenants/{tenant_id}/agents/{agent_id}/api-keys",
   "audit": "/v1/tenants/{tenant_id}/audit",
   "audit_admin": "/v1/admin/audit",
   "auth": "/v1/auth",
@@ -8,6 +9,7 @@
   "health": "/v1/health",
   "internal": "/v1/internal",
   "permissions": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
+  "proxy": "/v1/proxy/call/{service_id}/{path_suffix:path}",
   "services": "/v1/tenants/{tenant_id}/services",
   "settings": "/v1/admin",
   "tenants": "/v1/tenants"

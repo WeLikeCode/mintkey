@@ -9,7 +9,7 @@ this invariant per ADR-0015.
 Sources:
   001-tenants.yaml, 002-operators.yaml, 003-agents.yaml, 004-services.yaml,
   005-credentials.yaml, 006-permission-grants.yaml, 007-audit-events.yaml,
-  008-platform-tables.yaml
+  008-platform-tables.yaml, 012-service-api-keys.yaml
   ADR-0012 (SQLAlchemy 2.x async Mapped types)
   ADR-0015 (Liquibase is source of truth)
 """
@@ -289,3 +289,33 @@ class AuditChainState(Base):
     head_hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_verified_event_id: Mapped[Optional[UUID]] = mapped_column()
+
+
+# ---------------------------------------------------------------------------
+# 012-service-api-keys.yaml  (ADR-0018; long-lived-api-keys task 1.3)
+# ---------------------------------------------------------------------------
+
+
+class ServiceApiKey(Base):
+    """
+    Mirror of the service_api_keys table. Source: 012-service-api-keys.yaml.
+    ADR-0018 §10; Req 7.1.
+    """
+
+    __tablename__ = "service_api_keys"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    service_id: Mapped[UUID] = mapped_column(ForeignKey("services.id"), nullable=False)
+    key_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    key_fingerprint: Mapped[str] = mapped_column(String(16), nullable=False)
+    allowed_actions: Mapped[List[str]] = mapped_column(ARRAY(Text), nullable=False)
+    constraints: Mapped[Optional[Any]] = mapped_column(JSONB)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[Optional[UUID]] = mapped_column()
+    revoke_reason: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(nullable=False)

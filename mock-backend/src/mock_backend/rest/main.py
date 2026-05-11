@@ -81,6 +81,14 @@ async def echo(request: Request) -> dict[str, Any]:
     return {"headers": headers, "body": body}
 
 
+@app.get("/echo")
+async def echo_get(request: Request) -> dict[str, Any]:
+    headers = dict(request.headers)
+    params = dict(request.query_params)
+    logger.info("echo GET: headers=%s params=%s", headers, params)
+    return {"headers": headers, "params": params}
+
+
 @app.get("/timeout")
 async def timeout() -> dict[str, str]:
     logger.info("timeout: sleeping 30s")

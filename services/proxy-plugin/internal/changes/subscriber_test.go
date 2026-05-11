@@ -1,7 +1,7 @@
 // Package changes_test exercises the Subscriber's notification dispatcher.
 // All tests exercise handleNotification directly — no real DB required.
 //
-// Source: ADR-0014.4; T-1.6.7.
+// Source: ADR-0014.4; T-1.6.7; long-lived-api-keys task 5.6.
 package changes_test
 
 import (
@@ -11,12 +11,30 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 )
 
-// newTestSubscriber creates a Subscriber wired to fresh revocation sets.
+// mockCache implements changes.ClassicalKeyCache for testing.
+type mockCache struct {
+	evictedFPs    []string
+	evictedAgents []string
+}
+
+func (m *mockCache) EvictByFingerprint(fp string) { m.evictedFPs = append(m.evictedFPs, fp) }
+func (m *mockCache) EvictByAgentID(id string)     { m.evictedAgents = append(m.evictedAgents, id) }
+
+// newTestSubscriber creates a Subscriber wired to fresh revocation sets and no cache.
 func newTestSubscriber() (*changes.Subscriber, *revocation.AgentRevocationSet, *revocation.JTIRevocationSet) {
 	agents := revocation.NewAgentRevocationSet()
 	jtis := revocation.NewJTIRevocationSet(100_000)
-	sub := changes.NewSubscriber("", agents, jtis)
+	sub := changes.NewSubscriber("", agents, jtis, nil)
 	return sub, agents, jtis
+}
+
+// newTestSubscriberWithCache creates a Subscriber with a mockCache attached.
+func newTestSubscriberWithCache() (*changes.Subscriber, *revocation.AgentRevocationSet, *mockCache) {
+	agents := revocation.NewAgentRevocationSet()
+	jtis := revocation.NewJTIRevocationSet(100_000)
+	mc := &mockCache{}
+	sub := changes.NewSubscriber("", agents, jtis, mc)
+	return sub, agents, mc
 }
 
 // TestHandleAgentRevoked verifies that an agent.revoked payload adds the
@@ -61,6 +79,52 @@ func TestHandleUnknownEventType(t *testing.T) {
 	}
 	if jtis.Len() != 0 {
 		t.Fatalf("expected jti set to remain empty, got Len=%d", jtis.Len())
+	}
+}
+
+// TestHandleApiKeyRevoked verifies that api_key.revoked evicts the fingerprint
+// from the classical-key resolution cache (long-lived-api-keys task 5.6).
+func TestHandleApiKeyRevoked(t *testing.T) {
+	sub, _, mc := newTestSubscriberWithCache()
+
+	payload := `{"event_type":"api_key.revoked","key_fingerprint":"abcd1234"}`
+	if err := sub.HandleNotification(payload); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.evictedFPs) != 1 || mc.evictedFPs[0] != "abcd1234" {
+		t.Fatalf("expected EvictByFingerprint(abcd1234), got %v", mc.evictedFPs)
+	}
+	if len(mc.evictedAgents) != 0 {
+		t.Fatalf("expected no agent evictions, got %v", mc.evictedAgents)
+	}
+}
+
+// TestHandleAgentRevokedAlsoEvictsCache verifies that agent.revoked both adds
+// the agent to the revocation set AND evicts resolution cache entries for that
+// agent (long-lived-api-keys task 5.6; ADR-0018 §2).
+func TestHandleAgentRevokedAlsoEvictsCache(t *testing.T) {
+	sub, agents, mc := newTestSubscriberWithCache()
+
+	payload := `{"event_type":"agent.revoked","agent_id":"agent_01ABC"}`
+	if err := sub.HandleNotification(payload); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !agents.Contains("agent_01ABC") {
+		t.Fatal("expected agent_01ABC in agent revocation set")
+	}
+	if len(mc.evictedAgents) != 1 || mc.evictedAgents[0] != "agent_01ABC" {
+		t.Fatalf("expected EvictByAgentID(agent_01ABC), got %v", mc.evictedAgents)
+	}
+}
+
+// TestApiKeyRevokedNilCacheIsNoop verifies that when no cache is wired up,
+// api_key.revoked is a no-op (no panic).
+func TestApiKeyRevokedNilCacheIsNoop(t *testing.T) {
+	sub, _, _ := newTestSubscriber() // nil cache
+	if err := sub.HandleNotification(`{"event_type":"api_key.revoked","key_fingerprint":"abcd1234"}`); err != nil {
+		t.Fatalf("unexpected error with nil cache: %v", err)
 	}
 }
 

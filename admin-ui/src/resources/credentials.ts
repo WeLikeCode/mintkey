@@ -14,11 +14,23 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { buildSignedRequest } from "../lib/signed-request.js";
+import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
 export const CredentialsResource: ResourceWithOptions = {
-  resource: "credentials",
+  resource: new RestResource({
+    id: "credentials", name: "Credentials",
+    listPath: "/v1/tenants/{tenantId}/services",
+    listKey: "services",
+    idField: "id",
+    properties: [
+      { path: "id", type: "uuid", isId: true },
+      { path: "name", type: "string" },
+      { path: "slug", type: "string" },
+      { path: "auth_scheme", type: "string" },
+    ],
+  }),
   options: {
     navigation: { name: "Credentials", icon: "Lock" },
     listProperties: ["id", "service_id", "auth_scheme", "key_version", "status", "created_at"],

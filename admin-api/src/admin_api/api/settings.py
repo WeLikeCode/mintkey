@@ -50,11 +50,24 @@ class AuditSettings(BaseModel):
     chain_verify_interval_hours: int = 24
 
 
+class ApiKeySettings(BaseModel):
+    """Operator policies for classical service API keys. ADR-0018 §8; Req 7.6, 10.4."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proxy_cache_ttl_seconds: int = 60       # range [10, 300]
+    require_expiry: bool = False
+    allow_no_expiry: bool = True
+    max_expiry_days: int = 365              # range [1, 3650]
+    require_ip_allowlist: bool = False
+
+
 class AdminSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     oidc: OIDCSettings = OIDCSettings()
     audit: AuditSettings = AuditSettings()
+    api_key: ApiKeySettings = ApiKeySettings()
 
 
 # ---------------------------------------------------------------------------

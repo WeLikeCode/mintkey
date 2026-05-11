@@ -1,0 +1,168 @@
+databaseChangeLog:
+
+  # ── Table ──────────────────────────────────────────────────────────────────
+  # Req 7.1 / design §1.1 / ADR-0015 (Liquibase source of truth)
+  - changeSet:
+      id: "012-service-api-keys"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: service_api_keys
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_service_api_keys_tenant
+                    references: tenants(id)
+              - column:
+                  name: agent_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_service_api_keys_agent
+                    references: agents(id)
+              - column:
+                  name: service_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_service_api_keys_service
+                    references: services(id)
+              - column:
+                  name: key_hash
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: key_fingerprint
+                  type: CHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: allowed_actions
+                  type: TEXT[]
+                  constraints:
+                    nullable: false
+              - column:
+                  name: constraints
+                  type: JSONB
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: last_used_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: revoked_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: revoked_by
+                  type: UUID
+              - column:
+                  name: revoke_reason
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: UUID
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: service_api_keys
+
+  # ── Constraints: UNIQUE fingerprint + CHECK actions non-empty + CHECK expiry ─
+  # Req 7.2 / design §1.1
+  - changeSet:
+      id: "012-service-api-keys-constraints"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE service_api_keys
+                ADD CONSTRAINT uq_service_api_keys_fingerprint UNIQUE (key_fingerprint),
+                ADD CONSTRAINT chk_service_api_keys_actions    CHECK (array_length(allowed_actions, 1) >= 1),
+                ADD CONSTRAINT chk_service_api_keys_expiry     CHECK (expires_at IS NULL OR expires_at > created_at);
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE service_api_keys
+                DROP CONSTRAINT IF EXISTS uq_service_api_keys_fingerprint,
+                DROP CONSTRAINT IF EXISTS chk_service_api_keys_actions,
+                DROP CONSTRAINT IF EXISTS chk_service_api_keys_expiry;
+
+  # ── RLS: byte-for-byte standard tenant-isolation policy ────────────────────
+  # Req 7.4 / ADR-0014.8 / ADR-0016.3 — service_api_keys is tenant-scoped;
+  # NOT on the platform-scoped RLS-exclusion allowlist.
+  - changeSet:
+      id: "012-service-api-keys-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE service_api_keys ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON service_api_keys
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON service_api_keys;
+              ALTER TABLE service_api_keys DISABLE ROW LEVEL SECURITY;
+
+  # ── Partial indexes — IMMUTABLE predicates only, no now() ──────────────────
+  # Req 7.3 / design §1.1 — "active" (not revoked AND not expired) is a
+  # query-time filter; index predicate is WHERE revoked_at IS NULL only (IMMUTABLE).
+  - changeSet:
+      id: "012-service-api-keys-idx-agent-service"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_svc_api_keys_agent_service
+                ON service_api_keys (agent_id, service_id)
+                WHERE revoked_at IS NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_svc_api_keys_agent_service;
+
+  - changeSet:
+      id: "012-service-api-keys-idx-service"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_svc_api_keys_service
+                ON service_api_keys (service_id)
+                WHERE revoked_at IS NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_svc_api_keys_service;
+
+  # ── Grants — re-apply because 009-roles ran before this table existed ──────
+  - changeSet:
+      id: "012-service-api-keys-grants"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON service_api_keys TO mintkey_app;
+      rollback:
+        - sql:
+            sql: REVOKE SELECT, INSERT, UPDATE, DELETE ON service_api_keys FROM mintkey_app;

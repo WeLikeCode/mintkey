@@ -12,11 +12,29 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { buildSignedRequest } from "../lib/signed-request.js";
+import { RestResource } from "../lib/rest-resource.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
 export const AgentsResource: ResourceWithOptions = {
-  resource: "agents",
+  resource: new RestResource({
+    id: "agents", name: "Agents",
+    listPath: "/v1/tenants/{tenantId}/agents",
+    getPath: "/v1/tenants/{tenantId}/agents/{id}",
+    listKey: "agents",
+    idField: "id",
+    properties: [
+      { path: "id", type: "uuid", isId: true },
+      { path: "name", type: "string" },
+      { path: "description", type: "string" },
+      { path: "status", type: "string" },
+      { path: "api_key_fingerprint", type: "string" },
+      { path: "mcp_endpoint", type: "string" },
+      { path: "rate_limit_rps", type: "number" },
+      { path: "created_at", type: "datetime" },
+      { path: "updated_at", type: "datetime" },
+    ],
+  }),
   options: {
     navigation: { name: "Agents", icon: "Bot" },
     listProperties: ["id", "name", "status", "api_key_fingerprint", "rate_limit_rps", "created_at"],

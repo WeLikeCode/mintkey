@@ -33,7 +33,7 @@ export function platformAdminMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  if (!req.session.isPlatformAdmin) {
+  if (!req.session?.isPlatformAdmin) {
     next();
     return;
   }
@@ -53,5 +53,5 @@ export function platformAdminMiddleware(
  * X-Platform-Admin header in FastAPI requests.
  */
 export function isPlatformAdminView(req: Request): boolean {
-  return req.session.isPlatformAdmin === true && req.session.platformAdminView === true;
+  return req.session?.isPlatformAdmin === true && req.session?.platformAdminView === true;
 }

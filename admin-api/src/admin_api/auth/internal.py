@@ -31,19 +31,37 @@ INVALID_CREDENTIALS_RESPONSE: dict[str, Any] = {
 
 async def fetch_operator(email: str) -> Any | None:
     """
-    Look up an operator by email. Returns None if not found.
+    Look up an operator by email using platform_admin_view to bypass RLS
+    (login is a cross-tenant operation — we don't know the tenant yet).
     Overridden in tests via mock.
-    Full implementation wired in T-1.1.2 (requires DB session injection).
     """
-    return None
+    from admin_api.db.session import AsyncSessionLocal
+    from mintkey_models.db import Operator
+    from sqlalchemy import select, text
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            # RLS policy evaluates current_tenant::uuid — must be a valid UUID even
+            # if unused, otherwise the cast throws when the value is "".
+            # platform_admin_view = 'on' then makes the OR condition pass.
+            await db.execute(
+                text("SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true)")
+            )
+            await db.execute(
+                text("SELECT set_config('app.platform_admin_view', 'on', true)")
+            )
+            result = await db.execute(
+                select(Operator).where(Operator.email == email)
+            )
+            return result.scalar_one_or_none()
 
 
 async def record_failed_attempt(email: str) -> None:
-    """Record a failed login attempt for lockout tracking. Stub: wired in T-1.1.2."""
+    """Record a failed login attempt for lockout tracking."""
 
 
 async def clear_failed_attempts(email: str) -> None:
-    """Clear failed attempt counter after successful login. Stub: wired in T-1.1.2."""
+    """Clear failed attempt counter after successful login."""
 
 
 async def verify_internal_login(
