@@ -350,13 +350,13 @@ async def list_api_keys(
         items.append({
             "api_key_id": str(r.id),
             "key_fingerprint": r.key_fingerprint,
-            "service_id": r.service_id,
+            "service_id": str(r.service_id) if r.service_id else None,
             "allowed_actions": r.allowed_actions,
             "constraints": json.loads(r.constraints) if r.constraints else None,
             "expires_at": r.expires_at.isoformat() if r.expires_at else None,
             "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
-            "created_by": r.created_by,
+            "created_by": str(r.created_by) if r.created_by else None,
             "status": status,
         })
 
@@ -400,13 +400,13 @@ async def get_api_key(
         content={
             "api_key_id": str(row.id),
             "key_fingerprint": row.key_fingerprint,
-            "service_id": row.service_id,
+            "service_id": str(row.service_id) if row.service_id else None,
             "allowed_actions": row.allowed_actions,
             "constraints": json.loads(row.constraints) if row.constraints else None,
             "expires_at": row.expires_at.isoformat() if row.expires_at else None,
             "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
             "created_at": row.created_at.isoformat() if row.created_at else None,
-            "created_by": row.created_by,
+            "created_by": str(row.created_by) if row.created_by else None,
             "status": status,
         },
     )
@@ -458,7 +458,7 @@ async def revoke_api_key(
         ),
         {
             "now": now,
-            "by": "operator",
+            "by": None,
             "reason": body.reason,
             "kid": key_id,
             "tid": str(tenant_id),

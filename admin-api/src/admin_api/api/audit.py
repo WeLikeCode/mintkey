@@ -34,7 +34,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "event_type": row.event_type,
         "tenant_id": str(row.tenant_id),
         "payload": row.payload if isinstance(row.payload, dict) else {},
-        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": row.at.isoformat() if row.at else None,
     }
 
 
@@ -74,13 +74,13 @@ async def list_audit_events(
     # single string literal — no concatenation or f-strings (ADR-0008 / T-1.0.15).
     result = await session.execute(
         text(
-            "SELECT id, event_type, tenant_id, payload, hash, prev_hash, created_at"
+            "SELECT id, event_type, tenant_id, payload, hash, prev_hash, at"
             " FROM audit_events"
             " WHERE tenant_id = :tenant_id"
             " AND (:after IS NULL OR id > :after)"
             " AND (:event_type IS NULL OR event_type = :event_type)"
-            " AND (:from_ts IS NULL OR created_at >= CAST(:from_ts AS timestamptz))"
-            " AND (:to_ts IS NULL OR created_at <= CAST(:to_ts AS timestamptz))"
+            " AND (:from_ts IS NULL OR at >= CAST(:from_ts AS timestamptz))"
+            " AND (:to_ts IS NULL OR at <= CAST(:to_ts AS timestamptz))"
             " AND (:agent_id IS NULL OR payload->>'agent_id' = :agent_id)"
             " AND (:service_id IS NULL OR payload->>'service_id' = :service_id)"
             " ORDER BY id ASC"

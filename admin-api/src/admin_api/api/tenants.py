@@ -155,14 +155,14 @@ async def create_tenant(
         await session.execute(
             text(
                 "INSERT INTO tenants"
-                " (id, slug, name, isolation_mode, status, created_at, updated_at)"
+                " (id, slug, display_name, isolation_mode, status, created_at, updated_at)"
                 " VALUES"
-                " (:id, :slug, :name, :isolation_mode, :status, :created_at, :updated_at)"
+                " (:id, :slug, :display_name, :isolation_mode, :status, :created_at, :updated_at)"
             ),
             {
                 "id": str(internal_id),
                 "slug": body.slug,
-                "name": body.name,
+                "display_name": body.name,
                 "isolation_mode": body.isolation_mode,
                 "status": "active",
                 "created_at": now,
