@@ -198,17 +198,14 @@ def test_grant_permission_idempotent_no_duplicate_row(
     )
     assert resp1.status_code == 201
 
-    # Second identical grant: route tries idempotent 200 but hits UUID serialization
-    # bug in permissions.py:208 (existing.id is UUID, not str). The TestClient
-    # propagates server exceptions; we catch it and continue to check the DB.
-    try:
-        _post(
-            admin_app,
-            f"/v1/tenants/{perm_tenant}/agents/{perm_agent_id}/permissions",
-            json=payload,
-        )
-    except TypeError:
-        pass  # Known source bug: UUID not JSON serializable in idempotent path
+    # Second identical grant: idempotent path must return 200 with a string id
+    resp2 = _post(
+        admin_app,
+        f"/v1/tenants/{perm_tenant}/agents/{perm_agent_id}/permissions",
+        json=payload,
+    )
+    assert resp2.status_code == 200
+    assert isinstance(resp2.json()["id"], str)
 
     conn = _get_conn(postgres_container)
     cur = conn.cursor()

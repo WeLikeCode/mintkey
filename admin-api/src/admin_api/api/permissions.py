@@ -208,7 +208,7 @@ async def grant_permission(
             return JSONResponse(
                 status_code=200,
                 content={
-                    "id": existing.id,
+                    "id": str(existing.id),
                     "agent_id": agent_id,
                     "service_id": body.service_id,
                     "action": body.action,
