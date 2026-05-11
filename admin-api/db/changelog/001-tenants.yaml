@@ -1,0 +1,77 @@
+databaseChangeLog:
+  - changeSet:
+      id: "001-tenants"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: tenants
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: slug
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: display_name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: isolation_mode
+                  type: VARCHAR(32)
+                  defaultValue: row
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: active
+                  constraints:
+                    nullable: false
+              - column:
+                  name: settings
+                  type: JSONB
+                  defaultValueComputed: "'{}'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: tenants
+
+  - changeSet:
+      id: "001-tenants-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON tenants
+                USING (
+                  id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON tenants;
+              ALTER TABLE tenants DISABLE ROW LEVEL SECURITY;

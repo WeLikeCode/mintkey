@@ -1,0 +1,260 @@
+databaseChangeLog:
+  - changeSet:
+      id: "010-idx-operators-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_operators_tenant_id
+            tableName: operators
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_operators_tenant_id
+            tableName: operators
+
+  - changeSet:
+      id: "010-idx-operators-email"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_operators_email
+            tableName: operators
+            unique: true
+            columns:
+              - column:
+                  name: email
+      rollback:
+        - dropIndex:
+            indexName: idx_operators_email
+            tableName: operators
+
+  - changeSet:
+      id: "010-idx-sessions-operator-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_sessions_operator_id
+            tableName: sessions
+            columns:
+              - column:
+                  name: operator_id
+      rollback:
+        - dropIndex:
+            indexName: idx_sessions_operator_id
+            tableName: sessions
+
+  - changeSet:
+      id: "010-idx-sessions-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_sessions_tenant_id
+            tableName: sessions
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_sessions_tenant_id
+            tableName: sessions
+
+  - changeSet:
+      id: "010-idx-sessions-expires-at"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_sessions_expires_at
+            tableName: sessions
+            columns:
+              - column:
+                  name: expires_at
+      rollback:
+        - dropIndex:
+            indexName: idx_sessions_expires_at
+            tableName: sessions
+
+  - changeSet:
+      id: "010-idx-agents-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_agents_tenant_id
+            tableName: agents
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_agents_tenant_id
+            tableName: agents
+
+  - changeSet:
+      id: "010-idx-agents-api-key-fingerprint"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_agents_api_key_fingerprint
+            tableName: agents
+            columns:
+              - column:
+                  name: api_key_fingerprint
+      rollback:
+        - dropIndex:
+            indexName: idx_agents_api_key_fingerprint
+            tableName: agents
+
+  - changeSet:
+      id: "010-idx-services-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_services_tenant_id
+            tableName: services
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_services_tenant_id
+            tableName: services
+
+  - changeSet:
+      id: "010-idx-credentials-service-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_credentials_service_id
+            tableName: credentials
+            columns:
+              - column:
+                  name: service_id
+      rollback:
+        - dropIndex:
+            indexName: idx_credentials_service_id
+            tableName: credentials
+
+  - changeSet:
+      id: "010-idx-credentials-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_credentials_tenant_id
+            tableName: credentials
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_credentials_tenant_id
+            tableName: credentials
+
+  - changeSet:
+      id: "010-idx-permission-grants-agent-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_permission_grants_agent_id
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: agent_id
+      rollback:
+        - dropIndex:
+            indexName: idx_permission_grants_agent_id
+            tableName: permission_grants
+
+  - changeSet:
+      id: "010-idx-permission-grants-service-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_permission_grants_service_id
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: service_id
+      rollback:
+        - dropIndex:
+            indexName: idx_permission_grants_service_id
+            tableName: permission_grants
+
+  - changeSet:
+      id: "010-idx-audit-events-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_audit_events_tenant_id
+            tableName: audit_events
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_audit_events_tenant_id
+            tableName: audit_events
+
+  - changeSet:
+      id: "010-idx-audit-events-at"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_audit_events_at
+            tableName: audit_events
+            columns:
+              - column:
+                  name: at
+                  descending: true
+      rollback:
+        - dropIndex:
+            indexName: idx_audit_events_at
+            tableName: audit_events
+
+  - changeSet:
+      id: "010-idx-audit-events-tenant-at"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_audit_events_tenant_at
+            tableName: audit_events
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: at
+                  descending: true
+      rollback:
+        - dropIndex:
+            indexName: idx_audit_events_tenant_at
+            tableName: audit_events
+
+  - changeSet:
+      id: "010-idx-admin-request-jti-expires-at"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_admin_request_jti_expires_at
+            tableName: admin_request_jti
+            columns:
+              - column:
+                  name: expires_at
+      rollback:
+        - dropIndex:
+            indexName: idx_admin_request_jti_expires_at
+            tableName: admin_request_jti
+
+  - changeSet:
+      id: "010-idx-audit-chain-state-tenant-id"
+      author: "mintkey"
+      changes:
+        - createIndex:
+            indexName: idx_audit_chain_state_tenant_id
+            tableName: audit_chain_state
+            columns:
+              - column:
+                  name: tenant_id
+      rollback:
+        - dropIndex:
+            indexName: idx_audit_chain_state_tenant_id
+            tableName: audit_chain_state

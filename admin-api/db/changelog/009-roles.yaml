@@ -1,0 +1,106 @@
+databaseChangeLog:
+  - changeSet:
+      id: "009-create-roles"
+      author: "mintkey"
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$ BEGIN
+                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'mintkey_migrate') THEN
+                  CREATE ROLE mintkey_migrate WITH LOGIN BYPASSRLS;
+                END IF;
+              END $$;
+              DO $$ BEGIN
+                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'mintkey_app') THEN
+                  CREATE ROLE mintkey_app WITH LOGIN;
+                END IF;
+              END $$;
+              DO $$ BEGIN
+                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'mintkey_subscriber') THEN
+                  CREATE ROLE mintkey_subscriber WITH LOGIN;
+                END IF;
+              END $$;
+      rollback:
+        - sql:
+            sql: |
+              DROP ROLE IF EXISTS mintkey_migrate;
+              DROP ROLE IF EXISTS mintkey_app;
+              DROP ROLE IF EXISTS mintkey_subscriber;
+
+  - changeSet:
+      id: "009-grant-migrate"
+      author: "mintkey"
+      changes:
+        - sql:
+            sql: |
+              GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mintkey_migrate;
+              GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mintkey_migrate;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM mintkey_migrate;
+              REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM mintkey_migrate;
+
+  - changeSet:
+      id: "009-grant-app"
+      author: "mintkey"
+      changes:
+        - sql:
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mintkey_app;
+              REVOKE UPDATE, DELETE ON audit_events FROM mintkey_app;
+              GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM mintkey_app;
+              REVOKE USAGE ON ALL SEQUENCES IN SCHEMA public FROM mintkey_app;
+
+  - changeSet:
+      id: "009-grant-subscriber"
+      author: "mintkey"
+      changes:
+        - sql:
+            sql: |
+              GRANT SELECT ON tenants,
+                             operators,
+                             operator_tenant_memberships,
+                             sessions,
+                             agents,
+                             services,
+                             credentials,
+                             permission_grants,
+                             audit_events,
+                             tenant_settings,
+                             service_identities,
+                             audit_chain_state
+                TO mintkey_subscriber;
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$ BEGIN
+                EXECUTE format('GRANT CONNECT ON DATABASE %I TO mintkey_subscriber', current_database());
+              END $$;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE SELECT ON tenants,
+                              operators,
+                              operator_tenant_memberships,
+                              sessions,
+                              agents,
+                              services,
+                              credentials,
+                              permission_grants,
+                              audit_events,
+                              tenant_settings,
+                              service_identities,
+                              audit_chain_state
+                FROM mintkey_subscriber;
+        - sql:
+            splitStatements: false
+            sql: |
+              DO $$ BEGIN
+                EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM mintkey_subscriber', current_database());
+              END $$;

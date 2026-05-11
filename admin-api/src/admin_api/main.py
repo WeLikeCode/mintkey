@@ -1,0 +1,59 @@
+"""
+Admin API FastAPI application factory.
+
+Source: design §4 main.py; Req 1 AC7, AC8.
+"""
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+
+from admin_api.api.agents import router as agents_router
+from admin_api.api.audit import router as audit_router
+from admin_api.api.audit_admin import router as audit_admin_router
+from admin_api.api.auth import router as auth_router
+from admin_api.api.changes import router as changes_router
+from admin_api.api.credentials import router as credentials_router
+from admin_api.api.health import router as health_router
+from admin_api.api.internal import router as internal_router
+from admin_api.api.permissions import router as permissions_router, validation_error_handler
+from admin_api.api.services import router as services_router
+from admin_api.api.settings import router as settings_router
+from admin_api.api.tenants import router as tenants_router
+from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+from admin_api.middleware.otel import configure_otel
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Mintkey Admin API", version="0.1.0-experimental")
+
+    app.include_router(health_router)
+    app.include_router(auth_router)
+    app.include_router(services_router)
+    app.include_router(agents_router)
+    app.include_router(changes_router)
+    app.include_router(credentials_router)
+    app.include_router(internal_router)
+    app.include_router(permissions_router)
+    app.include_router(audit_router)
+    app.include_router(audit_admin_router)
+    app.include_router(settings_router)
+    app.include_router(tenants_router)
+
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
+
+    # Login endpoints are CSRF-exempt — they are the bootstrap surface.
+    # @no_csrf decorator on the handler sets the attribute; we also register paths
+    # explicitly here since routing hasn't happened yet at middleware time.
+    csrf_exempt("/v1/auth/internal-login")
+    csrf_exempt("/v1/auth/logout")
+    csrf_exempt("/v1/auth/oidc/callback")
+
+    app.add_middleware(CsrfMiddleware)
+
+    configure_otel(app)
+
+    return app
+
+
+app = create_app()

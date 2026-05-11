@@ -1,0 +1,221 @@
+databaseChangeLog:
+  - changeSet:
+      id: "002-operators"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: operators
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_operators_tenant
+                    references: tenants(id)
+              - column:
+                  name: email
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: display_name
+                  type: VARCHAR(256)
+              - column:
+                  name: internal_password_hash
+                  type: TEXT
+              - column:
+                  name: oidc_sub
+                  type: TEXT
+              - column:
+                  name: oidc_provider
+                  type: TEXT
+              - column:
+                  name: is_platform_admin
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: active
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: operators
+
+  - changeSet:
+      id: "002-operators-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE operators ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON operators
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON operators;
+              ALTER TABLE operators DISABLE ROW LEVEL SECURITY;
+
+  - changeSet:
+      id: "002-operator-tenant-memberships"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: operator_tenant_memberships
+            columns:
+              - column:
+                  name: operator_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_otm_operator
+                    references: operators(id)
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_otm_tenant
+                    references: tenants(id)
+              - column:
+                  name: role
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: operator_tenant_memberships
+
+  - changeSet:
+      id: "002-operator-tenant-memberships-pk"
+      author: mintkey
+      changes:
+        - addPrimaryKey:
+            tableName: operator_tenant_memberships
+            columnNames: operator_id, tenant_id
+            constraintName: pk_operator_tenant_memberships
+      rollback:
+        - dropPrimaryKey:
+            tableName: operator_tenant_memberships
+            constraintName: pk_operator_tenant_memberships
+
+  - changeSet:
+      id: "002-operator-tenant-memberships-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE operator_tenant_memberships ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON operator_tenant_memberships
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON operator_tenant_memberships;
+              ALTER TABLE operator_tenant_memberships DISABLE ROW LEVEL SECURITY;
+
+  - changeSet:
+      id: "002-sessions"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: sessions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_sessions_tenant
+                    references: tenants(id)
+              - column:
+                  name: operator_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_sessions_operator
+                    references: operators(id)
+              - column:
+                  name: oidc_refresh_token_encrypted
+                  type: BYTEA
+              - column:
+                  name: last_used_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ip
+                  type: TEXT
+              - column:
+                  name: user_agent
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: sessions
+
+  - changeSet:
+      id: "002-sessions-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON sessions
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON sessions;
+              ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;

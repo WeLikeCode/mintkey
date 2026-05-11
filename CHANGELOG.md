@@ -68,6 +68,22 @@ Initial release. Template skeleton generalized for cross-engagement reuse.
 
 All notable implementation changes to the Mintkey credential broker MVP.
 
+## [1.0.1] — 2026-05-11
+
+### Added
+- **admin-api** (`admin-api/`) — FastAPI service: health/ready endpoints, tenant-context middleware, CSRF, OTel, Liquibase changelogs (`db/changelog/001–010.yaml`), full CRUD for services/credentials/agents/permissions/audit, rotation + revocation endpoints, admin settings, audit chain verify/acknowledge, PlatformAdmin tenant management
+- **mintkey-models** (`mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification
+- **mcp-server** — FastAPI MCP service: agent auth, `list_services` / `describe_service` / `get_openapi` / `request_token` tools, change-channel subscriber
+- **services/broker** — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter, multi-tenant token claims
+- **services/kong-syncer** — LISTEN/NOTIFY subscriber, Kong declarative YAML push, reconciliation on startup
+- **services/proxy-plugin** — full Kong Go plugin: JWT verify → permissions → Vault gRPC → credential injection (7 auth schemes) → response scrub → audit; revocation sets, egress allowlist
+- **services/vault-adapter** — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server (Put/Get/Revoke/ListVersions/ValidateServiceIdentity/RotateCredential), encrypted-DEK cache
+- **internal** — shared Go packages: `audit`, `changes`, `ulid`, `otelinit`, `svcid`, `cfg`, `models`
+- **audit-verify-job** — standalone hash-chain verification job
+- **mock-backend** — 11 FastAPI endpoints covering all 7 auth schemes plus utility endpoints (timeout, 5xx, redirects, echo)
+- **docker-compose.yml** + `go.work` — full local stack wiring all services
+- **tests** — unit tests (`tests/unit/`), acceptance + architecture tests (`tests/acceptance/`, `tests/architecture/`), `conftest.py`, `requirements.txt`
+
 ## [1.0.0-mvp] — 2026-05-11
 
 First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks are implemented and tested.

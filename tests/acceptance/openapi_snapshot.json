@@ -1,0 +1,14 @@
+{
+  "agents": "/v1/tenants/{tenant_id}/agents",
+  "audit": "/v1/tenants/{tenant_id}/audit",
+  "audit_admin": "/v1/admin/audit",
+  "auth": "/v1/auth",
+  "changes": "/v1/changes",
+  "credentials": "/v1/tenants/{tenant_id}/services/{service_id}/credentials",
+  "health": "/v1/health",
+  "internal": "/v1/internal",
+  "permissions": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
+  "services": "/v1/tenants/{tenant_id}/services",
+  "settings": "/v1/admin",
+  "tenants": "/v1/tenants"
+}

@@ -1,0 +1,85 @@
+databaseChangeLog:
+  - changeSet:
+      id: "003-agents"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: agents
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_agents_tenant
+                    references: tenants(id)
+              - column:
+                  name: name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: api_key_hash
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: api_key_fingerprint
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mcp_endpoint
+                  type: TEXT
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: active
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rate_limit_rps
+                  type: INTEGER
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: agents
+
+  - changeSet:
+      id: "003-agents-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON agents
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON agents;
+              ALTER TABLE agents DISABLE ROW LEVEL SECURITY;

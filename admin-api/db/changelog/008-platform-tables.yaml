@@ -1,0 +1,164 @@
+databaseChangeLog:
+  - changeSet:
+      id: "008-tenant-settings"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: tenant_settings
+            columns:
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_tenant_settings_tenant
+                    references: tenants(id)
+              - column:
+                  name: key
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: value
+                  type: JSONB
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: UUID
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: tenant_settings
+
+  - changeSet:
+      id: "008-tenant-settings-pk"
+      author: mintkey
+      changes:
+        - addPrimaryKey:
+            tableName: tenant_settings
+            columnNames: tenant_id, key
+            constraintName: pk_tenant_settings
+      rollback:
+        - dropPrimaryKey:
+            tableName: tenant_settings
+            constraintName: pk_tenant_settings
+
+  - changeSet:
+      id: "008-tenant-settings-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE tenant_settings ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON tenant_settings
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON tenant_settings;
+              ALTER TABLE tenant_settings DISABLE ROW LEVEL SECURITY;
+
+  - changeSet:
+      id: "008-admin-request-jti"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: admin_request_jti
+            columns:
+              - column:
+                  name: jti
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: admin_request_jti
+
+  - changeSet:
+      id: "008-service-identities"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: service_identities
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: hashed_token
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: scopes
+                  type: "TEXT[]"
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: service_identities
+
+  - changeSet:
+      id: "008-audit-chain-state"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: audit_chain_state
+            columns:
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+                    foreignKeyName: fk_audit_chain_state_tenant
+                    references: tenants(id)
+              - column:
+                  name: head_event_id
+                  type: UUID
+              - column:
+                  name: head_hash
+                  type: BYTEA
+              - column:
+                  name: last_verified_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: last_verified_event_id
+                  type: UUID
+      rollback:
+        - dropTable:
+            tableName: audit_chain_state

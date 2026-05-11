@@ -1,0 +1,118 @@
+databaseChangeLog:
+  - changeSet:
+      id: "004-services"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: services
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_services_tenant
+                    references: tenants(id)
+              - column:
+                  name: name
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: slug
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: display_name
+                  type: VARCHAR(256)
+              - column:
+                  name: description
+                  type: TEXT
+              - column:
+                  name: base_url
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: auth_scheme
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: openapi_url
+                  type: TEXT
+              - column:
+                  name: openapi_etag
+                  type: TEXT
+              - column:
+                  name: allow_internal_urls
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: current_key_version
+                  type: INTEGER
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: active
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: services
+
+  - changeSet:
+      id: "004-services-unique-tenant-slug"
+      author: mintkey
+      changes:
+        - addUniqueConstraint:
+            tableName: services
+            columnNames: tenant_id, slug
+            constraintName: uq_services_tenant_slug
+      rollback:
+        - dropUniqueConstraint:
+            tableName: services
+            constraintName: uq_services_tenant_slug
+
+  - changeSet:
+      id: "004-services-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE services ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON services
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON services;
+              ALTER TABLE services DISABLE ROW LEVEL SECURITY;

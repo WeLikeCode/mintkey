@@ -1,0 +1,88 @@
+databaseChangeLog:
+  - changeSet:
+      id: "007-audit-events"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: audit_events
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_audit_events_tenant
+                    references: tenants(id)
+              - column:
+                  name: event_type
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_id
+                  type: UUID
+              - column:
+                  name: actor_type
+                  type: VARCHAR(64)
+              - column:
+                  name: target_id
+                  type: UUID
+              - column:
+                  name: target_type
+                  type: VARCHAR(64)
+              - column:
+                  name: payload
+                  type: JSONB
+                  defaultValueComputed: "'{}'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prev_hash
+                  type: BYTEA
+                  constraints:
+                    nullable: false
+              - column:
+                  name: hash
+                  type: BYTEA
+                  constraints:
+                    nullable: false
+              - column:
+                  name: request_id
+                  type: UUID
+              - column:
+                  name: trace_id
+                  type: VARCHAR(128)
+              - column:
+                  name: at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: audit_events
+
+  - changeSet:
+      id: "007-audit-events-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON audit_events
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON audit_events;
+              ALTER TABLE audit_events DISABLE ROW LEVEL SECURITY;

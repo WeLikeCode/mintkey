@@ -1,0 +1,79 @@
+databaseChangeLog:
+  - changeSet:
+      id: "006-permission-grants"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_permission_grants_tenant
+                    references: tenants(id)
+              - column:
+                  name: agent_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_permission_grants_agent
+                    references: agents(id)
+              - column:
+                  name: service_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_permission_grants_service
+                    references: services(id)
+              - column:
+                  name: action
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: constraints
+                  type: JSONB
+                  defaultValueComputed: "'{}'"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by
+                  type: UUID
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: permission_grants
+
+  - changeSet:
+      id: "006-permission-grants-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE permission_grants ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON permission_grants
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON permission_grants;
+              ALTER TABLE permission_grants DISABLE ROW LEVEL SECURITY;
