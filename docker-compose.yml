@@ -346,8 +346,6 @@ services:
     image: prom/prometheus:v2.51.0
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9091:9090"
     networks:
       - mintkey
     healthcheck:
