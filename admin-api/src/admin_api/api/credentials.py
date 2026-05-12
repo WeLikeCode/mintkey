@@ -31,7 +31,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
-from admin_api.db.deps import get_db_session, resolve_tenant_uuid
+from admin_api.db.deps import get_db_session
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
@@ -76,10 +76,8 @@ def _new_cred_id() -> str:
 
 
 class CredentialCreate(BaseModel):
-    model_config = {"extra": "ignore"}
-    auth_scheme: str          # e.g., "bearer_token", "api_key_header"
-    value: str                # SENSITIVE — never echoed back (S-SEC-1, ADR-0014.4)
-    header_name: Optional[str] = None  # optional header name for api_key_header scheme
+    auth_scheme: str  # e.g., "bearer_token", "api_key_header"
+    value: str        # SENSITIVE — never echoed back (S-SEC-1, ADR-0014.4)
 
 
 # ---------------------------------------------------------------------------
@@ -87,22 +85,10 @@ class CredentialCreate(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _svc_wire_id_to_uuid(wire_id: str) -> str:
-    """Convert a svc_ wire ID to its UUID DB representation."""
-    if wire_id.startswith("svc_"):
-        hex_part = wire_id[4:]
-        if len(hex_part) == 32:
-            return (
-                f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                f"-{hex_part[16:20]}-{hex_part[20:]}"
-            )
-    return wire_id
-
-
 @router.post("", status_code=201)
 async def create_credential(
-    tenant_id: str,
-    service_id: str,
+    tenant_id: UUID,
+    service_id: UUID,
     body: CredentialCreate,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
@@ -117,27 +103,15 @@ async def create_credential(
     Source: T-1.3.2; ADR-0008; ADR-0011; ADR-0014.4; ADR-0014.7; ADR-0017.11.
     """
     # Step 1: Set tenant context — bound parameters, ADR-0008
-    tenant_id = await resolve_tenant_uuid(tenant_id, session)  # type: ignore[assignment]
-    service_id_str = _svc_wire_id_to_uuid(service_id)
-    service_id = UUID(service_id_str)  # type: ignore[assignment]
     await set_tenant_context(session, tenant_id)
 
-    # Step 2a: Fetch service base_url so the vault stores it alongside the credential.
-    svc_row = await session.execute(
-        text("SELECT base_url FROM services WHERE id = :sid AND tenant_id = :tid"),
-        {"sid": str(service_id), "tid": str(tenant_id)},
-    )
-    svc = svc_row.fetchone()
-    service_base_url: str = svc.base_url if svc is not None else ""
-
-    # Step 2b: Call Vault Adapter — plaintext is passed only within this request scope
+    # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
         service_id=str(service_id),
         auth_scheme=body.auth_scheme,
         plaintext=body.value,  # plaintext leaves scope here; vault encrypts it
-        target_url=service_base_url,
     )
     key_version: int = vault_result["key_version"]
 
@@ -224,8 +198,8 @@ async def create_credential(
 
 @router.delete("/{key_version}", status_code=204)
 async def delete_credential_version(
-    tenant_id: str,
-    service_id: str,
+    tenant_id: UUID,
+    service_id: UUID,
     key_version: int,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
@@ -237,8 +211,6 @@ async def delete_credential_version(
 
     Source: OpenAPI deleteCredentialVersion; ADR-0014.4; ADR-0008.
     """
-    tenant_id = await resolve_tenant_uuid(tenant_id, session)  # type: ignore[assignment]
-    service_id = UUID(_svc_wire_id_to_uuid(service_id))  # type: ignore[assignment]
     await set_tenant_context(session, tenant_id)
 
     result = await session.execute(
@@ -301,8 +273,8 @@ async def delete_credential_version(
 
 @router.get("")
 async def list_credential_versions(
-    tenant_id: str,
-    service_id: str,
+    tenant_id: UUID,
+    service_id: UUID,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
@@ -313,8 +285,6 @@ async def list_credential_versions(
 
     Source: T-1.3.2; ADR-0008.
     """
-    tenant_id = await resolve_tenant_uuid(tenant_id, session)  # type: ignore[assignment]
-    service_id = UUID(_svc_wire_id_to_uuid(service_id))  # type: ignore[assignment]
     await set_tenant_context(session, tenant_id)
 
     result = await session.execute(
