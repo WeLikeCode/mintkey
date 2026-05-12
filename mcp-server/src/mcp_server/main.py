@@ -53,8 +53,8 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def agent_key_middleware(request: Request, call_next):
-        # Health check and metrics bypass auth
-        if request.url.path in ("/health", "/v1/health", "/metrics"):
+        # Health check, metrics, and instructions bypass auth
+        if request.url.path in ("/health", "/v1/health", "/metrics", "/v1/tools/instructions"):
             return await call_next(request)
 
         # Accept both Authorization: Bearer <key> and X-API-Key: <key>

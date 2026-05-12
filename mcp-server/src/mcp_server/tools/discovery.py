@@ -2,14 +2,17 @@
 MCP discovery tools.
 
 GET /v1/tools/list_services        — services the agent has permission to call.
+GET /v1/tools/discover             — alias for list_services with how_to_call hints.
 GET /v1/tools/describe_service/{service_id} — full service metadata.
 GET /v1/tools/get_openapi/{service_id}      — OpenAPI URL or null.
+GET /v1/tools/instructions         — LLM-ready usage guide (no auth required).
 
 All queries run under tenant context (RLS enforces isolation).
 Source: Req 6 AC3, AC4; ADR-0008.
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -22,6 +25,49 @@ from mcp_server.db.session import get_db_session
 
 router = APIRouter(prefix="/v1/tools")
 
+_INSTRUCTIONS_MARKDOWN = """\
+# Mintkey Proxy — Agent Usage Guide
+
+You are an agent with access to backend services via the Mintkey credential proxy.
+Your API key is secret — never log or share it.
+
+## Step 1: Discover available services
+GET /v1/tools/discover
+Header: X-API-Key: <your_api_key>
+
+Returns a list of services you are permitted to call. Note the `id` and `base_url` for the service you want to use.
+
+## Step 2: Request a temporary token
+POST /v1/tools/request_token
+Header: X-API-Key: <your_api_key>
+Body: {"service_id": "<id_from_discover>", "action": "call"}
+
+IMPORTANT: the action must always be the string "call" — not "read", "write", "send", or any other value.
+
+Returns: {"token": "<jwt>", "expires_at": <unix_timestamp>, "service_id": "..."}
+The token is valid for 10 minutes. Never log it.
+
+## Step 3: Call the service through the proxy
+METHOD http://<kong_host>:8000/proxy/<path>
+Header: Authorization: Bearer <token_from_step_2>
+Header: X-Mintkey-Target: <base_url_from_discover>
+
+Rules:
+- The path after /proxy/ is forwarded verbatim to the target service.
+- X-Mintkey-Target must be the exact base_url from discover (e.g. https://api.twilio.com).
+- The proxy strips your Authorization header and injects the real service credential automatically.
+- You never see the actual API key/password — the proxy holds it encrypted.
+- If you get 401 from the proxy, your token has expired — repeat from Step 2.
+- If you get 403 from the proxy, your agent lacks permission for this service — contact the operator.
+
+## Example: Twilio SMS logs
+Discover -> note service id for "twilio-sms" and base_url "https://api.twilio.com"
+Request token -> POST /v1/tools/request_token {"service_id": "<id>", "action": "call"}
+Call -> GET http://localhost:8000/proxy/2010-04-01/Accounts/<ACCOUNT_SID>/Messages.json
+        Authorization: Bearer <token>
+        X-Mintkey-Target: https://api.twilio.com
+"""
+
 
 async def get_agent_context(request: Request):
     """
@@ -30,6 +76,26 @@ async def get_agent_context(request: Request):
     Returns None when no agent context is present; endpoints return 401.
     """
     return getattr(request.state, "agent_context", None)
+
+
+def _make_how_to_call(service_id: str, base_url: str) -> dict:
+    """Build the how_to_call usage hint for a service entry."""
+    kong_host = os.getenv("KONG_PROXY_URL", "http://localhost:8000")
+    return {
+        "action": "call",
+        "step1_request_token": (
+            f'POST /v1/tools/request_token {{"service_id": "{service_id}", "action": "call"}}'
+        ),
+        "step2_proxy_call": (
+            f"Send request to Kong proxy with "
+            f"Authorization: Bearer <token> and X-Mintkey-Target: {base_url}"
+        ),
+        "proxy_url_pattern": f"{kong_host}/proxy/<path_on_target_api>",
+        "notes": (
+            'The action must be exactly "call" for all services. '
+            "The proxy strips your Bearer token and injects the real credential before forwarding."
+        ),
+    }
 
 
 @router.get("/list_services")
@@ -69,6 +135,55 @@ async def list_services(
         for r in rows
     ]
     return JSONResponse({"services": services})
+
+
+@router.get("/discover")
+async def discover(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    agent_ctx: Optional[dict] = Depends(get_agent_context),
+) -> JSONResponse:
+    """
+    List services with per-service how_to_call usage hints.
+    Used by E2E smoke test (T-1.11.2) and LLM agents.
+    Source: Req 6 AC3; ADR-0008.
+    """
+    if agent_ctx is None:
+        return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
+
+    await set_tenant_context(session, agent_ctx["tenant_id"])
+
+    result = await session.execute(
+        text(
+            "SELECT DISTINCT s.id, s.name, s.slug, s.base_url, s.auth_scheme"
+            " FROM services s"
+            " JOIN permission_grants pg ON pg.service_id = s.id"
+            " WHERE pg.agent_id = :agent_id"
+        ),
+        {"agent_id": agent_ctx["agent_id"]},
+    )
+    rows = result.fetchall()
+    services = [
+        {
+            "id": str(r.id),
+            "name": r.name,
+            "slug": r.slug,
+            "base_url": r.base_url,
+            "auth_scheme": r.auth_scheme,
+            "how_to_call": _make_how_to_call(str(r.id), r.base_url),
+        }
+        for r in rows
+    ]
+    return JSONResponse({"services": services})
+
+
+@router.get("/instructions")
+async def instructions() -> JSONResponse:
+    """
+    Return a complete LLM system-prompt-ready usage guide for the Mintkey proxy.
+    No authentication required — safe to inject into agent system prompts.
+    """
+    return JSONResponse({"format": "markdown", "content": _INSTRUCTIONS_MARKDOWN})
 
 
 @router.get("/describe_service/{service_id}")
