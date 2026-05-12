@@ -379,7 +379,7 @@ services:
         condition: service_healthy
     # proxy-plugin now runs as an HTTP reverse proxy on PLUGIN_PORT.
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/healthz || exit 1"]
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8086/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
