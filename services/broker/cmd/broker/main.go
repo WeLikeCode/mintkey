@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/internal/ulid"
 	"github.com/mintkey/mintkey/services/broker/internal/api/issue"
 	"github.com/mintkey/mintkey/services/broker/internal/api/resolve"
@@ -26,6 +27,18 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		otlpEndpoint = "otel-collector:4317"
+	}
+	otelShutdown, err := otelinit.Init(context.Background(), "mintkey/broker", otlpEndpoint)
+	if err != nil {
+		log.Printf("broker: OTel init warning: %v (continuing without telemetry)", err)
+	} else {
+		defer func() { _ = otelShutdown(context.Background()) }()
+	}
 
 	// Key ring: generate an ephemeral Ed25519 key pair for dev.
 	// In T-1.0.8+ the private key is fetched from Vault Adapter using svcid_broker.

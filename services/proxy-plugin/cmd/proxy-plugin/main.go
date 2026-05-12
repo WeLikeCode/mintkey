@@ -26,11 +26,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
@@ -39,6 +41,18 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		otlpEndpoint = "otel-collector:4317"
+	}
+	otelShutdown, err := otelinit.Init(context.Background(), "mintkey/proxy-plugin", otlpEndpoint)
+	if err != nil {
+		log.Printf("proxy-plugin: OTel init warning: %v (continuing without telemetry)", err)
+	} else {
+		defer func() { _ = otelShutdown(context.Background()) }()
+	}
 
 	log.Printf("proxy-plugin: starting env=%s vault=%s jwks=%s port=%d",
 		cfg.Env, cfg.VaultAddrGRPC, cfg.JWKSEndpoint, cfg.PluginPort)

@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/changes"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/config"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/health"
@@ -19,6 +20,19 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		otlpEndpoint = "otel-collector:4317"
+	}
+	otelShutdown, err := otelinit.Init(context.Background(), "mintkey/kong-syncer", otlpEndpoint)
+	if err != nil {
+		log.Printf("kong-syncer: OTel init warning: %v (continuing without telemetry)", err)
+	} else {
+		defer func() { _ = otelShutdown(context.Background()) }()
+	}
+
 	log.Printf("kong-syncer: starting (env=%s, port=%d)", cfg.Env, cfg.HTTPPort)
 
 	// Changes subscriber: kong-syncer is a global subscriber (AllTenants).

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/changes"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/config"
@@ -21,6 +22,18 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		otlpEndpoint = "otel-collector:4317"
+	}
+	otelShutdown, err := otelinit.Init(context.Background(), "mintkey/vault-adapter", otlpEndpoint)
+	if err != nil {
+		log.Printf("vault-adapter: OTel init warning: %v (continuing without telemetry)", err)
+	} else {
+		defer func() { _ = otelShutdown(context.Background()) }()
+	}
 
 	key, err := kek.Load()
 	if err != nil {
