@@ -1,8 +1,14 @@
-# Kong DB-less declarative config — placeholder until kong-syncer writes full config (T-1.8.x).
-# This minimal config lets Kong start in DB-less mode for smoke testing.
+# Kong DB-less declarative config — routes /proxy/ through the proxy-plugin HTTP server.
+# The proxy-plugin validates JWTs and injects credentials before forwarding to the backend.
 _format_version: "3.0"
 _transform: true
 
-services: []
-routes: []
+services:
+  - name: mock-backend
+    url: http://proxy-plugin:8086
+    routes:
+      - name: mock-backend-route
+        paths: ["/proxy/"]
+        strip_path: true
+
 plugins: []

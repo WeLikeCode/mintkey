@@ -6,8 +6,7 @@
 //   - Vault Adapter unreachable → return error (never panic).
 //   - Callers MUST zero GetCredentialResponse.Plaintext after use.
 //
-// Full proto-generated integration is wired in T-1.6.8.
-// Source: ADR-0004; ADR-0014.4; vault.proto; T-1.6.3.
+// Source: ADR-0004; ADR-0014.4; vault.proto; T-1.6.3; T-1.6.8.
 package vault
 
 import (
@@ -15,6 +14,7 @@ import (
 	"fmt"
 	"time"
 
+	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -81,15 +81,10 @@ func (c *Client) ServiceToken() string {
 //
 // Every call:
 //  1. Attaches "x-mintkey-service-token: <token>" to the outgoing gRPC metadata.
-//  2. Dials the Vault Adapter (lazy connection, fails fast on unreachable).
+//  2. Dials the Vault Adapter (per-call, fails fast on unreachable).
 //  3. Returns an error — never panics — if the adapter is unreachable.
 //
 // Callers MUST zero resp.Plaintext after use.
-//
-// Note: full proto-generated RPC invocation is wired in T-1.6.8. This
-// implementation establishes the connection and metadata pattern; the Invoke
-// call below is a placeholder that returns a known sentinel error until
-// the proto-generated stub is linked.
 func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*GetCredentialResponse, error) {
 	// Attach service identity token to outgoing metadata (required on every call).
 	md := metadata.Pairs("x-mintkey-service-token", c.serviceToken)
@@ -109,22 +104,22 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 	}
 	defer conn.Close()
 
-	// Probe connectivity: attempt a no-op Invoke to force TCP connection.
-	// grpc.WaitForReady(false) means fail immediately if not connected,
-	// but the dialCtx timeout still applies.
-	var reply struct{}
-	invokeErr := conn.Invoke(
-		dialCtx,
-		"/mintkey.vault.v1.VaultAdapter/GetCredential",
-		req,
-		&reply,
-		grpc.WaitForReady(false),
-	)
-	if invokeErr != nil {
-		return nil, fmt.Errorf("vault: GetCredential(%s/%s): %w", req.TenantID, req.ServiceID, invokeErr)
+	stub := vaultv1.NewVaultAdapterClient(conn)
+	resp, err := stub.GetCredential(dialCtx, &vaultv1.GetCredentialRequest{
+		TenantId:      req.TenantID,
+		ServiceId:     req.ServiceID,
+		KeyVersion:    req.KeyVersion,
+		CallerActorId: req.CallerActorID,
+	}, grpc.WaitForReady(false))
+	if err != nil {
+		return nil, fmt.Errorf("vault: GetCredential(%s/%s): %w", req.TenantID, req.ServiceID, err)
 	}
 
-	// T-1.6.8 will replace the Invoke above with the proto-generated stub call
-	// and unmarshal the real GetCredentialResponse. Until then, return a sentinel.
-	return nil, fmt.Errorf("vault: proto-generated integration not yet wired (T-1.6.8)")
+	return &GetCredentialResponse{
+		AuthScheme:         int32(resp.GetAuthScheme()),
+		Plaintext:          resp.GetValue(),
+		ReturnedKeyVersion: resp.GetReturnedKeyVersion(),
+		HeaderName:         resp.GetHeaderName(),
+		QueryParam:         resp.GetQueryParam(),
+	}, nil
 }

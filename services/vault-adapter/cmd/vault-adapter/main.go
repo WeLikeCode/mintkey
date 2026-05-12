@@ -16,6 +16,7 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/config"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/kek"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/server"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 )
 
 func main() {
@@ -29,6 +30,18 @@ func main() {
 	log.Printf("vault-adapter: KEK loaded (%d bytes), env=%s", len(key), cfg.Env)
 
 	dekCache := cache.New(0) // default 5-min TTL
+
+	dbPath := os.Getenv("VAULT_DB_PATH")
+	if dbPath == "" {
+		dbPath = "/tmp/vault-adapter.db"
+	}
+	st, err := store.New(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "vault-adapter: store: %v\n", err)
+		os.Exit(1)
+	}
+
+	svc := server.NewVaultService(key, st)
 	srv := server.New(key)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -48,7 +61,7 @@ func main() {
 	}
 
 	log.Printf("vault-adapter: gRPC listening on :%d", cfg.GRPCPort)
-	if err := srv.ListenAndServe(ctx, cfg.GRPCPort); err != nil {
+	if err := srv.ListenAndServe(ctx, cfg.GRPCPort, svc); err != nil {
 		fmt.Fprintf(os.Stderr, "vault-adapter: serve error: %v\n", err)
 		os.Exit(1)
 	}

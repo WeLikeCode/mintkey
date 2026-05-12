@@ -297,6 +297,7 @@ services:
       BROKER_ADDR: broker:8083
       VAULT_GRPC_ADDR: vault-adapter:8084
       PLUGIN_PORT: "8086"
+      DEFAULT_TARGET: http://mock-backend:8999
     ports:
       - "8086:8086"
     networks:
@@ -304,8 +305,13 @@ services:
     depends_on:
       kong:
         condition: service_healthy
-    # proxy-plugin is a Kong go-pdk plugin — no HTTP health endpoint.
-    # It uses a Unix socket for Kong communication; healthcheck not applicable.
+    # proxy-plugin now runs as an HTTP reverse proxy on PLUGIN_PORT.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/healthz", "||", "exit", "0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   # ─── 11. Mock Backend ─────────────────────────────────────────────────────
   mock-backend:
