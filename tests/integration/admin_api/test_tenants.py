@@ -204,3 +204,191 @@ def test_create_tenant_genesis_hash_initialised(
     conn.close()
     assert chain_row is not None, "audit_chain_state row missing for new tenant"
     assert chain_row[0] is not None, "head_hash is NULL"
+
+
+# ---------------------------------------------------------------------------
+# Tests: GET /v1/tenants — list all tenants (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+def test_list_tenants_without_platform_admin_returns_403(admin_app: TestClient) -> None:
+    """GET /v1/tenants without PlatformAdmin header → 403."""
+    resp = admin_app.get("/v1/tenants")
+    assert resp.status_code == 403
+    assert resp.json()["mintkey:code"] == "permission_denied"
+
+
+def test_list_tenants_returns_200_with_data(admin_app: TestClient) -> None:
+    """GET /v1/tenants with PlatformAdmin → 200 with data array."""
+    # Create a tenant first so we have at least one
+    _platform_post(
+        admin_app,
+        "/v1/tenants",
+        json={"slug": "list-test-tenant", "name": "List Test"},
+    )
+    resp = admin_app.get("/v1/tenants", headers=_PLATFORM_ADMIN)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "data" in body
+    assert isinstance(body["data"], list)
+    assert len(body["data"]) >= 1
+    # Verify shape of each tenant
+    for t in body["data"]:
+        assert "id" in t
+        assert "slug" in t
+        assert "display_name" in t
+        assert "status" in t
+
+
+# ---------------------------------------------------------------------------
+# Tests: GET /v1/tenants/{tid} — get single tenant
+# ---------------------------------------------------------------------------
+
+
+def _create_tenant_and_get_uuid(admin_app: TestClient, postgres_container, slug: str) -> str:
+    """Create a tenant via API and return its DB UUID."""
+    import psycopg2
+    _platform_post(admin_app, "/v1/tenants", json={"slug": slug, "name": slug})
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM tenants WHERE slug = %s", (slug,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None
+    return str(row[0])
+
+
+def test_get_tenant_returns_200(admin_app: TestClient, postgres_container) -> None:
+    """GET /v1/tenants/{tid} → 200 with tenant fields."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "get-single-tenant")
+    resp = admin_app.get(f"/v1/tenants/{tid}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == tid
+    assert body["slug"] == "get-single-tenant"
+    assert "display_name" in body
+    assert "status" in body
+
+
+def test_get_tenant_not_found_returns_404(admin_app: TestClient) -> None:
+    """GET /v1/tenants/{tid} with unknown UUID → 404."""
+    import uuid
+    resp = admin_app.get(f"/v1/tenants/{uuid.uuid4()}")
+    assert resp.status_code == 404
+    assert resp.json()["mintkey:code"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# Tests: PATCH /v1/tenants/{tid} — update tenant metadata (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+def test_patch_tenant_without_platform_admin_returns_403(
+    admin_app: TestClient, postgres_container
+) -> None:
+    """PATCH /v1/tenants/{tid} without PlatformAdmin → 403."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "patch-forbidden-tenant")
+    resp = admin_app.patch(
+        f"/v1/tenants/{tid}",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+        json={"display_name": "Should Fail"},
+    )
+    assert resp.status_code == 403
+
+
+def test_patch_tenant_updates_display_name(admin_app: TestClient, postgres_container) -> None:
+    """PATCH /v1/tenants/{tid} with PlatformAdmin → 200 with updated display_name."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "patch-ok-tenant")
+    resp = admin_app.patch(
+        f"/v1/tenants/{tid}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+        json={"display_name": "Updated Name"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["display_name"] == "Updated Name"
+    assert body["id"] == tid
+
+
+def test_patch_tenant_not_found_returns_404(admin_app: TestClient) -> None:
+    """PATCH /v1/tenants/{tid} with unknown UUID → 404."""
+    import uuid
+    resp = admin_app.patch(
+        f"/v1/tenants/{uuid.uuid4()}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+        json={"display_name": "Ghost"},
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Tests: DELETE /v1/tenants/{tid} — soft-delete tenant (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+def test_delete_tenant_without_platform_admin_returns_403(
+    admin_app: TestClient, postgres_container
+) -> None:
+    """DELETE /v1/tenants/{tid} without PlatformAdmin → 403."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "delete-forbidden-tenant")
+    resp = admin_app.delete(
+        f"/v1/tenants/{tid}",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp.status_code == 403
+
+
+def test_delete_tenant_returns_204(admin_app: TestClient, postgres_container) -> None:
+    """DELETE /v1/tenants/{tid} with PlatformAdmin → 204."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "delete-ok-tenant")
+    resp = admin_app.delete(
+        f"/v1/tenants/{tid}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp.status_code == 204, resp.text
+
+
+def test_delete_tenant_not_found_returns_404(admin_app: TestClient) -> None:
+    """DELETE /v1/tenants/{tid} with unknown UUID → 404."""
+    import uuid
+    resp = admin_app.delete(
+        f"/v1/tenants/{uuid.uuid4()}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp.status_code == 404
+
+
+def test_delete_tenant_already_deleted_returns_409(
+    admin_app: TestClient, postgres_container
+) -> None:
+    """DELETE /v1/tenants/{tid} twice → second call returns 409."""
+    tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "delete-409-tenant")
+    # First delete succeeds
+    resp1 = admin_app.delete(
+        f"/v1/tenants/{tid}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp1.status_code == 204
+    # Second delete → 409
+    resp2 = admin_app.delete(
+        f"/v1/tenants/{tid}",
+        headers={**_CSRF_HEADERS, **_PLATFORM_ADMIN},
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp2.status_code == 409
+    assert resp2.json()["mintkey:code"] == "tenant_already_deleted"

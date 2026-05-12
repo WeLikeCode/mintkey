@@ -34,6 +34,10 @@ When an open question is resolved, it moves into an ADR (or amendment) and the e
 | OQ‑020 | Proto field `(mintkey_sensitive) = true` option for codegen | 🟢 | Subagent security review (F‑23) | Phase 1 implementation | Open |
 | OQ‑021 | Change‑event envelope explicit no‑hash‑chain note | 🟢 | Subagent security review (F‑24) | Iteration 4 closeout | Open |
 | OQ‑022 | Per‑service min/max/default TTL bounds exposed in MCP `service_full` | 🟢 | Subagent security review (F‑26) | Iteration 4 closeout | Open |
+| OQ‑023 | `/.well-known/jwks.json` belongs to broker, not admin-api | 🟡 | P2G coverage audit | Phase 2 | Open |
+| OQ‑024 | `/v1/services` and `/v1/agents` (tenant-prefix-less) — needed? | 🟢 | P2G coverage audit | Phase 2 | Open |
+| OQ‑025 | `/v1/audit` (tenant-prefix-less) — redundant with `/v1/tenants/{id}/audit`? | 🟢 | P2G coverage audit | Phase 2 | Open |
+| OQ‑026 | `/v1/tenants/{id}/changes` SSE feed — deferred; design needed | 🟡 | P2G coverage audit | Phase 2 | Open |
 
 ---
 
@@ -79,6 +83,18 @@ v1 uses a shared signing key; `iss = mintkey/broker`; key rotation via `kid`. **
 [ADR‑0014.2](adr/0014-iter-1-2-corrections.md) introduces per‑service boot secrets to the Vault Adapter. Rotation: re‑run the seed job (or its rotation subcommand) with an overlap window. **Open**: hot‑reload mechanism — does the service watch the boot‑secret file (inotify‑style) and pick up rotation, or require a SIGHUP, or restart? **Lean: file watch with fallback to SIGHUP**. Phase 1 implementation detail.
 
 ---
+
+### OQ‑023 — `/.well-known/jwks.json` belongs to broker, not admin-api 🟡
+The OpenAPI contract lists `GET /.well-known/jwks.json` but the broker service (Go) owns JWT signing keys. The admin-api has no signing keys to publish. This endpoint must be served by the broker service and the OpenAPI contract should be split (or a note added clarifying the owning service). **Phase 2** — update OpenAPI contract ownership annotation or split the spec.
+
+### OQ‑024 — `/v1/services` and `/v1/agents` (tenant-prefix-less) 🟢
+OpenAPI lists `GET /v1/services`, `POST /v1/services`, `GET /v1/agents`, `POST /v1/agents` without a tenant prefix. These appear to be implicit shortcuts to the active tenant's resources (per the OpenAPI description text). It is unclear whether these are required for Phase 1 or are a convenience for the MCP server path. **Phase 2** — clarify whether these are genuine routes or spec artifacts; if genuine, implement in admin-api or as MCP-facing routes.
+
+### OQ‑025 — `/v1/audit` (tenant-prefix-less) 🟢
+OpenAPI lists `GET /v1/audit` without a tenant prefix, alongside the already-implemented `GET /v1/tenants/{id}/audit`. It is ambiguous whether the prefix-less route is a platform-wide audit view (PlatformAdmin only, all tenants) or a duplicate artifact. **Phase 2** — decide if needed and implement accordingly.
+
+### OQ‑026 — `/v1/tenants/{id}/changes` SSE feed deferred 🟡
+The OpenAPI contract defines `GET /v1/tenants/{id}/changes` as an SSE (Server-Sent Events) feed for per-tenant change events. This is architecturally distinct from the implemented `GET /v1/changes` (global feed with tenant filtering). The per-tenant SSE variant requires SSE response type support in FastAPI and a separate design decision on whether it duplicates or replaces the global feed. **Phase 2** — design the SSE response, decide on overlap with `/v1/changes`, then implement.
 
 ## Maintenance
 - New issues found in adversarial reviews land here as `OQ‑NNN`.

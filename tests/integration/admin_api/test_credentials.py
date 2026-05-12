@@ -234,3 +234,79 @@ def test_cross_tenant_list_credentials_returns_empty(
     body = resp.json()
     # RLS isolation: no versions visible to tenant B
     assert body["versions"] == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: DELETE /v1/tenants/{tid}/services/{sid}/credentials/{key_version}
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cred_service_for_delete(admin_app: TestClient, postgres_container, cred_tenant: str) -> str:
+    """Separate service so delete tests don't interfere with list/create tests."""
+    return _insert_service(postgres_container, cred_tenant, slug="cred-svc-delete")
+
+
+def test_delete_credential_version_returns_204(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_delete: str
+) -> None:
+    """DELETE /credentials/{key_version} → 204 revokes the version."""
+    # First create a credential so key_version=1 exists
+    create_resp = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials",
+        json={"auth_scheme": "bearer_token", "value": "delete-test-key"},
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    key_version = create_resp.json()["key_version"]
+
+    resp = admin_app.delete(
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials/{key_version}",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp.status_code == 204, resp.text
+
+
+def test_delete_credential_version_not_found_returns_404(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_delete: str
+) -> None:
+    """DELETE /credentials/{key_version} with nonexistent version → 404."""
+    resp = admin_app.delete(
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials/9999",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+    )
+    assert resp.status_code == 404
+    assert resp.json()["mintkey:code"] == "not_found"
+
+
+def test_delete_credential_version_already_revoked_returns_409(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_delete: str
+) -> None:
+    """DELETE /credentials/{key_version} twice → 409 on second call."""
+    # Create a credential
+    create_resp = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials",
+        json={"auth_scheme": "bearer_token", "value": "delete-409-key"},
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    key_version = create_resp.json()["key_version"]
+
+    # First delete succeeds
+    r1 = admin_app.delete(
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials/{key_version}",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+    )
+    assert r1.status_code == 204
+
+    # Second delete → 409
+    r2 = admin_app.delete(
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_delete}/credentials/{key_version}",
+        headers=_CSRF_HEADERS,
+        cookies=_CSRF_COOKIES,
+    )
+    assert r2.status_code == 409
+    assert r2.json()["mintkey:code"] == "already_revoked"

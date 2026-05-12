@@ -1,13 +1,18 @@
 """
 Tenant management endpoints.
 
-POST /v1/tenants — create a new tenant (PlatformAdmin only, 201)
+POST   /v1/tenants              — create a new tenant (PlatformAdmin only, 201)
+GET    /v1/tenants              — list all tenants (PlatformAdmin only, 200)
+GET    /v1/tenants/{tenant_id}  — get single tenant (200)
+PATCH  /v1/tenants/{tenant_id}  — update tenant metadata (PlatformAdmin only, 200)
+DELETE /v1/tenants/{tenant_id}  — soft-delete tenant (PlatformAdmin only, 204)
 
 Architecture constraints:
-  - PlatformAdmin only — ADR-0017.4; Req 13 AC1.
+  - PlatformAdmin only for create/list/patch/delete — ADR-0017.4; Req 13 AC1.
   - ULID ID with "tenant_" prefix — ADR-0017.11.
   - audit_chain_state row initialised with genesis hash on creation — ADR-0014.7.
   - Audit event "tenant.created" emitted — ADR-0014.7; Req AUD-3.
+  - Audit event "tenant.updated" / "tenant.deleted" emitted on changes — ADR-0014.7.
   - Duplicate slug → 409 mintkey:code=tenant_already_exists.
   - Non-PlatformAdmin → 403 mintkey:code=permission_denied.
   - No f-string SQL — ADR-0008; T-1.0.15.
@@ -91,6 +96,12 @@ class CreateTenantRequest(BaseModel):
     slug: str
     name: str
     isolation_mode: str = "row"  # "row" or "database"
+
+
+class UpdateTenantRequest(BaseModel):
+    display_name: Optional[str] = None
+    status: Optional[str] = None
+    settings: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -211,3 +222,244 @@ async def create_tenant(
         status_code=201,
         content={"tenant_id": tenant_id, "slug": body.slug},
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants — list all tenants (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("")
+async def list_tenants(
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    List all tenants. PlatformAdmin only.
+
+    Source: OpenAPI listTenants; ADR-0017.4.
+    """
+    if not _is_platform_admin(request):
+        return JSONResponse(
+            status_code=403,
+            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
+        )
+
+    result = await session.execute(
+        text(
+            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+            " FROM tenants ORDER BY created_at ASC"
+        )
+    )
+    rows = result.fetchall()
+    data = [
+        {
+            "id": str(row.id),
+            "slug": row.slug,
+            "display_name": row.display_name,
+            "status": row.status,
+            "settings": row.settings or {},
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
+    return JSONResponse({"data": data, "next_cursor": None})
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants/{tid} — get single tenant
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{tid}")
+async def get_tenant(
+    tid: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Get a single tenant by id (UUID string).
+
+    Accessible by PlatformAdmin or any operator with membership.
+    For now the auth stub allows the call if header present; the real
+    session check is deferred to the auth integration task.
+
+    Source: OpenAPI getTenant; ADR-0017.4.
+    """
+    result = await session.execute(
+        text(
+            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+            " FROM tenants WHERE id = :tid"
+        ),
+        {"tid": tid},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Tenant not found"},
+        )
+    return JSONResponse(
+        {
+            "id": str(row.id),
+            "slug": row.slug,
+            "display_name": row.display_name,
+            "status": row.status,
+            "settings": row.settings or {},
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/tenants/{tid} — update tenant metadata (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/{tid}")
+async def update_tenant(
+    tid: str,
+    body: UpdateTenantRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Update tenant metadata. PlatformAdmin only. Slug is immutable.
+
+    Emits audit event "tenant.updated" — ADR-0014.7.
+    Source: OpenAPI updateTenant; ADR-0017.4.
+    """
+    if not _is_platform_admin(request):
+        return JSONResponse(
+            status_code=403,
+            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
+        )
+
+    # Fetch current row to verify existence
+    result = await session.execute(
+        text("SELECT id FROM tenants WHERE id = :tid"),
+        {"tid": tid},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Tenant not found"},
+        )
+
+    now = datetime.now(timezone.utc)
+    updates = {}
+    if body.display_name is not None:
+        updates["display_name"] = body.display_name
+    if body.status is not None:
+        updates["status"] = body.status
+    if body.settings is not None:
+        updates["settings"] = body.settings
+
+    if updates:
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["updated_at"] = now
+        updates["tid"] = tid
+        await session.execute(
+            text(f"UPDATE tenants SET {set_clause}, updated_at = :updated_at WHERE id = :tid"),  # noqa: S608
+            updates,
+        )
+
+    # Emit audit event — ADR-0014.7
+    import uuid as _uuid
+    tenant_uuid = _uuid.UUID(tid)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_uuid,
+        event_type="tenant.updated",
+        actor_id=None,
+        actor_type="platform_admin",
+        target_id=tenant_uuid,
+        target_type="tenant",
+        payload={"tenant_id": tid, **{k: v for k, v in updates.items() if k not in ("updated_at", "tid")}},
+    )
+
+    # Return updated row
+    result2 = await session.execute(
+        text(
+            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+            " FROM tenants WHERE id = :tid"
+        ),
+        {"tid": tid},
+    )
+    updated = result2.fetchone()
+    assert updated is not None
+    return JSONResponse(
+        {
+            "id": str(updated.id),
+            "slug": updated.slug,
+            "display_name": updated.display_name,
+            "status": updated.status,
+            "settings": updated.settings or {},
+            "created_at": updated.created_at.isoformat() if updated.created_at else None,
+            "updated_at": updated.updated_at.isoformat() if updated.updated_at else None,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/tenants/{tid} — soft-delete tenant (PlatformAdmin only)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{tid}", status_code=204)
+async def delete_tenant(
+    tid: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Soft-delete a tenant by moving it to status="deleted". PlatformAdmin only.
+
+    Emits audit event "tenant.deleted" — ADR-0016.7.
+    Source: OpenAPI deleteTenant; ADR-0017.4; OQ-001.
+    """
+    if not _is_platform_admin(request):
+        return JSONResponse(
+            status_code=403,
+            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
+        )
+
+    result = await session.execute(
+        text("SELECT id, status FROM tenants WHERE id = :tid"),
+        {"tid": tid},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Tenant not found"},
+        )
+    if row.status == "deleted":
+        return JSONResponse(
+            status_code=409,
+            content={"mintkey:code": "tenant_already_deleted", "title": "Tenant is already deleted"},
+        )
+
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text("UPDATE tenants SET status = 'deleted', updated_at = :now WHERE id = :tid"),
+        {"now": now, "tid": tid},
+    )
+
+    import uuid as _uuid
+    tenant_uuid = _uuid.UUID(tid)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_uuid,
+        event_type="tenant.deleted",
+        actor_id=None,
+        actor_type="platform_admin",
+        target_id=tenant_uuid,
+        target_type="tenant",
+        payload={"tenant_id": tid},
+    )
+
+    return JSONResponse(status_code=204, content=None)

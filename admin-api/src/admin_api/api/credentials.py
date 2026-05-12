@@ -1,8 +1,9 @@
 """
 Credential endpoints.
 
-POST /v1/tenants/{tenant_id}/services/{service_id}/credentials — register credential (201)
-GET  /v1/tenants/{tenant_id}/services/{service_id}/credentials — list versions (200)
+POST   /v1/tenants/{tenant_id}/services/{service_id}/credentials                   — register (201)
+GET    /v1/tenants/{tenant_id}/services/{service_id}/credentials                   — list (200)
+DELETE /v1/tenants/{tenant_id}/services/{service_id}/credentials/{key_version}     — revoke (204)
 
 Architecture constraints:
   - Vault Adapter called to store encrypted credential — ADR-0011, ADR-0014.4.
@@ -193,6 +194,81 @@ async def create_credential(
             "created_at": now.isoformat(),
         },
     )
+
+
+@router.delete("/{key_version}", status_code=204)
+async def delete_credential_version(
+    tenant_id: UUID,
+    service_id: UUID,
+    key_version: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Revoke a specific credential version (soft-delete: sets status to 'revoked').
+
+    Returns 404 if the version does not exist for this service/tenant.
+    Returns 409 if the version is already revoked.
+
+    Source: OpenAPI deleteCredentialVersion; ADR-0014.4; ADR-0008.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    result = await session.execute(
+        text(
+            "SELECT id, status FROM credentials"
+            " WHERE service_id = :sid AND tenant_id = :tid AND key_version = :kv"
+        ),
+        {"sid": str(service_id), "tid": str(tenant_id), "kv": key_version},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Credential version not found"},
+        )
+    if row.status == "revoked":
+        return JSONResponse(
+            status_code=409,
+            content={"mintkey:code": "already_revoked", "title": "Credential version already revoked"},
+        )
+
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text(
+            "UPDATE credentials SET status = 'revoked', revoked_at = :now"
+            " WHERE service_id = :sid AND tenant_id = :tid AND key_version = :kv"
+        ),
+        {"now": now, "sid": str(service_id), "tid": str(tenant_id), "kv": key_version},
+    )
+
+    # Emit audit event — ADR-0014.7
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="credential.revoked",
+        actor_id=None,
+        actor_type="operator",
+        target_id=row.id,
+        target_type="credential",
+        payload={
+            "service_id": str(service_id),
+            "key_version": key_version,
+        },
+    )
+
+    # NOTIFY change channel — ADR-0014.1
+    await notify_change(
+        session,
+        "mintkey:credential",
+        {
+            "event": "credential.revoked",
+            "tenant_id": str(tenant_id),
+            "service_id": str(service_id),
+            "key_version": key_version,
+        },
+    )
+
+    return JSONResponse(status_code=204, content=None)
 
 
 @router.get("")
