@@ -13,6 +13,8 @@ import { ApiKeysPage } from "../pages/api-keys.js";
 import { AgentsPage } from "../pages/agents.js";
 import {
   createTestAgent,
+  createTestService,
+  createTestPermission,
   resetCleanupQueue,
 } from "../fixtures/test-data.js";
 
@@ -30,12 +32,23 @@ test.describe("Tier 2 — API Keys", () => {
   });
 
   test("1. create API key — plaintext in one-time notice only", async () => {
+    const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
+    if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
+
     const agentName = "ApiKeyAgent-" + Date.now();
     const { agentId } = await agents.createAgent({ name: agentName });
 
+    // API key creation requires: valid service + permission grant for the agent
+    const serviceId = await createTestService({
+      tenantId,
+      name: "apikey-test-svc-" + Date.now(),
+      authScheme: "api_key_header",
+    });
+    await createTestPermission({ tenantId, agentId, serviceId, action: "read:health" });
+
     await apiKeys.gotoList();
     const plaintextKey = await apiKeys.createApiKey(agentId, {
-      service_id: "",
+      service_id: serviceId,
       allowed_actions: "read:health",
     });
 

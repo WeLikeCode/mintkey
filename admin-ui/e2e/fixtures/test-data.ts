@@ -10,12 +10,43 @@
  */
 
 const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
+const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
+const PLAYWRIGHT_PASS = process.env.PLAYWRIGHT_PASS ?? "";
+
+// ── Session cache ────────────────────────────────────────────────────────────
+
+interface Session { sessionToken: string; csrfToken: string }
+let _session: Session | null = null;
+
+async function getSession(): Promise<Session | null> {
+  if (_session) return _session;
+  if (!PLAYWRIGHT_PASS) return null;
+
+  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: PLAYWRIGHT_PASS }),
+  });
+  if (!resp.ok) return null;
+
+  const setCookie = resp.headers.get("set-cookie") ?? "";
+  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
+  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
+  if (!smatch || !cmatch) return null;
+
+  _session = { sessionToken: smatch[1], csrfToken: cmatch[1] };
+  return _session;
+}
 
 // ── Minimal helper: POST with JSON ──────────────────────────────────────────
 
-async function apiPost(path: string, body: unknown, token?: string): Promise<Response> {
+async function apiPost(path: string, body: unknown, _token?: string): Promise<Response> {
+  const session = await getSession();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (session) {
+    headers["Cookie"] = `mintkey_session=${session.sessionToken}; csrf_token=${session.csrfToken}`;
+    headers["X-Mintkey-Csrf"] = session.csrfToken;
+  }
   return fetch(`${ADMIN_API}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
 }
 

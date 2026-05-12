@@ -19,10 +19,14 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { importPKCS8, SignJWT } from "jose";
+import { readFileSync } from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const TENANT_ID = process.env.PLAYWRIGHT_TENANT_ID ?? "";
 const ADMIN_PASS = process.env.PLAYWRIGHT_PASS ?? "";
+const PRIVATE_KEY_PATH = process.env.ADMIN_UI_PRIVATE_KEY_PATH ?? "";
 
 // ── Shared state across test steps ──────────────────────────────────────────
 
@@ -31,6 +35,8 @@ let agentId = "";
 let permissionId = "";
 let sessionToken = "";
 let csrfToken = "";
+let operatorId = "";
+let tenantId = "";
 
 const TS = Date.now();
 const SVC_NAME = `e2e-svc-${TS}`;
@@ -39,7 +45,27 @@ const AGENT_NAME = `e2e-agent-${TS}`;
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 
-/** Login to admin-api using the session+CSRF pattern (same as admin-ui server-side) */
+/** Load private key from file and build a signed JWT for admin-api writes. */
+async function buildJwt(): Promise<string | null> {
+  if (!PRIVATE_KEY_PATH) return null;
+  try {
+    const pem = readFileSync(PRIVATE_KEY_PATH, "utf8");
+    const key = await importPKCS8(pem, "EdDSA");
+    const now = Math.floor(Date.now() / 1000);
+    return new SignJWT({ sub: operatorId, tnt: tenantId })
+      .setProtectedHeader({ alg: "EdDSA" })
+      .setIssuer("mintkey/admin-ui")
+      .setAudience("mintkey/admin-api")
+      .setIssuedAt(now)
+      .setExpirationTime(now + 60)
+      .setJti(uuidv4())
+      .sign(key);
+  } catch {
+    return null;
+  }
+}
+
+/** Login to admin-api using the session+CSRF+JWT pattern (same as admin-ui server-side) */
 async function getSession(): Promise<void> {
   if (sessionToken && csrfToken) return;
 
@@ -51,24 +77,38 @@ async function getSession(): Promise<void> {
 
   if (!resp.ok) throw new Error(`Login failed: ${resp.status}`);
 
-  const setCookie = resp.headers.get("set-cookie") ?? "";
-  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
-  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
+  const data = await resp.json() as { operator_id?: string; tenant_id?: string };
+  operatorId = data.operator_id ?? TENANT_ID;
+  tenantId = data.tenant_id ?? TENANT_ID;
 
-  if (!smatch || !cmatch) throw new Error("Login response missing session/csrf cookies");
-  sessionToken = smatch[1];
-  csrfToken = cmatch[1];
+  const cookieHeaders: string[] =
+    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
+      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
+      : [resp.headers.get("set-cookie") ?? ""];
+
+  for (const c of cookieHeaders) {
+    const sm = c.match(/mintkey_session=([^;,\s]+)/);
+    if (sm) sessionToken = sm[1];
+    const cm = c.match(/csrf_token=([^;,\s]+)/);
+    if (cm) csrfToken = cm[1];
+  }
+
+  if (!sessionToken || !csrfToken) throw new Error("Login response missing session/csrf cookies");
 }
 
 async function apiPost(path: string, body?: unknown): Promise<Response> {
   await getSession();
+  const jwt = await buildJwt();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Cookie": `mintkey_session=${sessionToken}; csrf_token=${csrfToken}`,
+    "X-Mintkey-Csrf": csrfToken,
+  };
+  if (jwt) headers["x-mintkey-signed-request"] = jwt;
+
   return fetch(`${ADMIN_API}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Cookie": `mintkey_session=${sessionToken}; csrf_token=${csrfToken}`,
-      "X-Mintkey-Csrf": csrfToken,
-    },
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
@@ -173,50 +213,60 @@ test.describe.serial("E2E service-onboarding flow (F-OP-01→04)", () => {
       payload?: Record<string, unknown>;
       created_at?: string;
     };
-    type AuditResponse = { items?: AuditEvent[]; events?: AuditEvent[] };
+    type AuditResponse = {
+      items?: AuditEvent[];
+      events?: AuditEvent[];
+      next_cursor?: string | null;
+    };
 
-    // Use event_type filter to avoid paginating 500+ events
-    const svcData = await apiGet(
-      `/v1/tenants/${TENANT_ID}/audit?event_type=service.registered&limit=100`
-    ) as AuditResponse;
-    const svcEvents = svcData.items ?? svcData.events ?? [];
+    // Walk all pages of audit events (cursor pagination) to find the target event.
+    // Accumulated test runs can produce hundreds of events of the same type;
+    // a fixed limit=100 would miss the most recent ones (ascending order, ADR-0014.7).
+    async function findAuditEvent(
+      basePath: string,
+      predicate: (e: AuditEvent) => boolean,
+    ): Promise<AuditEvent | undefined> {
+      let cursor: string | null = null;
+      for (let page = 0; page < 20; page++) {
+        const url = cursor ? `${basePath}&after=${cursor}` : basePath;
+        const data = await apiGet(url) as AuditResponse;
+        const events = data.items ?? data.events ?? [];
+        const found = events.find(predicate);
+        if (found) return found;
+        cursor = data.next_cursor ?? null;
+        if (!cursor) break;
+      }
+      return undefined;
+    }
 
-    // Verify service registration was audited
-    // Payload: { svc_id, name, auth_scheme }
-    const svcEvent = svcEvents.find(
-      (e) => e.payload?.svc_id === serviceId
+    // Verify service registration was audited. Payload: { svc_id, name, auth_scheme }
+    const svcEvent = await findAuditEvent(
+      `/v1/tenants/${TENANT_ID}/audit?event_type=service.registered&limit=100`,
+      (e) => e.payload?.svc_id === serviceId,
     );
     expect(svcEvent, `Expected service.registered audit event for ${serviceId}`).toBeTruthy();
 
     // Verify agent creation was audited
     if (agentId) {
-      const agentData = await apiGet(
-        `/v1/tenants/${TENANT_ID}/audit?event_type=agent.created&limit=100`
-      ) as AuditResponse;
-      const agentEvents = agentData.items ?? agentData.events ?? [];
-      const agentEvent = agentEvents.find(
-        (e) => e.payload?.agent_id === agentId
+      const agentEvent = await findAuditEvent(
+        `/v1/tenants/${TENANT_ID}/audit?event_type=agent.created&limit=100`,
+        (e) => e.payload?.agent_id === agentId,
       );
       expect(agentEvent, `Expected agent.created audit event for ${agentId}`).toBeTruthy();
       // S-SEC-1: audit payload must NOT contain the raw api_key (fingerprint is OK)
       const agentPayload = JSON.stringify(agentEvent?.payload ?? {});
-      expect(agentPayload).not.toMatch(/"api_key":/); // raw api_key field is not allowed
+      expect(agentPayload).not.toMatch(/"api_key":/);
     }
 
     // Verify permission grant was audited
     if (permissionId) {
-      const permData = await apiGet(
-        `/v1/tenants/${TENANT_ID}/audit?event_type=agent.permission.granted&limit=100`
-      ) as AuditResponse;
-      const permEvents = permData.items ?? permData.events ?? [];
-      const permEvent = permEvents.find(
-        (e) => e.payload?.perm_id === permissionId
+      const permEvent = await findAuditEvent(
+        `/v1/tenants/${TENANT_ID}/audit?event_type=agent.permission.granted&limit=100`,
+        (e) => e.payload?.perm_id === permissionId,
       );
       expect(permEvent, `Expected agent.permission.granted audit event for ${permissionId}`).toBeTruthy();
     }
 
-    // ADR-0014.7: Audit hash chain — DB has hash columns (verified via direct query)
-    // The API currently doesn't return hash in response but it's stored in DB (verified above)
     console.log("Audit trail verified: service.registered + agent.created + agent.permission.granted");
   });
 
@@ -226,29 +276,28 @@ test.describe.serial("E2E service-onboarding flow (F-OP-01→04)", () => {
 
     // Services list
     await page.goto("/admin/resources/services");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
     // The service should appear in the list within any number of pages
     // We look for the name text on the page (not necessarily in a table row)
-    const pageText = await page.locator("body").textContent() ?? "";
     // If the list has pagination and service is not on first page, skip name check
     // but verify the list page loaded at all (200 OK, not error page)
     expect(page.url()).toContain("/admin/resources/services");
 
     // Agents list
     await page.goto("/admin/resources/agents");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
     expect(page.url()).toContain("/admin/resources/agents");
     await expect(page.locator("body")).not.toContainText("Cannot GET");
 
     // Permissions list (permissions_grants resource)
     await page.goto("/admin/resources/permission_grants");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
     expect(page.url()).toContain("/admin/resources/permission_grants");
     await expect(page.locator("body")).not.toContainText("Cannot GET");
 
     // Audit list
     await page.goto("/admin/resources/audit");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("load");
     expect(page.url()).toContain("/admin/resources/audit");
     await expect(page.locator("body")).not.toContainText("Cannot GET");
 

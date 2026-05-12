@@ -13,6 +13,7 @@ GO        := go
 # ─────────────────────────────────────────────────────────────────────────────
 
 .PHONY: help dev test test-unit test-arch test-integration test-acceptance \
+        test:e2e test:e2e:headed test:e2e:ci \
         smoke lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull
@@ -26,6 +27,9 @@ help:
 	@echo "  test-arch              Run architecture tests only (no Docker)"
 	@echo "  test-acceptance        Run acceptance tests (no Docker required for most)"
 	@echo "  test-integration       Run integration tests (requires Docker + MINTKEY_INTEGRATION_TEST=true)"
+	@echo "  test:e2e               Run Playwright E2E UI tests (requires running Docker stack)"
+	@echo "  test:e2e:headed        Run Playwright E2E tests in headed mode (for debugging)"
+	@echo "  test:e2e:ci            Run Playwright E2E tests in CI mode (Chromium only, retries)"
 	@echo "  smoke                  Run E2E smoke test against running stack"
 	@echo "  lint                   Run all linters (Python + Go + TypeScript + contracts)"
 	@echo "  lint-python            Run ruff + mypy --strict on Python code"
@@ -107,6 +111,23 @@ smoke:
 		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
 	fi
 	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_e2e_smoke.py -v -s
+
+# ── Playwright E2E UI tests ──────────────────────────────────────────────────
+
+test:e2e-setup:
+	@bash $(TOOLS)/e2e-setup-env.sh
+
+test:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
+	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
+
+test:e2e:headed: ## Run Playwright E2E UI tests in headed mode (debug)
+	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
+
+test:e2e:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
+	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
 
 # ── Linting ───────────────────────────────────────────────────────────────────
 

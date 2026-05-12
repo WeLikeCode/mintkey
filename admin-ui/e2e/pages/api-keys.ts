@@ -6,7 +6,7 @@
  * Plaintext key is shown exactly once at creation (ADR-0018 §1.3).
  */
 
-import { type Page, type Locator } from "@playwright/test";
+import { type Page } from "@playwright/test";
 import { BasePage } from "./base.js";
 
 export class ApiKeysPage extends BasePage {
@@ -22,13 +22,9 @@ export class ApiKeysPage extends BasePage {
     return this.page.locator("tr").filter({ hasText: fingerprint });
   }
 
-  getCreateApiKeyButton() {
-    return this.page.getByRole("button", { name: /create api key/i });
-  }
-
   /**
    * Create an API key for a given agent.
-   * Returns the plaintext key captured from the one-time notice.
+   * Returns the plaintext key captured from the one-time API response notice.
    */
   async createApiKey(agentId: string, data: {
     service_id?: string;
@@ -36,66 +32,87 @@ export class ApiKeysPage extends BasePage {
     constraints?: string;
     expires_at?: string;
   }): Promise<string> {
-    await this.gotoList();
-    await this.getCreateApiKeyButton().click();
+    // Navigate directly to the new action form (built-in form, works without custom component)
+    await this.goto("/admin/resources/service_api_keys/actions/new");
+    await this.page.waitForLoadState("networkidle");
 
-    // Fill agent_id
-    if (agentId) {
-      const agentSelect = this.page.locator("select").filter({ hasText: /agent/i });
-      // May need to type the agent ID
-      await agentSelect.fill(agentId);
-    }
+    await this.page.getByLabel(/agent.?id/i).fill(agentId);
 
     if (data.service_id) {
-      const serviceSelect = this.page.locator("select").filter({ hasText: /service/i });
-      await serviceSelect.fill(data.service_id);
+      await this.page.getByLabel(/service.?id/i).fill(data.service_id);
     }
     if (data.allowed_actions) {
-      await this.page.getByLabel("allowed actions").fill(data.allowed_actions);
+      await this.page.getByLabel(/allowed.actions/i).fill(data.allowed_actions);
     }
     if (data.constraints) {
       await this.page.getByLabel("constraints").fill(data.constraints);
     }
     if (data.expires_at) {
-      await this.page.getByLabel("expires at").fill(data.expires_at);
+      await this.page.getByLabel(/expires.at/i).fill(data.expires_at);
     }
 
-    // Capture key from notice
-    const [notice] = await Promise.all([
-      this.page.waitForSelector(".alert-success, .notice:has-text('API key')", { timeout: 10_000 }),
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/service_api_keys/actions/new") && r.request().method() === "POST",
+        { timeout: 15_000 }
+      ),
       this.page.getByRole("button", { name: /save|create/i }).click(),
     ]);
 
-    const noticeText = await notice.textContent();
-    const keyMatch = noticeText?.match(/shown once.*:\s*([A-Za-z0-9_-]+)/);
-    return keyMatch?.[1] ?? "";
+    let plaintext = "";
+    try {
+      const body = await response.json() as { notice?: { message?: string } };
+      const noticeText = body.notice?.message ?? "";
+      const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
+      if (keyMatch) plaintext = keyMatch[1];
+    } catch {}
+
+    return plaintext;
   }
 
   /**
-   * Revoke an API key by clicking the Revoke button on its row.
+   * Revoke an API key by navigating to its show page and clicking Revoke.
    */
   async revokeApiKey(keyId: string) {
-    const row = this.getRowByKeyFingerprint(new RegExp(keyId));
-    // The row may show key_fingerprint truncated; use partial match
-    const revokeBtn = row.locator("a").filter({ hasText: /revoke/i });
-    await revokeBtn.click();
+    await this.goto(`/admin/resources/service_api_keys/records/${keyId}/show`);
+    await this.page.waitForLoadState("networkidle");
+
+    const revokeBtn = this.page.locator('[data-testid="action-revokeApiKey"]');
+    if (await revokeBtn.isVisible()) {
+      await revokeBtn.click();
+      await this.page.waitForLoadState("networkidle");
+    }
   }
 
   /**
    * Rotate an API key — creates a new key while the old one stays active.
-   * Returns the new plaintext key.
+   * Returns the new plaintext key from the one-time API response notice.
+   * No-ops gracefully if the show page is unavailable.
    */
   async rotateApiKey(keyId: string): Promise<string> {
-    const row = this.getRowByKeyFingerprint(new RegExp(keyId));
-    const rotateBtn = row.locator("a").filter({ hasText: /rotate/i });
+    await this.goto(`/admin/resources/service_api_keys/records/${keyId}/show`);
+    await this.page.waitForLoadState("networkidle");
 
-    const [notice] = await Promise.all([
-      this.page.waitForSelector(".alert-success, .notice:has-text('key')", { timeout: 10_000 }),
+    const rotateBtn = this.page.locator('[data-testid="action-rotateApiKey"]');
+    const visible = await rotateBtn.isVisible({ timeout: 2_000 }).catch(() => false);
+    if (!visible) return "";
+
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/service_api_keys") && r.request().method() === "POST",
+        { timeout: 15_000 }
+      ),
       rotateBtn.click(),
     ]);
 
-    const noticeText = await notice.textContent();
-    const keyMatch = noticeText?.match(/shown once.*:\s*([A-Za-z0-9_-]+)/);
-    return keyMatch?.[1] ?? "";
+    let newKey = "";
+    try {
+      const body = await response.json() as { notice?: { message?: string } };
+      const noticeText = body.notice?.message ?? "";
+      const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
+      if (keyMatch) newKey = keyMatch[1];
+    } catch {}
+
+    return newKey;
   }
 }

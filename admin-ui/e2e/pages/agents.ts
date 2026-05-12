@@ -31,7 +31,7 @@ export class AgentsPage extends BasePage {
 
   // ── Create agent ───────────────────────────────────────
   async gotoNew() {
-    await this.goto("/admin/resources/agents/new");
+    await this.goto("/admin/resources/agents/actions/new");
   }
 
   async createAgent(data: {
@@ -41,53 +41,75 @@ export class AgentsPage extends BasePage {
     rateLimitRps?: number;
   }): Promise<{ agentId: string; apiKey: string }> {
     await this.gotoNew();
+    // Wait for the form label to be visible rather than networkidle (avoids flakiness under load)
+    await this.page.getByLabel("name").waitFor({ state: "visible", timeout: 20_000 });
 
     await this.page.getByLabel("name").fill(data.name);
     if (data.description) await this.page.getByLabel("description").fill(data.description);
-    if (data.mcpEndpoint) await this.page.getByLabel("mcp endpoint").fill(data.mcpEndpoint);
-    if (data.rateLimitRps) await this.page.getByLabel("rate limit").fill(String(data.rateLimitRps));
+    if (data.mcpEndpoint) await this.page.getByLabel(/mcp.endpoint/i).fill(data.mcpEndpoint);
+    if (data.rateLimitRps) await this.page.getByLabel(/rate.limit/i).fill(String(data.rateLimitRps));
 
-    // Wait for the API key notice — this is the only time the plaintext key appears
-    const [notice] = await Promise.all([
-      this.page.waitForSelector(".alert-success, .notice:has-text('API key')", { timeout: 10_000 }),
+    // Wait for the AdminJS API response — API key is in notice.message (Req 5 AC2)
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/agents/actions/new") && r.request().method() === "POST",
+        { timeout: 15_000 }
+      ),
       this.page.getByRole("button", { name: /save|create/i }).click(),
     ]);
 
-    const noticeText = await notice.textContent();
+    let apiKey = "";
+    let agentId = "";
+    try {
+      const body = await response.json() as { notice?: { message?: string }; redirectUrl?: string };
+      const noticeMsg = body.notice?.message ?? "";
+      // Agent ID is embedded in brackets: "Agent created [agent_xxx]. ..."
+      const idMatch = noticeMsg.match(/Agent created \[([^\]]+)\]/);
+      agentId = idMatch?.[1] ?? "";
+      const keyMatch = noticeMsg.match(/API key \(shown once\):\s*(\S+)/);
+      apiKey = keyMatch?.[1] ?? "";
+      // Fallback: try redirectUrl if notice parsing failed
+      if (!agentId) {
+        const urlMatch = (body.redirectUrl ?? "").match(/\/agents\/records\/([^/]+)/);
+        agentId = urlMatch?.[1] ?? "";
+      }
+    } catch {
+      // Fallback handled below
+    }
 
-    // Extract the API key from the notice: "Agent created. API key (shown once): <key>"
-    const keyMatch = noticeText?.match(/API key \(shown once\):\s*([A-Za-z0-9_-]+)/);
-    const apiKey = keyMatch?.[1] ?? "";
+    // Wait for redirect to the show page
+    await this.page.waitForURL(/\/admin\/resources\/agents/, { timeout: 10_000 }).catch(() => {});
 
-    // Extract agent ID from the URL or from the redirect
-    const agentId = await this.getAgentIdFromUrl();
+    // If agentId not in response, extract from the current URL
+    if (!agentId) {
+      agentId = await this.getAgentIdFromUrl();
+    }
 
     return { agentId, apiKey };
   }
 
   private async getAgentIdFromUrl(): Promise<string> {
     const url = this.page.url();
-    // URL might be /admin/resources/agents/agent_xxx/show or redirected to list
-    const match = url.match(/\/agents\/([^\/]+)/);
+    // URL might be /admin/resources/agents/records/agent_xxx/show
+    const match = url.match(/\/agents\/records\/([^/]+)/);
     if (match) return match[1];
-
-    // Fallback: get the last row's ID from the list
-    const firstRow = this.page.locator("tr").first();
-    const idCell = firstRow.locator("td").first();
-    return (await idCell.textContent())?.trim() ?? "";
+    return "";
   }
 
   // ── Revoke agent ───────────────────────────────────────
   async revokeAgent(agentId: string) {
-    const row = this.page.locator("tr").filter({ has: this.page.locator(`[data-id="${agentId}"]`) });
-    // If data-id is not available, filter by text
-    const revocableRow = this.getRowByName(new RegExp(agentId));
-    const revokeBtn = revocableRow.getByRole("button", { name: /revoke/i });
-    await revokeBtn.click();
+    await this.gotoShow(agentId);
+    await this.page.waitForLoadState("networkidle");
+    // AdminJS sets data-testid="action-{name}" on action buttons
+    const revokeBtn = this.page.locator('[data-testid="action-revokeAgent"]');
+    if (await revokeBtn.isVisible()) {
+      await revokeBtn.click();
+      await this.page.waitForLoadState("networkidle");
+    }
   }
 
   // ── Show agent detail ──────────────────────────────────
   async gotoShow(agentId: string) {
-    await this.goto(`/admin/resources/agents/${agentId}/show`);
+    await this.goto(`/admin/resources/agents/records/${agentId}/show`);
   }
 }

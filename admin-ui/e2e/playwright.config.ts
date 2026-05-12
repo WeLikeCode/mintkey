@@ -8,8 +8,13 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
 import { fileURLToPath } from "url";
+import { config as loadDotenv } from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load .env.local if present (local developer overrides, not committed)
+loadDotenv({ path: path.resolve(__dirname, ".env.local"), override: false });
+
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081";
 const USER_PASS = process.env.PLAYWRIGHT_PASS ?? "";
 

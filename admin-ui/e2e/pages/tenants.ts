@@ -21,7 +21,7 @@ export class TenantsPage extends BasePage {
   }
 
   async gotoNew() {
-    await this.goto("/admin/resources/tenants/new");
+    await this.goto("/admin/resources/tenants/actions/new");
   }
 
   /**
@@ -40,7 +40,10 @@ export class TenantsPage extends BasePage {
     }
 
     await Promise.all([
-      this.page.waitForResponse((r) => r.url().includes("/v1/tenants") && r.request().method() === "POST", { timeout: 10_000 }),
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/tenants/actions/new") && r.request().method() === "POST",
+        { timeout: 10_000 }
+      ),
       this.page.getByRole("button", { name: /save|create/i }).click(),
     ]);
   }

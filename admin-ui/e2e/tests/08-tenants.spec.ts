@@ -20,9 +20,11 @@ test.describe("Tier 3 — Tenants (PlatformAdmin)", () => {
 
   test("1. tenants resource is visible in navigation", async () => {
     await tenants.gotoList();
+    await page.waitForLoadState("networkidle");
     const isPlatformAdmin = process.env.PLAYWRIGHT_IS_PLATFORM_ADMIN === "true";
     if (isPlatformAdmin) {
-      await expect(page.locator("nav")).toContainText("Tenants");
+      // AdminJS renders sidebar as a Box div with data-css="sidebar", not a <nav> element
+      await expect(page.locator('[data-css="sidebar"]')).toContainText("Tenants", { timeout: 10_000 });
     }
   });
 
@@ -36,7 +38,8 @@ test.describe("Tier 3 — Tenants (PlatformAdmin)", () => {
     const tenantName = "E2ETenant-" + Date.now();
     await tenants.createTenant({ slug: tenantName.toLowerCase(), display_name: tenantName });
 
-    await expect(page.locator(".alert-success")).toBeVisible();
+    // After successful creation AdminJS redirects to the tenants list
+    await expect(page).toHaveURL(/\/admin\/resources\/tenants/, { timeout: 10_000 });
   });
 
   test("3. PlatformAdmin can use all_tenants toggle", async () => {

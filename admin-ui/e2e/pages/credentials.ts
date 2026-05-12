@@ -9,7 +9,7 @@
  * the UI list or show views.
  */
 
-import { type Page, type Locator, type APIResponse } from "@playwright/test";
+import { type Page, type Locator } from "@playwright/test";
 import { BasePage } from "./base.js";
 
 export class CredentialsPage extends BasePage {
@@ -32,23 +32,16 @@ export class CredentialsPage extends BasePage {
     authScheme: string;
     plaintext: string;
   }): Promise<{ success: boolean; plaintext?: string; noticeText: string }> {
-    await this.gotoList();
+    // Navigate directly — AdminJS "new" action button is a link, not a <button>
+    await this.goto("/admin/resources/credentials/actions/new");
 
-    // Click "Register Credential" button on the list page
-    const registerBtn = this.page.getByRole("button", { name: /register credential/i });
-    await registerBtn.click();
-
-    // Fill the form
-    if (options.serviceId) {
-      const serviceSelect = this.page.locator("select").filter({ hasText: /service/i });
-      await serviceSelect.selectOption(options.serviceId);
+    const authSchemeField = this.page.getByLabel(/auth.scheme/i);
+    if (await authSchemeField.isVisible()) {
+      await authSchemeField.fill(options.authScheme);
     }
-    if (options.authScheme) {
-      const schemeSelect = this.page.locator("select").filter({ hasText: /auth scheme/i });
-      await schemeSelect.selectOption(options.authScheme);
-    }
-    if (options.plaintext) {
-      await this.getPlaintextField().fill(options.plaintext);
+    const plaintextField = this.getPlaintextField();
+    if (await plaintextField.isVisible()) {
+      await plaintextField.fill(options.plaintext);
     }
 
     // Capture the notice — this is the ONLY place the plaintext key may appear
@@ -56,29 +49,23 @@ export class CredentialsPage extends BasePage {
     let plaintextKey: string | undefined;
 
     const [response] = await Promise.all([
-      this.page.waitForResponse((r) => r.url().includes("/credentials") && r.request().method() === "POST", { timeout: 10_000 }),
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/credentials/actions/new") && r.request().method() === "POST",
+        { timeout: 10_000 }
+      ),
       this.page.getByRole("button", { name: /save|register/i }).click(),
     ]);
 
-    // The API response body may contain the plaintext key
     try {
-      const body = await response.json();
-      if (body.plaintext_key) plaintextKey = body.plaintext_key;
+      const body = await response.json() as { notice?: { message?: string } };
+      noticeText = body.notice?.message ?? "";
+      const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
+      if (keyMatch) plaintextKey = keyMatch[1];
     } catch {
       // response may not be JSON
     }
 
-    // Also check the AdminJS notice banner
-    const notice = this.page.locator(".alert-success, .notice, [role='alert']").first();
-    if (await notice.isVisible()) {
-      noticeText = (await notice.textContent()) ?? "";
-    }
-
-    return {
-      success: true,
-      plaintext: plaintextKey,
-      noticeText,
-    };
+    return { success: true, plaintext: plaintextKey, noticeText };
   }
 
   /**
@@ -89,32 +76,27 @@ export class CredentialsPage extends BasePage {
   }
 
   // ── Rotate credential ──────────────────────────────────
-  async rotateCredential(credentialId: string, newPlaintext: string): Promise<string> {
-    // Find the row and click "Rotate"
-    const row = this.page.locator("tr").filter({ has: this.page.locator(`[data-id="${credentialId}"]`) });
-    const rotateBtn = row.getByRole("button", { name: /rotate/i });
-    await rotateBtn.click();
+  async rotateCredential(credentialId: string, _newPlaintext: string): Promise<string> {
+    await this.goto(`/admin/resources/credentials/records/${credentialId}/show`);
+    const rotateBtn = this.page.locator('[data-testid="action-rotateCredential"]');
+    await rotateBtn.waitFor({ state: "visible", timeout: 15_000 });
 
-    // Fill new plaintext if prompted
-    const plaintextField = this.getPlaintextField();
-    if (await plaintextField.isVisible()) {
-      await plaintextField.fill(newPlaintext);
-    }
-
-    // Capture the new key from the notice
     const [response] = await Promise.all([
-      this.page.waitForResponse((r) => r.url().includes("/credentials") && r.request().method() === "POST", { timeout: 10_000 }),
-      this.page.getByRole("button", { name: /save|rotate/i }).click(),
+      this.page.waitForResponse(
+        (r) => r.url().includes("/admin/api/resources/credentials") && r.request().method() === "POST",
+        { timeout: 10_000 }
+      ),
+      rotateBtn.click(),
     ]);
 
-    let newKey: string | undefined;
+    let newKey = "";
     try {
-      const body = await response.json();
-      if (body.plaintext_key) newKey = body.plaintext_key;
-    } catch {
-      // response may not be JSON
-    }
+      const body = await response.json() as { notice?: { message?: string } };
+      const noticeText = body.notice?.message ?? "";
+      const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
+      if (keyMatch) newKey = keyMatch[1];
+    } catch {}
 
-    return newKey ?? "";
+    return newKey;
   }
 }
