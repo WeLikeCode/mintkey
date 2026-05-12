@@ -102,7 +102,7 @@ def _create_test_app(rows=None):
 @pytest.mark.asyncio
 async def test_list_returns_tenant_scoped_events() -> None:
     """
-    GET /audit returns {"events": [...]} with rows the DB returned.
+    GET /audit returns {"items": [...]} with rows the DB returned.
     RLS is enforced at DB level; mock simulates tenant-filtered result.
     Source: T-1.7.1; ADR-0008.
     """
@@ -114,9 +114,9 @@ async def test_list_returns_tenant_scoped_events() -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "events" in body
-    assert len(body["events"]) == 1
-    assert body["events"][0]["id"] == "audit_00000000000000000000000001"
+    assert "items" in body
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] == "audit_00000000000000000000000001"
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_filter_by_agent_id() -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["events"] == []
+    assert body["items"] == []
 
 
 @pytest.mark.asyncio
@@ -147,7 +147,7 @@ async def test_filter_by_service_id() -> None:
         resp = await client.get(BASE_URL_PATH, params={"service_id": "svc_abc"})
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["events"] == []
+    assert resp.json()["items"] == []
 
 
 @pytest.mark.asyncio
@@ -164,8 +164,8 @@ async def test_filter_by_event_type() -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert len(body["events"]) == 1
-    assert body["events"][0]["event_type"] == "agent.created"
+    assert len(body["items"]) == 1
+    assert body["items"][0]["event_type"] == "agent.created"
 
 
 @pytest.mark.asyncio
@@ -183,7 +183,7 @@ async def test_filter_by_time_range() -> None:
         )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["events"] == []
+    assert resp.json()["items"] == []
 
 
 @pytest.mark.asyncio
@@ -205,7 +205,7 @@ async def test_pagination_via_after_cursor() -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert len(body["events"]) == 10
+    assert len(body["items"]) == 10
     # Full page → next_cursor is the id of the last event
     assert body["next_cursor"] == rows[-1].id
 
@@ -225,5 +225,5 @@ async def test_empty_for_wrong_tenant() -> None:
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["events"] == []
+    assert body["items"] == []
     assert body["next_cursor"] is None

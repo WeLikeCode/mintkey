@@ -103,7 +103,8 @@ def test_seed_mock_backend_demo_idempotent():
 
 
 @pytest.mark.skipif(
-    os.getenv("MINTKEY_INTEGRATION_TEST") != "true",
+    os.getenv("MINTKEY_INTEGRATION_TEST") != "true"
+    or os.getenv("MINTKEY_SEED_DEMO", "").lower() not in ("1", "true", "yes"),
     reason="Integration test: requires running docker compose stack with MINTKEY_SEED_DEMO=true",
 )
 def test_mock_backend_registered_integration():
@@ -120,12 +121,20 @@ def test_mock_backend_registered_integration():
         json={"email": "admin@mintkey.internal", "password": open("data/bootstrap-secrets/admin_password").read().strip()},
     )
     assert resp.status_code == 200
+    login_data = resp.json()
+
+    # Build headers: include X-Platform-Admin when the session has that role.
+    admin_headers = {}
+    if login_data.get("is_platform_admin"):
+        admin_headers["X-Platform-Admin"] = "true"
 
     # Get default tenant ID
-    tenants_resp = httpx.get(f"{admin_api}/v1/tenants", cookies=resp.cookies)
+    tenants_resp = httpx.get(
+        f"{admin_api}/v1/tenants", cookies=resp.cookies, headers=admin_headers
+    )
     assert tenants_resp.status_code == 200
     tenant_id = next(
-        t["id"] for t in tenants_resp.json()["tenants"] if t["slug"] == "t_default"
+        t["id"] for t in tenants_resp.json()["data"] if t["slug"] == "t_default"
     )
 
     # Verify mock-backend service is registered

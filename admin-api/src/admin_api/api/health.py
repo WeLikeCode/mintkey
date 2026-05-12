@@ -3,15 +3,48 @@ Health and readiness endpoints.
 
 GET /v1/health  → liveness (no dependency checks, always 200)
 GET /v1/ready   → readiness (checks DB, Liquibase, Vault Adapter, change-channel)
+GET /metrics    → Prometheus metrics (T-1.10.2)
 
 Source: Req 1 AC7, AC8; design §4.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics — T-1.10.2
+# ---------------------------------------------------------------------------
+try:
+    from prometheus_client import (
+        Counter,
+        Histogram,
+        CONTENT_TYPE_LATEST,
+        generate_latest,
+        REGISTRY,
+    )
+
+    try:
+        _REQUESTS_TOTAL = Counter(
+            "mintkey_requests_total",
+            "Total HTTP requests processed by admin-api",
+            ["method", "path", "status"],
+        )
+    except ValueError:
+        _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")
+    try:
+        _REQUEST_DURATION = Histogram(
+            "mintkey_request_duration_seconds",
+            "HTTP request duration in seconds",
+            ["method", "path"],
+        )
+    except ValueError:
+        _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")
+    _PROMETHEUS_AVAILABLE = True
+except ImportError:
+    _PROMETHEUS_AVAILABLE = False
 
 
 async def check_db() -> bool:
@@ -50,6 +83,19 @@ async def check_vault_adapter() -> bool:
 async def check_change_channel() -> bool:
     """Return True when the LISTEN change-channel is attached. Overridden in tests via mock."""
     return False  # stub: implemented fully in T-1.0.8
+
+
+@router.get("/metrics")
+async def metrics() -> Response:
+    """
+    Prometheus metrics endpoint — T-1.10.2.
+
+    Exposes mintkey_requests_total and mintkey_request_duration_seconds.
+    Content-Type is text/plain; version=0.0.4 as required by Prometheus.
+    """
+    if not _PROMETHEUS_AVAILABLE:
+        return PlainTextResponse("# prometheus-client not installed\n", status_code=200)
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @router.get("/v1/health")

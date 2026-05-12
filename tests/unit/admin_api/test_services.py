@@ -38,12 +38,19 @@ CSRF_TOKEN = "test-csrf-token"
 
 def _make_mock_session():
     """Return an async-capable mock DB session."""
+    import uuid
     session = MagicMock()
+
+    # Stub row returned by RETURNING clause and other fetchone calls
+    _stub_row = MagicMock()
+    _stub_row.id = str(uuid.UUID("00000000-0000-0000-0000-000000000001"))
+    _stub_row.created_at = None
+    _stub_row.updated_at = None
 
     # execute returns an awaitable that yields a mock result
     async def _execute(*args, **kwargs):
         result = MagicMock()
-        result.fetchone.return_value = None
+        result.fetchone.return_value = _stub_row
         result.fetchall.return_value = []
         return result
 

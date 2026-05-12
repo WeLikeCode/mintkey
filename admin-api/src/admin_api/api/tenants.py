@@ -121,6 +121,24 @@ def _is_platform_admin(request: Request) -> bool:
     return request.headers.get("X-Platform-Admin", "").lower() == "true"
 
 
+async def _set_platform_admin_rls(session: AsyncSession) -> None:
+    """
+    Set the per-connection GUCs required for platform-admin queries on the
+    tenants table.  The tenants RLS policy allows access when either
+    id = current_tenant (per-tenant) or platform_admin_view = 'on'.
+    Platform-admin endpoints do cross-tenant reads, so they always use the
+    latter branch.  Leaving current_tenant as '' causes the ::uuid cast to
+    fail even when platform_admin_view is 'on', so we set it to the sentinel
+    zero UUID.
+    """
+    await session.execute(
+        text(
+            "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
+            " set_config('app.platform_admin_view', 'on', true)"
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
@@ -155,6 +173,8 @@ async def create_tenant(
                 "title": "PlatformAdmin access required",
             },
         )
+
+    await _set_platform_admin_rls(session)
 
     # Step 2: Generate ULID ID with tenant_ prefix — ADR-0017.11
     tenant_id = _new_tenant_id()
@@ -245,6 +265,7 @@ async def list_tenants(
             content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
         )
 
+    await _set_platform_admin_rls(session)
     result = await session.execute(
         text(
             "SELECT id, slug, display_name, status, settings, created_at, updated_at"
@@ -287,6 +308,7 @@ async def get_tenant(
 
     Source: OpenAPI getTenant; ADR-0017.4.
     """
+    await _set_platform_admin_rls(session)
     result = await session.execute(
         text(
             "SELECT id, slug, display_name, status, settings, created_at, updated_at"
@@ -337,6 +359,7 @@ async def update_tenant(
             content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
         )
 
+    await _set_platform_admin_rls(session)
     # Fetch current row to verify existence
     result = await session.execute(
         text("SELECT id FROM tenants WHERE id = :tid"),
@@ -359,12 +382,23 @@ async def update_tenant(
         updates["settings"] = body.settings
 
     if updates:
-        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-        updates["updated_at"] = now
-        updates["tid"] = tid
+        # Static SQL with COALESCE — no f-string SQL (ADR-0008, T-1.0.15).
         await session.execute(
-            text(f"UPDATE tenants SET {set_clause}, updated_at = :updated_at WHERE id = :tid"),  # noqa: S608
-            updates,
+            text(
+                "UPDATE tenants"
+                " SET display_name = COALESCE(:display_name, display_name),"
+                "     status = COALESCE(:status, status),"
+                "     settings = COALESCE(:settings, settings),"
+                "     updated_at = :updated_at"
+                " WHERE id = :tid"
+            ),
+            {
+                "display_name": updates.get("display_name"),
+                "status": updates.get("status"),
+                "settings": updates.get("settings"),
+                "updated_at": now,
+                "tid": tid,
+            },
         )
 
     # Emit audit event — ADR-0014.7
@@ -378,7 +412,7 @@ async def update_tenant(
         actor_type="platform_admin",
         target_id=tenant_uuid,
         target_type="tenant",
-        payload={"tenant_id": tid, **{k: v for k, v in updates.items() if k not in ("updated_at", "tid")}},
+        payload={"tenant_id": tid, **updates},
     )
 
     # Return updated row
@@ -427,6 +461,7 @@ async def delete_tenant(
             content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
         )
 
+    await _set_platform_admin_rls(session)
     result = await session.execute(
         text("SELECT id, status FROM tenants WHERE id = :tid"),
         {"tid": tid},
