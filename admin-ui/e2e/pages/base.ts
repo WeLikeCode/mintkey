@@ -48,4 +48,19 @@ export class BasePage {
     const action = row.locator("a, button").filter({ hasText: actionLabel });
     await action.click();
   }
+
+  /**
+   * Select a value in an AdminJS React Select dropdown.
+   * AdminJS uses react-select for properties with availableValues.
+   *
+   * The label and react-select combobox are siblings inside the same parent div.
+   * react-select exposes role="combobox" on its input and role="option" on each item.
+   */
+  async selectFromReactSelect(labelText: string | RegExp, optionText: string | RegExp, timeout = 10_000): Promise<void> {
+    const label = this.page.locator("label").filter({ hasText: labelText }).first();
+    // The react-select combobox is a sibling descendant of the label's parent div.
+    // force:true bypasses the placeholder overlay that intercepts clicks in webkit.
+    await label.locator("xpath=parent::*").locator("[role='combobox']").first().click({ timeout, force: true });
+    await this.page.locator("[role='option']").filter({ hasText: optionText }).first().click({ timeout });
+  }
 }

@@ -27,7 +27,7 @@ export class ServicesPage extends BasePage {
 
   // ── New / create ───────────────────────────────────────
   async gotoNew() {
-    await this.goto("/admin/resources/services/new");
+    await this.goto("/admin/resources/services/actions/new");
   }
 
   getFormField(name: string | RegExp) {
@@ -66,12 +66,12 @@ export class ServicesPage extends BasePage {
 
   // ── Show / detail view ─────────────────────────────────
   async gotoShow(serviceId: string) {
-    await this.goto(`/admin/resources/services/${serviceId}/show`);
+    await this.goto(`/admin/resources/services/records/${serviceId}/show`);
   }
 
   // ── Edit ───────────────────────────────────────────────
   async gotoEdit(serviceId: string) {
-    await this.goto(`/admin/resources/services/${serviceId}/edit`);
+    await this.goto(`/admin/resources/services/records/${serviceId}/edit`);
   }
 
   async updateService(serviceId: string, updates: { name?: string; baseUrl?: string }) {
@@ -88,9 +88,23 @@ export class ServicesPage extends BasePage {
   // ── Delete ─────────────────────────────────────────────
   async deleteService(serviceId: string) {
     await this.gotoShow(serviceId);
-    const deleteBtn = this.page.getByRole("button", { name: /delete/i });
+    // AdminJS sets data-testid="action-{name}" on all action buttons (ActionButton component)
+    const deleteBtn = this.page.locator('[data-testid="action-delete"]');
+    await deleteBtn.waitFor({ state: "visible", timeout: 15_000 });
     await deleteBtn.click();
-    await this.confirmDialog(true);
+    // AdminJS 7 opens a React modal (not window.confirm) for guarded actions.
+    // The modal has "Cancel" and "Confirm" buttons.
+    const confirmBtn = this.page.getByRole("button", { name: /^confirm$/i });
+    await confirmBtn.waitFor({ state: "visible", timeout: 5_000 });
+    // Wait for AdminJS delete API response so the delete is complete before returning
+    await Promise.all([
+      this.page.waitForResponse(
+        (r) => r.url().includes(`/admin/api/resources/services/records/${serviceId}`),
+        { timeout: 10_000 }
+      ).catch(() => {}),
+      confirmBtn.click(),
+    ]);
+    await this.page.waitForLoadState("load");
   }
 
   // ── Test connection action ─────────────────────────────

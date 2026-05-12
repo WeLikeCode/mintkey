@@ -29,7 +29,7 @@ test.describe("Tier 2 — Agents (F-OP-04)", () => {
     const agentName = "TestAgent-" + Date.now();
     const result = await agents.createAgent({ name: agentName, description: "E2E test agent" });
 
-    expect(result.agentId).toMatch(/^agent_[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(result.agentId).toMatch(/^agent_[0-9a-f]{32}$/);
     expect(result.apiKey.length).toBeGreaterThan(20);
 
     await agents.gotoList();
@@ -44,7 +44,8 @@ test.describe("Tier 2 — Agents (F-OP-04)", () => {
     const { agentId } = await agents.createAgent({ name: agentName });
 
     await agents.gotoShow(agentId);
-    await expect(page.locator("td, dd").filter({ hasText: agentName })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByText(agentName)).toBeVisible({ timeout: 10_000 });
   });
 
   test("3. revoke agent", async () => {

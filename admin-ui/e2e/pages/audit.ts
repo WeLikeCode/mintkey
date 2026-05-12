@@ -17,19 +17,15 @@ export class AuditPage extends BasePage {
   }
 
   // ── Filter controls ────────────────────────────────────
-  getFilterInput(name: string | RegExp) {
-    return this.page.getByLabel(name, { exact: false });
-  }
-
+  // AdminJS 7 filter panel must be opened first; use URL params instead.
   async filterByEventType(eventType: string) {
-    await this.getFilterInput(/event.type|event_type/i).fill(eventType);
-    // AdminJS auto-submits filters or we may need to press Enter
-    await this.page.keyboard.press("Enter");
+    await this.goto(`/admin/resources/audit_events?filters.event_type=${encodeURIComponent(eventType)}`);
+    await this.page.waitForLoadState("networkidle");
   }
 
   async filterByActorId(actorId: string) {
-    await this.getFilterInput(/actor.id|actor_id/i).fill(actorId);
-    await this.page.keyboard.press("Enter");
+    await this.goto(`/admin/resources/audit_events?filters.actor_id=${encodeURIComponent(actorId)}`);
+    await this.page.waitForLoadState("networkidle");
   }
 
   // ── Pagination ─────────────────────────────────────────
@@ -56,7 +52,7 @@ export class AuditPage extends BasePage {
 
   // ── Hash chain columns (visible on show/detail) ────────
   async gotoShow(eventId: string) {
-    await this.goto(`/admin/resources/audit_events/${eventId}/show`);
+    await this.goto(`/admin/resources/audit_events/records/${eventId}/show`);
   }
 
   getHashValue(): Locator {

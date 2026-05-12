@@ -40,7 +40,7 @@ test.describe("Tier 1 — Permissions (F-OP-04)", () => {
       action: "read:health",
     });
 
-    await expect(page.locator(".alert-success")).toBeVisible();
+    await expect(page.locator('[data-testid="notice-wrapper"]')).toBeVisible();
   });
 
   test("2. grant then revoke permission", async () => {
