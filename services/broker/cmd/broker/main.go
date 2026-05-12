@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,17 +16,27 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mintkey/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/services/broker/internal/api/issue"
 	"github.com/mintkey/mintkey/services/broker/internal/api/resolve"
 	"github.com/mintkey/mintkey/services/broker/internal/config"
+	"github.com/mintkey/mintkey/services/broker/internal/issuer"
 	"github.com/mintkey/mintkey/services/broker/internal/keys"
 )
 
 func main() {
 	cfg := config.Load()
 
-	// Key ring: in the skeleton, load from env or fail.
+	// Key ring: generate an ephemeral Ed25519 key pair for dev.
 	// In T-1.0.8+ the private key is fetched from Vault Adapter using svcid_broker.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		log.Fatalf("broker: keygen: %v", err)
+	}
+	activeKID := ulid.New("kid_")
 	ring := keys.NewKeyRing()
+	ring.Add(activeKID, pub)
+	iss := issuer.New(priv, activeKID, ring)
 	log.Printf("broker: starting (env=%s, port=%d)", cfg.Env, cfg.HTTPPort)
 
 	// DB pool for api-key resolution (nil-safe: resolve handler handles nil store gracefully
@@ -49,6 +61,10 @@ func main() {
 	// POST /v1/api-keys/resolve — internal; called by Egress Proxy only.
 	// Source: design §3; ADR-0018 §3; long-lived-api-keys task 4.1.
 	r.Post("/v1/api-keys/resolve", resolve.NewHandler(resolveStore, cfg.ProxyServiceToken).ServeHTTP)
+
+	// POST /v1/issue — internal; called by MCP Server only.
+	// Source: ADR-0006; ADR-0008; T-1.6.x.
+	r.Post("/v1/issue", issue.NewHandler(iss, cfg.MCPServiceToken).ServeHTTP)
 
 	mux := r
 

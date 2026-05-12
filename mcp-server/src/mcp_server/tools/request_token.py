@@ -17,9 +17,11 @@ Source: Req 6 AC5, AC10; ADR-0016.4; ADR-0014.7; ADR-0008.
 """
 from __future__ import annotations
 
-import secrets
+import os
 import time
 from typing import Optional
+
+import httpx
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -126,12 +128,30 @@ async def request_token(
                 content={"code": "mintkey:not_authorized", "reason_code": reason},
             )
 
-    # 4. Stub token (full broker call in T-1.6.x)
-    stub_token = secrets.token_urlsafe(32)
-    expires_at = int(time.time()) + 300  # 5-minute stub TTL
-
+    # 4. Call broker to issue a real JWT.
+    broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
+    mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{broker_url}/v1/issue",
+            json={
+                "agent_id": agent_id,
+                "service_id": body.service_id,
+                "tenant_id": tenant_id,
+                "scope": body.action,
+                "ttl_seconds": 600,
+            },
+            headers={"X-Mintkey-Service-Token": mcp_token},
+            timeout=5.0,
+        )
+    if resp.status_code != 200:
+        return JSONResponse(
+            status_code=502,
+            content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
+        )
+    data = resp.json()
     return JSONResponse(
-        {"token": stub_token, "expires_at": expires_at, "service_id": body.service_id}
+        {"token": data["token"], "expires_at": data["expires_at"], "service_id": body.service_id}
     )
 
 

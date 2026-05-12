@@ -10,12 +10,13 @@ import (
 
 // Config holds all runtime configuration for the Credential Broker.
 type Config struct {
-	Env              string
-	HTTPPort         int
-	VaultGRPCAddr    string // host:port of the Vault Adapter
-	ServiceToken     string // svcid_broker boot secret (from /run/secrets/mintkey_service_token)
+	Env               string
+	HTTPPort          int
+	VaultGRPCAddr     string // host:port of the Vault Adapter
+	ServiceToken      string // svcid_broker boot secret (from /run/secrets/mintkey_service_token)
 	ProxyServiceToken string // shared secret the Egress Proxy must supply for /v1/api-keys/resolve
-	DatabaseURL      string // postgres DSN for api-key resolution queries
+	MCPServiceToken   string // shared secret the MCP Server must supply for /v1/issue
+	DatabaseURL       string // postgres DSN for api-key resolution queries
 }
 
 // Load reads configuration from environment variables.
@@ -26,6 +27,7 @@ func Load() *Config {
 		VaultGRPCAddr:     getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
 		ServiceToken:      os.Getenv("MINTKEY_SERVICE_TOKEN"),        // /run/secrets/ in compose
 		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"),  // /run/secrets/ in compose
+		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),    // shared with MCP Server
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 	}
 }

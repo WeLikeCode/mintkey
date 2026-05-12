@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import sys
 import os
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+import respx
+from httpx import ASGITransport, AsyncClient, Response
 
 # Ensure mcp-server src and mintkey-models are importable
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -110,19 +112,26 @@ async def test_valid_request_returns_token_bundle(app_factory) -> None:
     mock_session = _mock_session_for_grant(grant)
     test_app = app_factory(mock_session)
 
+    fake_token = "aGVhZA.Y2xhaW1z.c2ln"  # 3-part fake JWT
+    fake_expires = int(time.time()) + 600
+
     with patch("mcp_server.tools.request_token.audit_emit", new=AsyncMock()):
-        async with AsyncClient(
-            transport=ASGITransport(app=test_app), base_url="http://test"
-        ) as client:
-            resp = await client.post(
-                "/v1/tools/request_token",
-                json={"service_id": SERVICE_ID, "action": ACTION},
+        with respx.mock:
+            respx.post("http://broker:8083/v1/issue").mock(
+                return_value=Response(200, json={"token": fake_token, "expires_at": fake_expires})
             )
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/v1/tools/request_token",
+                    json={"service_id": SERVICE_ID, "action": ACTION},
+                )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "token" in body
-    assert "expires_at" in body
+    assert body["token"] == fake_token
+    assert body["expires_at"] == fake_expires
     assert body["service_id"] == SERVICE_ID
 
 
@@ -162,20 +171,27 @@ async def test_rate_limit_exceeded_returns_not_authorized(app_factory) -> None:
     mock_session = _mock_session_for_grant(grant)
     test_app = app_factory(mock_session)
 
+    fake_token = "aGVhZA.Y2xhaW1z.c2ln"
+    fake_expires = int(time.time()) + 600
+
     with patch("mcp_server.tools.request_token.audit_emit", new=AsyncMock()):
-        async with AsyncClient(
-            transport=ASGITransport(app=test_app), base_url="http://test"
-        ) as client:
-            # First request: should succeed (burst allows 1)
-            resp1 = await client.post(
-                "/v1/tools/request_token",
-                json={"service_id": SERVICE_ID, "action": ACTION},
+        with respx.mock:
+            respx.post("http://broker:8083/v1/issue").mock(
+                return_value=Response(200, json={"token": fake_token, "expires_at": fake_expires})
             )
-            # Second request: immediately after, should be rate-limited
-            resp2 = await client.post(
-                "/v1/tools/request_token",
-                json={"service_id": SERVICE_ID, "action": ACTION},
-            )
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app), base_url="http://test"
+            ) as client:
+                # First request: should succeed (burst allows 1)
+                resp1 = await client.post(
+                    "/v1/tools/request_token",
+                    json={"service_id": SERVICE_ID, "action": ACTION},
+                )
+                # Second request: immediately after, should be rate-limited
+                resp2 = await client.post(
+                    "/v1/tools/request_token",
+                    json={"service_id": SERVICE_ID, "action": ACTION},
+                )
 
     assert resp1.status_code == 200, resp1.text
     assert resp2.status_code == 403, resp2.text
