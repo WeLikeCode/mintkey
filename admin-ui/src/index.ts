@@ -14,6 +14,7 @@ import { buildAuthenticatedRouter } from "@adminjs/express";
 import pinoHttp from "pino-http";
 
 import { adminJSAuthOptions, registerOidcRoutes } from "./auth.js";
+import { dashboardHandler } from "./dashboard.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
 import { ServicesResource } from "./resources/services.js";
 import { CredentialsResource } from "./resources/credentials.js";
@@ -29,6 +30,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET ?? "mintkey-session-secret-cha
 async function main() {
   // AdminJS instance
   const admin = new AdminJS({
+    dashboard: {
+      handler: dashboardHandler,
+    },
     resources: [
       { resource: ServicesResource.adminResource, options: ServicesResource.options },
       { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
