@@ -157,6 +157,11 @@ message GetCredentialResponse {
   // if the operator configured a non-default location.
   string header_name = 6;
   string query_param = 7;
+
+  // The registered base_url for the service (e.g. "https://api.twilio.com").
+  // Stored alongside the credential so the proxy plugin never needs to trust
+  // the caller-supplied X-Mintkey-Target header.
+  string target_url = 8;
 }
 
 // ----------------------------------------------------------------------
@@ -192,6 +197,10 @@ message PutCredentialRequest {
 
   // Caller identifier for audit emission.
   string caller_actor_id = 8;
+
+  // The service's registered base_url (e.g. "https://api.twilio.com").
+  // Stored with the credential so GetCredential can return it to the proxy.
+  string target_url = 9;
 }
 
 // PutCredentialResponse returns the new key_version.

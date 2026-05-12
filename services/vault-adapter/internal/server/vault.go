@@ -42,6 +42,7 @@ type PutCredentialArgs struct {
 	AuthScheme    int32
 	Plaintext     []byte
 	CallerActorID string
+	TargetURL     string
 }
 
 // PutCredentialResult is returned by PutCredential.
@@ -64,6 +65,7 @@ type GetCredentialResult struct {
 	Plaintext          []byte
 	ReturnedKeyVersion uint32
 	CurrentKeyVersion  uint32
+	TargetURL          string
 }
 
 // RevokeCredentialArgs holds the input for RevokeCredential.
@@ -209,6 +211,7 @@ func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs
 		WrappedDEK:   wrappedDEK,
 		EncPayload:   encPayload,
 		CreatedAt:    now.UnixNano(),
+		TargetURL:    args.TargetURL,
 	}
 
 	keyVer, err := v.store.Put(ctx, rec)
@@ -257,6 +260,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				Plaintext:          plaintext,
 				ReturnedKeyVersion: args.KeyVersion,
 				CurrentKeyVersion:  currentKeyVer,
+				TargetURL:          e.TargetURL,
 			}, nil
 		}
 	}
@@ -279,7 +283,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -295,6 +299,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 		Plaintext:          plaintext,
 		ReturnedKeyVersion: rec.KeyVersion,
 		CurrentKeyVersion:  currentKeyVer,
+		TargetURL:          rec.TargetURL,
 	}, nil
 }
 

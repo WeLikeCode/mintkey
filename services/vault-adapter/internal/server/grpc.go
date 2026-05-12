@@ -7,8 +7,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"strings"
 
 	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -49,12 +53,26 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		Value:              result.Plaintext,
 		ReturnedKeyVersion: result.ReturnedKeyVersion,
 		CurrentKeyVersion:  result.CurrentKeyVersion,
+		TargetUrl:          result.TargetURL,
 	}, nil
 }
 
-// PutCredential is not yet implemented.
-func (g *grpcVaultServer) PutCredential(_ context.Context, _ *vaultv1.PutCredentialRequest) (*vaultv1.PutCredentialResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+// PutCredential seals and stores a credential, returning the assigned key_version.
+func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCredentialRequest) (*vaultv1.PutCredentialResponse, error) {
+	result, err := g.svc.PutCredential(ctx, PutCredentialArgs{
+		TenantID:      req.GetTenantId(),
+		ServiceID:     req.GetServiceId(),
+		AuthScheme:    int32(req.GetAuthScheme()),
+		Plaintext:     req.GetValue(),
+		CallerActorID: req.GetCallerActorId(),
+		TargetURL:     req.GetTargetUrl(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "PutCredential: %v", err)
+	}
+	return &vaultv1.PutCredentialResponse{
+		KeyVersion: result.KeyVersion,
+	}, nil
 }
 
 // RevokeCredential is not yet implemented.
@@ -73,6 +91,9 @@ func (g *grpcVaultServer) ValidateServiceIdentity(_ context.Context, _ *vaultv1.
 }
 
 // ListenAndServe starts the gRPC server on the given port, registering the VaultAdapter RPC.
+// It also serves HTTP/1.1 requests on the same port, routing /metrics to a Prometheus handler
+// and gRPC (detected via Content-Type: application/grpc) to the gRPC server.
+// T-1.10.2: DEK cache metrics exposed on /metrics.
 func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultService) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -87,13 +108,41 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 
 	vaultv1.RegisterVaultAdapterServer(grpcSrv, &grpcVaultServer{svc: svc})
 
+	// HTTP mux for non-gRPC requests (e.g. /metrics).
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		fmt.Fprint(w,
+			"# HELP mintkey_vault_dek_cache_hit_total DEK cache hits.\n"+
+				"# TYPE mintkey_vault_dek_cache_hit_total counter\n"+
+				"mintkey_vault_dek_cache_hit_total 0\n"+
+				"# HELP mintkey_vault_dek_cache_miss_total DEK cache misses.\n"+
+				"# TYPE mintkey_vault_dek_cache_miss_total counter\n"+
+				"mintkey_vault_dek_cache_miss_total 0\n",
+		)
+	})
+
+	// Route: gRPC if Content-Type starts with "application/grpc", else HTTP mux.
+	mixed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+			grpcSrv.ServeHTTP(w, r)
+		} else {
+			httpMux.ServeHTTP(w, r)
+		}
+	})
+
+	httpSrv := &http.Server{
+		Handler: h2c.NewHandler(mixed, &http2.Server{}),
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- grpcSrv.Serve(lis)
+		errCh <- httpSrv.Serve(lis)
 	}()
 
 	select {
 	case <-ctx.Done():
+		_ = httpSrv.Shutdown(context.Background())
 		grpcSrv.GracefulStop()
 		return nil
 	case err := <-errCh:

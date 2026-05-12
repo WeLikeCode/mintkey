@@ -266,8 +266,12 @@ type GetCredentialResponse struct {
 	// Optional injection hints for header/query schemes (e.g.
 	// header_name="X-API-Key", query_param="api_key"). Set by the adapter
 	// if the operator configured a non-default location.
-	HeaderName    string `protobuf:"bytes,6,opt,name=header_name,json=headerName,proto3" json:"header_name,omitempty"`
-	QueryParam    string `protobuf:"bytes,7,opt,name=query_param,json=queryParam,proto3" json:"query_param,omitempty"`
+	HeaderName string `protobuf:"bytes,6,opt,name=header_name,json=headerName,proto3" json:"header_name,omitempty"`
+	QueryParam string `protobuf:"bytes,7,opt,name=query_param,json=queryParam,proto3" json:"query_param,omitempty"`
+	// The registered base_url for the service (e.g. "https://api.twilio.com").
+	// Stored alongside the credential so the proxy plugin never needs to trust
+	// the caller-supplied X-Mintkey-Target header.
+	TargetUrl     string `protobuf:"bytes,8,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -351,6 +355,13 @@ func (x *GetCredentialResponse) GetQueryParam() string {
 	return ""
 }
 
+func (x *GetCredentialResponse) GetTargetUrl() string {
+	if x != nil {
+		return x.TargetUrl
+	}
+	return ""
+}
+
 // PutCredentialRequest creates a new credential version. Always
 // monotonically advances key_version per (tenant_id, service_id).
 type PutCredentialRequest struct {
@@ -375,6 +386,9 @@ type PutCredentialRequest struct {
 	QueryParam string `protobuf:"bytes,7,opt,name=query_param,json=queryParam,proto3" json:"query_param,omitempty"`
 	// Caller identifier for audit emission.
 	CallerActorId string `protobuf:"bytes,8,opt,name=caller_actor_id,json=callerActorId,proto3" json:"caller_actor_id,omitempty"`
+	// The service's registered base_url (e.g. "https://api.twilio.com").
+	// Stored with the credential so GetCredential can return it to the proxy.
+	TargetUrl     string `protobuf:"bytes,9,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -461,6 +475,13 @@ func (x *PutCredentialRequest) GetQueryParam() string {
 func (x *PutCredentialRequest) GetCallerActorId() string {
 	if x != nil {
 		return x.CallerActorId
+	}
+	return ""
+}
+
+func (x *PutCredentialRequest) GetTargetUrl() string {
+	if x != nil {
+		return x.TargetUrl
 	}
 	return ""
 }
@@ -1054,7 +1075,7 @@ const file_vault_proto_rawDesc = "" +
 	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
 	"\vkey_version\x18\x03 \x01(\rR\n" +
 	"keyVersion\x12&\n" +
-	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xcb\x02\n" +
+	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xea\x02\n" +
 	"\x15GetCredentialResponse\x12=\n" +
 	"\vauth_scheme\x18\x01 \x01(\x0e2\x1c.mintkey.vault.v1.AuthSchemeR\n" +
 	"authScheme\x12\x14\n" +
@@ -1066,7 +1087,9 @@ const file_vault_proto_rawDesc = "" +
 	"\vheader_name\x18\x06 \x01(\tR\n" +
 	"headerName\x12\x1f\n" +
 	"\vquery_param\x18\a \x01(\tR\n" +
-	"queryParam\"\xcc\x02\n" +
+	"queryParam\x12\x1d\n" +
+	"\n" +
+	"target_url\x18\b \x01(\tR\ttargetUrl\"\xeb\x02\n" +
 	"\x14PutCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
@@ -1080,7 +1103,9 @@ const file_vault_proto_rawDesc = "" +
 	"headerName\x12\x1f\n" +
 	"\vquery_param\x18\a \x01(\tR\n" +
 	"queryParam\x12&\n" +
-	"\x0fcaller_actor_id\x18\b \x01(\tR\rcallerActorId\"s\n" +
+	"\x0fcaller_actor_id\x18\b \x01(\tR\rcallerActorId\x12\x1d\n" +
+	"\n" +
+	"target_url\x18\t \x01(\tR\ttargetUrl\"s\n" +
 	"\x15PutCredentialResponse\x12\x1f\n" +
 	"\vkey_version\x18\x01 \x01(\rR\n" +
 	"keyVersion\x129\n" +

@@ -41,6 +41,7 @@ type cacheEntry struct {
 	encPayload []byte
 	authScheme int32
 	isRevoked  bool
+	targetURL  string
 	expiresAt  time.Time
 }
 
@@ -75,12 +76,13 @@ type Entry struct {
 	EncPayload []byte
 	AuthScheme int32
 	IsRevoked  bool
+	TargetURL  string
 }
 
 // Put stores a cache entry for the given key with the configured TTL.
 // wrappedDEK and encPayload must be ENCRYPTED blobs — callers must never pass
 // plaintext.
-func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool) {
+func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL string) {
 	k := cacheKey{tenantID: tenantID, serviceID: serviceID, keyVersion: keyVersion}
 	// Copy slices so the caller's buffer changes don't corrupt the cache.
 	wCopy := make([]byte, len(wrappedDEK))
@@ -94,6 +96,7 @@ func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK
 		encPayload: pCopy,
 		authScheme: authScheme,
 		isRevoked:  isRevoked,
+		targetURL:  targetURL,
 		expiresAt:  time.Now().Add(c.ttl),
 	}
 	c.mu.Unlock()
@@ -129,6 +132,7 @@ func (c *DEKCache) Get(tenantID, serviceID string, keyVersion uint32) (Entry, bo
 		EncPayload: entry.encPayload,
 		AuthScheme: entry.authScheme,
 		IsRevoked:  entry.isRevoked,
+		TargetURL:  entry.targetURL,
 	}, true
 }
 

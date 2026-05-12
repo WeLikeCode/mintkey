@@ -34,6 +34,7 @@ type CredentialRecord struct {
 	IsCurrent    bool
 	IsRevoked    bool
 	CreatedAt    int64 // Unix nanoseconds
+	TargetURL    string
 }
 
 // Store wraps an SQLite database connection.
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS credentials (
     is_current    INTEGER NOT NULL DEFAULT 1,
     is_revoked    INTEGER NOT NULL DEFAULT 0,
     created_at    INTEGER NOT NULL,
+    target_url    TEXT    NOT NULL DEFAULT '',
     UNIQUE(tenant_id, service_id, key_version)
 );
 CREATE INDEX IF NOT EXISTS idx_credentials_tenant_service
@@ -74,7 +76,40 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 
+	// Add target_url column to pre-existing databases that lack it.
+	if err = migrateAddTargetURL(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("store: migrate target_url: %w", err)
+	}
+
 	return &Store{db: db}, nil
+}
+
+// migrateAddTargetURL adds the target_url column when it is absent (one-time migration
+// for databases created before this field was introduced).
+func migrateAddTargetURL(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(credentials)`)
+	if err != nil {
+		return fmt.Errorf("pragma table_info: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err = rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan pragma row: %w", err)
+		}
+		if name == "target_url" {
+			return nil // column already present
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE credentials ADD COLUMN target_url TEXT NOT NULL DEFAULT ''`)
+	return err
 }
 
 // Close releases the underlying database connection.
@@ -125,10 +160,10 @@ func (s *Store) Put(ctx context.Context, rec CredentialRecord) (uint32, error) {
 	if _, err = tx.ExecContext(ctx,
 		`INSERT INTO credentials
              (credential_id, tenant_id, service_id, key_version, auth_scheme,
-              wrapped_dek, enc_payload, is_current, is_revoked, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?)`,
+              wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
 		rec.CredentialID, rec.TenantID, rec.ServiceID, nextVer, rec.AuthScheme,
-		rec.WrappedDEK, rec.EncPayload, createdAt,
+		rec.WrappedDEK, rec.EncPayload, createdAt, rec.TargetURL,
 	); err != nil {
 		return 0, fmt.Errorf("store.Put: insert: %w", err)
 	}
@@ -148,7 +183,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 	if keyVersion == 0 {
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
-                    wrapped_dek, enc_payload, is_current, is_revoked, created_at
+                    wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND is_current=1`,
 			tenantID, serviceID,
@@ -156,7 +191,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 	} else {
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
-                    wrapped_dek, enc_payload, is_current, is_revoked, created_at
+                    wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND key_version=?`,
 			tenantID, serviceID, keyVersion,
@@ -257,7 +292,7 @@ func scanRecord(row *sql.Row) (*CredentialRecord, error) {
 		&r.CredentialID, &r.TenantID, &r.ServiceID,
 		&r.KeyVersion, &r.AuthScheme,
 		&r.WrappedDEK, &r.EncPayload,
-		&isCurrent, &isRevoked, &r.CreatedAt,
+		&isCurrent, &isRevoked, &r.CreatedAt, &r.TargetURL,
 	); err != nil {
 		return nil, err
 	}

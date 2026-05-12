@@ -156,8 +156,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Ensure plaintext is zeroed after use regardless of path.
 	defer clear(credResp.Plaintext)
 
-	// Determine target URL.
-	target := r.Header.Get("X-Mintkey-Target")
+	// Prefer target URL from vault (registered base_url); fall back to X-Mintkey-Target header
+	// for backward compatibility with credentials registered before this change.
+	target := credResp.TargetURL
+	if target == "" {
+		target = r.Header.Get("X-Mintkey-Target")
+	}
 	if target == "" {
 		target = h.cfg.DefaultTarget
 	}
@@ -184,6 +188,8 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
+		// Use the target's Host header so the upstream sees the correct virtual host.
+		req.Host = req.URL.Host
 		// Strip the X-Mintkey-Target header before forwarding.
 		req.Header.Del("X-Mintkey-Target")
 		// Inject the credential (also strips the agent's Authorization header).

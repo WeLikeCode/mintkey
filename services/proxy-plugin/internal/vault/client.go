@@ -51,6 +51,10 @@ type GetCredentialResponse struct {
 
 	// QueryParam is the optional injection hint for API_KEY_QUERY scheme.
 	QueryParam string
+
+	// TargetURL is the service's registered base_url stored at credential registration time.
+	// When non-empty the proxy should prefer this over the X-Mintkey-Target header.
+	TargetURL string
 }
 
 // Client is the Vault Adapter gRPC client used by the proxy plugin.
@@ -121,5 +125,6 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 		ReturnedKeyVersion: resp.GetReturnedKeyVersion(),
 		HeaderName:         resp.GetHeaderName(),
 		QueryParam:         resp.GetQueryParam(),
+		TargetURL:          resp.GetTargetUrl(),
 	}, nil
 }

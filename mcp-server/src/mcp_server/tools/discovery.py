@@ -52,22 +52,20 @@ The token is valid for 10 minutes. Never log it.
 ## Step 3: Call the service through the proxy
 METHOD http://<kong_host>:8000/proxy/<path>
 Header: Authorization: Bearer <token_from_step_2>
-Header: X-Mintkey-Target: <base_url_from_discover>
 
 Rules:
 - The path after /proxy/ is forwarded verbatim to the target service.
-- X-Mintkey-Target must be the exact base_url from discover (e.g. https://api.twilio.com).
+- The proxy already knows the target URL from the registered service base_url — no extra header needed.
 - The proxy strips your Authorization header and injects the real service credential automatically.
 - You never see the actual API key/password — the proxy holds it encrypted.
 - If you get 401 from the proxy, your token has expired — repeat from Step 2.
 - If you get 403 from the proxy, your agent lacks permission for this service — contact the operator.
 
 ## Example: Twilio SMS logs
-Discover -> note service id for "twilio-sms" and base_url "https://api.twilio.com"
+Discover -> note service id for "twilio-sms"
 Request token -> POST /v1/tools/request_token {"service_id": "<id>", "action": "call"}
 Call -> GET http://localhost:8000/proxy/2010-04-01/Accounts/<ACCOUNT_SID>/Messages.json
         Authorization: Bearer <token>
-        X-Mintkey-Target: https://api.twilio.com
 """
 
 
@@ -89,14 +87,14 @@ def _make_how_to_call(service_id: str, base_url: str) -> dict:
             f'POST /v1/tools/request_token {{"service_id": "{service_id}", "action": "call"}}'
         ),
         "step2_proxy_call": (
-            f"Send request to Kong proxy with "
-            f"Authorization: Bearer <token> and X-Mintkey-Target: {base_url}"
+            f"Send request to Kong proxy with Authorization: Bearer <token>"
         ),
         "proxy_url_pattern": f"{kong_host}/proxy/<path_on_target_api>",
         "notes": (
             'The action defaults to "call" for all services. '
             "Use the action string your operator granted you — if unsure, try \"call\". "
-            "The proxy strips your Bearer token and injects the real credential before forwarding."
+            "The proxy strips your Bearer token and injects the real credential before forwarding. "
+            "No X-Mintkey-Target header is needed — the target URL is stored with the credential."
         ),
     }
 
