@@ -42,7 +42,9 @@ POST /v1/tools/request_token
 Header: X-API-Key: <your_api_key>
 Body: {"service_id": "<id_from_discover>", "action": "call"}
 
-IMPORTANT: the action must always be the string "call" — not "read", "write", "send", or any other value.
+IMPORTANT: the action string must match what was granted to your agent. Use "call" unless your operator
+explicitly told you a different action (e.g. "send"). When in doubt, use "call" — it is the default action
+granted to most agents. If you get permission_not_found, try "call" before assuming access is missing.
 
 Returns: {"token": "<jwt>", "expires_at": <unix_timestamp>, "service_id": "..."}
 The token is valid for 10 minutes. Never log it.
@@ -92,7 +94,8 @@ def _make_how_to_call(service_id: str, base_url: str) -> dict:
         ),
         "proxy_url_pattern": f"{kong_host}/proxy/<path_on_target_api>",
         "notes": (
-            'The action must be exactly "call" for all services. '
+            'The action defaults to "call" for all services. '
+            "Use the action string your operator granted you — if unsure, try \"call\". "
             "The proxy strips your Bearer token and injects the real credential before forwarding."
         ),
     }
