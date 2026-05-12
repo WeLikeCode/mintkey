@@ -15,6 +15,7 @@
 import type { ResourceWithOptions } from "adminjs";
 import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
+import { buildCredentialPayload } from "../lib/auth-scheme.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
@@ -61,11 +62,14 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${jwt}`,
               },
-              // Forward plaintext credential to admin-api; admin-api sends to Vault
-              body: JSON.stringify({
-                auth_scheme: request.payload?.auth_scheme,
-                plaintext: request.payload?.plaintext,
-              }),
+              // Forward scheme-specific credential fields to admin-api
+              // buildCredentialPayload selects only the fields for this scheme
+              body: JSON.stringify(
+                buildCredentialPayload(
+                  request.payload?.auth_scheme as string ?? "none",
+                  request.payload as Record<string, string> ?? {}
+                )
+              ),
             }
           );
 

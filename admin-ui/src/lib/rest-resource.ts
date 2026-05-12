@@ -14,6 +14,7 @@ export interface PropertyDef {
   path: string;
   type?: "string" | "number" | "boolean" | "datetime" | "uuid";
   isId?: boolean;
+  availableValues?: Array<{ value: string; label: string }>;
 }
 
 interface RestResourceConfig {
@@ -53,15 +54,24 @@ export class RestResource extends BaseResource {
   }
 
   properties(): BaseProperty[] {
-    return this.config.properties.map(
-      (p) => new BaseProperty({ path: p.path, type: p.type ?? "string", isId: p.isId ?? false })
-    );
+    return this.config.properties.map((p) => {
+      const prop = new BaseProperty({ path: p.path, type: p.type ?? "string", isId: p.isId ?? false });
+      if (p.availableValues) {
+        // Attach availableValues so AdminJS renders a select dropdown
+        (prop as unknown as { availableValues: typeof p.availableValues }).availableValues = p.availableValues;
+      }
+      return prop;
+    });
   }
 
   property(path: string): BaseProperty | null {
     const def = this.config.properties.find((p) => p.path === path);
     if (!def) return null;
-    return new BaseProperty({ path: def.path, type: def.type ?? "string", isId: def.isId ?? false });
+    const prop = new BaseProperty({ path: def.path, type: def.type ?? "string", isId: def.isId ?? false });
+    if (def.availableValues) {
+      (prop as unknown as { availableValues: typeof def.availableValues }).availableValues = def.availableValues;
+    }
+    return prop;
   }
 
   async find(

@@ -10,6 +10,7 @@
 import type { ResourceWithOptions } from "adminjs";
 import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
+import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
@@ -24,7 +25,7 @@ const _servicesResource = new RestResource({
     { path: "name", type: "string" },
     { path: "slug", type: "string" },
     { path: "base_url", type: "string" },
-    { path: "auth_scheme", type: "string" },
+    { path: "auth_scheme", type: "string", availableValues: AUTH_SCHEMES },
     { path: "status", type: "string" },
     { path: "description", type: "string" },
     { path: "openapi_url", type: "string" },
@@ -43,6 +44,11 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
     editProperties: ["name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "allow_internal_urls"],
     showProperties: ["id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "status", "current_key_version", "created_at", "updated_at"],
     filterProperties: ["name", "slug", "auth_scheme", "status"],
+    properties: {
+      auth_scheme: {
+        availableValues: AUTH_SCHEMES,
+      },
+    },
     actions: {
       new: {
         isVisible: true,
