@@ -30,7 +30,7 @@ describe("dashboardHandler", () => {
   });
 
   it("returns zeroed counts when API returns empty lists", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], events: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], items: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -46,11 +46,13 @@ describe("dashboardHandler", () => {
   });
 
   it("returns correct counts from API data", async () => {
+    // admin-api's list envelopes: services -> {services}, agents -> {agents},
+    // permissions -> {permissions}, audit -> {items, next_cursor}.
     mockFetch
       .mockResolvedValueOnce(makeFetchResponse({ services: [{ id: "s1" }, { id: "s2" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ agents: [{ id: "a1" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ permissions: [{ id: "p1" }, { id: "p2" }, { id: "p3" }] }))
-      .mockResolvedValueOnce(makeFetchResponse({ events: [{ id: "e1" }, { id: "e2" }] }));
+      .mockResolvedValueOnce(makeFetchResponse({ items: [{ id: "e1" }, { id: "e2" }] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -70,7 +72,7 @@ describe("dashboardHandler", () => {
       .mockResolvedValueOnce(makeFetchResponse({ services: [{ id: "s1" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ agents: [] }))
       .mockResolvedValueOnce(makeFetchResponse({ permissions: [] }))
-      .mockResolvedValueOnce(makeFetchResponse({ events: [] }));
+      .mockResolvedValueOnce(makeFetchResponse({ items: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -84,7 +86,7 @@ describe("dashboardHandler", () => {
   });
 
   it("checklist all false for empty state", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], items: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -99,7 +101,7 @@ describe("dashboardHandler", () => {
   });
 
   it("includes email and tenantId from currentAdmin", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], items: [] }));
 
     const result = await dashboardHandler(
       {} as never,

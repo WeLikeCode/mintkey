@@ -39,6 +39,10 @@ async function loadPrivateKey(): Promise<KeyLike> {
 export interface SignedRequestOptions {
   operatorId: string;
   tenantId: string;
+  /** Session token relayed from admin-api (for Cookie header). */
+  sessionToken?: string;
+  /** CSRF token for double-submit (X-Mintkey-Csrf header). */
+  csrfToken?: string;
   /** Override the private key (useful in tests). */
   privateKey?: KeyLike;
 }
@@ -81,12 +85,24 @@ export async function signedFetch(
 ): Promise<Response> {
   const token = await buildSignedRequest(opts);
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    // ADR-0019: JWT goes in x-mintkey-signed-request, NOT Authorization
+    "x-mintkey-signed-request": token,
+  };
+
+  if (opts.sessionToken) {
+    const cookieParts = [`mintkey_session=${opts.sessionToken}`];
+    if (opts.csrfToken) cookieParts.push(`csrf_token=${opts.csrfToken}`);
+    headers["Cookie"] = cookieParts.join("; ");
+  }
+  if (opts.csrfToken) {
+    headers["X-Mintkey-Csrf"] = opts.csrfToken;
+  }
+
   return fetch(url, {
     method: opts.method ?? "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
 }

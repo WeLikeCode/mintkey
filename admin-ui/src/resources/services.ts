@@ -11,6 +11,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
 import { apiWrite } from "../lib/api-client.js";
+import { recordJSON } from "../lib/record-helpers.js";
 
 const _servicesResource = new RestResource({
   id: "services", name: "Services",
@@ -19,7 +20,7 @@ const _servicesResource = new RestResource({
   listKey: "services",
   idField: "id",
   properties: [
-    { path: "id", type: "uuid", isId: true },
+    { path: "id", type: "string", isId: true },
     { path: "name", type: "string" },
     { path: "slug", type: "string" },
     { path: "base_url", type: "string" },
@@ -51,11 +52,10 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { resource, currentAdmin, record } = context;
+          const { currentAdmin } = context;
           // AdminJS calls handler on GET to get the empty form record
           if (request.method === "get") {
-            const emptyRecord = await resource.build({});
-            return { record: emptyRecord.toJSON(currentAdmin) };
+            return { record: await recordJSON(context, {}) };
           }
 
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
@@ -69,21 +69,21 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           if (!resp.ok) {
             const err = await resp.json() as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to create service", type: "error" },
             };
           }
 
-          return { record: record?.toJSON(currentAdmin) ?? {}, redirectUrl: "/admin/resources/services" };
+          return { record: await recordJSON(context, request.payload ?? {}), redirectUrl: "/admin/resources/services" };
         },
       },
       edit: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
+          const { currentAdmin } = context;
           // AdminJS calls GET to load the current record into the edit form
           if (request.method === "get") {
-            return { record: record?.toJSON(currentAdmin) ?? {} };
+            return { record: await recordJSON(context, request.payload ?? {}) };
           }
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
@@ -97,26 +97,42 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           if (!resp.ok) {
             const err = await resp.json() as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to update service", type: "error" },
             };
           }
-          return { record: record?.toJSON(currentAdmin) ?? {} };
+          return { record: await recordJSON(context, request.payload ?? {}) };
         },
       },
       delete: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
+          const { currentAdmin, h, resource } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
 
-          await apiWrite(
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+
+          const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}`,
             "DELETE"
           );
 
-          return { record: record?.toJSON(currentAdmin) ?? {} };
+          if (!resp.ok) {
+            const err = await resp.json() as { title?: string };
+            return {
+              record: await recordJSON(context),
+              notice: { message: err.title ?? "Failed to delete service", type: "error" },
+            };
+          }
+
+          return {
+            record: await recordJSON(context),
+            redirectUrl: h.resourceUrl({ resourceId: resource._decorated?.id() ?? resource.id() }),
+            notice: { message: "Service deleted", type: "success" },
+          };
         },
       },
       testService: {
@@ -125,7 +141,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         icon: "Activity",
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
 
@@ -137,7 +153,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
 
           const result = await resp.json() as { ok: boolean; status_code?: number; latency_ms?: number };
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context),
             notice: {
               message: result.ok
                 ? `✓ ${result.status_code} OK · ${result.latency_ms}ms`

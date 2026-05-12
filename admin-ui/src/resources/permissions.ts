@@ -10,16 +10,21 @@
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite } from "../lib/api-client.js";
+import { recordJSON } from "../lib/record-helpers.js";
 
 const _permissionsResource = new RestResource({
   id: "permission_grants", name: "Permissions",
-  listPath: "/v1/tenants/{tenantId}/agents",
-  listKey: "agents",
+  listPath: "/v1/tenants/{tenantId}/permissions",
+  listKey: "permissions",
   idField: "id",
   properties: [
-    { path: "id", type: "uuid", isId: true },
-    { path: "name", type: "string" },
-    { path: "status", type: "string" },
+    { path: "id", type: "string", isId: true },
+    { path: "agent_id", type: "string" },
+    { path: "service_id", type: "string" },
+    { path: "action", type: "string" },
+    { path: "constraints", type: "string" },
+    { path: "created_at", type: "datetime" },
+    { path: "created_by", type: "string" },
   ],
 });
 
@@ -44,11 +49,10 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { resource, currentAdmin, record } = context;
           if (request.method === "get") {
-            const emptyRecord = await resource.build({});
-            return { record: emptyRecord.toJSON(currentAdmin) };
+            return { record: await recordJSON(context, {}) };
           }
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
 
           let constraints: Record<string, unknown> = {};
@@ -58,7 +62,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
               : {};
           } catch {
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: "constraints must be valid JSON", type: "error" },
             };
           }
@@ -75,23 +79,24 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
           );
 
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
+            const err = await resp.json().catch(() => ({})) as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to grant permission", type: "error" },
             };
           }
 
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context, request.payload ?? {}),
             notice: { message: "Permission granted", type: "success" },
+            redirectUrl: "/admin/resources/permission_grants",
           };
         },
       },
       delete: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const permissionId = request.params.recordId;
 
@@ -100,7 +105,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
             "DELETE"
           );
 
-          return { record: record?.toJSON(currentAdmin) ?? {} };
+          return { record: await recordJSON(context) };
         },
       },
       edit: { isVisible: false },

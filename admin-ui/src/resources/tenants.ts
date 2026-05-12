@@ -14,6 +14,7 @@ import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { apiWrite } from "../lib/api-client.js";
 import { isPlatformAdminView } from "../middleware/platform-admin.js";
 import { RestResource } from "../lib/rest-resource.js";
+import { recordJSON } from "../lib/record-helpers.js";
 import type { Request } from "express";
 
 function assertPlatformAdmin(context: ActionContext): void {
@@ -23,17 +24,25 @@ function assertPlatformAdmin(context: ActionContext): void {
   }
 }
 
+// Property set reconciled with what admin-api actually returns for
+// GET /v1/tenants (`{ data: [...] }`): id, slug, display_name, status, settings,
+// created_at, updated_at. `isolation_mode` is not in the response but is a field
+// on the create form (CreateTenantRequest in the OpenAPI), so it stays declared
+// here so AdminJS can render it on the `new` form without a "no property" warning.
 const _tenantsResource = new RestResource({
   id: "tenants", name: "Tenants",
-  listPath: "/v1/tenants/{tenantId}/services",
-  listKey: "services",
+  listPath: "/v1/tenants",
+  listKey: "data",
   idField: "id",
   properties: [
     { path: "id", type: "uuid", isId: true },
     { path: "slug", type: "string" },
     { path: "display_name", type: "string" },
+    { path: "status", type: "string" },
+    { path: "settings", type: "string" },
     { path: "isolation_mode", type: "string" },
     { path: "created_at", type: "datetime" },
+    { path: "updated_at", type: "datetime" },
   ],
 });
 
@@ -44,7 +53,8 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],
     showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at"],
-    editProperties: ["display_name", "status"],
+    newProperties: ["slug", "display_name", "isolation_mode"],
+    editProperties: ["slug", "display_name", "isolation_mode"],
     filterProperties: ["slug", "status"],
 
     // Resource is visible only to PlatformAdmin
@@ -73,10 +83,8 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
         isVisible: true,
         handler: async (request, response, context) => {
           assertPlatformAdmin(context);
-          const { resource, currentAdmin, record } = context;
           if (request.method === "get") {
-            const emptyRecord = await resource.build({});
-            return { record: emptyRecord.toJSON(currentAdmin) };
+            return { record: await recordJSON(context, {}) };
           }
 
           const resp = await apiWrite("/v1/tenants", "POST", request.payload);
@@ -84,13 +92,13 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
           if (!resp.ok) {
             const err = await resp.json() as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to create tenant", type: "error" },
             };
           }
 
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context, request.payload ?? {}),
             notice: { message: "Tenant created — genesis hash initialized", type: "success" },
             redirectUrl: "/admin/resources/tenants",
           };
@@ -100,27 +108,26 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
         isVisible: true,
         handler: async (request, response, context) => {
           assertPlatformAdmin(context);
-          const { currentAdmin, record } = context;
           if (request.method === "get") {
-            return { record: record?.toJSON(currentAdmin) ?? {} };
+            return { record: await recordJSON(context, request.payload ?? {}) };
           }
           const targetTenantId = request.params.recordId;
 
           const resp = await apiWrite(
             `/v1/tenants/${targetTenantId}`,
             "PATCH",
-            request.payload
+            { display_name: request.payload?.display_name }
           );
 
           if (!resp.ok) {
             const err = await resp.json() as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to update tenant", type: "error" },
             };
           }
 
-          return { record: record?.toJSON(currentAdmin) ?? {} };
+          return { record: await recordJSON(context, request.payload ?? {}) };
         },
       },
       delete: { isVisible: false },

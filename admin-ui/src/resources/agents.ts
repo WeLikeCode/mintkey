@@ -13,15 +13,15 @@
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite } from "../lib/api-client.js";
+import { recordJSON } from "../lib/record-helpers.js";
 
 const _agentsResource = new RestResource({
   id: "agents", name: "Agents",
   listPath: "/v1/tenants/{tenantId}/agents",
-  getPath: "/v1/tenants/{tenantId}/agents/{id}",
   listKey: "agents",
   idField: "id",
   properties: [
-    { path: "id", type: "uuid", isId: true },
+    { path: "id", type: "string", isId: true },
     { path: "name", type: "string" },
     { path: "description", type: "string" },
     { path: "status", type: "string" },
@@ -47,11 +47,10 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { resource, currentAdmin, record } = context;
           if (request.method === "get") {
-            const emptyRecord = await resource.build({});
-            return { record: emptyRecord.toJSON(currentAdmin) };
+            return { record: await recordJSON(context, {}) };
           }
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
 
           const resp = await apiWrite(
@@ -60,25 +59,26 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             request.payload
           );
 
+          const body = await resp.json().catch(() => ({})) as { api_key?: string; id?: string; title?: string };
+
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
-              notice: { message: err.title ?? "Failed to create agent", type: "error" },
+              record: await recordJSON(context, request.payload ?? {}),
+              notice: { message: body.title ?? "Failed to create agent", type: "error" },
             };
           }
 
-          const data = await resp.json() as { api_key?: string; id: string };
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context, request.payload ?? {}),
             notice: {
               // API key shown once — displayed in the notice banner (Req 5 AC2)
-              message: data.api_key
-                ? `Agent created. API key (shown once): ${data.api_key}`
-                : "Agent created.",
+              // Agent ID embedded in brackets so E2E tests can parse it without URL dependency.
+              message: body.api_key
+                ? `Agent created [${body.id}]. API key (shown once): ${body.api_key}`
+                : `Agent created [${body.id}].`,
               type: "success",
             },
-            redirectUrl: "/admin/resources/agents",
+            redirectUrl: `/admin/resources/agents/records/${body.id}/show`,
           };
         },
       },
@@ -93,7 +93,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           return record?.get("status") !== "revoked";
         },
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = request.params.recordId;
 
@@ -103,15 +103,15 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           );
 
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
+            const err = await resp.json().catch(() => ({})) as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context),
               notice: { message: err.title ?? "Revocation failed", type: "error" },
             };
           }
 
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context),
             notice: {
               message: "Agent revoked — propagates to proxy plugin within ≤5s via mintkey:agent channel",
               type: "success",

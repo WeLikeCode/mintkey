@@ -27,13 +27,36 @@ interface RestResourceConfig {
   properties: PropertyDef[];
 }
 
+/**
+ * RestDatabase — required by AdminJS.registerAdapter().
+ * A thin stub that declares this adapter handles RestResource instances.
+ */
+export class RestDatabase {
+  static isAdapterFor(resource: unknown): boolean {
+    return resource instanceof RestResource;
+  }
+
+  id(): string { return "RestDatabase"; }
+  name(): string { return "mintkey-api"; }
+  resources(): RestResource[] { return []; }
+}
+
 export class RestResource extends BaseResource {
+  static isAdapterFor(resource: unknown): boolean {
+    return resource instanceof RestResource;
+  }
+
+  readonly _cfg: RestResourceConfig;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private config: RestResourceConfig;
   private apiUrl: string;
 
-  constructor(config: RestResourceConfig) {
+  constructor(config: RestResourceConfig | RestResource) {
     super();
-    this.config = config;
+    // AdminJS calls new Resource(rawResource) where rawResource is already our
+    // RestResource instance. Unwrap the inner config in that case.
+    this.config = config instanceof RestResource ? config._cfg : config;
+    this._cfg = this.config;
     this.apiUrl = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
   }
 
@@ -74,6 +97,12 @@ export class RestResource extends BaseResource {
     return prop;
   }
 
+  private _sessionHeaders(context?: ActionContext): Record<string, string> {
+    const admin = context?.currentAdmin as { sessionToken?: string } | undefined;
+    const tok = admin?.sessionToken;
+    return tok ? { Cookie: `mintkey_session=${tok}` } : {};
+  }
+
   async find(
     _filter: Filter,
     _options: { limit?: number; offset?: number; sort?: { sortBy?: string; direction?: "asc" | "desc" } },
@@ -84,7 +113,7 @@ export class RestResource extends BaseResource {
 
     const url = `${this.apiUrl}${this.config.listPath.replace("{tenantId}", tenantId)}`;
     try {
-      const resp = await fetch(url);
+      const resp = await fetch(url, { headers: this._sessionHeaders(context) });
       if (!resp.ok) return [];
       const data = await resp.json() as Record<string, unknown>;
       const items = data[this.config.listKey];
@@ -104,7 +133,7 @@ export class RestResource extends BaseResource {
         .replace("{tenantId}", tenantId)
         .replace("{id}", id)}`;
       try {
-        const resp = await fetch(url);
+        const resp = await fetch(url, { headers: this._sessionHeaders(context) });
         if (!resp.ok) return null;
         const item = await resp.json() as Record<string, unknown>;
         return new BaseRecord(item, this);

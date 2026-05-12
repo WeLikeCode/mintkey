@@ -77,8 +77,9 @@ export async function dashboardHandler(
       ? ((await permResp.value.json()) as { permissions?: unknown[] }).permissions ?? []
       : [];
 
+    // admin-api's audit list envelope is { items: [...], next_cursor }.
     const events = auditResp.status === "fulfilled" && auditResp.value.ok
-      ? ((await auditResp.value.json()) as { events?: unknown[] }).events ?? []
+      ? ((await auditResp.value.json()) as { items?: unknown[] }).items ?? []
       : [];
 
     // hasCredentials: any service with current_key_version > 0

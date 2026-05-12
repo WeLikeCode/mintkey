@@ -13,6 +13,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { buildCredentialPayload } from "../lib/auth-scheme.js";
 import { apiWrite } from "../lib/api-client.js";
+import { recordJSON } from "../lib/record-helpers.js";
 
 const _credentialsResource = new RestResource({
   id: "credentials", name: "Credentials",
@@ -20,7 +21,8 @@ const _credentialsResource = new RestResource({
   listKey: "services",
   idField: "id",
   properties: [
-    { path: "id", type: "uuid", isId: true },
+    { path: "id", type: "string", isId: true },
+    { path: "service_id", type: "string" },
     { path: "name", type: "string" },
     { path: "slug", type: "string" },
     { path: "auth_scheme", type: "string" },
@@ -37,20 +39,18 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
     // Service is first column per ADMIN_UI_SPEC.md §2.4
     listProperties: ["name", "auth_scheme", "current_key_version", "status"],
     showProperties: ["id", "name", "slug", "auth_scheme", "current_key_version", "status"],
-    // No editProperties — credentials cannot be edited directly
+    editProperties: ["service_id", "auth_scheme"],
     filterProperties: ["auth_scheme", "status"],
     actions: {
       // Create via admin-api (plaintext only sent once, never stored in AdminJS)
       new: {
         isVisible: true,
         label: "Register Credential",
-        component: false,
         handler: async (request, response, context) => {
-          const { resource, currentAdmin, record } = context;
           if (request.method === "get") {
-            const emptyRecord = await resource.build({});
-            return { record: emptyRecord.toJSON(currentAdmin) };
+            return { record: await recordJSON(context, {}) };
           }
+          const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.payload?.service_id as string;
 
@@ -64,16 +64,17 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           );
 
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
+            const err = await resp.json().catch(() => ({})) as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context, request.payload ?? {}),
               notice: { message: err.title ?? "Failed to register credential", type: "error" },
             };
           }
 
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context, request.payload ?? {}),
             notice: { message: "Credential registered", type: "success" },
+            redirectUrl: "/admin/resources/credentials",
           };
         },
       },
@@ -102,15 +103,15 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           );
 
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
+            const err = await resp.json().catch(() => ({})) as { title?: string };
             return {
-              record: record?.toJSON(currentAdmin) ?? {},
+              record: await recordJSON(context),
               notice: { message: err.title ?? "Rotation failed", type: "error" },
             };
           }
 
           return {
-            record: record?.toJSON(currentAdmin) ?? {},
+            record: await recordJSON(context),
             notice: { message: "Credential rotated — old version deprecated, new version active", type: "success" },
           };
         },

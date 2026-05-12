@@ -14,19 +14,17 @@
  */
 
 import { readFileSync } from "fs";
+import { signedFetch } from "./signed-request.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@mintkey.internal";
 
 function getAdminPassword(): string {
-  // Try file-based secret first, then env var
   const passwordFile = process.env.ADMIN_PASSWORD_FILE;
   if (passwordFile) {
     try {
       return readFileSync(passwordFile, "utf-8").trim();
-    } catch {
-      // fall through to env var
-    }
+    } catch { /* fall through */ }
   }
   return process.env.ADMIN_PASSWORD ?? "";
 }
@@ -34,27 +32,23 @@ function getAdminPassword(): string {
 interface ApiSession {
   sessionToken: string;
   csrfToken: string;
+  operatorId: string;
+  tenantId: string;
 }
 
 let _session: ApiSession | null = null;
 let _sessionExpiry = 0;
 
 /**
- * Obtain (or reuse) a server-side session for admin-api calls.
- * Calls /v1/auth/internal-login if no session exists or session expired.
+ * Obtain (or reuse) a server-side bootstrap admin session for admin-api writes.
+ * Used when the per-operator session is not threaded through (e.g. dashboard handler).
  */
 export async function getApiSession(): Promise<ApiSession | null> {
   const now = Date.now();
-  if (_session && now < _sessionExpiry) {
-    return _session;
-  }
+  if (_session && now < _sessionExpiry) return _session;
 
   const password = getAdminPassword();
-  if (!password) {
-    // In test environments or when no admin password is configured,
-    // return null — callers will fall back to direct calls without CSRF
-    return null;
-  }
+  if (!password) return null;
 
   try {
     const resp = await fetch(`${ADMIN_API_URL}/v1/auth/internal-login`, {
@@ -65,20 +59,26 @@ export async function getApiSession(): Promise<ApiSession | null> {
 
     if (!resp.ok) return null;
 
-    // Extract cookies from response headers
-    const setCookieHeader = resp.headers.get("set-cookie") ?? "";
-    const sessionMatch = setCookieHeader.match(/mintkey_session=([^;]+)/);
-    const csrfMatch = setCookieHeader.match(/csrf_token=([^;]+)/);
+    const data = await resp.json() as { operator_id: string; tenant_id: string };
 
-    if (!sessionMatch || !csrfMatch) return null;
+    const cookieHeaders: string[] =
+      typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
+        ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
+        : [resp.headers.get("set-cookie") ?? ""];
 
-    _session = {
-      sessionToken: sessionMatch[1],
-      csrfToken: csrfMatch[1],
-    };
-    // Refresh 30min before the 8h expiry
+    let sessionToken = "";
+    let csrfToken = "";
+    for (const c of cookieHeaders) {
+      const sm = c.match(/mintkey_session=([^;,\s]+)/);
+      if (sm) sessionToken = sm[1];
+      const cm = c.match(/csrf_token=([^;,\s]+)/);
+      if (cm) csrfToken = cm[1];
+    }
+
+    if (!sessionToken || !csrfToken) return null;
+
+    _session = { sessionToken, csrfToken, operatorId: data.operator_id, tenantId: data.tenant_id };
     _sessionExpiry = now + (8 * 60 - 30) * 60 * 1000;
-
     return _session;
   } catch {
     return null;
@@ -87,27 +87,37 @@ export async function getApiSession(): Promise<ApiSession | null> {
 
 /**
  * Make an authenticated write call to admin-api.
- * Includes CSRF token (double-submit cookie pattern) and session cookie.
+ *
+ * When operatorOpts is provided (per-operator session from currentAdmin), uses
+ * that session and builds the signed-request JWT with the operator's identity.
+ * Falls back to the bootstrap admin session when operatorOpts is absent.
+ *
+ * ADR-0019: every state-changing call needs BOTH mintkey_session cookie AND the
+ * x-mintkey-signed-request Ed25519 JWT (iss/aud/sub/tnt/exp/jti).
  */
 export async function apiWrite(
   path: string,
   method: string,
-  body?: unknown
+  body?: unknown,
+  operatorOpts?: { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string }
 ): Promise<Response> {
-  const session = await getApiSession();
+  const opts = operatorOpts ?? await getApiSession();
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-
-  if (session) {
-    headers["X-Mintkey-Csrf"] = session.csrfToken;
-    headers["Cookie"] = `mintkey_session=${session.sessionToken}; csrf_token=${session.csrfToken}`;
+  if (opts) {
+    return signedFetch(`${ADMIN_API_URL}${path}`, {
+      operatorId: opts.operatorId,
+      tenantId: opts.tenantId,
+      sessionToken: opts.sessionToken,
+      csrfToken: opts.csrfToken,
+      method,
+      body,
+    });
   }
 
+  // No session available — unauthenticated fallback (dev mode)
   return fetch(`${ADMIN_API_URL}${path}`, {
     method,
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
