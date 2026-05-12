@@ -1,20 +1,15 @@
 /**
  * AdminJS Permissions resource — T-1.4.3.
  *
- * READ: list permission grants via @adminjs/sql.
- * WRITE: create/revoke via signed admin-api requests.
- *
- * The Constraints field uses closed Pydantic schema (extra="forbid") on the
- * admin-api side. AdminJS shows it as a JSON editor.
+ * READ: list permission grants via RestResource.
+ * WRITE: create/revoke via apiWrite (session + CSRF, ADR-0014.5).
  *
  * Source: T-1.4.3; Req 6; ADR-0013; ADR-0014.5.
  */
 
 import type { ResourceWithOptions } from "adminjs";
-import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
-
-const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+import { apiWrite } from "../lib/api-client.js";
 
 const _permissionsResource = new RestResource({
   id: "permission_grants", name: "Permissions",
@@ -49,8 +44,11 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
+          const { resource, currentAdmin, record } = context;
+          if (request.method === "get") {
+            const emptyRecord = await resource.build({});
+            return { record: emptyRecord.toJSON(currentAdmin) };
+          }
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
 
           let constraints: Record<string, unknown> = {};
@@ -65,21 +63,14 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
             };
           }
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions`,
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/permissions`,
+            "POST",
             {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              body: JSON.stringify({
-                agent_id: request.payload?.agent_id,
-                service_id: request.payload?.service_id,
-                action: request.payload?.action,
-                constraints,
-              }),
+              agent_id: request.payload?.agent_id,
+              service_id: request.payload?.service_id,
+              action: request.payload?.action,
+              constraints,
             }
           );
 
@@ -101,17 +92,12 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: true,
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const permissionId = request.params.recordId;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permissionId}`,
-            {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${jwt}` },
-            }
+          await apiWrite(
+            `/v1/tenants/${tenantId}/permissions/${permissionId}`,
+            "DELETE"
           );
 
           return { record: record?.toJSON(currentAdmin) ?? {} };

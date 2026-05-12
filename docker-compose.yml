@@ -168,6 +168,11 @@ services:
       ADMIN_API_URL: http://admin-api:8080
       SESSION_SECRET: mintkey-session-secret-change-in-production
       PORT: "8081"
+      # Admin credentials for server-to-server API calls (CSRF double-submit pattern)
+      ADMIN_EMAIL: admin@mintkey.internal
+      ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
       - "8081:8081"
     networks:
@@ -378,12 +383,14 @@ services:
   grafana:
     image: grafana/grafana:10.3.3
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: changeme
+      GF_SECURITY_ADMIN_PASSWORD: admin
       GF_SERVER_HTTP_PORT: "3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     ports:
-      - "3000:3000"
+      - "3003:3000"
     networks:
       - mintkey
     depends_on:

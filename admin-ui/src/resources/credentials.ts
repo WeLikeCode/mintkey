@@ -1,23 +1,18 @@
 /**
  * AdminJS Credentials resource — T-1.3.4 + T-1.8.4.
  *
- * READ: list credentials via @adminjs/sql (read-only).
- * WRITE: create/rotate via signed admin-api requests (ADR-0014.5).
+ * READ: list credentials via RestResource.
+ * WRITE: create/rotate via apiWrite (session + CSRF, ADR-0014.5).
  *
  * Plaintext credential never appears in the UI (ADR-0014.4, S-SEC-1).
- * The create form collects the plaintext once, forwards it to admin-api,
- * which calls the Vault Adapter — the plaintext never reaches AdminJS's DB
- * adapter.
  *
  * Source: T-1.3.4; T-1.8.4; Req 4; ADR-0013; ADR-0014.4; ADR-0014.5.
  */
 
 import type { ResourceWithOptions } from "adminjs";
-import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { buildCredentialPayload } from "../lib/auth-scheme.js";
-
-const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+import { apiWrite } from "../lib/api-client.js";
 
 const _credentialsResource = new RestResource({
   id: "credentials", name: "Credentials",
@@ -29,6 +24,8 @@ const _credentialsResource = new RestResource({
     { path: "name", type: "string" },
     { path: "slug", type: "string" },
     { path: "auth_scheme", type: "string" },
+    { path: "current_key_version", type: "number" },
+    { path: "status", type: "string" },
   ],
 });
 
@@ -37,10 +34,11 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
   adminResource: _credentialsResource,
   options: {
     navigation: { name: "Credentials", icon: "Lock" },
-    listProperties: ["id", "service_id", "auth_scheme", "key_version", "status", "created_at"],
-    showProperties: ["id", "service_id", "auth_scheme", "key_version", "status", "created_at", "revoked_at"],
+    // Service is first column per ADMIN_UI_SPEC.md §2.4
+    listProperties: ["name", "auth_scheme", "current_key_version", "status"],
+    showProperties: ["id", "name", "slug", "auth_scheme", "current_key_version", "status"],
     // No editProperties — credentials cannot be edited directly
-    filterProperties: ["service_id", "auth_scheme", "status"],
+    filterProperties: ["auth_scheme", "status"],
     actions: {
       // Create via admin-api (plaintext only sent once, never stored in AdminJS)
       new: {
@@ -48,29 +46,21 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
         label: "Register Credential",
         component: false,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
+          const { resource, currentAdmin, record } = context;
+          if (request.method === "get") {
+            const emptyRecord = await resource.build({});
+            return { record: emptyRecord.toJSON(currentAdmin) };
+          }
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.payload?.service_id as string;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              // Forward scheme-specific credential fields to admin-api
-              // buildCredentialPayload selects only the fields for this scheme
-              body: JSON.stringify(
-                buildCredentialPayload(
-                  request.payload?.auth_scheme as string ?? "none",
-                  request.payload as Record<string, string> ?? {}
-                )
-              ),
-            }
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
+            "POST",
+            buildCredentialPayload(
+              request.payload?.auth_scheme as string ?? "none",
+              request.payload as Record<string, string> ?? {}
+            )
           );
 
           if (!resp.ok) {
@@ -83,7 +73,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
 
           return {
             record: record?.toJSON(currentAdmin) ?? {},
-            notice: { message: "Credential registered — plaintext shown once in admin-api response", type: "success" },
+            notice: { message: "Credential registered", type: "success" },
           };
         },
       },
@@ -98,27 +88,16 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: true,
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const credentialId = request.params.recordId;
+          const serviceId = record?.get("id") as string;
 
-          // Fetch current service_id from record
-          const serviceId = record?.get("service_id") as string;
-
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
+            "POST",
             {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              body: JSON.stringify({
-                auth_scheme: record?.get("auth_scheme"),
-                plaintext: request.payload?.new_plaintext,
-                rotate_from: credentialId,
-              }),
+              auth_scheme: record?.get("auth_scheme"),
+              rotate_from: credentialId,
             }
           );
 

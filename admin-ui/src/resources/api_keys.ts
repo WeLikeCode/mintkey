@@ -1,8 +1,8 @@
 /**
  * AdminJS API Keys resource — long-lived-api-keys tasks 9.1–9.3.
  *
- * READ:  list/show via @adminjs/sql (service_api_keys table).
- * WRITE: createApiKey, revokeApiKey, rotateApiKey via signed admin-api requests.
+ * READ:  list/show via RestResource (admin-api HTTP).
+ * WRITE: createApiKey, revokeApiKey, rotateApiKey via apiWrite (session + CSRF, ADR-0014.5).
  *
  * The plaintext key is shown exactly once in the createApiKey response (ADR-0018 §1.3).
  * All writes route through the Admin REST API (ADR-0014.5).
@@ -12,10 +12,8 @@
  */
 
 import type { ResourceWithOptions } from "adminjs";
-import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
-
-const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+import { apiWrite } from "../lib/api-client.js";
 
 const _apiKeysResource = new RestResource({
   id: "service_api_keys", name: "API Keys",
@@ -73,7 +71,6 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         isVisible: true,
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = request.payload?.agent_id as string | undefined;
 
@@ -84,21 +81,14 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
             };
           }
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents/${agentId}/api-keys`,
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}/api-keys`,
+            "POST",
             {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              body: JSON.stringify({
-                service_id: request.payload?.service_id,
-                allowed_actions: request.payload?.allowed_actions,
-                constraints: request.payload?.constraints,
-                expires_at: request.payload?.expires_at,
-              }),
+              service_id: request.payload?.service_id,
+              allowed_actions: request.payload?.allowed_actions,
+              constraints: request.payload?.constraints,
+              expires_at: request.payload?.expires_at,
             }
           );
 
@@ -136,22 +126,14 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/revoke`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              body: JSON.stringify({ reason: request.payload?.reason ?? "operator_revoked" }),
-            }
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/revoke`,
+            "POST",
+            { reason: request.payload?.reason ?? "operator_revoked" }
           );
 
           if (!resp.ok) {
@@ -183,18 +165,13 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/rotate`,
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${jwt}` },
-            }
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/rotate`,
+            "POST"
           );
 
           if (!resp.ok) {

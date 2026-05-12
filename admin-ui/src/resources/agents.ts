@@ -1,8 +1,8 @@
 /**
  * AdminJS Agents resource — T-1.4.3 + T-1.9.4.
  *
- * READ: list agents via @adminjs/sql.
- * WRITE: create/revoke via signed admin-api requests.
+ * READ: list agents via RestResource.
+ * WRITE: create/revoke via apiWrite (session + CSRF, ADR-0014.5).
  *
  * The API key is shown exactly once in the create response (ADR-0014.4 /
  * Req 5 AC2). The AdminJS UI displays it as a one-time notice.
@@ -11,10 +11,8 @@
  */
 
 import type { ResourceWithOptions } from "adminjs";
-import { buildSignedRequest } from "../lib/signed-request.js";
 import { RestResource } from "../lib/rest-resource.js";
-
-const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+import { apiWrite } from "../lib/api-client.js";
 
 const _agentsResource = new RestResource({
   id: "agents", name: "Agents",
@@ -40,6 +38,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
   adminResource: _agentsResource,
   options: {
     navigation: { name: "Agents", icon: "Bot" },
+    // api_key_fingerprint in list/show — NEVER api_key (S-SEC-1)
     listProperties: ["id", "name", "status", "api_key_fingerprint", "rate_limit_rps", "created_at"],
     showProperties: ["id", "name", "description", "status", "api_key_fingerprint", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
@@ -48,21 +47,17 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
+          const { resource, currentAdmin, record } = context;
+          if (request.method === "get") {
+            const emptyRecord = await resource.build({});
+            return { record: emptyRecord.toJSON(currentAdmin) };
+          }
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${jwt}`,
-              },
-              body: JSON.stringify(request.payload),
-            }
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents`,
+            "POST",
+            request.payload
           );
 
           if (!resp.ok) {
@@ -99,17 +94,12 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const operatorId = (currentAdmin as { operatorId: string }).operatorId;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = request.params.recordId;
 
-          const jwt = await buildSignedRequest({ operatorId, tenantId });
-          const resp = await fetch(
-            `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents/${agentId}/revoke`,
-            {
-              method: "POST",
-              headers: { Authorization: `Bearer ${jwt}` },
-            }
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}/revoke`,
+            "POST"
           );
 
           if (!resp.ok) {
