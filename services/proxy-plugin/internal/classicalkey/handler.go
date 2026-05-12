@@ -356,9 +356,11 @@ func deriveAction(method, path string) string {
 }
 
 // actionAllowed reports whether action is in the allowed set.
+// "call" is treated as a universal grant matching any derived action (v1 MVP —
+// permission grants use "call" as the single action type for all service calls).
 func actionAllowed(action string, allowed []string) bool {
 	for _, a := range allowed {
-		if a == action {
+		if a == "call" || a == action {
 			return true
 		}
 	}

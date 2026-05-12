@@ -1,0 +1,101 @@
+{
+  "id": null,
+  "uid": "mintkey-memory",
+  "title": "Mintkey memory by container (working set vs. limit)",
+  "tags": ["mintkey", "memory"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Working set vs. limit (bytes)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{name=~\"mintkey.*\"}",
+          "legendFormat": "{{name}} working-set"
+        },
+        {
+          "expr": "container_spec_memory_limit_bytes{name=~\"mintkey.*\"}",
+          "legendFormat": "{{name}} limit"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Memory utilisation % of limit",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * container_memory_working_set_bytes{name=~\"mintkey.*\"} / container_spec_memory_limit_bytes{name=~\"mintkey.*\"}",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 70},
+              {"color": "red", "value": 85}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 9}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Process RSS (FastAPI services)",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "process_resident_memory_bytes{job=~\"admin-api|mcp-server\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {"unit": "bytes"}
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Containers over 85% memory",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "count(container_memory_working_set_bytes{name=~\"mintkey.*\"} / container_spec_memory_limit_bytes{name=~\"mintkey.*\"} > 0.85) or vector(0)",
+          "legendFormat": "containers >85%"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+    }
+  ]
+}

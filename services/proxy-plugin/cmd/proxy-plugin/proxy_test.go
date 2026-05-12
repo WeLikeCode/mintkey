@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
@@ -18,7 +20,8 @@ func testHandler() *proxyHandler {
 		PluginPort:    8086,
 		DefaultTarget: "http://localhost:1",
 	}
-	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter())
+	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
+	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck)
 }
 
 // TestProxy_MissingAuthHeader verifies that requests without Authorization → 401.

@@ -271,7 +271,9 @@ def test_list_api_keys_returns_200(
     assert resp.status_code == 200, (
         f"Expected 200 but got {resp.status_code}: {resp.text}"
     )
-    items = resp.json()
+    body = resp.json()
+    assert "api_keys" in body, f"Expected 'api_keys' key, got: {body}"
+    items = body["api_keys"]
     assert isinstance(items, list)
     assert len(items) >= 1
     for item in items:

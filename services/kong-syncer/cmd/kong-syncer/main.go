@@ -37,10 +37,23 @@ func main() {
 
 	// Changes subscriber: kong-syncer is a global subscriber (AllTenants).
 	// WithTenantScope is required per ADR-0014.1; omitting it panics on Start.
-	sub := changes.NewClient(nil, changes.WithTenantScope(changes.AllTenants))
+	// Pass DATABASE_URL as a string so the subscriber can LISTEN on mintkey:service.
+	sub := changes.NewClient(
+		cfg.DatabaseURL,
+		changes.WithTenantScope(changes.AllTenants),
+		changes.WithKongAdminURL(cfg.KongAdminURL),
+	)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /v1/health", health.Handler())
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprint(w,
+			"# HELP mintkey_kong_syncer_pushes_total Total Kong config pushes.\n"+
+				"# TYPE mintkey_kong_syncer_pushes_total counter\n"+
+				"mintkey_kong_syncer_pushes_total 0\n",
+		)
+	})
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),

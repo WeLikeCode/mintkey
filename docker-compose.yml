@@ -29,6 +29,8 @@ services:
   # ─── 1. Postgres ─────────────────────────────────────────────────────────
   postgres:
     image: postgres:16
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=4MB"]
     environment:
       POSTGRES_DB: mintkey
       POSTGRES_USER: mintkey_migrate
@@ -43,10 +45,15 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # ─── 2. Keycloak (parallel; uses postgres for its own schema) ─────────────
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
     command: start-dev --db postgres --db-url jdbc:postgresql://postgres:5432/mintkey --db-username mintkey_migrate --db-password changeme
     environment:
       KC_DB: postgres
@@ -56,6 +63,7 @@ services:
       KC_HTTP_PORT: "8443"
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: changeme
+      JAVA_OPTS_APPEND: "-Xms256m -Xmx768m"
     ports:
       - "8443:8443"
     networks:
@@ -69,10 +77,15 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
   # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
   liquibase:
     image: liquibase/liquibase:4.27.0
+    restart: on-failure
     command:
       - --url=jdbc:postgresql://postgres:5432/mintkey
       - --username=mintkey_migrate
@@ -86,11 +99,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
   seed-job:
     build:
       context: ./seed-job
+    restart: on-failure
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -105,22 +123,29 @@ services:
     depends_on:
       liquibase:
         condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
   vault-adapter:
     build:
       context: .
       dockerfile: services/vault-adapter/Dockerfile
+    restart: unless-stopped
     environment:
       MINTKEY_ENV: dev
       MINTKEY_VAULT_KEK: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
       VAULT_GRPC_PORT: "8084"
+      VAULT_HTTP_PORT: "8087"
       MINTKEY_VAULT_FILE_PATH: /var/lib/mintkey/vault.sqlite
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
     ports:
       - "8084:8084"
+      - "8087:8087"
     networks:
       - mintkey
     depends_on:
@@ -132,16 +157,24 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ─── 4. Admin API ─────────────────────────────────────────────────────────
   admin-api:
     build:
       context: .
       dockerfile: admin-api/Dockerfile
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       VAULT_GRPC_ADDR: vault-adapter:8084
       MINTKEY_ENV: dev
+      ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
       - "8080:8080"
     networks:
@@ -157,20 +190,25 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 5. Admin UI (AdminJS) ─────────────────────────────────────────────────
   admin-ui:
     build:
       context: ./admin-ui
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       ADMIN_API_URL: http://admin-api:8080
       SESSION_SECRET: mintkey-session-secret-change-in-production
       PORT: "8081"
-      # Admin credentials for server-to-server API calls (CSRF double-submit pattern)
+      # Admin credentials for server-to-server API calls (ADR-0019 signed-request JWT)
       ADMIN_EMAIL: admin@mintkey.internal
       ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
+      ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -186,12 +224,17 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 384M
 
   # ─── 6. MCP Server ────────────────────────────────────────────────────────
   mcp-server:
     build:
       context: .
       dockerfile: mcp-server/Dockerfile
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       ADMIN_API_BASE_URL: http://admin-api:8080
@@ -211,18 +254,24 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 7. Broker ────────────────────────────────────────────────────────────
   broker:
     build:
       context: .
       dockerfile: services/broker/Dockerfile
+    restart: unless-stopped
     environment:
       MINTKEY_ENV: dev
       BROKER_PORT: "8083"
       VAULT_GRPC_ADDR: vault-adapter:8084
       DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      MINTKEY_PROXY_SERVICE_TOKEN: dev-proxy-service-token
     ports:
       - "8083:8083"
     networks:
@@ -236,10 +285,15 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ─── 8. Kong (DB-less) ────────────────────────────────────────────────────
   kong:
     image: kong:3.6
+    restart: unless-stopped
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
@@ -249,6 +303,7 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_NGINX_WORKER_PROCESSES: "2"
     volumes:
       - ./services/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
     ports:
@@ -265,12 +320,17 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
 
   # ─── 9. Kong Syncer ───────────────────────────────────────────────────────
   kong-syncer:
     build:
       context: .
       dockerfile: services/kong-syncer/Dockerfile
+    restart: unless-stopped
     environment:
       MINTKEY_ENV: dev
       KONG_ADMIN_URL: http://kong:8001
@@ -291,18 +351,25 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ─── 10. Proxy Plugin ─────────────────────────────────────────────────────
   proxy-plugin:
     build:
       context: .
       dockerfile: services/proxy-plugin/Dockerfile
+    restart: unless-stopped
     environment:
       MINTKEY_ENV: dev
       BROKER_ADDR: broker:8083
       VAULT_GRPC_ADDR: vault-adapter:8084
       PLUGIN_PORT: "8086"
       DEFAULT_TARGET: http://mock-backend:8999
+      MINTKEY_PROXY_SERVICE_TOKEN: dev-proxy-service-token
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
     ports:
       - "8086:8086"
     networks:
@@ -312,17 +379,22 @@ services:
         condition: service_healthy
     # proxy-plugin now runs as an HTTP reverse proxy on PLUGIN_PORT.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8086/healthz", "||", "exit", "0"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8086/healthz || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ─── 11. Mock Backend ─────────────────────────────────────────────────────
   mock-backend:
     build:
       context: ./mock-backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "8999:8999"
     networks:
@@ -333,10 +405,15 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 12. OTel Collector ───────────────────────────────────────────────────
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.104.0
+    restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
@@ -346,10 +423,15 @@ services:
       - mintkey
     # otel-collector-contrib is distroless — no shell/wget for CMD-SHELL.
     # Healthcheck disabled; services tolerate transient OTel unavailability.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 13. Jaeger ───────────────────────────────────────────────────────────
   jaeger:
     image: jaegertracing/all-in-one:1.56
+    restart: unless-stopped
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -364,12 +446,18 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 14. Prometheus ───────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.51.0
+    restart: unless-stopped
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
     networks:
       - mintkey
     healthcheck:
@@ -378,10 +466,39 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ─── 16b. cAdvisor — container memory metrics ────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8088:8080"
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ─── 15. Grafana ──────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.3.3
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_SERVER_HTTP_PORT: "3000"
@@ -402,3 +519,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M

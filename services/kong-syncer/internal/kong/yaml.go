@@ -34,11 +34,17 @@ type kongService struct {
 	Routes []kongRoute `yaml:"routes"`
 }
 
+type kongPlugin struct {
+	Name   string         `yaml:"name"`
+	Config map[string]any `yaml:"config,omitempty"`
+}
+
 type kongRoute struct {
-	Name      string   `yaml:"name"`
-	Paths     []string `yaml:"paths,omitempty"`
-	Hosts     []string `yaml:"hosts,omitempty"`
-	StripPath bool     `yaml:"strip_path"`
+	Name      string       `yaml:"name"`
+	Paths     []string     `yaml:"paths,omitempty"`
+	Hosts     []string     `yaml:"hosts,omitempty"`
+	StripPath bool         `yaml:"strip_path"`
+	Plugins   []kongPlugin `yaml:"plugins,omitempty"`
 }
 
 // GenerateDeclarativeYAML produces Kong declarative YAML (format version 3.0)
@@ -52,13 +58,33 @@ func GenerateDeclarativeYAML(services []ServiceEntry) (string, error) {
 
 	for _, svc := range services {
 		ks := kongService{
+			// All Kong services point to the proxy-plugin which validates JWTs,
+			// fetches credentials from the Vault Adapter, and reverse-proxies.
 			Name: svc.ID,
-			URL:  svc.BaseURL,
+			URL:  "http://proxy-plugin:8086",
 			Routes: []kongRoute{
 				{
+					// strip_path: true removes /v1/call/<svc_id> so the proxy-plugin
+					// receives the bare API path (e.g. /api-key-header).
+					// request-transformer injects routing metadata used by the
+					// classical-key branch (ADR-0018) to identify the service and tenant
+					// without relying on the URL path after stripping.
 					Name:      fmt.Sprintf("%s-path", svc.ID),
 					Paths:     []string{fmt.Sprintf("/v1/call/%s", svc.ID)},
-					StripPath: false,
+					StripPath: true,
+					Plugins: []kongPlugin{
+						{
+							Name: "request-transformer",
+							Config: map[string]any{
+								"add": map[string]any{
+									"headers": []string{
+										"X-Mintkey-Service-ID:" + svc.ID,
+										"X-Mintkey-Tenant-ID:" + svc.TenantID,
+									},
+								},
+							},
+						},
+					},
 				},
 				{
 					Name:      fmt.Sprintf("%s-vhost", svc.ID),

@@ -1,0 +1,87 @@
+groups:
+  - name: mintkey.security
+    rules:
+      - alert: AuditChainTampered
+        expr: mintkey_audit_chain_tamper_detected > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit chain tamper detected"
+          description: "mintkey_audit_chain_tamper_detected is non-zero — hash chain broken."
+
+      - alert: JwksEndpointDown
+        expr: up{job="broker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker JWKS endpoint unreachable"
+          description: "The broker (JWKS publisher) has been down for >2m."
+
+      - alert: VaultAdapterGrpcErrors
+        expr: rate(mintkey_vault_adapter_requests_total[5m]) == 0 and up{job="vault-adapter"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Vault Adapter gRPC receiving no requests"
+          description: "vault-adapter is up but handling zero requests for 5m — possible gRPC error storm."
+
+      - alert: ChangeChannelSubscriberLag
+        expr: mintkey_change_subscriber_lag_seconds > 30
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Change-channel subscriber lag exceeds 30s"
+          description: "The LISTEN/NOTIFY subscriber is {{ $value }}s behind — cache may serve stale data."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space below 10%"
+          description: "Root filesystem is {{ $value | humanizePercentage }} full."
+
+      - alert: BootstrapSecretsMissing
+        expr: mintkey_bootstrap_secrets_present == 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bootstrap secrets directory missing or empty"
+          description: "admin-ui cannot sign requests; the bootstrap-secrets volume may not be mounted."
+
+      - alert: OtelCollectorDroppingSpans
+        expr: rate(otelcol_processor_dropped_spans_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OTel collector is dropping spans"
+          description: "{{ $value }} spans/s dropped — collector may be overloaded or exporter is failing."
+
+      - alert: OperatorLoginFailureSpike
+        expr: rate(mintkey_operator_login_failures_total[5m]) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Operator login failure spike"
+          description: "{{ $value }} login failures/s over the last 5m — possible credential stuffing."
+
+  - name: mintkey.memory
+    rules:
+      - alert: MintkeyContainerMemHigh
+        expr: >
+          (container_memory_working_set_bytes{name=~"mintkey.*"}
+           / container_spec_memory_limit_bytes{name=~"mintkey.*"}) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} memory usage >85% of limit"
+          description: "Working set is {{ $value | humanizePercentage }} of the container memory limit."

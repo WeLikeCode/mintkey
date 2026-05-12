@@ -33,9 +33,12 @@ import (
 	"time"
 
 	"github.com/mintkey/mintkey/internal/otelinit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
 )
 
@@ -59,8 +62,14 @@ func main() {
 
 	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, "")
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
+	ckHandler := classicalkey.NewHandler(classicalkey.Config{
+		BrokerURL:    cfg.BrokerBaseURL,
+		ProxyToken:   cfg.ProxyServiceToken,
+		CacheTTL:     60 * time.Second,
+		AuditEmitter: nil, // audit via proxy.hit; nil emitter is safe
+	})
 
-	handler := newProxyHandler(cfg, vaultClient, jwksLimiter)
+	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.PluginPort),
@@ -69,6 +78,19 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Wire the changes subscriber so api_key.revoked and agent.revoked events
+	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4).
+	agentSet := revocation.NewAgentRevocationSet()
+	jtiSet := revocation.NewJTIRevocationSet(10_000)
+	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
+		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler)
+		go func() {
+			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("proxy-plugin: changes subscriber error: %v", err)
+			}
+		}()
+	}
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -89,27 +111,51 @@ type proxyHandler struct {
 	cfg         *config.Config
 	vaultClient *vault.Client
 	jwksLimiter *proxyjwt.JWKSRefreshLimiter
+	ckHandler   *classicalkey.Handler
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 }
 
-func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter) *proxyHandler {
+func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler) *proxyHandler {
 	return &proxyHandler{
 		cfg:         cfg,
 		vaultClient: vaultClient,
 		jwksLimiter: limiter,
+		ckHandler:   ck,
 		pubKeys:     make(map[string]ed25519.PublicKey),
 	}
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Extract JWT from Authorization header.
+	// Health and metrics endpoints — bypass auth.
+	if r.URL.Path == "/healthz" || r.URL.Path == "/v1/health" {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
+		return
+	}
+	if r.URL.Path == "/metrics" {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprint(w,
+			"# HELP mintkey_proxy_requests_total Total requests proxied.\n"+
+				"# TYPE mintkey_proxy_requests_total counter\n"+
+				"mintkey_proxy_requests_total 0\n",
+		)
+		return
+	}
+
+	// Extract credential from Authorization: Bearer header.
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 		http.Error(w, "unauthorized: missing Bearer token", http.StatusUnauthorized)
 		return
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Dispatch classical service API keys (ADR-0018 §2).
+	if classicalkey.IsClassicalKey(tokenStr) {
+		h.handleClassicalKey(w, r, tokenStr)
+		return
+	}
 
 	// Validate JWT; on unknown_kid, attempt a JWKS refresh first.
 	claims, err := proxyjwt.Verify(tokenStr, h.pubKeys, proxyjwt.VerifyOptions{
@@ -192,9 +238,117 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Host = req.URL.Host
 		// Strip the X-Mintkey-Target header before forwarding.
 		req.Header.Del("X-Mintkey-Target")
+		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
+		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment here so the
+		// backend receives the bare API path (e.g. /api-key-header).
+		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
+		if stripped != req.URL.Path {
+			if stripped == "" || stripped[0] != '/' {
+				stripped = "/" + stripped
+			}
+			req.URL.Path = stripped
+		}
 		// Inject the credential (also strips the agent's Authorization header).
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			log.Printf("proxy-plugin: inject error: %v", injectErr)
+		}
+	}
+
+	proxy.ServeHTTP(w, r)
+}
+
+// handleClassicalKey handles the ADR-0018 classical service API key path.
+// service_id and tenant_id come from headers injected by Kong's request-transformer
+// plugin (generated by kong-syncer); if absent, service_id is parsed from the URL.
+func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request, cred string) {
+	serviceID := r.Header.Get("X-Mintkey-Service-ID")
+	tenantID := r.Header.Get("X-Mintkey-Tenant-ID")
+
+	if serviceID == "" {
+		// Fallback: parse from URL (static catch-all route leaves /<svc_id>/path)
+		parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 2)
+		if len(parts) > 0 && strings.HasPrefix(parts[0], "svc_") {
+			serviceID = parts[0]
+		}
+	}
+	if serviceID == "" || tenantID == "" {
+		http.Error(w, "bad gateway: missing service routing metadata", http.StatusBadGateway)
+		return
+	}
+
+	res, err := h.ckHandler.Resolve(r.Context(), cred, serviceID, tenantID)
+	if err != nil {
+		if kerr, ok := err.(*classicalkey.KeyError); ok {
+			http.Error(w, "unauthorized: "+kerr.Code, kerr.HTTPStatus)
+		} else {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+		}
+		return
+	}
+
+	reqCtx := &classicalkey.RequestContext{
+		ServiceID: serviceID,
+		Method:    r.Method,
+		Path:      r.URL.Path,
+		ClientIP:  r.RemoteAddr,
+	}
+	if err := h.ckHandler.CheckRequest(res, reqCtx); err != nil {
+		kerr := err.(*classicalkey.KeyError)
+		http.Error(w, "forbidden: "+kerr.Code, kerr.HTTPStatus)
+		return
+	}
+
+	credResp, err := h.vaultClient.GetCredential(r.Context(), vault.GetCredentialRequest{
+		TenantID:      tenantID,
+		ServiceID:     serviceID,
+		CallerActorID: res.AgentID,
+	})
+	if err != nil {
+		log.Printf("proxy-plugin: classical key vault error (svc=%s tnt=%s): %v", serviceID, tenantID, err)
+		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
+		return
+	}
+	defer clear(credResp.Plaintext)
+
+	target := credResp.TargetURL
+	if target == "" {
+		target = h.cfg.DefaultTarget
+	}
+	if target == "" {
+		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
+		return
+	}
+
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		return
+	}
+
+	backendCred := credential.Credential{
+		AuthScheme: credential.AuthScheme(credResp.AuthScheme),
+		Value:      credResp.Plaintext,
+		HeaderName: credResp.HeaderName,
+		QueryParam: credResp.QueryParam,
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = req.URL.Host
+		req.Header.Del("X-Mintkey-Target")
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
+		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
+		if stripped != req.URL.Path {
+			if stripped == "" || stripped[0] != '/' {
+				stripped = "/" + stripped
+			}
+			req.URL.Path = stripped
+		}
+		if injectErr := credential.Inject(req, backendCred); injectErr != nil {
+			log.Printf("proxy-plugin: classical key inject error: %v", injectErr)
 		}
 	}
 

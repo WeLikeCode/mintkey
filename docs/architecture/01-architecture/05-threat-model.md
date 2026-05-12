@@ -104,6 +104,23 @@ Mintkey is multi‑tenant by architecture; cross‑tenant isolation must be defe
 | Cross‑tenant denial of service (noisy neighbor at the auth layer). | Per‑tenant rate limits on `request_token`; per‑tenant Postgres `statement_timeout`; per‑tenant Kong rate‑limiting plugin configuration. See S‑MT‑3 in [`03-quality-attributes.md`](03-quality-attributes.md). |
 | Audit‑log cross‑contamination. | Every audit event tagged with `tenant_id`; audit query is tenant‑scoped; `PlatformAdmin` cross‑tenant queries themselves emit audit events. |
 
+## AdminJS process / private‑key threats (ADR‑0019)
+
+| Threat | Mitigation |
+|---|---|
+| **AdminJS process compromised** (attacker gains code execution in the Node.js process). | The damage is bounded by the dual-requirement: an attack still needs a valid `mintkey_session` cookie from a live authenticated session to write anything. Stolen private key alone cannot forge writes — admin-api validates that `jwt.sub == session.operator_id` and `jwt.tnt == session.tenant_id`. The private key file is `0400` and is **not** reachable from the application data path (separate volume mount). |
+| **AdminJS private key stolen from the bootstrap-secrets volume** (e.g., container escape or misconfigured volume). | The signed JWT alone is insufficient — admin-api requires a concurrent valid `mintkey_session` cookie whose `operator_id` matches `jwt.sub`. An attacker with only the key cannot impersonate an arbitrary operator; the `jti` denylist prevents replay of any observed valid pair. Mitigation: rotate the keypair (re-run seed-job with `--rotate-bootstrap`); invalidate all sessions. |
+| **Replay of a captured AdminJS signed request** (MITM captures a write with a valid JWT+cookie pair). | `jti` denylist (`admin_request_jti` table, `UNIQUE` constraint) + 60 s `exp` window. Once used, the `jti` is permanently rejected. |
+| **Session fixation / cookie theft** (attacker plants or steals `mintkey_session` cookie). | Cookie is `HttpOnly Secure SameSite=Strict`; admin-api CSRF double-submit on state-changing routes. Mitigation: short session TTL + force-logout endpoint. |
+
+## Classical API key threats (ADR‑0018)
+
+| Threat | Mitigation |
+|---|---|
+| **Leaked `mk_svckey_…` key** (e.g., logged accidentally, committed to git). | Key is Argon2id-hashed at rest; plaintext is returned exactly once at creation. The broker resolve endpoint uses constant-time compare even for unknown fingerprints — no existence oracle. Operator can immediately revoke; proxy evicts the cache within ≤5 s (LISTEN/NOTIFY). Fingerprint appears in audit events, not the plaintext. |
+| **Brute-force / credential-stuffing at `/v1/api-keys/resolve`**. | Rate-limited per fingerprint and per caller. Unknown fingerprints still hash (constant time). After revocation, the fingerprint is permanently rejected. |
+| **Scope creep via permissive `allowed_actions: ["call"]`**. | `"call"` is the universal grant sentinel (ADR‑0018); it means "any action on this service". Operators can issue narrower grants (`allowed_actions: ["read"]`). Constraints (IP range, time window, path prefix, rate) are enforced per-request at the proxy. |
+
 ## Top architectural risks (from this model)
 
 1. **Compromise of the Egress Proxy** is catastrophic — it sees plaintext credentials in process memory.
@@ -113,6 +130,10 @@ Mintkey is multi‑tenant by architecture; cross‑tenant isolation must be defe
 3. **Compromise of the KMS root** is "game over" by definition; we do not own it. We document the operator's responsibility.
 4. **Audit gap** — a code path that mutates state without going through the audit chokepoint.
    - Mitigations: enforced via lint/architecture test, not just discipline.
+5. **Compromise of the AdminJS private key** (new — ADR‑0019).
+   - Bounded by the mandatory `mintkey_session` cookie co-requirement; see table above.
+6. **Leaked classical API key** (new — ADR‑0018).
+   - Revocation + Argon2id hashing + no existence oracle; see table above.
 
 ## Open questions
 - Do we want short‑lived signing keys (e.g., daily rotation) from day one, or a single key with manual rotation? (See [P‑003](../proposal/P-003-token-format-and-binding.md).)

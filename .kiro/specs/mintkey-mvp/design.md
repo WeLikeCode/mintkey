@@ -401,7 +401,7 @@ Every call carries the `X-Mintkey-Service-Token` metadata field with `svcid_admi
 
 ## 5. Admin UI (`admin-ui/`)
 
-**Language:** Node 20, AdminJS 7.x, Express, `passport-openidconnect`, `connect-pg-simple`, `pino`, `vitest`, `pnpm`.
+**Language:** Node 20, AdminJS 7.x, Express, `passport-openidconnect`, `pino`, `vitest`, `pnpm`. (ADR‑0019: no `@adminjs/sql`, `pg`, or `connect-pg-simple` — AdminJS holds no DB connection.)
 
 ### Authentication flow
 
@@ -410,7 +410,7 @@ Every call carries the `X-Mintkey-Service-Token` metadata field with `svcid_admi
 3. Login page offers two paths:
    - **Internal auth** (bootstrap): username + password → `POST /v1/auth/internal-login` on `admin-api` (no signed‑request envelope on this route — login is the bootstrap surface).
    - **OIDC** (Keycloak): `passport-openidconnect` redirects to Keycloak; on callback, posts the ID token to `admin-api POST /v1/auth/oidc/callback`.
-4. On success, `admin-api` sets `mintkey_session` (HttpOnly Secure SameSite=Strict). AdminJS reads the same cookie via `connect-pg-simple` (shared `sessions` table).
+4. On success, `admin-api` sets `mintkey_session` (HttpOnly Secure SameSite=Strict). AdminJS holds no DB session store; it relays the cookie on every subsequent request to `admin-api` and validates identity via `GET /v1/auth/whoami` (ADR‑0019).
 
 ### State‑changing operations (CORRECTED — Ed25519 keypair)
 
@@ -421,16 +421,16 @@ Per [REQ‑SEC‑5](requirements.md) / [ADR‑0014.6](../../../docs/architecture
   - AdminJS **signs** an Ed25519 JWT with claims `{iss: "mintkey/admin-ui", sub: operator_id, tnt: tenant_id, aud: "mintkey/admin-api", iat, exp: iat+60, jti: uuid()}`.
   - Sends the request to `admin-api` with `Authorization: Bearer <signed-jwt>` plus the operator's `mintkey_session` cookie.
   - Sends `X-Mintkey-Csrf` header (double‑submit cookie pattern, REQ‑SEC‑6).
-- AdminJS **never writes** to the database directly; the `@adminjs/sql` adapter is used in **read‑only mode** only for list / show views.
+- AdminJS holds **no database connection at all** (ADR‑0019 supersedes the previous `@adminjs/sql` read-only description). All data access — list, show, create, update, delete, audit — goes through `admin-api` REST endpoints via the custom `RestResource`/`RestDatabase` adapter; `admin-api` owns RLS and all session context.
 
 ### PlatformAdmin tenant scope (NEW — per REQ‑MT‑5 / ADR‑0016.3)
 
-When a `PlatformAdmin` operator's session is active, the UI shows a tenant selector with an "All tenants" option. Choosing "All tenants" sets `req.session.tenant_id = null` and `req.session.platform_admin_view = true`. The `before` hooks on each AdminJS resource:
+When a `PlatformAdmin` operator's session is active, the UI shows a tenant selector with an "All tenants" option. Choosing "All tenants" sets `req.session.tenant_id = null` and `req.session.platform_admin_view = true`. The `before` hooks on each AdminJS `RestResource`:
 
-- If `platform_admin_view`: skip the tenant filter (don't constrain the SQL `WHERE`).
-- Else: apply `WHERE tenant_id = :session.tenant_id`.
+- If `platform_admin_view`: pass `tenant_id=all` query param to `admin-api` (which validates `is_platform_admin` on the session before honouring it).
+- Else: `admin-api` scopes the query to `session.tenant_id` via RLS.
 
-The corresponding state‑changing JWT to `admin-api` carries `tnt: null` and a special `mintkey:platform_admin_view: true` claim; `admin-api` sets `app.platform_admin_view = 'on'` for the request and emits a sibling `platform_admin.access` audit event.
+The corresponding state‑changing JWT carries `tnt: null`; `admin-api` verifies `session.is_platform_admin` before accepting a null-tenant write and emits a `platform_admin.access` audit event.
 
 ### Resources
 

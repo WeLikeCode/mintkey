@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -44,7 +45,10 @@ func main() {
 
 	dekCache := cache.New(0) // default 5-min TTL
 
-	dbPath := os.Getenv("VAULT_DB_PATH")
+	dbPath := os.Getenv("MINTKEY_VAULT_FILE_PATH")
+	if dbPath == "" {
+		dbPath = os.Getenv("VAULT_DB_PATH") // legacy fallback
+	}
 	if dbPath == "" {
 		dbPath = "/tmp/vault-adapter.db"
 	}
@@ -73,10 +77,33 @@ func main() {
 		log.Printf("vault-adapter: MINTKEY_POSTGRES_DSN not set; credential rotation subscriber disabled")
 	}
 
+	// Start HTTP server for health checks and Prometheus metrics.
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
+	})
+	httpMux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprint(w,
+			"# HELP mintkey_vault_adapter_requests_total Total gRPC requests handled.\n"+
+				"# TYPE mintkey_vault_adapter_requests_total counter\n"+
+				"mintkey_vault_adapter_requests_total 0\n",
+		)
+	})
+	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.HTTPPort), Handler: httpMux}
+	go func() {
+		log.Printf("vault-adapter: HTTP listening on :%d", cfg.HTTPPort)
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("vault-adapter: HTTP server error: %v", err)
+		}
+	}()
+
 	log.Printf("vault-adapter: gRPC listening on :%d", cfg.GRPCPort)
 	if err := srv.ListenAndServe(ctx, cfg.GRPCPort, svc); err != nil {
 		fmt.Fprintf(os.Stderr, "vault-adapter: serve error: %v\n", err)
 		os.Exit(1)
 	}
+	_ = httpSrv.Shutdown(context.Background())
 	log.Println("vault-adapter: shutdown complete")
 }

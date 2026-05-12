@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Env      string // "dev" | "production"
 	GRPCPort int
+	HTTPPort int    // health + metrics HTTP port
 	// MINTKEY_VAULT_KEK_FILE and MINTKEY_VAULT_KEK are consumed by kek.Load() directly.
 }
 
@@ -20,6 +21,7 @@ func Load() *Config {
 	return &Config{
 		Env:      getEnv("MINTKEY_ENV", "dev"),
 		GRPCPort: getEnvInt("VAULT_GRPC_PORT", 8084),
+		HTTPPort: getEnvInt("VAULT_HTTP_PORT", 8087),
 	}
 }
 
