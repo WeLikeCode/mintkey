@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // pure-Go SQLite driver (ADR-0011); registers driver name "sqlite", no cgo
 )
 
 // ErrRevokeCurrent is returned when a caller attempts to revoke the current
@@ -63,7 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_credentials_tenant_service
 
 // New opens (or creates) the SQLite database at path and applies the schema.
 func New(path string) (*Store, error) {
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}

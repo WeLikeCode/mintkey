@@ -579,7 +579,7 @@ func TestRotateCredential_AtomicNoGap(t *testing.T) {
 // -----------------------------------------------------------------------
 
 func TestSQLDriverAvailable(t *testing.T) {
-	// store.New uses go-sqlite3 which requires CGO_ENABLED=1.
+	// store.New uses the pure-Go modernc.org/sqlite driver (ADR-0011); no cgo required.
 	// If this test compiles and the store opens without error the driver is
 	// correctly linked.
 	s, err := store.New(":memory:")
