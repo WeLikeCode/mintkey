@@ -33,12 +33,13 @@ async function main() {
     dashboard: {
       handler: dashboardHandler,
     },
+    // Nav order: Dashboard → Services → Agents → Permissions → API Keys → Audit → Tenants
     resources: [
       { resource: ServicesResource.adminResource, options: ServicesResource.options },
-      { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
       { resource: AgentsResource.adminResource, options: AgentsResource.options },
-      { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
       { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
+      { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
+      { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
       { resource: AuditResource.adminResource, options: AuditResource.options },
       { resource: TenantsResource.adminResource, options: TenantsResource.options },
     ],
