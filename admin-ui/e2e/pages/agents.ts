@@ -59,51 +59,39 @@ export class AgentsPage extends BasePage {
     ]);
 
     let apiKey = "";
-    let agentId = "";
     try {
       const body = await response.json() as { notice?: { message?: string }; redirectUrl?: string };
       const noticeMsg = body.notice?.message ?? "";
-      // Agent ID is embedded in brackets: "Agent created [agent_xxx]. ..."
-      const idMatch = noticeMsg.match(/Agent created \[([^\]]+)\]/);
-      agentId = idMatch?.[1] ?? "";
       const keyMatch = noticeMsg.match(/API key \(shown once\):\s*(\S+)/);
       apiKey = keyMatch?.[1] ?? "";
-      // Fallback: try redirectUrl if notice parsing failed
-      if (!agentId) {
-        const urlMatch = (body.redirectUrl ?? "").match(/\/agents\/records\/([^/]+)/);
-        agentId = urlMatch?.[1] ?? "";
-      }
     } catch {
-      // Fallback handled below
+      // apiKey stays ""
     }
 
-    // Wait for redirect to the show page
-    await this.page.waitForURL(/\/admin\/resources\/agents/, { timeout: 10_000 }).catch(() => {});
+    // The admin-api CREATE response returns a ULID-format id (agent_01KRH...) but the DB
+    // primary key is a UUID. The LIST endpoint returns agent_<32hex> format which is what
+    // the admin-api write endpoints accept after UUID conversion in the handler.
+    // Navigate to the filtered list to get the canonical hex-UUID record id.
+    await this.goto(`/admin/resources/agents?filters.q=${encodeURIComponent(data.name)}`);
+    await this.page.waitForLoadState("networkidle");
 
-    // If agentId not in response, extract from the current URL
-    if (!agentId) {
-      agentId = await this.getAgentIdFromUrl();
-    }
+    const row = this.page.locator("tr").filter({ hasText: data.name });
+    await row.first().waitFor({ state: "visible", timeout: 15_000 });
+    const showLink = await row.first()
+      .locator('a[href*="/records/"][href*="/show"]')
+      .getAttribute("href");
+    const agentId = showLink?.match(/\/records\/([^/]+)\/show/)?.[1] ?? "";
 
     return { agentId, apiKey };
   }
 
-  private async getAgentIdFromUrl(): Promise<string> {
-    const url = this.page.url();
-    // URL might be /admin/resources/agents/records/agent_xxx/show
-    const match = url.match(/\/agents\/records\/([^/]+)/);
-    if (match) return match[1];
-    return "";
-  }
-
   // ── Revoke agent ───────────────────────────────────────
   async revokeAgent(agentId: string) {
-    await this.gotoShow(agentId);
+    await this.goto(`/admin/resources/agents/records/${agentId}/revokeAgent`);
     await this.page.waitForLoadState("networkidle");
-    // AdminJS sets data-testid="action-{name}" on action buttons
-    const revokeBtn = this.page.locator('[data-testid="action-revokeAgent"]');
-    if (await revokeBtn.isVisible()) {
-      await revokeBtn.click();
+    const confirmBtn = this.page.locator('[data-testid="confirm-action-button"]');
+    if (await confirmBtn.isVisible()) {
+      await confirmBtn.click();
       await this.page.waitForLoadState("networkidle");
     }
   }

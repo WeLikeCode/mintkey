@@ -26,4 +26,8 @@ export const Components = {
   AuditIntro: componentLoader.add("AuditIntro", "./sections/AuditIntro"),
   // JSON property renderer (fix-show-page-react-31)
   JsonValue: componentLoader.add("JsonValue", "./properties/JsonValue"),
+  // Generic "confirm before executing" page for destructive record actions
+  ConfirmAction: componentLoader.add("ConfirmAction", "./actions/ConfirmAction"),
+  // Service API key show-once create flow (ADR-0018; R1 action-grid remediation)
+  ApiKeyCreate: componentLoader.add("ApiKeyCreate", "./actions/ApiKeyCreate"),
 };

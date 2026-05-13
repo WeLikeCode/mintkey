@@ -106,16 +106,27 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
       // T-1.9.4: Revoke action
       revokeAgent: {
         actionType: "record",
+        component: Components.ConfirmAction,
         label: "Revoke",
         icon: "Ban",
+        // isVisible receives RecordJSON (plain object, no .get()) during HTML routing —
+        // use params.status to avoid TypeError that AdminJS catches as a 404.
         isVisible: (context) => {
-          const record = context.record;
-          return record?.get("status") !== "revoked";
+          const rec = context.record as { params?: Record<string, unknown> } | undefined;
+          return rec?.params?.status !== "revoked";
         },
         handler: async (request, response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
-          const agentId = request.params.recordId;
+          // admin-api stores UUID as PK; list returns agent_<32hex> — convert to UUID format
+          const raw = request.params.recordId ?? "";
+          const hex = raw.replace(/^agent_/, "");
+          const agentId = hex.length === 32
+            ? `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
+            : raw;
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/revoke`,

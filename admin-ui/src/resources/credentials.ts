@@ -101,10 +101,14 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
       // T-1.8.4: Rotate action
       rotateCredential: {
         actionType: "record",
+        component: Components.ConfirmAction,
         label: "Rotate",
         icon: "RotateCw",
         isVisible: true,
         handler: async (request, response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
           const { currentAdmin, record } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const credentialId = request.params.recordId;
