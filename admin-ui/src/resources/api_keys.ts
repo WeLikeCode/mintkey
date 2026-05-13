@@ -82,6 +82,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         label: "Create API Key",
         icon: "Plus",
         isVisible: true,
+        component: Components.ApiKeyCreate,
         handler: async (request, response, context) => {
           if (request.method === "get") {
             return { record: await recordJSON(context, {}) };
