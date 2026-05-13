@@ -28,7 +28,7 @@ import { Components } from "../components/index.js";
 const _auditResource = new RestResource({
   id: "audit_events", name: "Audit Events",
   listPath: "/v1/tenants/{tenantId}/audit",
-  listKey: "items",
+  listKey: "events",
   idField: "id",
   filterKeys: ["q", "event_type", "actor_id", "target_id", "from_ts", "to_ts"],
   properties: [
