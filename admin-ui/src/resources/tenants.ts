@@ -12,11 +12,9 @@
 
 import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { apiWrite } from "../lib/api-client.js";
-import { isPlatformAdminView } from "../middleware/platform-admin.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
-import type { Request } from "express";
 
 function assertPlatformAdmin(context: ActionContext): void {
   const admin = context.currentAdmin as { isPlatformAdmin?: boolean };
@@ -72,21 +70,12 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
     // Non-PlatformAdmin gets empty results (RLS enforces tenant scope)
     actions: {
       list: {
-        isVisible: true,
+        isVisible: ({ currentAdmin }: { currentAdmin?: { isPlatformAdmin?: boolean } }) =>
+          currentAdmin?.isPlatformAdmin === true,
         component: Components.TenantsIntro,
         before: [
           async (request, context) => {
             assertPlatformAdmin(context);
-            // Set X-Platform-Admin header on the underlying DB session
-            // by checking req.session.platformAdminView
-            const req = (context as { req?: Request }).req;
-            if (req && isPlatformAdminView(req)) {
-              // Signal admin-api to use app.platform_admin_view='on'
-              (request as { headers?: Record<string, string> }).headers = {
-                ...((request as { headers?: Record<string, string> }).headers ?? {}),
-                "X-Platform-Admin": "true",
-              };
-            }
             return request;
           },
         ],

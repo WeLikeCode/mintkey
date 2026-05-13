@@ -297,3 +297,47 @@ describe("Tenants resource — q filter", () => {
     expect(url).toContain("q=acme");
   });
 });
+
+// ---------------------------------------------------------------------------
+// X-Platform-Admin header propagation (ADR-0016.3)
+// ---------------------------------------------------------------------------
+
+/** Build a context with isPlatformAdmin flag. */
+function makeContextWithPlatformAdmin(tenantId: string, isPlatformAdmin: boolean): ActionContext {
+  return {
+    currentAdmin: { tenantId, sessionToken: "tok123", isPlatformAdmin },
+  } as unknown as ActionContext;
+}
+
+describe("X-Platform-Admin header propagation", () => {
+  const res = new RestResource({
+    id: "tenants",
+    name: "Tenants",
+    listPath: "/v1/tenants",
+    listKey: "data",
+    idField: "id",
+    properties: [{ path: "id", type: "string", isId: true }],
+    filterKeys: [],
+  });
+
+  it("sends X-Platform-Admin: true when isPlatformAdmin=true", async () => {
+    await res.find(makeFilter({}), {}, makeContextWithPlatformAdmin("tid7", true));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const callHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string> | undefined;
+    expect(callHeaders?.["X-Platform-Admin"]).toBe("true");
+  });
+
+  it("omits X-Platform-Admin when isPlatformAdmin=false", async () => {
+    await res.find(makeFilter({}), {}, makeContextWithPlatformAdmin("tid7", false));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const callHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string> | undefined;
+    expect(callHeaders?.["X-Platform-Admin"]).toBeUndefined();
+  });
+
+  it("omits X-Platform-Admin when context has no isPlatformAdmin field", async () => {
+    await res.find(makeFilter({}), {}, makeContext("tid7"));
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const callHeaders = fetchMock.mock.calls[0][1]?.headers as Record<string, string> | undefined;
+    expect(callHeaders?.["X-Platform-Admin"]).toBeUndefined();
+  });
+});

@@ -106,9 +106,13 @@ export class RestResource extends BaseResource {
   }
 
   private _sessionHeaders(context?: ActionContext): Record<string, string> {
-    const admin = context?.currentAdmin as { sessionToken?: string } | undefined;
+    const admin = context?.currentAdmin as { sessionToken?: string; isPlatformAdmin?: boolean } | undefined;
     const tok = admin?.sessionToken;
-    return tok ? { Cookie: `mintkey_session=${tok}` } : {};
+    const headers: Record<string, string> = tok ? { Cookie: `mintkey_session=${tok}` } : {};
+    if (admin?.isPlatformAdmin === true) {
+      headers["X-Platform-Admin"] = "true";
+    }
+    return headers;
   }
 
   async find(
