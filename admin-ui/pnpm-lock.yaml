@@ -44,6 +44,9 @@ importers:
         specifier: ^11.0.3
         version: 11.1.1
     devDependencies:
+      '@axe-core/playwright':
+        specifier: ^4.11.3
+        version: 4.11.3(playwright-core@1.50.0)
       '@playwright/test':
         specifier: 1.50.0
         version: 1.50.0
@@ -100,6 +103,11 @@ packages:
       express-formidable: ^1.2.0
       express-session: '>=1.17.3'
       tslib: ^2.5.0
+
+  '@axe-core/playwright@4.11.3':
+    resolution: {integrity: sha512-h/kfksv4F0cVIDlKpT4700OehdRgpvuVskuQ2nb7/JmtWUXpe9ftHAPtwyXGvVSsa6SJ64A9ER7Zrzc/sIvC4w==}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -1821,6 +1829,10 @@ packages:
     resolution: {integrity: sha512-kNOjDqAh7px0XWNI+4QbzoiR/nTkHAWNud2uvnJquD1/x5a7EQZMJT0AczqK0Qn67oY/TTQ1LbUKajZpp3I9tQ==}
     engines: {node: '>=8.0.0'}
 
+  axe-core@4.11.4:
+    resolution: {integrity: sha512-KunSNx+TVpkAw/6ULfhnx+HWRecjqZGTOyquAoWHYLRSdK1tB5Ihce1ZW+UY3fj33bYAFWPu7W/GRSmmrCGuxA==}
+    engines: {node: '>=4'}
+
   axios@1.16.0:
     resolution: {integrity: sha512-6hp5CwvTPlN2A31g5dxnwAX0orzM7pmCRDLnZSX772mv8WDqICwFjowHuPs04Mc8deIld1+ejhtaMn5vp6b+1w==}
 
@@ -3376,6 +3388,11 @@ snapshots:
       express-formidable: 1.2.0
       express-session: 1.19.0
       tslib: 2.8.1
+
+  '@axe-core/playwright@4.11.3(playwright-core@1.50.0)':
+    dependencies:
+      axe-core: 4.11.4
+      playwright-core: 1.50.0
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -5118,6 +5135,8 @@ snapshots:
   asynckit@0.4.0: {}
 
   atomic-sleep@1.0.0: {}
+
+  axe-core@4.11.4: {}
 
   axios@1.16.0:
     dependencies:
