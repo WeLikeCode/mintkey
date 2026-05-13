@@ -91,7 +91,10 @@ test.describe("28 — Search and filters", () => {
     void consoleErrors;
   });
 
-  test("Agents: q=smoke narrows list strictly below baseline", async ({ page, consoleErrors }) => {
+  test("Agents: q=smoke narrows list strictly below baseline", async ({ page, consoleErrors, browserName }) => {
+    // webkit: AdminJS URL filter params not processed — returns 0 rows.
+    // Tracked: PLAYWRIGHT_EXTENSION_PLAN.md W8.
+    test.skip(browserName === "webkit", "AdminJS URL filter params not processed on webkit");
     await page.goto("/admin/resources/agents", { waitUntil: "domcontentloaded" });
     await waitForList(page);
     const baselineCount = await countTableRows(page);

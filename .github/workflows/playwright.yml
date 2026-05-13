@@ -1,0 +1,164 @@
+name: Mintkey Playwright E2E
+
+# On PRs: chromium only (fast feedback).
+# Nightly: all three browsers (cross-browser coverage).
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "admin-ui/**"
+      - "admin-api/**"
+      - "docker-compose.yml"
+      - ".github/workflows/playwright.yml"
+  schedule:
+    # Nightly at 02:00 UTC — runs all three browsers
+    - cron: "0 2 * * *"
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # PR job: chromium only
+  # ─────────────────────────────────────────────────────────────────────────
+  playwright-chromium:
+    name: Playwright (chromium)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install admin-ui dependencies
+        working-directory: admin-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (chromium only)
+        working-directory: admin-ui
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Start Mintkey stack
+        run: |
+          docker compose up -d --wait --timeout 120
+        env:
+          COMPOSE_HTTP_TIMEOUT: 120
+
+      - name: Wait for admin-ui to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/health && break
+            echo "Waiting for admin-ui ($i/30)..."
+            sleep 5
+          done
+
+      - name: Run Playwright tests (chromium)
+        working-directory: admin-ui
+        run: pnpm test:e2e --project=chromium
+        env:
+          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
+          PLAYWRIGHT_BASE_URL: http://localhost:8081
+          CI: "true"
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-chromium-${{ github.run_id }}
+          path: admin-ui/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Upload JUnit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-junit-chromium-${{ github.run_id }}
+          path: admin-ui/e2e/test-results/junit.xml
+          retention-days: 14
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Nightly job: all three browsers
+  # ─────────────────────────────────────────────────────────────────────────
+  playwright-all-browsers:
+    name: Playwright (all browsers) — nightly
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install admin-ui dependencies
+        working-directory: admin-ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (${{ matrix.browser }})
+        working-directory: admin-ui
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Start Mintkey stack
+        run: |
+          docker compose up -d --wait --timeout 120
+        env:
+          COMPOSE_HTTP_TIMEOUT: 120
+
+      - name: Wait for admin-ui to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8081/health && break
+            echo "Waiting for admin-ui ($i/30)..."
+            sleep 5
+          done
+
+      - name: Run Playwright tests (${{ matrix.browser }})
+        working-directory: admin-ui
+        run: pnpm test:e2e --project=${{ matrix.browser }}
+        env:
+          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
+          PLAYWRIGHT_BASE_URL: http://localhost:8081
+          CI: "true"
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.browser }}-nightly-${{ github.run_id }}
+          path: admin-ui/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Upload JUnit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-junit-${{ matrix.browser }}-nightly-${{ github.run_id }}
+          path: admin-ui/e2e/test-results/junit.xml
+          retention-days: 30
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
