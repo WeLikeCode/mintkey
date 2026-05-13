@@ -53,6 +53,11 @@ def create_app() -> FastAPI:
     csrf_exempt("/v1/auth/logout")
     csrf_exempt("/v1/auth/oidc/callback")
 
+    # Internal endpoints are machine-to-machine (MCP server → admin-api).
+    # They never originate from a browser, so CSRF is not applicable.
+    # validate-agent-key and proxy-hit are called by Go/Python services.
+    csrf_exempt("/v1/internal")
+
     # Proxy endpoint uses Bearer token auth — CSRF not applicable.
     # The dynamic path /v1/proxy/call/{service_id}/{path_suffix} requires the
     # CsrfMiddleware to support prefix matching for full exemption.

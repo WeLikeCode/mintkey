@@ -70,6 +70,18 @@ async def validate_agent_key(
     # Compute fingerprint — same algorithm as agents.py _generate_agent_api_key
     fingerprint = hashlib.sha256(api_key.encode()).digest()[:8].hex()
 
+    # Enable cross-tenant lookup. PostgreSQL does not short-circuit OR in RLS
+    # USING clauses, so ''::uuid throws even when platform_admin_view='on'.
+    # Set a sentinel UUID so the cast is valid, then enable platform_admin_view.
+    # Pattern mirrors proxy.py._proxy_call and auth/internal.py.
+    # ADR-0016.3 — platform_admin_view is the correct escape hatch here.
+    await session.execute(
+        text(
+            "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
+            "       set_config('app.platform_admin_view', 'on', true)"
+        )
+    )
+
     result = await session.execute(
         text(
             "SELECT id, tenant_id, api_key_hash, status"
