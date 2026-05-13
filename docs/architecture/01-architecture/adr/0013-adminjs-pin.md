@@ -1,7 +1,7 @@
 # ADR‑0013: AdminJS pin set for the Admin Web UI
 
 ## Status
-Accepted — 2026-05-10. Appendix to [ADR‑0005](0005-admin-tech-stack.md).
+Accepted — 2026-05-10. Appendix to [ADR‑0005](0005-admin-tech-stack.md). Amended by [ADR-0019](0019-admin-ui-bff-and-write-auth.md): AdminJS is a BFF over the admin-api REST API; the table entries for "AdminJS DB adapter" (`@adminjs/sql`) and "Session storage" (`connect-pg-simple`) are superseded — AdminJS holds NO DB connection; sessions and resource reads relay the `mintkey_session` cookie; writes require a signed AdminUiSignedRequest JWT.
 
 ## Context
 [ADR‑0005](0005-admin-tech-stack.md) chose **AdminJS** (Node.js, COTS) as the Admin Web UI. This ADR pins the AdminJS‑specific libraries, conventions, and the integration with the FastAPI Admin REST API for sensitive operations.

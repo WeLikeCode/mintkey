@@ -1,7 +1,7 @@
 # ADR‑0016: Round‑2 corrections from second adversarial pass
 
 ## Status
-Accepted — 2026-05-10. Amends [ADR‑0006](0006-token-format-and-binding.md), [ADR‑0013](0013-adminjs-pin.md), and [ADR‑0014](0014-iter-1-2-corrections.md). Adds requirements to iteration‑4 contracts and a Phase‑1 milestone. Defers a longer list of medium‑severity items to [`docs/01-architecture/open-questions.md`](../open-questions.md).
+Accepted — 2026-05-10. Amends [ADR‑0006](0006-token-format-and-binding.md), [ADR‑0013](0013-adminjs-pin.md), and [ADR‑0014](0014-iter-1-2-corrections.md). Adds requirements to iteration‑4 contracts and a Phase‑1 milestone. Defers a longer list of medium‑severity items to [`docs/01-architecture/open-questions.md`](../open-questions.md). Amended by [ADR-0019](0019-admin-ui-bff-and-write-auth.md): §16.1 (`jti` denylist) is carried forward; the BFF write path uses this denylist.
 
 ## Context
 The second adversarial pass on the corrected state (post ADR‑0014 / 0015) surfaced ~20 follow‑up issues. Seven need immediate resolution to keep iteration‑4 contracts coherent and Phase‑1 implementable; the rest are tracked in the open‑questions register. This ADR captures the seven decisions in one place, each as a narrow amendment.

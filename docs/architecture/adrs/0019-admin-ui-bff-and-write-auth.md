@@ -1,0 +1,1 @@
+../01-architecture/adr/0019-admin-ui-bff-and-write-auth.md
