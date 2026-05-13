@@ -118,6 +118,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       },
       delete: {
         isVisible: true,
+        component: Components.ConfirmAction,
         handler: async (request, response, context) => {
           const { currentAdmin, h, resource } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
@@ -152,7 +153,11 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         label: "Test Connection",
         icon: "Activity",
         isVisible: true,
+        component: Components.ConfirmAction,
         handler: async (request, response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;

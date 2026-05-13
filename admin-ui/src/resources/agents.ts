@@ -103,6 +103,43 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         },
       },
 
+      delete: {
+        isVisible: true,
+        component: Components.ConfirmAction,
+        handler: async (request, response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          // list returns agent_<32hex> — convert to UUID format for admin-api
+          const raw = request.params.recordId ?? "";
+          const hex = raw.replace(/^agent_/, "");
+          const agentId = hex.length === 32
+            ? `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
+            : raw;
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}`,
+            "DELETE"
+          );
+
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({})) as { title?: string };
+            return {
+              record: await recordJSON(context),
+              notice: { message: err.title ?? "Failed to delete agent", type: "error" },
+            };
+          }
+
+          return {
+            record: await recordJSON(context),
+            notice: { message: "Agent deleted", type: "success" },
+            redirectUrl: "/admin/resources/agents",
+          };
+        },
+      },
+
       // T-1.9.4: Revoke action
       revokeAgent: {
         actionType: "record",
