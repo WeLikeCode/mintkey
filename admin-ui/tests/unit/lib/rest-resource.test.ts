@@ -341,3 +341,44 @@ describe("X-Platform-Admin header propagation", () => {
     expect(callHeaders?.["X-Platform-Admin"]).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// PropertyDef type:"mixed" — fix-show-page-react-31
+// ---------------------------------------------------------------------------
+
+describe("PropertyDef type:mixed (fix-show-page-react-31)", () => {
+  it("accepts type:mixed in PropertyDef without TypeScript error", () => {
+    // If this compiles, the PropertyDef union accepts "mixed".
+    const mixedRes = new RestResource({
+      id: "test_mixed",
+      name: "Test Mixed",
+      listPath: "/v1/test",
+      listKey: "items",
+      idField: "id",
+      properties: [
+        { path: "id", type: "string", isId: true },
+        { path: "settings", type: "mixed" },
+        { path: "constraints", type: "mixed" },
+      ],
+    });
+    const props = mixedRes.properties();
+    const settingsProp = props.find((p) => p.path() === "settings");
+    expect(settingsProp?.type()).toBe("mixed");
+    const constraintsProp = props.find((p) => p.path() === "constraints");
+    expect(constraintsProp?.type()).toBe("mixed");
+  });
+
+  it("property() returns type:mixed for a mixed-typed property", () => {
+    const mixedRes = new RestResource({
+      id: "test_mixed2",
+      name: "Test Mixed2",
+      listPath: "/v1/test2",
+      listKey: "items",
+      idField: "id",
+      properties: [{ path: "payload", type: "mixed" }],
+    });
+    const prop = mixedRes.property("payload");
+    expect(prop).not.toBeNull();
+    expect(prop?.type()).toBe("mixed");
+  });
+});

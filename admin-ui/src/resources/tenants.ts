@@ -39,7 +39,7 @@ const _tenantsResource = new RestResource({
     { path: "slug", type: "string" },
     { path: "display_name", type: "string" },
     { path: "status", type: "string" },
-    { path: "settings", type: "string" },
+    { path: "settings", type: "mixed" },
     { path: "isolation_mode", type: "string" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
@@ -63,6 +63,13 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (slug / name)",
         description: "Case-insensitive substring match on tenant slug and display_name.",
+      },
+      settings: {
+        type: "mixed",
+        components: { show: Components.JsonValue },
+      },
+      isolation_mode: {
+        components: { show: Components.JsonValue },
       },
     },
 

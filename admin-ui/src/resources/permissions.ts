@@ -24,7 +24,7 @@ const _permissionsResource = new RestResource({
     { path: "agent_id", type: "string" },
     { path: "service_id", type: "string" },
     { path: "action", type: "string" },
-    { path: "constraints", type: "string" },
+    { path: "constraints", type: "mixed" },
     { path: "created_at", type: "datetime" },
     { path: "created_by", type: "string" },
   ],
@@ -43,8 +43,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       constraints: {
         type: "mixed",
         isArray: false,
-        // Render as JSON editor
-        components: {},
+        components: { show: Components.JsonValue },
       },
     },
     actions: {

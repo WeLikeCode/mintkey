@@ -41,7 +41,7 @@ const _auditResource = new RestResource({
     { path: "target_type", type: "string" },
     { path: "request_id", type: "string" },
     { path: "trace_id", type: "string" },
-    { path: "payload", type: "string" },
+    { path: "payload", type: "mixed" },
     { path: "prev_hash", type: "string" },
     { path: "hash", type: "string" },
     { path: "created_at", type: "datetime" },
@@ -66,6 +66,7 @@ export const AuditResource: ResourceWithOptions & { adminResource: typeof _audit
       payload: {
         type: "mixed",
         isArray: false,
+        components: { show: Components.JsonValue },
       },
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },

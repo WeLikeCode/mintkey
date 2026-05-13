@@ -12,7 +12,7 @@ import type { Filter, ActionContext } from "adminjs";
 
 export interface PropertyDef {
   path: string;
-  type?: "string" | "number" | "boolean" | "datetime" | "uuid";
+  type?: "string" | "number" | "boolean" | "datetime" | "uuid" | "mixed";
   isId?: boolean;
   availableValues?: Array<{ value: string; label: string }>;
 }

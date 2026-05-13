@@ -24,4 +24,6 @@ export const Components = {
   PermissionsIntro: componentLoader.add("PermissionsIntro", "./sections/PermissionsIntro"),
   ApiKeysIntro: componentLoader.add("ApiKeysIntro", "./sections/ApiKeysIntro"),
   AuditIntro: componentLoader.add("AuditIntro", "./sections/AuditIntro"),
+  // JSON property renderer (fix-show-page-react-31)
+  JsonValue: componentLoader.add("JsonValue", "./properties/JsonValue"),
 };
