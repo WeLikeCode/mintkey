@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY mcp-server/src/ src/
 COPY mintkey-models/mintkey_models/ src/mintkey_models/
+# Skills directory — contains agent-bootstrap.md served by the bootstrap tool (R6)
+COPY mcp-server/skills/ skills/
 
 ENV PYTHONPATH=/app/src
 ENV PORT=8082

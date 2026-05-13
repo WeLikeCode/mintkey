@@ -1,0 +1,307 @@
+---
+name: Mintkey Agent Bootstrap
+description: Vendor-agnostic instructions for any AI agent to authenticate to Mintkey, discover backend services, and call them through the Mintkey egress proxy. Returned by the unauthenticated MCP method so agents can self-onboard without a pre-installed skill.
+version: 1.0
+audience: any AI agent (Claude, GPT, Gemini, custom)
+license: internal
+---
+
+# Mintkey Agent Bootstrap
+
+You are an AI agent and you've just connected to a **Mintkey** MCP server. Mintkey is an agentic credential broker: it stores backend-service credentials encrypted, gives you short-lived brokered tokens, and injects the real credential in-flight when you call a service through its egress proxy. **You don't need any pre-installed Mintkey skill — this document IS the skill.** Read each section in order; sections are wrapped in unambiguous XML-tagged blocks so any reasoning system can parse them deterministically.
+
+<overview>
+The flow you will follow:
+
+1. **Authenticate** — exchange an operator-issued long-lived API key for a short-lived brokered JWT. (§authentication)
+2. **Discover services** — list services your Agent has access to; fetch their details / OpenAPI spec. (§service_discovery)
+3. **Call services** — call backend services exclusively through the Mintkey Egress Proxy, which injects the real credential. (§proxy_usage)
+4. **Handle errors / refresh tokens / respect revocation.** (§errors_and_revocation)
+
+Three core MCP tools you will use after authenticating:
+
+- `request_token` — exchange a Mintkey API key for a brokered JWT.
+- `list_services` — list services your Agent has permission grants on.
+- `describe_service` — get details about one service (auth scheme, constraints, OpenAPI link).
+
+Optional / situational:
+
+- `get_openapi` — fetch the full upstream OpenAPI spec.
+- `whoami` — confirm which Agent identity / tenant your token resolves to.
+
+This `agent_bootstrap` method (the one you just called to get this text) is **unauthenticated** — every other MCP method requires the brokered JWT in `Authorization: Bearer …`.
+</overview>
+
+<authentication>
+Mintkey issues brokered tokens in **JWS-Ed25519 JWT** format with a default **10-minute TTL** (per ADR-0006). You cannot use Mintkey without one.
+
+**Step 1 — Obtain a Mintkey API key from an operator.**
+A human operator (admin) creates an Agent record representing you and provisions an API key shaped `mk_agentkey_<26-char-Crockford-base32>`. Examples: `mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A`.
+
+- This is a long-lived secret. Treat it like a password. Store it in your runtime's secret store (environment variable, secret manager, etc.) — never in conversation context, prompts, or logs.
+- If you do not have one, **stop and ask the operator**. There is no self-service registration in v1.
+
+**Step 2 — Exchange the API key for a brokered JWT** by calling the MCP tool `request_token`:
+
+```json
+{
+  "tool": "request_token",
+  "arguments": {
+    "api_key": "mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
+  }
+}
+```
+
+Response shape:
+
+```json
+{
+  "token": "eyJhbGciOiJFZERTQSIsImtpZCI6Ims..............",
+  "expires_at": "2026-05-13T12:34:56Z",
+  "ttl_seconds": 600,
+  "agent_id": "agt_01HKJ7H2X3Y4Z5A6B7C8D9E0F1",
+  "tenant_id": "tnt_01HKJ7H2X3Y4Z5A6B7C8D9E0F1"
+}
+```
+
+**Step 3 — Use the token.** Send it as `Authorization: Bearer <token>` on:
+- every other MCP tool call,
+- every egress-proxy request (§proxy_usage).
+
+**Step 4 — Refresh before expiry.** Track the `expires_at` you got; call `request_token` again before that time. Reusing an expired token returns `401 mintkey:code=token_expired`. A reasonable strategy is to refresh at `expires_at - 60s`.
+
+**Auth on the bootstrap method itself.** The tool that returned this document is unauthenticated and idempotent — you can re-fetch this content any time without consuming credit. Every *other* MCP tool requires the brokered JWT.
+
+**Token binding (optional).** If your runtime supports DPoP / `cnf.jkt` proof-of-possession (ADR-0006), set the appropriate header; otherwise the bearer-token flow works fine for first-party agents.
+</authentication>
+
+<service_discovery>
+After §authentication you can enumerate and inspect services.
+
+**`list_services` — services your Agent has permission grants on.**
+
+```json
+{ "tool": "list_services", "arguments": {} }
+```
+
+Response:
+
+```json
+{
+  "services": [
+    {
+      "service_id": "svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1",
+      "slug": "demo-crm",
+      "name": "Demo CRM",
+      "description": "Customer relationship management — read/write customers and orders.",
+      "auth_scheme": "api_key",
+      "base_url": "https://crm.example.com/api"
+    }
+  ]
+}
+```
+
+If `services` is empty:
+- Either your Agent has zero active permission grants → ask the operator to grant access to specific services with the constraints you need.
+- Or your tenant has no registered services at all → ask the operator.
+
+**`describe_service` — full details for one service.**
+
+```json
+{ "tool": "describe_service", "arguments": { "service_id": "svc_01HKJ7G..." } }
+```
+
+Response includes:
+
+```json
+{
+  "service_id": "svc_01HKJ7G...",
+  "slug": "demo-crm",
+  "name": "Demo CRM",
+  "description": "...",
+  "base_url": "https://crm.example.com/api",
+  "auth_scheme": "api_key",
+  "auth_scheme_details": {
+    "header_name": "X-API-Key",
+    "header_format": "{secret}"
+  },
+  "openapi_url": "https://crm.example.com/openapi.yaml",
+  "your_constraints": {
+    "rate_limit": { "requests_per_second": 10, "burst": 50 },
+    "time_window": { "timezone": "UTC", "days": ["Mon","Tue","Wed","Thu","Fri"], "start_local": "09:00", "end_local": "18:00" },
+    "request_path_prefix": ["/v1/customers", "/v1/orders/list"],
+    "source_ip_allowlist": null
+  }
+}
+```
+
+- `base_url` is informational only — you call the proxy, not the upstream directly.
+- `your_constraints` is the *intersection* of all your active grants on this service. Stay inside it or the proxy will return `403 constraint_violated`.
+
+**`get_openapi` — full upstream spec.**
+
+```json
+{ "tool": "get_openapi", "arguments": { "service_id": "svc_01HKJ7G..." } }
+```
+
+Returns the upstream service's OpenAPI JSON/YAML (if Mintkey has fetched it). Use this to plan multi-step workflows.
+
+**`whoami` — confirm token identity (optional).**
+
+```json
+{ "tool": "whoami", "arguments": {} }
+```
+
+Returns `{ "agent_id": "...", "tenant_id": "...", "expires_at": "..." }`. Useful for debugging.
+</service_discovery>
+
+<proxy_usage>
+**You never call backend services directly.** You call the Mintkey Egress Proxy with your brokered JWT, and Mintkey injects the real credential at request time. Your code/prompt never sees the upstream secret.
+
+**Discovering the proxy URL** (in priority order):
+
+1. **Environment variable `MINTKEY_PROXY_URL`** — set by your runtime. Preferred.
+2. **The `<proxy>` block returned alongside this skill** — if your MCP server's `agent_bootstrap` implementation includes a `proxy_url` in its response payload alongside this skill text. Check the surrounding response.
+3. **Sensible defaults** — in `docker compose` deployments inside the same network: `http://mintkey-proxy:8000`. From the host: `http://localhost:8000`. In Kubernetes: `http://mintkey-proxy.<namespace>.svc.cluster.local:8000`.
+4. **Ask the operator** — last resort.
+
+**Proxy URL patterns** (per ADR-0007):
+
+*Forward-proxy form* — explicit `service_id`, preferred:
+```
+{PROXY_URL}/v1/call/{service_id}/{upstream_path...}
+```
+Example: `http://mintkey-proxy:8000/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42`
+
+*Virtual-host alias form* — operator-configured per service:
+```
+http://{service-slug}.proxy.local/{upstream_path...}
+```
+Example: `http://demo-crm.proxy.local/v1/customers/42`
+
+Both forms support all HTTP methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) and v1 supports HTTP/1.1 and HTTP/2.
+
+**Request shape:**
+
+- **Method**, **path**, **query string**: same as the upstream service expects.
+- **Headers**: standard upstream headers (`Content-Type`, `Accept`, custom domain headers) pass through. **DO NOT include the upstream service's credential header (`X-API-Key`, `Authorization` for the upstream, basic-auth etc.)** — Mintkey injects it. If you set one, Mintkey will reject the request with `400 credential_passthrough_forbidden`.
+- **`Authorization: Bearer {your-brokered-JWT}`** — required (this authenticates *you* to Mintkey, not to the upstream).
+- **Body**: forwarded unmodified.
+
+**Example call** (curl, assuming you've stored the JWT in `$TOKEN`):
+
+```bash
+curl -X GET \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/json" \
+  "$MINTKEY_PROXY_URL/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42"
+```
+
+**Example call** (Python `httpx`):
+
+```python
+import httpx, os
+r = httpx.post(
+    f"{os.environ['MINTKEY_PROXY_URL']}/v1/call/{service_id}/v1/orders",
+    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    json={"customer_id": 42, "items": [...]},
+    timeout=30.0,
+)
+r.raise_for_status()
+```
+
+The proxy:
+- Resolves `service_id` → service's base URL + bound credential.
+- Verifies your JWT signature against the published JWKS.
+- Checks your permission grants and the request against your constraints.
+- Injects the real credential per the service's `auth_scheme` (e.g. `X-API-Key: <real-key>` for api_key, mTLS handshake for mtls).
+- Forwards to the upstream service.
+- Streams the response back to you unmodified (status, headers, body).
+- Emits an audit event (`proxy.call`).
+</proxy_usage>
+
+<errors_and_revocation>
+The proxy and MCP tools return errors with a structured `mintkey:code` field in the response body (for HTTP errors) or in the error frame (for streaming MCP). Handle these distinct cases:
+
+| HTTP / Code | `mintkey:code` | Meaning | Action |
+|---|---|---|---|
+| 401 | `token_expired` | Your brokered JWT TTL elapsed. | Call `request_token` again with your API key. |
+| 401 | `token_invalid` | Token signature failed or `kid` unknown. | Refresh; if still failing, your API key may be wrong. |
+| 401 | `agent_revoked` | The operator revoked your Agent. | **Stop**. Tell the operator. Do not retry. |
+| 401 | `tenant_deleted` | Your tenant was deleted (cascade). | **Stop permanently.** All your access is gone. |
+| 403 | `permission_denied` | No active permission grant for this service. | Ask operator to grant access. |
+| 403 | `constraint_violated` | Rate limit / time window / path / source-IP violation. Body has `constraint` field with details. | Wait / change request / ask operator to widen the grant. |
+| 404 | `unknown_service` | `service_id` doesn't exist or isn't visible to your Agent. | Re-list with `list_services`. |
+| 404 | `path_not_allowed` | Path isn't in the service's allowed prefixes (or your grant's). | Check `describe_service` `your_constraints.request_path_prefix`. |
+| 400 | `credential_passthrough_forbidden` | You included the upstream's credential header. | Remove the header; Mintkey injects it. |
+| 5xx | `upstream_error` | Backend service returned 5xx. Body has the upstream's original response. | Retry with backoff if appropriate. Mintkey does NOT auto-retry. |
+
+**Revocation semantics** (ADR-0006 + ADR-0016.7):
+- **In-flight read-only tool calls** when your Agent is revoked: complete with current snapshot.
+- **In-flight state-changing tool calls** (`request_token`): abort with `503 tenant_deleted` or `401 agent_revoked`.
+- **New calls after revocation**: 401 immediately.
+- **Streaming MCP connections**: server emits a final error frame, then EOF/connection close.
+
+**Token cache TTL.** If you cache descriptive metadata from `list_services` or `describe_service`, cap it at 5 minutes — Mintkey's change channel can revoke / re-grant within seconds, and your cache will go stale.
+</errors_and_revocation>
+
+<conventions>
+- **IDs** are prefixed-ULIDs, case-sensitive: `svc_<26-char-Crockford-base32>` for services, `agt_<...>` for agents, `tnt_<...>` for tenants, `pmg_<...>` for permission grants, `svckey_<...>` for classical service API keys (ADR-0018; agent flavor uses the brokered-JWT flow you read above, not service keys).
+- **Timestamps**: RFC 3339 UTC always. Do not assume your local timezone.
+- **Wire encoding**: JSON for everything. UTF-8.
+- **Secrets hygiene**: never log, never echo to conversation context, never persist in long-term memory: your `mk_agentkey_…`, your brokered JWT, or any retrieved upstream credential value (you shouldn't see those anyway — but if you do, treat them as toxic).
+- **Tracing**: Mintkey supports OpenTelemetry. If you set `Traceparent` or `X-Trace-Id` headers, the proxy propagates them. Useful for correlating your runtime's traces with Mintkey's.
+- **Idempotency**: if you need idempotent upstream calls, send the upstream's idempotency key in the request headers — Mintkey passes them through unchanged.
+</conventions>
+
+<security_notes>
+- **The brokered JWT is bearer-class.** Anyone with the token can act as you until it expires. Protect it like a session cookie.
+- **The Mintkey API key (`mk_agentkey_…`) is much more sensitive** — long-lived, allows minting new JWTs. Treat it like a long-lived password.
+- **You will never see the upstream credential** (the real Stripe/Twilio/CRM key). If a tool response contains one, that's a Mintkey bug — report it.
+- **Audit**: every proxy call and every state change emits an audit event. The operator can investigate any suspicious activity. Be predictable.
+</security_notes>
+
+<references>
+- ADR-0006: token format and binding (JWS Ed25519, JWKS, `cnf.jkt`).
+- ADR-0007: proxy deployment topology (URL forms, virtual-host alias).
+- ADR-0008: multi-tenancy (RLS, tenant context).
+- ADR-0009: MCP server stack (Python, `mcp` SDK, HTTP/SSE default).
+- ADR-0013: AdminJS UI conventions (operator-facing — not directly relevant to agents).
+- ADR-0016: corrections — §16.7 covers revocation semantics, §16.4 covers Constraints schema (rate_limit / time_window / request_path_prefix / source_ip_allowlist).
+- ADR-0017: wire-level decisions — error code conventions (`mintkey:code = …`).
+- ADR-0018: classical service API keys for non-agent clients.
+
+If anything in this document is stale relative to those ADRs, the ADRs win.
+</references>
+
+<minimal_complete_example>
+End-to-end (curl, single agent flow):
+
+```bash
+# 0. The operator gave you this API key:
+export MK_KEY="mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
+export MK_MCP="http://mintkey-mcp:8001"
+export MINTKEY_PROXY_URL="http://mintkey-proxy:8000"
+
+# 1. Exchange for a brokered token.
+TOKEN=$(curl -s -X POST "$MK_MCP/tools/call" \
+  -H "Content-Type: application/json" \
+  -d "{\"tool\":\"request_token\",\"arguments\":{\"api_key\":\"$MK_KEY\"}}" \
+  | jq -r '.token')
+
+# 2. Find a service.
+curl -s -X POST "$MK_MCP/tools/call" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"list_services","arguments":{}}'
+# → {"services":[{"service_id":"svc_01HKJ7G...","slug":"demo-crm",...}]}
+
+# 3. Call the service through the proxy.
+curl -X GET \
+  -H "Authorization: Bearer $TOKEN" \
+  "$MINTKEY_PROXY_URL/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42"
+# → {"customer_id":42,"name":"Acme Corp",...}
+```
+
+That's it. You're using Mintkey.
+</minimal_complete_example>
