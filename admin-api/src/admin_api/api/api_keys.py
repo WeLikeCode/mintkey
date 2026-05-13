@@ -314,29 +314,59 @@ async def create_api_key(
     )
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("")
 async def list_api_keys(
     tenant_id: UUID,
     agent_id: str,
+    q: Optional[str] = None,
+    service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     List API keys for an agent. Never returns plaintext or key_hash.
 
+    Optional query parameters:
+      q          — prefix/substring filter on key_fingerprint (case-insensitive).
+      service_id — filter to keys for a specific service (UUID or svc_ wire-ID).
+
     Source: long-lived-api-keys task 7.2; Req 8.2; ADR-0008.
     """
     await set_tenant_context(session, tenant_id)
 
-    rows_result = await session.execute(
-        text(
-            "SELECT id, key_fingerprint, service_id, allowed_actions, constraints,"
-            "       expires_at, last_used_at, created_at, created_by, revoked_at"
-            " FROM service_api_keys"
-            " WHERE agent_id = :aid AND tenant_id = :tid"
-            " ORDER BY created_at DESC"
-        ),
-        {"aid": agent_id, "tid": str(tenant_id)},
+    params: dict = {"aid": agent_id, "tid": str(tenant_id)}
+    base_sql = (
+        "SELECT id, key_fingerprint, service_id, allowed_actions, constraints,"
+        "       expires_at, last_used_at, created_at, created_by, revoked_at"
+        " FROM service_api_keys"
+        " WHERE agent_id = :aid AND tenant_id = :tid"
     )
+
+    if q is not None:
+        escaped = _escape_like(q)
+        pattern = f"%{escaped}%"
+        base_sql += " AND key_fingerprint ILIKE :pat ESCAPE '\\'"
+        params["pat"] = pattern
+
+    if service_id is not None:
+        svc_uuid = service_id
+        if service_id.startswith("svc_"):
+            hex_part = service_id[4:]
+            if len(hex_part) == 32:
+                svc_uuid = (
+                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                    f"-{hex_part[16:20]}-{hex_part[20:]}"
+                )
+        base_sql += " AND service_id = :svc_id"
+        params["svc_id"] = svc_uuid
+
+    base_sql += " ORDER BY created_at DESC"
+
+    rows_result = await session.execute(text(base_sql), params)
     rows = rows_result.fetchall()
 
     items = []

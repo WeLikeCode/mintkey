@@ -249,13 +249,22 @@ async def create_tenant(
 # ---------------------------------------------------------------------------
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("")
 async def list_tenants(
     request: Request,
+    q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     List all tenants. PlatformAdmin only.
+
+    Optional query parameters:
+      q — case-insensitive substring search on slug or display_name.
 
     Source: OpenAPI listTenants; ADR-0017.4.
     """
@@ -266,12 +275,26 @@ async def list_tenants(
         )
 
     await _set_platform_admin_rls(session)
-    result = await session.execute(
-        text(
-            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
-            " FROM tenants ORDER BY created_at ASC"
+
+    if q is not None:
+        escaped = _escape_like(q)
+        pattern = f"%{escaped}%"
+        result = await session.execute(
+            text(
+                "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+                " FROM tenants"
+                " WHERE slug ILIKE :pat ESCAPE '\\' OR display_name ILIKE :pat ESCAPE '\\'"
+                " ORDER BY created_at ASC"
+            ),
+            {"pat": pattern},
         )
-    )
+    else:
+        result = await session.execute(
+            text(
+                "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+                " FROM tenants ORDER BY created_at ASC"
+            )
+        )
     rows = result.fetchall()
     data = [
         {

@@ -13,6 +13,7 @@ Source: T-1.7.1; ADR-0008; ADR-0014.7; ADR-0017.11.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
@@ -23,6 +24,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.db.deps import get_db_session
 from mintkey_models.tenant_ctx import set_tenant_context
+
+
+def _parse_ts(ts_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parse an ISO 8601 / RFC 3339 timestamp string into a timezone-aware datetime.
+    Returns None if ts_str is None. The resulting datetime is UTC.
+    """
+    if ts_str is None:
+        return None
+    # Handle trailing Z → +00:00
+    ts_str = ts_str.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(ts_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/audit")
 
@@ -38,12 +57,20 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("")
 async def list_audit_events(
     tenant_id: UUID,
+    q: Optional[str] = None,
     agent_id: Optional[str] = None,
     service_id: Optional[str] = None,
     event_type: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    target_id: Optional[str] = None,
     from_ts: Optional[str] = None,
     to_ts: Optional[str] = None,
     after: Optional[str] = None,
@@ -54,11 +81,14 @@ async def list_audit_events(
     List audit events for a tenant with optional filters and cursor pagination.
 
     Query parameters:
+      q          — substring search on event_type (case-insensitive)
       agent_id   — filter by agent ID in payload
       service_id — filter by service ID in payload
       event_type — exact match on event_type column
-      from_ts    — ISO8601 lower bound on created_at
-      to_ts      — ISO8601 upper bound on created_at
+      actor_id   — exact match on actor_id column
+      target_id  — exact match on target_id column (UUID string)
+      from_ts    — ISO8601 inclusive lower bound on created_at
+      to_ts      — ISO8601 exclusive upper bound on created_at
       after      — cursor: return events with id > after (opaque event id)
       limit      — max events per page (default 50)
 
@@ -70,8 +100,12 @@ async def list_audit_events(
     """
     await set_tenant_context(session, tenant_id)
 
-    # All filters expressed as optional IS NULL guards so the SQL is a
-    # single string literal — no concatenation or f-strings (ADR-0008 / T-1.0.15).
+    # q param: ILIKE on event_type for searchability.
+    # All other filters expressed as optional IS NULL guards — ADR-0008 / T-1.0.15.
+    q_pattern = f"%{_escape_like(q)}%" if q is not None else None
+    from_dt = _parse_ts(from_ts)
+    to_dt = _parse_ts(to_ts)
+
     result = await session.execute(
         text(
             "SELECT id, event_type, tenant_id, payload, hash, prev_hash, at AS created_at"
@@ -79,10 +113,13 @@ async def list_audit_events(
             " WHERE tenant_id = :tenant_id"
             " AND (CAST(:after AS uuid) IS NULL OR id > CAST(:after AS uuid))"
             " AND (CAST(:event_type AS text) IS NULL OR event_type = CAST(:event_type AS text))"
-            " AND (CAST(:from_ts AS timestamptz) IS NULL OR at >= CAST(:from_ts AS timestamptz))"
-            " AND (CAST(:to_ts AS timestamptz) IS NULL OR at <= CAST(:to_ts AS timestamptz))"
+            " AND (CAST(:q_pattern AS text) IS NULL OR event_type ILIKE CAST(:q_pattern AS text) ESCAPE '\\')"
+            " AND (CAST(:from_dt AS timestamptz) IS NULL OR at >= CAST(:from_dt AS timestamptz))"
+            " AND (CAST(:to_dt AS timestamptz) IS NULL OR at < CAST(:to_dt AS timestamptz))"
             " AND (CAST(:agent_id AS text) IS NULL OR payload->>'agent_id' = CAST(:agent_id AS text))"
             " AND (CAST(:service_id AS text) IS NULL OR payload->>'service_id' = CAST(:service_id AS text))"
+            " AND (CAST(:actor_id AS text) IS NULL OR CAST(actor_id AS text) = CAST(:actor_id AS text))"
+            " AND (CAST(:target_id AS text) IS NULL OR CAST(target_id AS text) = CAST(:target_id AS text))"
             " ORDER BY id ASC"
             " LIMIT :limit"
         ),
@@ -90,10 +127,13 @@ async def list_audit_events(
             "tenant_id": str(tenant_id),
             "after": after,
             "event_type": event_type,
-            "from_ts": from_ts,
-            "to_ts": to_ts,
+            "q_pattern": q_pattern,
+            "from_dt": from_dt,
+            "to_dt": to_dt,
             "agent_id": agent_id,
             "service_id": service_id,
+            "actor_id": actor_id,
+            "target_id": target_id,
             "limit": limit,
         },
     )

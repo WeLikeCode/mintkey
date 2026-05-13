@@ -143,6 +143,73 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
 # ---------------------------------------------------------------------------
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@router.get("")
+async def list_permissions(
+    tenant_id: UUID,
+    agent_id: str,
+    service_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    List permission grants for an agent.
+
+    Optional query parameters:
+      service_id — filter to grants for a specific service (UUID or svc_ wire-ID).
+
+    Note: permission_grants has no free-text searchable field; q param is not
+    applicable and is omitted. service_id contextual filter is supported.
+
+    Source: T-1.4.2; ADR-0008.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    params: dict = {"aid": agent_id, "tid": str(tenant_id)}
+    base_sql = (
+        "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+        " FROM permission_grants"
+        " WHERE agent_id = :aid AND tenant_id = :tid"
+    )
+
+    if service_id is not None:
+        # Accept svc_ wire-ID or plain UUID
+        if service_id.startswith("svc_"):
+            hex_part = service_id[4:]
+            if len(hex_part) == 32:
+                service_id = (
+                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                    f"-{hex_part[16:20]}-{hex_part[20:]}"
+                )
+        base_sql += " AND service_id = :svc_id"
+        params["svc_id"] = service_id
+
+    base_sql += " ORDER BY created_at"
+
+    result = await session.execute(text(base_sql), params)
+    rows = result.fetchall()
+
+    grants = [
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "agent_id": str(row.agent_id),
+            "service_id": str(row.service_id) if row.service_id else None,
+            "action": row.action,
+            "constraints": row.constraints if isinstance(row.constraints, dict) else (
+                json.loads(row.constraints) if row.constraints else None
+            ),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_by": str(row.created_by) if row.created_by else None,
+        }
+        for row in rows
+    ]
+    return JSONResponse({"grants": grants})
+
+
 @router.post("", status_code=201)
 async def grant_permission(
     tenant_id: UUID,

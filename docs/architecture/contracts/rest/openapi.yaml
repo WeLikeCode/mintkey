@@ -358,6 +358,13 @@ paths:
           schema:
             $ref: "#/components/schemas/TenantStatus"
           description: Filter by tenant status.
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Case-insensitive substring search on slug and display_name.
       responses:
         "200":
           description: A page of tenants.
@@ -547,6 +554,16 @@ paths:
             type: string
             maxLength: 200
           description: Substring filter (case-insensitive) on the service name.
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: >
+            Case-insensitive substring search across name, slug, description,
+            and base_url. LIKE metacharacters (%, _) in the value are treated
+            literally.
       responses:
         "200":
           description: A page of services.
@@ -764,6 +781,16 @@ paths:
       parameters:
         - $ref: "#/components/parameters/AfterCursor"
         - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: >
+            Case-insensitive substring search on auth_scheme.
+            Note: credentials have no human-readable name field; q is limited
+            to auth_scheme matching.
       responses:
         "200":
           description: A page of credential versions.
@@ -936,6 +963,21 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/AgentStatus"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Case-insensitive substring search on name and description.
+        - in: query
+          name: has_access_to_service_id
+          required: false
+          schema:
+            type: string
+          description: >
+            Filter to agents with at least one active permission_grant for this
+            service. Accepts UUID or svc_<ULID> wire-ID (ADR-0017).
       responses:
         "200":
           description: A page of agents.
@@ -1110,6 +1152,40 @@ paths:
     parameters:
       - $ref: "#/components/parameters/TenantId"
       - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [Permissions]
+      operationId: listPermissions
+      summary: List permission grants for an agent.
+      description: |
+        Returns all grants for the agent scoped to the caller's tenant (RLS).
+        No free-text q param (permission_grants has no text fields suitable
+        for search). Use service_id to filter by service.
+      parameters:
+        - in: query
+          name: service_id
+          required: false
+          schema:
+            type: string
+          description: >
+            Filter to grants for a specific service. Accepts UUID or
+            svc_<ULID> wire-ID (ADR-0017).
+      responses:
+        "200":
+          description: List of permission grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [grants]
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PermissionGrant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       tags: [Permissions]
       operationId: grantPermission
@@ -1271,6 +1347,15 @@ paths:
             type: string
             enum: [active, expired, revoked]
           description: Filter by key status.
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: >
+            Case-insensitive substring/prefix search on key_fingerprint.
+            Useful to locate a key by its first few fingerprint characters.
         - $ref: "#/components/parameters/AfterCursor"
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -1422,6 +1507,15 @@ paths:
         - $ref: "#/components/parameters/AfterCursor"
         - $ref: "#/components/parameters/Limit"
         - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: >
+            Case-insensitive substring search on event_type. Combine with
+            event_type for an exact-match override.
+        - in: query
           name: event_type
           required: false
           schema:
@@ -1431,21 +1525,41 @@ paths:
           required: false
           schema:
             type: string
-          description: Filter by actor (any ULID-prefixed actor id).
+          description: Exact match on actor_id column (UUID string).
+        - in: query
+          name: target_id
+          required: false
+          schema:
+            type: string
+          description: Exact match on target_id column (UUID string).
+        - in: query
+          name: from_ts
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive lower bound on event time (RFC 3339). Query param name is from_ts.
+        - in: query
+          name: to_ts
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Exclusive upper bound on event time (RFC 3339). Query param name is to_ts.
         - in: query
           name: from
           required: false
           schema:
             type: string
             format: date-time
-          description: Inclusive lower bound on event time (RFC 3339).
+          description: Inclusive lower bound on event time (RFC 3339). Alias for from_ts.
         - in: query
           name: to
           required: false
           schema:
             type: string
             format: date-time
-          description: Exclusive upper bound on event time (RFC 3339).
+          description: Exclusive upper bound on event time (RFC 3339). Alias for to_ts.
       responses:
         "200":
           description: A page of audit events.

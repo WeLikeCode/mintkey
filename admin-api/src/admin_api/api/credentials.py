@@ -271,31 +271,56 @@ async def delete_credential_version(
     return JSONResponse(status_code=204, content=None)
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("")
 async def list_credential_versions(
     tenant_id: UUID,
     service_id: UUID,
+    q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """
     List credential version metadata for a service.
 
+    Optional query parameters:
+      q — case-insensitive substring search on auth_scheme.
+
     Returns version metadata only — no plaintext, no ciphertext — S-SEC-1.
+
+    Note: credentials have no human-readable name field; q matches auth_scheme only.
 
     Source: T-1.3.2; ADR-0008.
     """
     await set_tenant_context(session, tenant_id)
 
-    result = await session.execute(
-        text(
-            "SELECT id, key_version, auth_scheme, status, created_at, revoked_at"
-            " FROM credentials"
-            " WHERE service_id = :sid AND tenant_id = :tid"
-            " ORDER BY key_version DESC"
-        ),
-        {"sid": str(service_id), "tid": str(tenant_id)},
-    )
+    if q is not None:
+        escaped = _escape_like(q)
+        pattern = f"%{escaped}%"
+        result = await session.execute(
+            text(
+                "SELECT id, key_version, auth_scheme, status, created_at, revoked_at"
+                " FROM credentials"
+                " WHERE service_id = :sid AND tenant_id = :tid"
+                " AND auth_scheme ILIKE :pat ESCAPE '\\'"
+                " ORDER BY key_version DESC"
+            ),
+            {"sid": str(service_id), "tid": str(tenant_id), "pat": pattern},
+        )
+    else:
+        result = await session.execute(
+            text(
+                "SELECT id, key_version, auth_scheme, status, created_at, revoked_at"
+                " FROM credentials"
+                " WHERE service_id = :sid AND tenant_id = :tid"
+                " ORDER BY key_version DESC"
+            ),
+            {"sid": str(service_id), "tid": str(tenant_id)},
+        )
     rows = result.fetchall()
 
     versions = [

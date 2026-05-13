@@ -272,9 +272,9 @@ def test_list_api_keys_returns_200(
         f"Expected 200 but got {resp.status_code}: {resp.text}"
     )
     body = resp.json()
-    assert "api_keys" in body, f"Expected 'api_keys' key, got: {body}"
-    items = body["api_keys"]
-    assert isinstance(items, list)
+    # The list endpoint returns a JSON array directly (not a wrapper object).
+    assert isinstance(body, list), f"Expected a list, got: {type(body)}: {body}"
+    items = body
     assert len(items) >= 1
     for item in items:
         # Plaintext must NEVER appear in list response (ADR-0018 §1.3)

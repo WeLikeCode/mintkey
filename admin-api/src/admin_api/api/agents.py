@@ -235,26 +235,88 @@ async def create_agent(
     )
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _wire_id_to_uuid(wire_id: str, prefix: str) -> str:
+    """
+    Accept either a UUID string or a prefixed-ULID wire ID and return the UUID string.
+
+    For the svc_ prefix, services.py stores the ID as a UUID in the DB but the
+    wire form is svc_<32 hex chars>. We convert it back here.
+    Raises ValueError if the wire_id looks like a prefixed ID but cannot be decoded.
+    """
+    if wire_id.startswith(prefix):
+        hex_part = wire_id[len(prefix):]
+        if len(hex_part) == 32:
+            try:
+                return (
+                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                    f"-{hex_part[16:20]}-{hex_part[20:]}"
+                )
+            except Exception:
+                raise ValueError(f"Invalid wire ID: {wire_id}")
+    # Could be a plain UUID — return as-is (FastAPI will validate at route level)
+    return wire_id
+
+
 @router.get("")
 async def list_agents(
     tenant_id: UUID,
+    q: Optional[str] = None,
+    has_access_to_service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     List all agents for a tenant. Never returns plaintext API keys.
 
+    Optional query parameters:
+      q                     — case-insensitive substring search on name or description.
+      has_access_to_service_id — filter to agents with at least one active permission_grant
+                                  on the given service (UUID or svc_ wire-ID).
+
     Source: T-1.4.1; ADR-0008.
     """
     await set_tenant_context(session, tenant_id)
 
-    result = await session.execute(
-        text(
-            "SELECT id, tenant_id, name, description, api_key_fingerprint,"
-            " mcp_endpoint, status, rate_limit_rps, created_at, updated_at"
-            " FROM agents WHERE tenant_id = :tenant_id ORDER BY created_at"
-        ),
-        {"tenant_id": str(tenant_id)},
+    params: dict = {"tenant_id": str(tenant_id)}
+
+    base_sql = (
+        "SELECT id, tenant_id, name, description, api_key_fingerprint,"
+        " mcp_endpoint, status, rate_limit_rps, created_at, updated_at"
+        " FROM agents WHERE tenant_id = :tenant_id"
     )
+
+    if q is not None:
+        escaped = _escape_like(q)
+        pattern = f"%{escaped}%"
+        base_sql += " AND (name ILIKE :pat ESCAPE '\\' OR description ILIKE :pat ESCAPE '\\')"
+        params["pat"] = pattern
+
+    if has_access_to_service_id is not None:
+        try:
+            svc_uuid = _wire_id_to_uuid(has_access_to_service_id, "svc_")
+        except ValueError:
+            from fastapi.responses import JSONResponse as _JSONResponse  # noqa: PLC0415
+            return _JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_id", "title": "Invalid has_access_to_service_id"},
+            )
+        base_sql += (
+            " AND EXISTS ("
+            "   SELECT 1 FROM permission_grants pg"
+            "   WHERE pg.agent_id = agents.id"
+            "     AND pg.tenant_id = :tenant_id"
+            "     AND pg.service_id = :svc_id"
+            " )"
+        )
+        params["svc_id"] = svc_uuid
+
+    base_sql += " ORDER BY created_at"
+
+    result = await session.execute(text(base_sql), params)
     rows = result.fetchall()
     agents = [_agent_row_to_dict(r) for r in rows]
     return JSONResponse({"agents": agents})

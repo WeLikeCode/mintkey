@@ -287,26 +287,52 @@ async def create_service(
     )
 
 
+def _escape_like(value: str) -> str:
+    """Escape LIKE metacharacters so user input cannot glob-match unexpectedly."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("")
 async def list_services(
     tenant_id: UUID,
+    q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     List all services for a tenant.
 
+    Optional query parameters:
+      q — case-insensitive substring search across name, slug, description, base_url.
+
     Source: Req 3; ADR-0008.
     """
     await set_tenant_context(session, tenant_id)
 
-    result = await session.execute(
-        text(
-            "SELECT id, tenant_id, name, slug, display_name, description,"
-            " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
-            " FROM services WHERE tenant_id = :tenant_id ORDER BY created_at"
-        ),
-        {"tenant_id": str(tenant_id)},
-    )
+    if q is not None:
+        escaped = _escape_like(q)
+        pattern = f"%{escaped}%"
+        result = await session.execute(
+            text(
+                "SELECT id, tenant_id, name, slug, display_name, description,"
+                " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
+                " FROM services WHERE tenant_id = :tenant_id"
+                " AND (name ILIKE :pat ESCAPE '\\'"
+                "   OR slug ILIKE :pat ESCAPE '\\'"
+                "   OR description ILIKE :pat ESCAPE '\\'"
+                "   OR base_url ILIKE :pat ESCAPE '\\')"
+                " ORDER BY created_at"
+            ),
+            {"tenant_id": str(tenant_id), "pat": pattern},
+        )
+    else:
+        result = await session.execute(
+            text(
+                "SELECT id, tenant_id, name, slug, display_name, description,"
+                " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
+                " FROM services WHERE tenant_id = :tenant_id ORDER BY created_at"
+            ),
+            {"tenant_id": str(tenant_id)},
+        )
     rows = result.fetchall()
     services = [_service_row_to_dict(r) for r in rows]
     return JSONResponse({"services": services})
