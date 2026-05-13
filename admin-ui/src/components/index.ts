@@ -16,4 +16,12 @@ export const componentLoader = new ComponentLoader();
 
 export const Components = {
   Dashboard: componentLoader.add("Dashboard", "./Dashboard"),
+  // Per-resource intro wrappers (admin-ui-ux-uplift chunk)
+  TenantsIntro: componentLoader.add("TenantsIntro", "./sections/TenantsIntro"),
+  ServicesIntro: componentLoader.add("ServicesIntro", "./sections/ServicesIntro"),
+  CredentialsIntro: componentLoader.add("CredentialsIntro", "./sections/CredentialsIntro"),
+  AgentsIntro: componentLoader.add("AgentsIntro", "./sections/AgentsIntro"),
+  PermissionsIntro: componentLoader.add("PermissionsIntro", "./sections/PermissionsIntro"),
+  ApiKeysIntro: componentLoader.add("ApiKeysIntro", "./sections/ApiKeysIntro"),
+  AuditIntro: componentLoader.add("AuditIntro", "./sections/AuditIntro"),
 };

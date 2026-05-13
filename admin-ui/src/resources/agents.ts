@@ -14,6 +14,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _agentsResource = new RestResource({
   id: "agents", name: "Agents",
@@ -44,6 +45,9 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
     filterProperties: ["name", "status"],
     actions: {
+      list: {
+        component: Components.AgentsIntro,
+      },
       new: {
         isVisible: true,
         handler: async (request, response, context) => {

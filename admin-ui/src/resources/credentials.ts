@@ -14,6 +14,7 @@ import { RestResource } from "../lib/rest-resource.js";
 import { buildCredentialPayload } from "../lib/auth-scheme.js";
 import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _credentialsResource = new RestResource({
   id: "credentials", name: "Credentials",
@@ -42,6 +43,9 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
     editProperties: ["service_id", "auth_scheme"],
     filterProperties: ["auth_scheme", "status"],
     actions: {
+      list: {
+        component: Components.CredentialsIntro,
+      },
       // Create via admin-api (plaintext only sent once, never stored in AdminJS)
       new: {
         isVisible: true,

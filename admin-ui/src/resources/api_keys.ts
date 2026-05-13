@@ -16,6 +16,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _apiKeysResource = new RestResource({
   id: "service_api_keys", name: "API Keys",
@@ -47,6 +48,9 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
     filterProperties: ["service_id", "status"],
     editProperties: ["agent_id", "service_id", "allowed_actions", "expires_at"],
     actions: {
+      list: {
+        component: Components.ApiKeysIntro,
+      },
       // new is hidden — creation uses the custom createApiKey action (Req 9.2; spec §2.7)
       new: { isVisible: false },
       // edit is hidden — keys are immutable after creation (ADR-0014.5)

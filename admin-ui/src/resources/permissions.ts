@@ -11,6 +11,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _permissionsResource = new RestResource({
   id: "permission_grants", name: "Permissions",
@@ -46,6 +47,9 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       },
     },
     actions: {
+      list: {
+        component: Components.PermissionsIntro,
+      },
       new: {
         isVisible: true,
         handler: async (request, response, context) => {

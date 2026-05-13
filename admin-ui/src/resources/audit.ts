@@ -23,6 +23,7 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
+import { Components } from "../components/index.js";
 
 const _auditResource = new RestResource({
   id: "audit_events", name: "Audit Events",
@@ -64,6 +65,9 @@ export const AuditResource: ResourceWithOptions & { adminResource: typeof _audit
     },
     // All write actions disabled — audit log is append-only
     actions: {
+      list: {
+        component: Components.AuditIntro,
+      },
       new: { isVisible: false },
       edit: { isVisible: false },
       delete: { isVisible: false },

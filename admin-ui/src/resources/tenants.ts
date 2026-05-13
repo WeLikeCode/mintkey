@@ -15,6 +15,7 @@ import { apiWrite } from "../lib/api-client.js";
 import { isPlatformAdminView } from "../middleware/platform-admin.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 import type { Request } from "express";
 
 function assertPlatformAdmin(context: ActionContext): void {
@@ -62,6 +63,7 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
     actions: {
       list: {
         isVisible: true,
+        component: Components.TenantsIntro,
         before: [
           async (request, context) => {
             assertPlatformAdmin(context);

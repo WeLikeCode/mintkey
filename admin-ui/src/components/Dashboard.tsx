@@ -2,16 +2,18 @@
  * Mintkey custom dashboard component — replaces the stock AdminJS
  * "Welcome on Board!" tips screen.
  *
- * Renders the quick-start onboarding checklist + at-a-glance counts + an empty
- * state, from the data produced by `dashboardHandler` (src/dashboard.ts), which
- * AdminJS exposes via `ApiClient#getDashboard()`.
+ * Renders:
+ * 1. Data-model SVG diagram — visual entity-relationship overview.
+ * 2. 6-step static onboarding flow ("Get started") with CTA links.
+ * 3. Quick-start checklist (data-driven done/not-done items).
+ * 4. At-a-glance counts.
  *
  * Imports of `react`, `@adminjs/design-system` and `adminjs` are treated as
  * externals by AdminJS's component bundler (AssetBundler.DEFAULT_EXTERNALS) —
  * they resolve to the `React` / `AdminJSDesignSystem` / `AdminJS` globals the
  * AdminJS frontend already ships, so this component adds no new dependency.
  *
- * Source: ADMIN_UI_SPEC.md §2.1; ADR-0019.
+ * Source: ADMIN_UI_SPEC.md §2.1; ADR-0019; admin-ui-ux-uplift chunk.
  */
 
 import React, { useEffect, useState } from "react";
@@ -50,6 +52,137 @@ const STEPS: Step[] = [
   { key: "hasPermissions", title: "Grant the agent a permission", ctaLabel: "Grant a permission", ctaHref: "/admin/resources/permission_grants/actions/new" },
   { key: "hasTested", title: "Connect your LLM to MCP", ctaLabel: "Show MCP config", ctaHref: "/admin/resources/agents" },
 ];
+
+/** 6-step static onboarding flow (admin-ui-ux-uplift chunk). */
+const ONBOARDING_STEPS = [
+  { n: 1, label: "Register a Service", href: "/admin/resources/services", resource: "services" },
+  { n: 2, label: "Attach a Credential", href: "/admin/resources/credentials", resource: "credentials" },
+  { n: 3, label: "Create an Agent", href: "/admin/resources/agents", resource: "agents" },
+  { n: 4, label: "Grant the Agent a Permission on the Service", href: "/admin/resources/permission_grants", resource: "permission_grants" },
+  { n: 5, label: "(Optional) Issue a Service API Key for non-agent clients", href: "/admin/resources/service_api_keys", resource: "service_api_keys" },
+  { n: 6, label: "Connect your LLM via MCP", href: "/admin/resources/agents", resource: "agents" },
+];
+
+/** Inline SVG data-model diagram — no extra libraries. */
+const DataModelDiagram: React.FC = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 760 320"
+    width="100%"
+    style={{ maxWidth: 760, display: "block", fontFamily: "inherit" }}
+    role="img"
+    aria-label="Mintkey data-model diagram showing entity relationships"
+    data-testid="data-model-diagram"
+  >
+    {/* ── Tenant box ──────────────────────────────────────── */}
+    <rect x="10" y="120" width="120" height="44" rx="6" fill="#e8f4f8" stroke="#3795BE" strokeWidth="2" />
+    <text x="70" y="147" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1a3c5e">Tenant</text>
+
+    {/* ── Service box ─────────────────────────────────────── */}
+    <rect x="200" y="60" width="120" height="44" rx="6" fill="#e8f0fb" stroke="#4a7ab5" strokeWidth="2" />
+    <text x="260" y="87" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1a2d5a">Service</text>
+
+    {/* ── Credential box ──────────────────────────────────── */}
+    <rect x="200" y="180" width="120" height="44" rx="6" fill="#fef9e7" stroke="#d4ac0d" strokeWidth="2" />
+    <text x="260" y="207" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#5c4a00">Credential</text>
+
+    {/* ── Agent box ───────────────────────────────────────── */}
+    <rect x="200" y="120" width="120" height="44" rx="6" fill="#eafaf1" stroke="#27ae60" strokeWidth="2" />
+    <text x="260" y="147" textAnchor="middle" fontSize="13" fontWeight="bold" fill="#1a5c33">Agent</text>
+
+    {/* ── Permission Grant box ────────────────────────────── */}
+    <rect x="400" y="90" width="140" height="44" rx="6" fill="#fdf2fb" stroke="#8e44ad" strokeWidth="2" />
+    <text x="470" y="112" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#5b2c6f">Permission</text>
+    <text x="470" y="126" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#5b2c6f">Grant</text>
+
+    {/* ── Service API Key box ─────────────────────────────── */}
+    <rect x="400" y="175" width="140" height="44" rx="6" fill="#fef5e4" stroke="#e67e22" strokeWidth="2" />
+    <text x="470" y="197" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#784212">Service API</text>
+    <text x="470" y="211" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#784212">Key (optional)</text>
+
+    {/* ── Audit Events band ───────────────────────────────── */}
+    <rect x="600" y="60" width="148" height="200" rx="6" fill="#fdfefe" stroke="#717d7e" strokeWidth="2" strokeDasharray="6,3" />
+    <text x="674" y="88" textAnchor="middle" fontSize="11" fill="#4d5656" fontWeight="bold">Audit Events</text>
+    <text x="674" y="106" textAnchor="middle" fontSize="10" fill="#717d7e">(cross-cutting,</text>
+    <text x="674" y="120" textAnchor="middle" fontSize="10" fill="#717d7e">hash-chained)</text>
+    <line x1="674" y1="128" x2="674" y2="238" stroke="#aab7b8" strokeWidth="1" strokeDasharray="3,3" />
+    <text x="674" y="255" textAnchor="middle" fontSize="10" fill="#717d7e">all entities</text>
+    <text x="674" y="268" textAnchor="middle" fontSize="10" fill="#717d7e">emit events</text>
+
+    {/* ── Edges ───────────────────────────────────────────── */}
+    {/* Tenant → Service */}
+    <line x1="130" y1="132" x2="200" y2="95" stroke="#3795BE" strokeWidth="1.5" markerEnd="url(#arr)" />
+    {/* Tenant → Agent */}
+    <line x1="130" y1="142" x2="200" y2="142" stroke="#3795BE" strokeWidth="1.5" markerEnd="url(#arr)" />
+    {/* Tenant → Credential (via Service) */}
+    <line x1="130" y1="152" x2="200" y2="192" stroke="#3795BE" strokeWidth="1.5" markerEnd="url(#arr)" />
+    {/* Service ↔ Credential (bidirectional — paired) */}
+    <line x1="260" y1="104" x2="260" y2="180" stroke="#d4ac0d" strokeWidth="1.5" strokeDasharray="5,3" markerEnd="url(#arrGold)" markerStart="url(#arrGoldR)" />
+    {/* Agent + Service → Permission Grant */}
+    <line x1="320" y1="130" x2="400" y2="110" stroke="#8e44ad" strokeWidth="1.5" markerEnd="url(#arrPurple)" />
+    <line x1="320" y1="90" x2="400" y2="107" stroke="#8e44ad" strokeWidth="1.5" markerEnd="url(#arrPurple)" />
+    {/* Permission Grant → Service API Key (subset) */}
+    <line x1="470" y1="134" x2="470" y2="175" stroke="#e67e22" strokeWidth="1.5" strokeDasharray="5,3" markerEnd="url(#arrOrange)" />
+    {/* All → Audit (dashed arrows) */}
+    <line x1="600" y1="155" x2="548" y2="155" stroke="#aab7b8" strokeWidth="1" strokeDasharray="4,2" markerEnd="url(#arrGrey)" />
+
+    {/* ── Arrow markers ───────────────────────────────────── */}
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#3795BE" />
+      </marker>
+      <marker id="arrGold" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#d4ac0d" />
+      </marker>
+      <marker id="arrGoldR" markerWidth="8" markerHeight="8" refX="2" refY="3" orient="auto-start-reverse">
+        <path d="M0,0 L0,6 L8,3 z" fill="#d4ac0d" />
+      </marker>
+      <marker id="arrPurple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#8e44ad" />
+      </marker>
+      <marker id="arrOrange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#e67e22" />
+      </marker>
+      <marker id="arrGrey" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#aab7b8" />
+      </marker>
+    </defs>
+
+    {/* ── Legend ──────────────────────────────────────────── */}
+    <text x="10" y="300" fontSize="10" fill="#555">Solid arrows = ownership/containment</text>
+    <text x="10" y="313" fontSize="10" fill="#555">Dashed arrows = optional / cross-cutting link</text>
+  </svg>
+);
+
+/** 6-step onboarding cards */
+const OnboardingStep: React.FC<{ n: number; label: string; href: string; resource: string }> = ({ n, label, href, resource }) => (
+  <Box
+    flex
+    alignItems="center"
+    mb="lg"
+    p="lg"
+    style={{ border: "1px solid #d0e4ef", borderRadius: 6, background: "#f8fbfd" }}
+    data-testid={`onboarding-step-${n}`}
+  >
+    <Box
+      mr="lg"
+      style={{
+        width: 32, height: 32, borderRadius: "50%",
+        background: "#3795BE", color: "#fff",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontWeight: "bold", fontSize: 14, flexShrink: 0,
+      }}
+    >
+      {n}
+    </Box>
+    <Box flexGrow={1}>
+      <Text style={{ margin: 0 }}>{label}</Text>
+    </Box>
+    <Button as="a" href={href} size="sm" variant="light" data-resource={resource}>
+      Open {label.replace(/^\(Optional\) /, "").split(" ").slice(0, 3).join(" ")}
+    </Button>
+  </Box>
+);
 
 const ChecklistItem: React.FC<{ done: boolean; title: string; ctaLabel: string; ctaHref: string }> = ({ done, title, ctaLabel, ctaHref }) => (
   <Box flex alignItems="center" mb="lg" data-testid="dashboard-checklist-item">
@@ -93,6 +226,20 @@ const Dashboard: React.FC = () => {
           Operator <strong>{data?.email || "—"}</strong>
           {data?.tenantId ? <> &middot; tenant <strong>{data.tenantId}</strong></> : null}
         </Text>
+      </Box>
+
+      {/* ── Data-model diagram ──────────────────────────── */}
+      <Box variant="white" mb="xxl" data-testid="diagram-section">
+        <H4 mb="lg">Data model</H4>
+        <DataModelDiagram />
+      </Box>
+
+      {/* ── 6-step onboarding flow ──────────────────────── */}
+      <Box variant="white" mb="xxl" data-testid="get-started-section">
+        <H4 mb="lg">Get started</H4>
+        {ONBOARDING_STEPS.map((s) => (
+          <OnboardingStep key={s.n} n={s.n} label={s.label} href={s.href} resource={s.resource} />
+        ))}
       </Box>
 
       {nothingExists ? (

@@ -12,6 +12,7 @@ import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
 import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _servicesResource = new RestResource({
   id: "services", name: "Services",
@@ -49,6 +50,9 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       },
     },
     actions: {
+      list: {
+        component: Components.ServicesIntro,
+      },
       new: {
         isVisible: true,
         handler: async (request, response, context) => {
