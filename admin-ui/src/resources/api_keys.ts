@@ -23,6 +23,7 @@ const _apiKeysResource = new RestResource({
   listPath: "/v1/tenants/{tenantId}/api-keys",
   listKey: "api_keys",
   idField: "id",
+  filterKeys: ["q", "service_id"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "agent_id", type: "string" },
@@ -35,6 +36,8 @@ const _apiKeysResource = new RestResource({
     { path: "created_at", type: "datetime" },
     { path: "created_by", type: "string" },
     { path: "status", type: "string" },
+    // Virtual filter-only: free-text search on key_fingerprint prefix
+    { path: "q", type: "string" },
   ],
 });
 
@@ -45,7 +48,14 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
     navigation: { name: "API Keys", icon: "Key" },
     listProperties: ["key_fingerprint", "service_id", "allowed_actions", "expires_at", "last_used_at", "status", "created_at"],
     showProperties: ["id", "key_fingerprint", "service_id", "allowed_actions", "constraints", "expires_at", "last_used_at", "created_at", "created_by", "status"],
-    filterProperties: ["service_id", "status"],
+    filterProperties: ["q", "service_id", "status"],
+    properties: {
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (fingerprint prefix)",
+        description: "Case-insensitive prefix match on key_fingerprint.",
+      },
+    },
     editProperties: ["agent_id", "service_id", "allowed_actions", "expires_at"],
     actions: {
       list: {

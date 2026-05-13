@@ -30,6 +30,7 @@ const _auditResource = new RestResource({
   listPath: "/v1/tenants/{tenantId}/audit",
   listKey: "items",
   idField: "id",
+  filterKeys: ["q", "event_type", "actor_id", "target_id", "from_ts", "to_ts"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "event_type", type: "string" },
@@ -46,6 +47,10 @@ const _auditResource = new RestResource({
     { path: "created_at", type: "datetime" },
     // alias also referenced by the OpenAPI schema; admin-api returns `created_at`.
     { path: "at", type: "datetime" },
+    // Virtual filter-only properties (not returned by API, only used for filtering)
+    { path: "q", type: "string" },
+    { path: "from_ts", type: "string" },
+    { path: "to_ts", type: "string" },
   ],
 });
 
@@ -56,11 +61,26 @@ export const AuditResource: ResourceWithOptions & { adminResource: typeof _audit
     navigation: { name: "Audit Log", icon: "ClipboardList" },
     listProperties: ["created_at", "event_type", "actor_type", "actor_id", "target_type", "target_id", "tenant_id"],
     showProperties: ["id", "created_at", "event_type", "actor_type", "actor_id", "target_type", "target_id", "payload", "prev_hash", "hash", "request_id", "trace_id", "tenant_id"],
-    filterProperties: ["event_type", "actor_id", "actor_type", "target_id", "target_type"],
+    filterProperties: ["q", "event_type", "actor_id", "target_id", "from_ts", "to_ts", "actor_type", "target_type"],
     properties: {
       payload: {
         type: "mixed",
         isArray: false,
+      },
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (event type)",
+        description: "Case-insensitive substring match on event_type.",
+      },
+      from_ts: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "From (ISO 8601)",
+        description: "Inclusive lower bound on event time. Example: 2024-01-01T00:00:00Z",
+      },
+      to_ts: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "To (ISO 8601)",
+        description: "Exclusive upper bound on event time. Example: 2024-12-31T23:59:59Z",
       },
     },
     // All write actions disabled — audit log is append-only

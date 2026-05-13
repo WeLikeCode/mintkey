@@ -21,6 +21,7 @@ const _agentsResource = new RestResource({
   listPath: "/v1/tenants/{tenantId}/agents",
   listKey: "agents",
   idField: "id",
+  filterKeys: ["q", "has_access_to_service_id"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "name", type: "string" },
@@ -31,6 +32,9 @@ const _agentsResource = new RestResource({
     { path: "rate_limit_rps", type: "number" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
+    // Virtual filter-only properties
+    { path: "q", type: "string" },
+    { path: "has_access_to_service_id", type: "string" },
   ],
 });
 
@@ -43,7 +47,19 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
     listProperties: ["id", "name", "status", "api_key_fingerprint", "rate_limit_rps", "created_at"],
     showProperties: ["id", "name", "description", "status", "api_key_fingerprint", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
-    filterProperties: ["name", "status"],
+    filterProperties: ["q", "has_access_to_service_id", "name", "status"],
+    properties: {
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (name)",
+        description: "Case-insensitive substring match on agent name.",
+      },
+      has_access_to_service_id: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Has access to service (ID)",
+        description: "Filter agents that have a permission grant for this service. Paste a UUID or svc_… wire ID.",
+      },
+    },
     actions: {
       list: {
         component: Components.AgentsIntro,

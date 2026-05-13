@@ -35,6 +35,7 @@ const _tenantsResource = new RestResource({
   listPath: "/v1/tenants",
   listKey: "data",
   idField: "id",
+  filterKeys: ["q"],
   properties: [
     { path: "id", type: "uuid", isId: true },
     { path: "slug", type: "string" },
@@ -44,6 +45,8 @@ const _tenantsResource = new RestResource({
     { path: "isolation_mode", type: "string" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
+    // Virtual filter-only: free-text search on slug / display_name
+    { path: "q", type: "string" },
   ],
 });
 
@@ -56,7 +59,14 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
     showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at"],
     newProperties: ["slug", "display_name", "isolation_mode"],
     editProperties: ["slug", "display_name", "isolation_mode"],
-    filterProperties: ["slug", "status"],
+    filterProperties: ["q", "slug", "status"],
+    properties: {
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (slug / name)",
+        description: "Case-insensitive substring match on tenant slug and display_name.",
+      },
+    },
 
     // Resource is visible only to PlatformAdmin
     // Non-PlatformAdmin gets empty results (RLS enforces tenant scope)

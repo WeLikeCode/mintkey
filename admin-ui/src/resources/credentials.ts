@@ -18,9 +18,13 @@ import { Components } from "../components/index.js";
 
 const _credentialsResource = new RestResource({
   id: "credentials", name: "Credentials",
+  // The list path reuses the services endpoint — credentials are listed per
+  // service. There is no tenant-wide credentials list endpoint; `q` here
+  // matches service name/slug, giving an indirect "filter by service" UX.
   listPath: "/v1/tenants/{tenantId}/services",
   listKey: "services",
   idField: "id",
+  filterKeys: ["q"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "service_id", type: "string" },
@@ -29,6 +33,8 @@ const _credentialsResource = new RestResource({
     { path: "auth_scheme", type: "string" },
     { path: "current_key_version", type: "number" },
     { path: "status", type: "string" },
+    // Virtual filter-only: free-text search on service name/slug
+    { path: "q", type: "string" },
   ],
 });
 
@@ -41,7 +47,14 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
     listProperties: ["name", "auth_scheme", "current_key_version", "status"],
     showProperties: ["id", "name", "slug", "auth_scheme", "current_key_version", "status"],
     editProperties: ["service_id", "auth_scheme"],
-    filterProperties: ["auth_scheme", "status"],
+    filterProperties: ["q", "auth_scheme", "status"],
+    properties: {
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (service name / slug)",
+        description: "Case-insensitive substring match on service name and slug.",
+      },
+    },
     actions: {
       list: {
         component: Components.CredentialsIntro,

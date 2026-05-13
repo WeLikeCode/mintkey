@@ -18,6 +18,7 @@ const _permissionsResource = new RestResource({
   listPath: "/v1/tenants/{tenantId}/permissions",
   listKey: "permissions",
   idField: "id",
+  filterKeys: ["service_id"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "agent_id", type: "string" },

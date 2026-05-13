@@ -25,6 +25,14 @@ interface RestResourceConfig {
   idField?: string;
   listKey: string;
   properties: PropertyDef[];
+  /**
+   * Allowlist of filter key names (matching AdminJS property names) that should
+   * be forwarded to admin-api as query-string parameters.  Any Filter key not in
+   * this list is silently ignored — it may still be used by AdminJS client-side
+   * but will not be sent to the API.  Value must be non-empty string; blank
+   * values are dropped.
+   */
+  filterKeys?: string[];
 }
 
 /**
@@ -104,14 +112,21 @@ export class RestResource extends BaseResource {
   }
 
   async find(
-    _filter: Filter,
+    filter: Filter,
     _options: { limit?: number; offset?: number; sort?: { sortBy?: string; direction?: "asc" | "desc" } },
     context?: ActionContext
   ): Promise<BaseRecord[]> {
     const tenantId = (context?.currentAdmin as { tenantId?: string } | undefined)?.tenantId;
-    if (!tenantId) return [];
 
-    const url = `${this.apiUrl}${this.config.listPath.replace("{tenantId}", tenantId)}`;
+    let path = this.config.listPath;
+    if (path.includes("{tenantId}")) {
+      if (!tenantId) return [];
+      path = path.replace("{tenantId}", tenantId);
+    }
+
+    const qs = this._buildQueryString(filter);
+    const url = `${this.apiUrl}${path}${qs ? `?${qs}` : ""}`;
+
     try {
       const resp = await fetch(url, { headers: this._sessionHeaders(context) });
       if (!resp.ok) return [];
@@ -122,6 +137,28 @@ export class RestResource extends BaseResource {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Translate AdminJS filter keys → URL query string using the resource's
+   * `filterKeys` allowlist.  Only keys in the allowlist with non-blank values
+   * are included.
+   */
+  private _buildQueryString(filter: Filter): string {
+    const allowedKeys = this.config.filterKeys ?? [];
+    if (allowedKeys.length === 0) return "";
+
+    // AdminJS Filter stores the active values in `.filters` as a plain object.
+    const rawFilters = (filter as unknown as { filters?: Record<string, unknown> }).filters ?? {};
+
+    const params = new URLSearchParams();
+    for (const key of allowedKeys) {
+      const val = rawFilters[key];
+      if (val !== undefined && val !== null && val !== "") {
+        params.set(key, String(val));
+      }
+    }
+    return params.toString();
   }
 
   async findOne(id: string, context?: ActionContext): Promise<BaseRecord | null> {

@@ -20,6 +20,7 @@ const _servicesResource = new RestResource({
   getPath: "/v1/tenants/{tenantId}/services/{id}",
   listKey: "services",
   idField: "id",
+  filterKeys: ["q"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "name", type: "string" },
@@ -32,6 +33,8 @@ const _servicesResource = new RestResource({
     { path: "current_key_version", type: "number" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
+    // Virtual filter-only: free-text search forwarded to admin-api ?q=
+    { path: "q", type: "string" },
   ],
 });
 
@@ -43,10 +46,15 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
     listProperties: ["id", "name", "slug", "base_url", "auth_scheme", "status", "created_at"],
     editProperties: ["name", "slug", "base_url", "auth_scheme", "description", "openapi_url"],
     showProperties: ["id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "status", "current_key_version", "created_at", "updated_at"],
-    filterProperties: ["name", "slug", "auth_scheme", "status"],
+    filterProperties: ["q", "name", "slug", "auth_scheme", "status"],
     properties: {
       auth_scheme: {
         availableValues: AUTH_SCHEMES,
+      },
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (name / slug)",
+        description: "Case-insensitive substring match on service name and slug.",
       },
     },
     actions: {
