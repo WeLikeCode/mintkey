@@ -143,19 +143,61 @@ export class RestResource extends BaseResource {
    * Translate AdminJS filter keys → URL query string using the resource's
    * `filterKeys` allowlist.  Only keys in the allowlist with non-blank values
    * are included.
+   *
+   * AdminJS stores each filter entry as a FilterElement:
+   *   { path: string, property: BaseProperty, value: string | {from, to}, populated? }
+   * NOT as a raw string. We extract `.value` before building query params.
+   *
+   * Range filters (value = {from, to}) are split into two separate params using
+   * the key suffixed with the companion key from filterKeys (e.g. from_ts/to_ts).
    */
   private _buildQueryString(filter: Filter): string {
     const allowedKeys = this.config.filterKeys ?? [];
     if (allowedKeys.length === 0) return "";
 
-    // AdminJS Filter stores the active values in `.filters` as a plain object.
-    const rawFilters = (filter as unknown as { filters?: Record<string, unknown> }).filters ?? {};
+    // AdminJS Filter stores the active values in `.filters` as FilterElement objects.
+    type FilterElement = { path: string; property: unknown; value: string | { from: string; to: string }; populated?: unknown };
+    const rawFilters = (filter as unknown as { filters?: Record<string, FilterElement> }).filters ?? {};
 
     const params = new URLSearchParams();
     for (const key of allowedKeys) {
-      const val = rawFilters[key];
-      if (val !== undefined && val !== null && val !== "") {
-        params.set(key, String(val));
+      const element = rawFilters[key];
+      if (element === undefined || element === null) continue;
+
+      const value = element.value;
+      if (value === undefined || value === null) continue;
+
+      // Range shape: { from, to } — split into from_<key> and to_<key> equivalents.
+      // For from_ts/to_ts specifically: a single from_ts entry with {from, to} shape
+      // maps to from_ts=<from> and to_ts=<to>.
+      if (typeof value === "object" && "from" in value && "to" in value) {
+        const { from, to } = value;
+        if (from && typeof from === "string" && from.trim() !== "") {
+          params.set(key, from.trim());
+        }
+        // Derive companion key: from_ts → to_ts, from_X → to_X, otherwise key + "_to"
+        const companionKey = key.startsWith("from_")
+          ? key.replace(/^from_/, "to_")
+          : allowedKeys.find((k) => k.startsWith("to_") && k.slice(3) === key.slice(5)) ?? `${key}_to`;
+        if (to && typeof to === "string" && to.trim() !== "" && allowedKeys.includes(companionKey)) {
+          params.set(companionKey, to.trim());
+        }
+        continue;
+      }
+
+      // Scalar string value
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed !== "") {
+          params.set(key, trimmed);
+        }
+        continue;
+      }
+
+      // Numeric / boolean fallback
+      const strVal = String(value);
+      if (strVal !== "") {
+        params.set(key, strVal);
       }
     }
     return params.toString();

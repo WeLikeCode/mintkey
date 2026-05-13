@@ -10,15 +10,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { RestResource } from "../../../src/lib/rest-resource.js";
 import type { Filter, ActionContext } from "adminjs";
+import { BaseProperty } from "adminjs";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a minimal AdminJS Filter-like object with filters map. */
-function makeFilter(filters: Record<string, string>): Filter {
+type FilterValue = string | { from: string; to: string };
+
+/**
+ * Build a minimal AdminJS Filter-like object with real FilterElement shapes.
+ * AdminJS stores each filter entry as a FilterElement:
+ *   { path, property, value, populated? }
+ * NOT as a raw string — this matches what AdminJS actually emits at runtime.
+ */
+function makeFilter(filters: Record<string, FilterValue>): Filter {
+  const filterElements: Record<string, { path: string; property: BaseProperty; value: FilterValue }> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    filterElements[key] = {
+      path: key,
+      property: new BaseProperty({ path: key, type: "string" }),
+      value,
+    };
+  }
   return {
-    filters,
+    filters: filterElements,
     reduce: () => ({}),
     populate: async () => ({}),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +110,20 @@ describe("Services resource — filter q forwarded as ?q=", () => {
     const url = capturedUrl();
     expect(url).not.toContain("nonexistent");
   });
+
+  it("does not emit ?q= when value is empty string", async () => {
+    await res.find(makeFilter({ q: "" }), {}, makeContext("tid1"));
+    const url = capturedUrl();
+    expect(url).not.toContain("q=");
+    expect(url).not.toContain("?");
+  });
+
+  it("strips leading/trailing whitespace from filter value", async () => {
+    await res.find(makeFilter({ q: "  crm  " }), {}, makeContext("tid1"));
+    const url = capturedUrl();
+    expect(url).toContain("q=crm");
+    expect(url).not.toContain("q=++crm");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -158,15 +188,26 @@ describe("Audit resource — multi-filter", () => {
     expect(capturedUrl()).toContain("event_type=service.registered");
   });
 
-  it("forwards from_ts + to_ts (ISO 8601)", async () => {
+  it("forwards from_ts + to_ts (ISO 8601 as separate string entries)", async () => {
     await res.find(
       makeFilter({ from_ts: "2024-01-01T00:00:00Z", to_ts: "2024-12-31T23:59:59Z" }),
       {},
       makeContext("tid3"),
     );
     const url = capturedUrl();
-    expect(url).toContain("from_ts=");
-    expect(url).toContain("to_ts=");
+    expect(url).toContain("from_ts=2024-01-01T00%3A00%3A00Z");
+    expect(url).toContain("to_ts=2024-12-31T23%3A59%3A59Z");
+  });
+
+  it("forwards from_ts + to_ts (range object shape {from, to})", async () => {
+    await res.find(
+      makeFilter({ from_ts: { from: "2024-01-01T00:00:00Z", to: "2024-12-31T23:59:59Z" } }),
+      {},
+      makeContext("tid3"),
+    );
+    const url = capturedUrl();
+    expect(url).toContain("from_ts=2024-01-01T00%3A00%3A00Z");
+    expect(url).toContain("to_ts=2024-12-31T23%3A59%3A59Z");
   });
 
   it("forwards actor_id and target_id", async () => {
