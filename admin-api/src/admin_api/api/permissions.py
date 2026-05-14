@@ -341,7 +341,48 @@ async def grant_permission(
             content={"mintkey:code": "not_found", "title": "Agent not found"},
         )
 
-    # 4. Check for existing grant with same (agent_uuid, service_id, action)
+    # 4. Resolve wire-prefixed service_id to DB UUID — ADR-0017.11; R11a
+    #    Services stores uuid4() independently; the wire form "svc_<32hex>" is
+    #    uuid-without-dashes. Crockford (26-char) ULID forms require a DB lookup
+    #    because the ULID is not stored in the services table (only in audit events).
+    svc_input = body.service_id
+    if svc_input.startswith("svc_"):
+        hex_part = svc_input[4:]
+        if len(hex_part) == 32:
+            # 32-hex form: svc_<uuid-without-dashes> → direct decode
+            svc_uuid = (
+                f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                f"-{hex_part[16:20]}-{hex_part[20:]}"
+            )
+        else:
+            # Crockford ULID form: look up service by wire_id stored in audit payload
+            svc_lookup = await session.execute(
+                text(
+                    "SELECT target_id FROM audit_events"
+                    " WHERE event_type = 'service.registered'"
+                    "   AND tenant_id = :tid"
+                    "   AND payload->>'svc_id' = :svc_wire"
+                    " LIMIT 1"
+                ),
+                {"tid": str(tenant_id), "svc_wire": svc_input},
+            )
+            svc_row = svc_lookup.fetchone()
+            if svc_row is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"mintkey:code": "not_found", "title": "Service not found"},
+                )
+            svc_uuid = str(svc_row.target_id)
+    else:
+        # Plain UUID — use as-is
+        svc_uuid = svc_input
+
+    # 5. Default constraints to {} when caller omits field — R11a
+    constraints_dict = (
+        body.constraints.model_dump(exclude_none=True) if body.constraints else {}
+    )
+
+    # 6. Check for existing grant with same (agent_uuid, svc_uuid, action)
     existing_result = await session.execute(
         text(
             "SELECT id, constraints FROM permission_grants"
@@ -350,16 +391,12 @@ async def grant_permission(
         ),
         {
             "aid": agent_uuid,
-            "sid": body.service_id,
+            "sid": svc_uuid,
             "action": body.action,
             "tid": str(tenant_id),
         },
     )
     existing = existing_result.fetchone()
-
-    constraints_dict = (
-        body.constraints.model_dump(exclude_none=True) if body.constraints else None
-    )
 
     if existing is not None:
         # Normalize stored constraints for comparison
@@ -393,12 +430,12 @@ async def grant_permission(
                 },
             )
 
-    # 4. Generate perm_ ULID ID — ADR-0017.11
+    # 7. Generate perm_ ULID ID — ADR-0017.11
     perm_id = _new_perm_id()
     internal_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
-    # 5. INSERT permission_grants
+    # 8. INSERT permission_grants — bind svc_uuid (decoded UUID), not raw wire-form
     granted_by = body.granted_by or agent_uuid
     await session.execute(
         text(
@@ -411,15 +448,15 @@ async def grant_permission(
             "id": str(internal_id),
             "tenant_id": str(tenant_id),
             "agent_id": agent_uuid,
-            "service_id": body.service_id,
+            "service_id": svc_uuid,
             "action": body.action,
-            "constraints": json.dumps(constraints_dict) if constraints_dict is not None else None,
+            "constraints": json.dumps(constraints_dict),
             "created_at": now,
             "created_by": granted_by,
         },
     )
 
-    # 6. Emit audit event — ADR-0014.7
+    # 9. Emit audit event — ADR-0014.7
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
@@ -437,7 +474,7 @@ async def grant_permission(
         },
     )
 
-    # 7. Return 201
+    # 10. Return 201
     return JSONResponse(
         status_code=201,
         content={

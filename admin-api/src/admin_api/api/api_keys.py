@@ -184,6 +184,43 @@ def _check_policy(settings: dict, body: ServiceApiKeyCreate) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Wire-form key ID resolver — ADR-0017.11; R11a
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_api_key_id(api_key_id: str, session: AsyncSession, tenant_id) -> str | None:
+    """
+    Resolve a svckey_ wire-form ID to the DB UUID stored in service_api_keys.
+
+    create_api_key returns a Crockford ULID wire ID (svckey_<26>), but the DB
+    stores an independent uuid4().  Look up via audit_events payload where
+    new_api_key_id or api_key_id matches — returning the target_id (DB UUID).
+
+    Returns None if not resolvable (caller should return 404).
+    Returns the input as-is if it's already a plain UUID.
+
+    Source: R11a; ADR-0017.11.
+    """
+    if not api_key_id.startswith("svckey_"):
+        return api_key_id  # Already a plain UUID or other form
+
+    row = await session.execute(
+        text(
+            "SELECT target_id FROM audit_events"
+            " WHERE event_type IN ('api_key.created', 'api_key.rotated')"
+            "   AND tenant_id = :tid"
+            "   AND (payload->>'api_key_id' = :kid OR payload->>'new_api_key_id' = :kid)"
+            " LIMIT 1"
+        ),
+        {"tid": str(tenant_id), "kid": api_key_id},
+    )
+    found = row.fetchone()
+    if found is None:
+        return None
+    return str(found.target_id)
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -346,9 +383,18 @@ async def list_api_keys(
 
     Source: long-lived-api-keys task 7.2; Req 8.2; ADR-0008.
     """
+    # Decode wire-prefixed agent_id → UUID — ADR-0017.11; R11a
+    try:
+        agent_uuid = _decode_agent_wire_id(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+
     await set_tenant_context(session, tenant_id)
 
-    params: dict = {"aid": agent_id, "tid": str(tenant_id)}
+    params: dict = {"aid": agent_uuid, "tid": str(tenant_id)}
     base_sql = (
         "SELECT id, key_fingerprint, service_id, allowed_actions, constraints,"
         "       expires_at, last_used_at, created_at, created_by, revoked_at"
@@ -415,6 +461,15 @@ async def get_api_key(
 
     Source: long-lived-api-keys task 7.2; Req 8.3; ADR-0008.
     """
+    # Decode wire-prefixed agent_id → UUID — ADR-0017.11; R11a
+    try:
+        agent_uuid = _decode_agent_wire_id(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+
     await set_tenant_context(session, tenant_id)
 
     row_result = await session.execute(
@@ -425,7 +480,7 @@ async def get_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
+        {"aid": agent_uuid, "tid": str(tenant_id), "kid": api_key_id},
     )
     row = row_result.fetchone()
     if row is None:
@@ -468,6 +523,15 @@ async def revoke_api_key(
 
     Source: long-lived-api-keys task 7.3; ADR-0014.7; ADR-0014.1; ADR-0008.
     """
+    # Decode wire-prefixed agent_id → UUID — ADR-0017.11; R11a
+    try:
+        agent_uuid = _decode_agent_wire_id(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+
     await set_tenant_context(session, tenant_id)
 
     row_result = await session.execute(
@@ -477,7 +541,7 @@ async def revoke_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
+        {"aid": agent_uuid, "tid": str(tenant_id), "kid": api_key_id},
     )
     row = row_result.fetchone()
     if row is None:
@@ -553,6 +617,15 @@ async def rotate_api_key(
 
     Source: long-lived-api-keys task 7.4; Req 5.1; 5.2; ADR-0018; ADR-0014.7; ADR-0017.11.
     """
+    # Decode wire-prefixed agent_id → UUID — ADR-0017.11; R11a
+    try:
+        agent_uuid = _decode_agent_wire_id(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+
     await set_tenant_context(session, tenant_id)
 
     row_result = await session.execute(
@@ -563,7 +636,7 @@ async def rotate_api_key(
             " WHERE agent_id = :aid AND tenant_id = :tid AND id = :kid"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "tid": str(tenant_id), "kid": api_key_id},
+        {"aid": agent_uuid, "tid": str(tenant_id), "kid": api_key_id},
     )
     old_row = row_result.fetchone()
     if old_row is None:
@@ -597,7 +670,7 @@ async def rotate_api_key(
         {
             "id": str(new_internal_id),
             "tid": str(tenant_id),
-            "aid": agent_id,
+            "aid": agent_uuid,
             "sid": old_row.service_id,
             "key_hash": key_hash,
             "fp": fp,
@@ -605,7 +678,7 @@ async def rotate_api_key(
             "constraints": old_row.constraints,
             "expires_at": new_expires_at,
             "now": now,
-            "created_by": agent_id,
+            "created_by": agent_uuid,
         },
     )
 
@@ -621,7 +694,7 @@ async def rotate_api_key(
             "old_api_key_id": api_key_id,
             "new_api_key_id": new_key_id,
             "agent_id": agent_id,
-            "service_id": old_row.service_id,
+            "service_id": str(old_row.service_id) if old_row.service_id else None,
             "key_fingerprint": fp,
         },
     )
@@ -633,7 +706,7 @@ async def rotate_api_key(
             "plaintext_key": plaintext,
             "key_fingerprint": fp,
             "agent_id": agent_id,
-            "service_id": old_row.service_id,
+            "service_id": str(old_row.service_id) if old_row.service_id else None,
             "allowed_actions": old_row.allowed_actions,
             "expires_at": new_expires_at.isoformat() if new_expires_at else None,
             "created_at": now.isoformat(),
