@@ -144,6 +144,68 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
 
 
 # ---------------------------------------------------------------------------
+# Shared helper — resolve svc_ wire-form to DB UUID — R12; ADR-0017.11
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_service_uuid(
+    session: AsyncSession,
+    tenant_id: UUID,
+    svc_input: str,
+) -> str:
+    """
+    Translate a service identifier (wire-form or plain UUID) to the DB UUID string.
+
+    Primary path (R12+, new services): decode the 26-char Crockford ULID or 32-hex form
+    via _decode_agent_wire_id(svc_input, "svc_"), then verify the decoded UUID exists in
+    the services table.  For post-R12 services this resolves directly without any audit
+    lookup because create_service now derives internal_id from the same ULID bits.
+
+    Fallback path (pre-R12, old services): if the decoded UUID doesn't exist in services
+    (because the old code used uuid4() independently), fall back to the audit_events
+    lookup added by R11a.  This ensures old data continues to work.
+
+    Returns the UUID string, or raises HTTPException(404) if neither path resolves.
+
+    Source: R12; R11a; ADR-0017.11.
+    """
+    if not svc_input.startswith("svc_"):
+        # Plain UUID — return as-is
+        return svc_input
+
+    # Primary path: decode wire form → UUID
+    try:
+        decoded_uuid = _decode_agent_wire_id(svc_input, "svc_")
+    except ValueError:
+        raise Exception("invalid_service_id")
+
+    # Verify the decoded UUID exists in services table (post-R12 services resolve here)
+    exists_result = await session.execute(
+        text("SELECT 1 FROM services WHERE id = :sid AND tenant_id = :tid"),
+        {"sid": decoded_uuid, "tid": str(tenant_id)},
+    )
+    if exists_result.fetchone() is not None:
+        return decoded_uuid
+
+    # Fallback: old services (pre-R12) stored uuid4() independent of ULID bits.
+    # Look up the DB UUID via the wire-form stored in audit_events payload.
+    svc_lookup = await session.execute(
+        text(
+            "SELECT target_id FROM audit_events"
+            " WHERE event_type = 'service.registered'"
+            "   AND tenant_id = :tid"
+            "   AND payload->>'svc_id' = :svc_wire"
+            " LIMIT 1"
+        ),
+        {"tid": str(tenant_id), "svc_wire": svc_input},
+    )
+    svc_row = svc_lookup.fetchone()
+    if svc_row is None:
+        raise Exception("not_found")
+    return str(svc_row.target_id)
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -341,41 +403,22 @@ async def grant_permission(
             content={"mintkey:code": "not_found", "title": "Agent not found"},
         )
 
-    # 4. Resolve wire-prefixed service_id to DB UUID — ADR-0017.11; R11a
-    #    Services stores uuid4() independently; the wire form "svc_<32hex>" is
-    #    uuid-without-dashes. Crockford (26-char) ULID forms require a DB lookup
-    #    because the ULID is not stored in the services table (only in audit events).
-    svc_input = body.service_id
-    if svc_input.startswith("svc_"):
-        hex_part = svc_input[4:]
-        if len(hex_part) == 32:
-            # 32-hex form: svc_<uuid-without-dashes> → direct decode
-            svc_uuid = (
-                f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                f"-{hex_part[16:20]}-{hex_part[20:]}"
+    # 4. Resolve wire-prefixed service_id to DB UUID — ADR-0017.11; R12
+    #    Uses the shared _resolve_service_uuid helper which tries _wire_id_to_uuid first
+    #    (works directly for post-R12 services), then falls back to the audit_events
+    #    lookup for pre-R12 services whose uuid4() didn't match the ULID bits.
+    try:
+        svc_uuid = await _resolve_service_uuid(session, tenant_id, body.service_id)
+    except Exception as exc:
+        if "not_found" in str(exc):
+            return JSONResponse(
+                status_code=404,
+                content={"mintkey:code": "not_found", "title": "Service not found"},
             )
-        else:
-            # Crockford ULID form: look up service by wire_id stored in audit payload
-            svc_lookup = await session.execute(
-                text(
-                    "SELECT target_id FROM audit_events"
-                    " WHERE event_type = 'service.registered'"
-                    "   AND tenant_id = :tid"
-                    "   AND payload->>'svc_id' = :svc_wire"
-                    " LIMIT 1"
-                ),
-                {"tid": str(tenant_id), "svc_wire": svc_input},
-            )
-            svc_row = svc_lookup.fetchone()
-            if svc_row is None:
-                return JSONResponse(
-                    status_code=404,
-                    content={"mintkey:code": "not_found", "title": "Service not found"},
-                )
-            svc_uuid = str(svc_row.target_id)
-    else:
-        # Plain UUID — use as-is
-        svc_uuid = svc_input
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_service_id", "title": "Invalid service_id"},
+        )
 
     # 5. Default constraints to {} when caller omits field — R11a
     constraints_dict = (

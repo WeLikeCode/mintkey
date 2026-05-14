@@ -264,17 +264,60 @@ async def create_api_key(
             content={"mintkey:code": "not_found", "title": "Agent not found"},
         )
 
-    # 2. Load agent's grants for the requested service_id
+    # 2. Resolve svc_ wire-form to DB UUID — R12; ADR-0017.11
+    #    Same pattern as grant_permission's _resolve_service_uuid helper:
+    #    Primary path decodes Crockford ULID via _decode_agent_wire_id (works for post-R12
+    #    services where internal_id is derived from the same ULID bits).
+    #    Fallback path checks audit_events for pre-R12 services whose uuid4() was independent.
+    svc_input = body.service_id
+    if svc_input.startswith("svc_"):
+        try:
+            decoded_svc_uuid = _decode_agent_wire_id(svc_input, "svc_")
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_service_id", "title": "Invalid service_id"},
+            )
+        # Primary path: verify decoded UUID exists (post-R12 services resolve here directly)
+        exists_result = await session.execute(
+            text("SELECT 1 FROM services WHERE id = :sid AND tenant_id = :tid"),
+            {"sid": decoded_svc_uuid, "tid": str(tenant_id)},
+        )
+        if exists_result.fetchone() is not None:
+            svc_uuid = decoded_svc_uuid
+        else:
+            # Fallback: pre-R12 service — look up via audit_events wire-form
+            svc_lookup = await session.execute(
+                text(
+                    "SELECT target_id FROM audit_events"
+                    " WHERE event_type = 'service.registered'"
+                    "   AND tenant_id = :tid"
+                    "   AND payload->>'svc_id' = :svc_wire"
+                    " LIMIT 1"
+                ),
+                {"tid": str(tenant_id), "svc_wire": svc_input},
+            )
+            svc_row = svc_lookup.fetchone()
+            if svc_row is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={"mintkey:code": "not_found", "title": "Service not found"},
+                )
+            svc_uuid = str(svc_row.target_id)
+    else:
+        svc_uuid = svc_input
+
+    # 3a. Load agent's grants for the requested service_id
     grants_result = await session.execute(
         text(
             "SELECT action FROM permission_grants"
             " WHERE agent_id = :aid AND service_id = :sid AND tenant_id = :tid"
         ),
-        {"aid": agent_uuid, "sid": body.service_id, "tid": str(tenant_id)},
+        {"aid": agent_uuid, "sid": svc_uuid, "tid": str(tenant_id)},
     )
     grant_actions = {row.action for row in grants_result.fetchall()}
 
-    # 3. allowed_actions must be a subset of grants (Req 1.3)
+    # 3b. allowed_actions must be a subset of grants (Req 1.3)
     requested = set(body.allowed_actions)
     if not requested.issubset(grant_actions):
         return JSONResponse(
@@ -316,7 +359,7 @@ async def create_api_key(
             "id": str(internal_id),
             "tid": str(tenant_id),
             "aid": agent_uuid,
-            "sid": body.service_id,
+            "sid": svc_uuid,
             "key_hash": key_hash,
             "fp": fp,
             "actions": body.allowed_actions,

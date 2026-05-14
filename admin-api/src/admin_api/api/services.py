@@ -213,8 +213,18 @@ async def create_service(
 
     # Generate ULID ID with svc_ prefix — ADR-0017.11
     svc_id = _new_svc_id()
-    # Store as plain UUID-shaped value for the UUID column
-    internal_id = uuid.uuid4()
+    # Derive the DB UUID from the ULID's 128-bit value — R12 (mirrors R8-redux for agents).
+    # _new_svc_id() returns "svc_<26-char Crockford ULID>"; decode the 26-char tail to the
+    # same 128-bit integer and wrap as uuid.UUID so the stored row PK is algebraically
+    # identical to what _wire_id_to_uuid(svc_id, "svc_") decodes from the wire form.
+    # Dropping the independent uuid.uuid4() eliminates the asymmetry that caused silent
+    # 404s for new services: POST returned svc_<Crockford> whose bits never matched the PK.
+    _crockford_tail = svc_id[len("svc_"):]
+    _val = 0
+    for _ch in _crockford_tail.upper():
+        _val = (_val << 5) | _CROCKFORD.index(_ch)
+    _val &= (1 << 128) - 1
+    internal_id = uuid.UUID(int=_val)
     now = datetime.now(timezone.utc)
 
     # Derive slug from name
