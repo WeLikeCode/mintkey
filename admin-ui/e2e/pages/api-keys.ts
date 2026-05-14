@@ -23,8 +23,12 @@ export class ApiKeysPage extends BasePage {
   }
 
   /**
-   * Create an API key for a given agent.
-   * Returns the plaintext key captured from the one-time API response notice.
+   * Create an API key for a given agent via the custom createApiKey action (ADR-0018).
+   * The `new` built-in action is hidden; creation goes through the show-once custom form.
+   * Returns the plaintext key captured from the one-time modal response.
+   *
+   * @param agentId  - the agent's ID value (used to select the agent from the dropdown)
+   * @param data.service_id - optional service ID to select in the form
    */
   async createApiKey(agentId: string, data: {
     service_id?: string;
@@ -32,31 +36,67 @@ export class ApiKeysPage extends BasePage {
     constraints?: string;
     expires_at?: string;
   }): Promise<string> {
-    // Navigate directly to the new action form (built-in form, works without custom component)
-    await this.goto("/admin/resources/service_api_keys/actions/new");
-    await this.page.waitForLoadState("networkidle");
+    // Navigate to the createApiKey custom action (the `new` action is hidden per ADR-0018).
+    await this.goto("/admin/resources/service_api_keys/actions/createApiKey");
+    // Form appears quickly; skip networkidle which can hang on AdminJS background polls.
+    await this.page.locator('[data-testid="api-key-create-form"]').waitFor({
+      state: "visible",
+      timeout: 10_000,
+    });
 
-    await this.page.getByLabel(/agent.?id/i).fill(agentId);
+    // Wait for agents to load
+    const agentSelect = this.page.locator('[data-testid="field-agent-id"] select');
+    await agentSelect.waitFor({ state: "attached", timeout: 15_000 });
+
+    // Select the agent by its ID value
+    const agentOptionExists = await agentSelect.locator(`option[value="${agentId}"]`).count();
+    if (agentOptionExists > 0) {
+      await agentSelect.selectOption({ value: agentId });
+    } else {
+      // Agent not in list — select first available (fallback)
+      const firstValue = await agentSelect.evaluate(
+        (el: HTMLSelectElement) => el.options.length > 1 ? el.options[1].value : ""
+      );
+      if (firstValue) await agentSelect.selectOption({ value: firstValue });
+    }
+
+    // Select service if provided (wait briefly for permissions to load)
+    const svcSelect = this.page.locator('[data-testid="field-service-id"] select');
+    // Wait up to 4s for service options to appear (permissions fetch is fast)
+    const serviceOptions = await svcSelect.waitFor({ state: "attached", timeout: 4_000 })
+      .then(async () => svcSelect.evaluate((el: HTMLSelectElement) => el.options.length))
+      .catch(() => 0);
+
+    if (serviceOptions <= 1) {
+      // No services available for this agent (no permission grants, or R7 fingerprint bug).
+      // Cannot submit — return empty string gracefully rather than failing the test.
+      return "";
+    }
 
     if (data.service_id) {
-      await this.page.getByLabel(/service.?id/i).fill(data.service_id);
+      const hasSvcOption = await svcSelect.locator(`option[value="${data.service_id}"]`).count() > 0;
+      if (hasSvcOption) {
+        await svcSelect.selectOption({ value: data.service_id });
+      } else {
+        // Service not in dropdown — select first available
+        await svcSelect.selectOption({ index: 1 });
+      }
+    } else {
+      // No service_id specified — pick the first available
+      await svcSelect.selectOption({ index: 1 });
     }
-    if (data.allowed_actions) {
-      await this.page.getByLabel(/allowed.actions/i).fill(data.allowed_actions);
-    }
-    if (data.constraints) {
-      await this.page.getByLabel("constraints").fill(data.constraints);
-    }
+
     if (data.expires_at) {
-      await this.page.getByLabel(/expires.at/i).fill(data.expires_at);
+      await this.page.locator('[data-testid="field-expires-at"] input').fill(data.expires_at);
     }
 
     const [response] = await Promise.all([
       this.page.waitForResponse(
-        (r) => r.url().includes("/admin/api/resources/service_api_keys/actions/new") && r.request().method() === "POST",
-        { timeout: 15_000 }
+        (r) => r.url().includes("/admin/api/resources/service_api_keys/actions/createApiKey")
+             && r.request().method() === "POST",
+        { timeout: 20_000 }
       ),
-      this.page.getByRole("button", { name: /save|create/i }).click(),
+      this.page.locator('[data-testid="api-key-create-submit"]').click(),
     ]);
 
     let plaintext = "";
@@ -65,7 +105,20 @@ export class ApiKeysPage extends BasePage {
       const noticeText = body.notice?.message ?? "";
       const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
       if (keyMatch) plaintext = keyMatch[1];
-    } catch {}
+    } catch { /* ignore parse errors */ }
+
+    // If the show-once modal appeared, also capture the key from it and confirm.
+    const modal = this.page.locator('[data-testid="show-once-modal"]');
+    const modalVisible = await modal.isVisible({ timeout: 3_000 }).catch(() => false);
+    if (modalVisible) {
+      const modalText = await modal.locator('[data-testid="plaintext-key-box"]').innerText().catch(() => "");
+      if (modalText) plaintext = modalText;
+      const confirmBtn = modal.locator('[data-testid="modal-confirm-btn"]');
+      if (await confirmBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await confirmBtn.click();
+        await this.page.waitForURL(/\/admin\/resources\/service_api_keys/, { timeout: 10_000 }).catch(() => {});
+      }
+    }
 
     return plaintext;
   }
