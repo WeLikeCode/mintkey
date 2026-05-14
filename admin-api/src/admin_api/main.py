@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agents import router as agents_router
 from admin_api.api.api_keys import router as api_keys_router
+from admin_api.api.api_keys_shortcut import api_keys_shortcut_router
 from admin_api.api.audit import router as audit_router
 from admin_api.api.audit_admin import router as audit_admin_router
 from admin_api.api.auth import router as auth_router
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(services_router)
     app.include_router(agents_router)
     app.include_router(api_keys_router)
+    app.include_router(api_keys_shortcut_router)
     app.include_router(changes_router)
     app.include_router(credentials_router)
     app.include_router(internal_router)
