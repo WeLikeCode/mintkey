@@ -39,6 +39,10 @@ from mintkey_models.tenant_ctx import set_tenant_context
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/agents/{agent_id}/permissions")
 
+# Flat list router — no agent_id scoping; used by admin-ui dashboard + ApiKeyCreate
+# Source: A2 R9 fix; AdminJS RestResource listPath="/v1/tenants/{tenantId}/permissions"
+tenant_permissions_router = APIRouter(prefix="/v1/tenants/{tenant_id}/permissions")
+
 # Crockford base32 alphabet (uppercase, no I/L/O/U) — ADR-0017.11
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -217,6 +221,85 @@ async def list_permissions(
         for row in rows
     ]
     return JSONResponse({"grants": grants})
+
+
+# ---------------------------------------------------------------------------
+# Flat tenant-level list — no agent_id scoping
+# GET /v1/tenants/{tenant_id}/permissions
+# Used by: admin-ui dashboard + ApiKeyCreate dropdown (RestResource listPath)
+# Source: A2 R9 fix; ADR-0008.
+# ---------------------------------------------------------------------------
+
+@tenant_permissions_router.get("")
+async def list_tenant_permissions(
+    tenant_id: UUID,
+    service_id: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    List all permission grants for a tenant.
+
+    Optional query parameters:
+      service_id — filter by service (UUID or svc_ wire-ID).
+      agent_id   — filter by agent (UUID or agent_ wire-ID).
+
+    Returns {"permissions": [...]} to match admin-ui RestResource listKey.
+
+    Source: A2 R9 fix; T-1.4.3; ADR-0008.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    params: dict = {"tid": str(tenant_id)}
+    base_sql = (
+        "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+        " FROM permission_grants"
+        " WHERE tenant_id = :tid"
+    )
+
+    if agent_id is not None:
+        try:
+            agent_uuid_val = _decode_agent_wire_id(agent_id, "agent_")
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+            )
+        base_sql += " AND agent_id = :aid"
+        params["aid"] = agent_uuid_val
+
+    if service_id is not None:
+        if service_id.startswith("svc_"):
+            hex_part = service_id[4:]
+            if len(hex_part) == 32:
+                service_id = (
+                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
+                    f"-{hex_part[16:20]}-{hex_part[20:]}"
+                )
+        base_sql += " AND service_id = :svc_id"
+        params["svc_id"] = service_id
+
+    base_sql += " ORDER BY created_at"
+
+    result = await session.execute(text(base_sql), params)
+    rows = result.fetchall()
+
+    permissions = [
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "agent_id": str(row.agent_id),
+            "service_id": str(row.service_id) if row.service_id else None,
+            "action": row.action,
+            "constraints": row.constraints if isinstance(row.constraints, dict) else (
+                json.loads(row.constraints) if row.constraints else None
+            ),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_by": str(row.created_by) if row.created_by else None,
+        }
+        for row in rows
+    ]
+    return JSONResponse({"permissions": permissions})
 
 
 @router.post("", status_code=201)

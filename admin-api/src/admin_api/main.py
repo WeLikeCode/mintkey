@@ -17,7 +17,7 @@ from admin_api.api.changes import router as changes_router
 from admin_api.api.credentials import router as credentials_router
 from admin_api.api.health import router as health_router
 from admin_api.api.internal import router as internal_router
-from admin_api.api.permissions import router as permissions_router, validation_error_handler
+from admin_api.api.permissions import router as permissions_router, tenant_permissions_router, validation_error_handler
 from admin_api.api.proxy import router as proxy_router
 from admin_api.api.services import router as services_router
 from admin_api.api.settings import router as settings_router
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(credentials_router)
     app.include_router(internal_router)
     app.include_router(permissions_router)
+    app.include_router(tenant_permissions_router)
     app.include_router(audit_router)
     app.include_router(audit_admin_router)
     app.include_router(settings_router)

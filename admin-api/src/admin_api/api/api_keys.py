@@ -38,6 +38,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from mintkey_models.audit import audit_emit
@@ -204,12 +205,21 @@ async def create_api_key(
 
     Source: long-lived-api-keys task 7.1; ADR-0018; ADR-0008; ADR-0014.7; ADR-0017.11.
     """
+    # 0. Decode wire-prefixed agent_id → UUID — ADR-0017.11; R9
+    try:
+        agent_uuid = _decode_agent_wire_id(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+
     await set_tenant_context(session, tenant_id)
 
     # 1. Verify agent exists in this tenant
     agent_result = await session.execute(
         text("SELECT id FROM agents WHERE id = :aid AND tenant_id = :tid"),
-        {"aid": agent_id, "tid": str(tenant_id)},
+        {"aid": agent_uuid, "tid": str(tenant_id)},
     )
     if agent_result.fetchone() is None:
         return JSONResponse(
@@ -223,7 +233,7 @@ async def create_api_key(
             "SELECT action FROM permission_grants"
             " WHERE agent_id = :aid AND service_id = :sid AND tenant_id = :tid"
         ),
-        {"aid": agent_id, "sid": body.service_id, "tid": str(tenant_id)},
+        {"aid": agent_uuid, "sid": body.service_id, "tid": str(tenant_id)},
     )
     grant_actions = {row.action for row in grants_result.fetchall()}
 
@@ -268,7 +278,7 @@ async def create_api_key(
         {
             "id": str(internal_id),
             "tid": str(tenant_id),
-            "aid": agent_id,
+            "aid": agent_uuid,
             "sid": body.service_id,
             "key_hash": key_hash,
             "fp": fp,
@@ -276,7 +286,7 @@ async def create_api_key(
             "constraints": json.dumps(body.constraints) if body.constraints else None,
             "expires_at": body.expires_at,
             "now": now,
-            "created_by": agent_id,
+            "created_by": agent_uuid,
         },
     )
 
@@ -291,7 +301,7 @@ async def create_api_key(
         target_type="api_key",
         payload={
             "api_key_id": key_id,
-            "agent_id": agent_id,
+            "agent_id": agent_uuid,
             "service_id": body.service_id,
             "key_fingerprint": fp,
             "allowed_actions": body.allowed_actions,
