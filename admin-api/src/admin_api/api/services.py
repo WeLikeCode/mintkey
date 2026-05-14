@@ -23,8 +23,8 @@ import ipaddress
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
-from urllib.parse import urlparse
+from typing import Any, Literal, Optional
+from urllib.parse import urlparse, urljoin
 from uuid import UUID
 
 import httpx
@@ -131,6 +131,23 @@ class ServiceUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class TestRunRequest(BaseModel):
+    """
+    Body for POST /{service_id}/test — operationId testRunService.
+
+    All fields are optional with sensible defaults so that an empty body `{}`
+    falls back to GET /health (matching the OpenAPI default).
+
+    Source: openapi.yaml TestRunRequest; R14b fix (R13 found body silently dropped).
+    """
+
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] = "GET"
+    path: str = "/health"
+    headers: Optional[dict[str, str]] = None
+    body: Optional[str] = None
+    timeout_ms: Optional[int] = 5000
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -150,18 +167,30 @@ def _wire_id_to_db_uuid(wire_id: str) -> str:
     """
     Convert a wire svc_ ID back to the UUID string stored in the DB.
 
-    The wire form is "svc_" + 32 hex chars (UUID without dashes).
+    Two wire forms exist (ADR-0017.11):
+      - "svc_" + 32 hex chars  — old serialised form (_service_row_to_dict)
+      - "svc_" + 26 Crockford base32 chars — new ULID form post-R12 (_new_svc_id)
+
     The DB form is "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
-    Returns the raw hex string if the input does not match the expected pattern
+    Returns wire_id unchanged if it does not match a known prefix pattern
     (allowing callers to pass raw UUIDs too).
     """
     if wire_id.startswith("svc_"):
-        hex_part = wire_id[4:]  # 32 hex chars
-        if len(hex_part) == 32:
+        tail = wire_id[4:]
+        if len(tail) == 32:
+            # Hex form: svc_<uuid-without-dashes>
             return (
-                f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                f"-{hex_part[16:20]}-{hex_part[20:]}"
+                f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}"
+                f"-{tail[16:20]}-{tail[20:]}"
             )
+        if len(tail) == 26:
+            # Crockford base32 ULID form (post-R12) — decode to 128-bit UUID
+            val = 0
+            for ch in tail.upper():
+                val = (val << 5) | _CROCKFORD.index(ch)
+            val &= (1 << 128) - 1
+            h = f"{val:032x}"
+            return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
     return wire_id
 
 
@@ -383,16 +412,19 @@ async def get_service(
 async def test_service(
     tenant_id: UUID,
     service_id: str,
+    req: Optional[TestRunRequest] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
-    Test the registered service using its stored base_url.
+    Test the registered service using its stored base_url + the request body's path/method.
 
-    Makes a GET request to base_url using the stored auth_scheme/credential.
-    Returns {"ok": bool, "status_code": int} and optional latency/error fields.
+    Accepts TestRunRequest body (method, path, headers, body, timeout_ms).
+    All fields are optional with defaults (GET, /health, 5000 ms).
 
-    Source: openapi.yaml operationId=testRunService; ADR-0014.4; S-SEC-1.
+    Source: openapi.yaml operationId=testRunService; ADR-0014.4; S-SEC-1; R14b.
     """
+    if req is None:
+        req = TestRunRequest()
     await set_tenant_context(session, tenant_id)
 
     # Fetch the service row
@@ -432,12 +464,28 @@ async def test_service(
         elif auth_scheme == "api_key":
             headers["X-Api-Key"] = plaintext
 
-    # Make outbound HTTP call — timeout 5 s
+    # Build the final URL: urljoin handles leading-slash on path correctly.
+    # urljoin('http://x:8999', '/health') == 'http://x:8999/health'
+    # urljoin('http://x:8999/', '/health') == 'http://x:8999/health'
+    base_url_stripped = base_url.rstrip("/")
+    path_part = req.path if req.path.startswith("/") else "/" + req.path
+    final_url = base_url_stripped + path_part
+
+    # Merge auth headers with optional extra headers from the request body
+    merged_headers = {**headers, **(req.headers or {})}
+    timeout_s = (req.timeout_ms or 5000) / 1000.0
+
+    # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
     start = _time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(base_url, headers=headers)
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.request(
+                method=req.method,
+                url=final_url,
+                headers=merged_headers,
+                content=req.body,
+            )
         latency_ms = int((_time.monotonic() - start) * 1000)
         ok = 200 <= response.status_code < 300
         return JSONResponse(
@@ -446,6 +494,7 @@ async def test_service(
                 "status_code": response.status_code,
                 "latency_ms": latency_ms,
                 "response_body_truncated": response.text[:500],
+                "final_url": final_url,
             }
         )
     except httpx.TimeoutException:

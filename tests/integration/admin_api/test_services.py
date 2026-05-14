@@ -259,7 +259,8 @@ def test_post_service_test_returns_ok(
     mock_client = AsyncMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
-    mock_client.get = AsyncMock(return_value=mock_response)
+    # R14b fix: handler now calls client.request(...) instead of client.get(...)
+    mock_client.request = AsyncMock(return_value=mock_response)
 
     with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
         resp = _post(admin_app, f"/v1/tenants/{tenant_uuid}/services/{service_id}/test")
