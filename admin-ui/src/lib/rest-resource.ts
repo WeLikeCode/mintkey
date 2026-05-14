@@ -33,6 +33,15 @@ interface RestResourceConfig {
    * values are dropped.
    */
   filterKeys?: string[];
+  /**
+   * Optional transform applied to each raw record object returned by the API
+   * BEFORE it is wrapped in a BaseRecord.  Use this to normalise field formats
+   * at the BFF boundary per ADR-0017 (wire-form on the wire).
+   *
+   * The function receives a shallow copy of the raw item and should return the
+   * (mutated or replaced) object.  Returning undefined falls back to the original.
+   */
+  recordTransform?: (item: Record<string, unknown>) => Record<string, unknown>;
 }
 
 /**
@@ -137,7 +146,11 @@ export class RestResource extends BaseResource {
       const data = await resp.json() as Record<string, unknown>;
       const items = data[this.config.listKey];
       if (!Array.isArray(items)) return [];
-      return items.map((item) => new BaseRecord(item as Record<string, unknown>, this));
+      const transform = this.config.recordTransform;
+      return items.map((item) => {
+        const raw = item as Record<string, unknown>;
+        return new BaseRecord(transform ? transform(raw) : raw, this);
+      });
     } catch {
       return [];
     }

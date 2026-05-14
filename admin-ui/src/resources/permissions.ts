@@ -13,6 +13,29 @@ import { apiWrite } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
+/**
+ * Normalise a bare UUID agent_id to wire-form (agent_<32hex>) per ADR-0017.
+ *
+ * The /v1/tenants/{tid}/permissions endpoint returns agent_id as a plain UUID
+ * (e.g. "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd") while the agents list endpoint
+ * returns IDs in wire-form (e.g. "agent_6c3c950a2e184ba98c895b875b1bf5bd").
+ * ApiKeyCreate.tsx compares r.params.agent_id === agentId where agentId comes
+ * from the agents dropdown — so the formats must match.  Normalising here at the
+ * BFF boundary (ADR-0017: wire-form on the wire) fixes the comparison for ALL
+ * downstream consumers of permission_grants records, not just ApiKeyCreate.
+ */
+function normalisePermissionRecord(item: Record<string, unknown>): Record<string, unknown> {
+  const agentId = item.agent_id;
+  if (typeof agentId === "string" && agentId.length > 0 && !agentId.startsWith("agent_")) {
+    // Bare UUID — convert to agent_<32hex> wire-form
+    const hex32 = agentId.replace(/-/g, "");
+    if (hex32.length === 32) {
+      return { ...item, agent_id: `agent_${hex32}` };
+    }
+  }
+  return item;
+}
+
 const _permissionsResource = new RestResource({
   id: "permission_grants", name: "Permissions",
   listPath: "/v1/tenants/{tenantId}/permissions",
@@ -28,6 +51,11 @@ const _permissionsResource = new RestResource({
     { path: "created_at", type: "datetime" },
     { path: "created_by", type: "string" },
   ],
+  // ADR-0017: normalise agent_id from bare UUID to wire-form (agent_<32hex>)
+  // at the BFF boundary so all consumers see consistent wire shapes.
+  // Fixes: ApiKeyCreate.tsx service dropdown empty due to agent_id format mismatch
+  // between permissions list (UUID) and agents list (wire-form). (R10-redux)
+  recordTransform: normalisePermissionRecord,
 });
 
 export const PermissionsResource: ResourceWithOptions & { adminResource: typeof _permissionsResource } = {

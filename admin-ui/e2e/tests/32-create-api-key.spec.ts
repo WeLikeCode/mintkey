@@ -16,14 +16,14 @@
  * Synthesises an agent + service + permission grant via admin-api HTTP (mirroring
  * the pattern from tests/acceptance/test_api_keys_and_permissions_chain.py R9).
  *
- * Wire-form / UUID normalisation note:
+ * Wire-form / UUID normalisation:
  *   The admin-api returns agent IDs in wire-form (agent_<32hex>) from the agents
  *   list, but UUID format from the permissions list. ApiKeyCreate.tsx filters
  *   permissions by comparing r.params.agent_id === agentId, so the formats must
- *   match. This test intercepts the AdminJS permission_grants list response and
- *   normalises agent_id to wire-form so the React dropdown filter works correctly.
- *   This is a test-layer workaround for a format-mismatch in the component that
- *   exists independently of the R9 fixes; the workaround does NOT modify src/**.
+ *   match. Fix (R10-redux, option a per ADR-0017): permissions.ts RestResource
+ *   now applies a recordTransform that normalises agent_id from bare UUID to
+ *   agent_<32hex> wire-form at the BFF boundary. No page.route interception is
+ *   needed or present in this spec — the production code handles it correctly.
  */
 
 import { test, expect } from "../fixtures/test.js";
@@ -290,33 +290,10 @@ test.describe("32 — createApiKey show-once flow", () => {
     const grantText = await grantResp.clone().text();
     expect(grantResp.status, `Grant permission failed: ${grantResp.status} ${grantText}`).toBe(201);
 
-    // ── Step 2: Intercept permission_grants list to normalise agent_id format ─
-    // ApiKeyCreate.tsx filters by r.params.agent_id === agentId where agentId is
-    // wire-form from the agents dropdown, but permissions return UUID format.
-    // This route intercept normalises agent_id to wire-form so the filter works.
-    await page.route("**/admin/api/resources/permission_grants/actions/list**", async (route) => {
-      const resp = await route.fetch();
-      const body = await resp.json() as {
-        records?: Array<{ params: Record<string, string> }>;
-      };
-      // Normalise agent_id in each record from UUID to wire-form
-      if (body.records) {
-        for (const record of body.records) {
-          const rawAgentId = record.params?.agent_id ?? "";
-          // If agent_id looks like a UUID (no prefix), convert to wire-form
-          if (rawAgentId && !rawAgentId.startsWith("agent_")) {
-            record.params.agent_id = uuidToWireForm(rawAgentId);
-          }
-        }
-      }
-      await route.fulfill({
-        status: resp.status(),
-        headers: resp.headers(), // Playwright APIResponse.headers() returns Record<string,string>
-        body: JSON.stringify(body),
-      });
-    });
-
-    // ── Step 3: Navigate to createApiKey form ────────────────────────────────
+    // ── Step 2: Navigate to createApiKey form ────────────────────────────────
+    // NOTE: No page.route interception needed — permissions.ts RestResource now
+    // normalises agent_id from bare UUID to wire-form (agent_<32hex>) at the BFF
+    // boundary via recordTransform, per ADR-0017. (R10-redux fix)
     await page.goto(
       "/admin/resources/service_api_keys/actions/createApiKey",
       { waitUntil: "domcontentloaded" }
@@ -350,13 +327,14 @@ test.describe("32 — createApiKey show-once flow", () => {
     await agentSelect.selectOption({ value: wireAgentId });
 
     // ── Step 5: Wait for service dropdown to populate ────────────────────────
-    // With the route interception normalising agent_id to wire-form, the React
-    // component's filter (r.params.agent_id === agentId) should now match.
+    // The production code now normalises agent_id to wire-form in permissions.ts
+    // recordTransform (ADR-0017: wire-form on the wire). No route interception needed.
     const serviceSelect = page.locator('[data-testid="field-service-id"] select');
     await serviceSelect.waitFor({ state: "visible", timeout: 10_000 });
 
     // FAIL LOUDLY if service dropdown is not populated — this means R9's permissions
-    // endpoint is not returning the grant, or the route intercept is not working.
+    // endpoint is not returning the grant, or the BFF normalisation (permissions.ts
+    // recordTransform) is not working.
     await page.waitForFunction(() => {
       const sel = document.querySelector('[data-testid="field-service-id"] select') as HTMLSelectElement;
       return sel && sel.options.length > 1;
@@ -364,7 +342,7 @@ test.describe("32 — createApiKey show-once flow", () => {
       throw new Error(
         "FAIL: Service dropdown was not populated after selecting the synthesised agent. " +
         "This means the permission grant is not being returned by the permissions endpoint " +
-        "(R9 regression), or the agent_id format normalisation failed. " +
+        "(R9 regression), or the BFF agent_id normalisation (permissions.ts recordTransform) failed. " +
         "Expected at least 1 service option for agent: " + wireAgentId + " (raw: " + rawAgentId + "). " +
         "Check: GET /v1/tenants/{tid}/permissions returns the grant? " +
         "Check: AdminJS permission_grants/actions/list includes the grant record?"
