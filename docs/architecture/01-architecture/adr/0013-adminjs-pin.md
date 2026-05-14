@@ -40,7 +40,7 @@ Each resource has:
 
 ### Sensitive operations as Custom Actions (route to FastAPI)
 The audit chokepoint and validation logic stay in the FastAPI ([ADR‑0005](0005-admin-tech-stack.md)). AdminJS dispatches sensitive operations via Custom Actions that POST to FastAPI rather than touching the DB directly:
-- **Credential rotate** — `POST /v1/tenants/{tid}/services/{sid}/credentials` (FastAPI does envelope encryption + audit emission).
+- **Credential rotate** — `POST /v1/tenants/{tid}/services/{sid}/credentials/rotate` (FastAPI does envelope encryption + audit emission). *See §3.1 corrigendum below — the originally recorded `.../credentials` path was register-only; rotate has its own sub-resource.*
 - **Credential revoke** — `DELETE /v1/tenants/{tid}/services/{sid}/credentials/{key_version}`.
 - **Agent revoke** — `POST /v1/tenants/{tid}/agents/{aid}/revoke`.
 - **Permission grant / revoke** — `POST/DELETE /v1/tenants/{tid}/agents/{aid}/permissions[/{permId}]`.
@@ -134,6 +134,18 @@ Per [ADR‑0008](0008-multi-tenancy-row-level-with-db-tier.md):
 - AdminJS branding (logo, theme).
 - Custom React components needed in v1 (credential‑rotate confirmation form, audit log filter form, agent permissions matrix). The full list lands in iteration 3 flows + Phase 1.
 - Whether to add a CSRF middleware on the FastAPI side specifically for AdminJS Custom Action calls. *Lean: yes — every state‑changing endpoint gets CSRF.*
+
+## Corrigendum
+
+### §3.1 — Credential rotate endpoint path (R14a, commit 6468c19a, 2026-05-14)
+
+The original §3 table listed the credential-rotate Custom Action as `POST /v1/tenants/{tid}/services/{sid}/credentials`. Implementation (R14a / Option 1 / commit `6468c19a`) established a dedicated sub-resource:
+
+> **Accepted path:** `POST /v1/tenants/{tid}/services/{svc}/credentials/rotate`
+
+**Reason the paths differ:** `POST .../credentials` is the *register* operation — it creates the first credential for a service. Rotate is a distinct verb on the credential collection with different semantics (atomically supersedes the current active credential and issues a new one), different request shape (`CredentialRotateRequest` includes `rotate_from` for explicit version pinning), and different audit event (`credential.rotated`). REST design calls for a named sub-resource rather than overloading the collection endpoint with a discriminator body field.
+
+The text in §3 and the inline note above have been corrected to reflect the `/rotate` sub-path. No other part of this ADR is changed.
 
 ## Related
 - [ADR‑0005 admin tech stack](0005-admin-tech-stack.md).
