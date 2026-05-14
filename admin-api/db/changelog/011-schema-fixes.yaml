@@ -1,0 +1,53 @@
+databaseChangeLog:
+
+  # permission_grants.updated_at — OpenAPI spec and permissions.py response both
+  # reference this column but it was never added to the DB (research agent finding).
+  - changeSet:
+      id: "011-permission-grants-updated-at"
+      author: mintkey
+      changes:
+        - addColumn:
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: updated_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: permission_grants
+            columnName: updated_at
+
+  # audit_chain_state intentionally has NO RLS — it is in the RLS_EXCLUDE
+  # allowlist (design §2 / tests/architecture/test_rls_coverage.py).
+  # This changeset reverts the erroneously applied policy from a prior run.
+  - changeSet:
+      id: "011-audit-chain-state-rls-revert"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON audit_chain_state;
+              ALTER TABLE audit_chain_state DISABLE ROW LEVEL SECURITY;
+      rollback:
+        - sql:
+            sql: "SELECT 1; -- no-op rollback"
+
+  # tenant_settings.updated_by — make nullable so platform-admin settings can be
+  # saved before the full session-auth middleware (ADR-0019) is wired (WS-2).
+  # The column will be populated once whoami + signed-request middleware lands.
+  - changeSet:
+      id: "011-tenant-settings-updated-by-nullable"
+      author: mintkey
+      changes:
+        - dropNotNullConstraint:
+            tableName: tenant_settings
+            columnName: updated_by
+            columnDataType: UUID
+      rollback:
+        - addNotNullConstraint:
+            tableName: tenant_settings
+            columnName: updated_by
+            columnDataType: UUID
