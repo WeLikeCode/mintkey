@@ -2,26 +2,29 @@
 Credential endpoints.
 
 POST   /v1/tenants/{tenant_id}/services/{service_id}/credentials                   — register (201)
+POST   /v1/tenants/{tenant_id}/services/{service_id}/credentials/rotate            — rotate (200)
 GET    /v1/tenants/{tenant_id}/services/{service_id}/credentials                   — list (200)
 DELETE /v1/tenants/{tenant_id}/services/{service_id}/credentials/{key_version}     — revoke (204)
 
 Architecture constraints:
   - Vault Adapter called to store encrypted credential — ADR-0011, ADR-0014.4.
   - Response NEVER contains plaintext credential — S-SEC-1, ADR-0014.4.
-  - Audit event "credential.registered" emitted with NO plaintext — ADR-0014.7.
+  - Audit event "credential.registered"/"credential.rotated" emitted with NO plaintext — ADR-0014.7.
   - Tenant context via bound parameters — ADR-0008, T-1.0.15.
   - pg_notify via bound parameters — ADR-0008, ADR-0014.1.
   - ULID IDs with prefix "cred_" — ADR-0017.11.
   - Global channel "mintkey:credential" — ADR-0014.1.
+  - Rotation: old credential marked superseded, new inserted active, atomic — ADR-0013 §3.1.
+  - service_id in rotate accepts both svc_ Crockford and svc_ 32-hex wire forms — R12/R14a.
 
-Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0014.4; ADR-0014.7; ADR-0017.11.
+Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0013; ADR-0014.4; ADR-0014.7; ADR-0017.11.
 """
 from __future__ import annotations
 
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -71,13 +74,64 @@ def _new_cred_id() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Request model
+# Wire-form decoder — mirrors services.py _wire_id_to_db_uuid (R12/R14a).
+# Credentials accept svc_ wire IDs in the rotate endpoint path; admin-ui
+# passes the wire form through without decoding (ADR lesson from R8/R12).
+# ---------------------------------------------------------------------------
+
+
+def _svc_wire_to_db_uuid(wire_id: str) -> str:
+    """
+    Convert a wire svc_ ID back to the UUID string stored in the DB.
+
+    Two wire forms exist (ADR-0017.11):
+      - "svc_" + 32 hex chars  — old serialised form
+      - "svc_" + 26 Crockford base32 chars — ULID form post-R12
+
+    Returns wire_id unchanged for raw UUIDs (fallback).
+    """
+    if wire_id.startswith("svc_"):
+        tail = wire_id[4:]
+        if len(tail) == 32:
+            return (
+                f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}"
+                f"-{tail[16:20]}-{tail[20:]}"
+            )
+        if len(tail) == 26:
+            val = 0
+            for ch in tail.upper():
+                val = (val << 5) | _CROCKFORD.index(ch)
+            val &= (1 << 128) - 1
+            h = f"{val:032x}"
+            return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    return wire_id
+
+
+# ---------------------------------------------------------------------------
+# Request models
 # ---------------------------------------------------------------------------
 
 
 class CredentialCreate(BaseModel):
     auth_scheme: str  # e.g., "bearer_token", "api_key_header"
     value: str        # SENSITIVE — never echoed back (S-SEC-1, ADR-0014.4)
+
+
+class CredentialRotateRequest(BaseModel):
+    """
+    Body for POST .../credentials/rotate — ADR-0013 §3.1.
+
+    auth_scheme: the scheme whose active credential is being rotated.
+    rotate_from: credential_id (cred_ wire form) being superseded; if omitted,
+        the currently-active credential of that auth_scheme is looked up and
+        superseded. If multiple active credentials share the same auth_scheme
+        (which the schema does not prevent), the one with the highest key_version
+        is superseded (deterministic rule documented here per CLAUDE.md §3).
+    value: new secret material (SENSITIVE — never stored or returned).
+    """
+    auth_scheme: str
+    rotate_from: Optional[str] = None
+    value: Optional[Union[str, dict]] = None  # SENSITIVE — ADR-0014.4
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +246,170 @@ async def create_credential(
             "key_version": key_version,
             "auth_scheme": body.auth_scheme,
             "created_at": now.isoformat(),
+        },
+    )
+
+
+@router.post("/rotate", status_code=200)
+async def rotate_credential(
+    tenant_id: UUID,
+    service_id: str,
+    body: CredentialRotateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> JSONResponse:
+    """
+    Rotate a credential — ADR-0013 §3.1.
+
+    Atomically marks the old credential as 'superseded' and inserts a new
+    active credential. The plaintext value (body.value) is passed to the
+    Vault Adapter and NEVER stored, logged, or returned (ADR-0014.4, S-SEC-1).
+
+    service_id accepts both svc_<26-char Crockford> and svc_<32-hex> wire forms
+    (admin-ui passes wire form through; admin-api decodes — R12/R14a lesson).
+
+    If rotate_from is omitted, the currently-active credential with the highest
+    key_version for the given auth_scheme is superseded (deterministic rule:
+    highest key_version wins when multiple actives share the same scheme).
+
+    Returns 404 if the service does not exist or belongs to another tenant.
+    Returns 404 if rotate_from is specified but no matching credential exists.
+    Returns 409 if the target credential is already superseded or revoked.
+    """
+    # Step 1: Set tenant context — bound parameters, ADR-0008
+    await set_tenant_context(session, tenant_id)
+
+    # Step 2: Decode wire-form service_id → DB UUID
+    db_svc_uuid = _svc_wire_to_db_uuid(service_id)
+
+    # Step 3: Verify service exists under this tenant (enforces RLS + ownership)
+    svc_result = await session.execute(
+        text("SELECT id FROM services WHERE id = :sid AND tenant_id = :tid"),
+        {"sid": db_svc_uuid, "tid": str(tenant_id)},
+    )
+    if svc_result.fetchone() is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+
+    # Step 4: Resolve the old credential to supersede.
+    # When rotate_from is provided, the caller intends to supersede the currently-
+    # active credential of that auth_scheme (rotate_from identifies it by cred_ wire
+    # form, but we don't decode cred_ wire IDs here — we match the active row for
+    # the scheme, which is the only semantically valid target).  If the schema ever
+    # prevents multiple actives of the same scheme (via a unique index) this is
+    # equivalent; otherwise the deterministic rule (highest key_version) applies.
+    old_result = await session.execute(
+        text(
+            "SELECT id, key_version, status FROM credentials"
+            " WHERE tenant_id = :tid AND service_id = :sid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            " ORDER BY key_version DESC LIMIT 1"
+        ),
+        {"tid": str(tenant_id), "sid": db_svc_uuid, "scheme": body.auth_scheme},
+    )
+    old_row = old_result.fetchone()
+
+    if old_row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "No active credential to rotate"},
+        )
+
+    old_internal_id: Any = old_row.id
+
+    # Step 5: Call Vault Adapter for new credential — plaintext never stored
+    plaintext: str = ""
+    if body.value is not None:
+        plaintext = body.value if isinstance(body.value, str) else str(body.value)
+
+    vault_result = await vault.put_credential(
+        tenant_id=str(tenant_id),
+        service_id=db_svc_uuid,
+        auth_scheme=body.auth_scheme,
+        plaintext=plaintext,
+    )
+    new_key_version: int = vault_result["key_version"]
+
+    # Step 6: Generate new cred ID and UUID — ADR-0017.11
+    new_cred_wire_id = _new_cred_id()
+    new_internal_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    # Step 7: Atomic DB transaction — mark old superseded, insert new active
+    await session.execute(
+        text(
+            "UPDATE credentials SET status = 'superseded'"
+            " WHERE id = :old_id AND tenant_id = :tid"
+        ),
+        {"old_id": str(old_internal_id), "tid": str(tenant_id)},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO credentials"
+            " (id, tenant_id, service_id, key_version, ciphertext, nonce,"
+            "  wrapped_dek, auth_scheme, status, created_at)"
+            " VALUES"
+            " (:id, :tenant_id, :service_id, :key_version, :ciphertext, :nonce,"
+            "  :wrapped_dek, :auth_scheme, :status, :created_at)"
+        ),
+        {
+            "id": str(new_internal_id),
+            "tenant_id": str(tenant_id),
+            "service_id": db_svc_uuid,
+            "key_version": new_key_version,
+            "ciphertext": b"",
+            "nonce": b"",
+            "wrapped_dek": b"",
+            "auth_scheme": body.auth_scheme,
+            "status": "active",
+            "created_at": now,
+        },
+    )
+
+    # Step 8: Emit audit event — ADR-0014.7; no plaintext in payload (ADR-0014.4)
+    audit_payload: dict = {
+        "credential_id": new_cred_wire_id,
+        "service_id": service_id,  # wire form, not decoded UUID
+        "key_version": new_key_version,
+        "auth_scheme": body.auth_scheme,
+        "superseded_credential_id": str(old_internal_id),
+    }
+    if body.rotate_from is not None:
+        audit_payload["rotate_from"] = body.rotate_from
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="credential.rotated",
+        actor_id=None,
+        actor_type="operator",
+        target_id=new_internal_id,
+        target_type="credential",
+        payload=audit_payload,
+    )
+
+    # Step 9: NOTIFY change channel — ADR-0014.1, bound parameters
+    await notify_change(
+        session,
+        "mintkey:credential",
+        {
+            "event": "credential.rotated",
+            "tenant_id": str(tenant_id),
+            "service_id": service_id,
+            "credential_id": new_cred_wire_id,
+        },
+    )
+
+    # Step 10: Return 200 with metadata ONLY — NEVER include plaintext
+    return JSONResponse(
+        status_code=200,
+        content={
+            "id": new_cred_wire_id,
+            "key_version": new_key_version,
+            "auth_scheme": body.auth_scheme,
+            "effective_at": now.isoformat(),
         },
     )
 

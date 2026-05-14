@@ -310,3 +310,185 @@ def test_delete_credential_version_already_revoked_returns_409(
     )
     assert r2.status_code == 409
     assert r2.json()["mintkey:code"] == "already_revoked"
+
+
+# ---------------------------------------------------------------------------
+# Tests: POST .../credentials/rotate — R14a (ADR-0013 §3.1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cred_service_for_rotate(admin_app: TestClient, postgres_container, cred_tenant: str) -> str:
+    """Separate service so rotate tests don't interfere with other test modules."""
+    return _insert_service(postgres_container, cred_tenant, slug="cred-svc-rotate")
+
+
+@pytest.fixture(scope="module")
+def cred_service_for_rotate_b(admin_app: TestClient, postgres_container, cred_tenant_b: str) -> str:
+    """Cross-tenant isolation service — belongs to tenant B."""
+    return _insert_service(postgres_container, cred_tenant_b, slug="cred-svc-rotate-b")
+
+
+def test_rotate_credential_happy_path(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_rotate: str
+) -> None:
+    """
+    Happy path: register a credential, rotate it.
+    Old credential → superseded; new credential → active.
+    Response carries new cred_ ID and effective_at — ADR-0013 §3.1.
+    """
+    # Register initial credential
+    reg = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_rotate}/credentials",
+        json={"auth_scheme": "bearer_token", "value": "initial-key"},
+    )
+    assert reg.status_code == 201, reg.text
+    initial_version = reg.json()["key_version"]
+
+    # Rotate
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_rotate}/credentials/rotate",
+        json={"auth_scheme": "bearer_token", "value": "rotated-key"},
+    )
+    assert rot.status_code == 200, rot.text
+    body = rot.json()
+    assert body["id"].startswith("cred_"), f"Expected cred_ prefix: {body['id']}"
+    assert body["auth_scheme"] == "bearer_token"
+    assert body["key_version"] > initial_version
+    assert "effective_at" in body
+    # ADR-0014.4: plaintext must not appear in response
+    assert "rotated-key" not in str(body)
+    assert "value" not in body
+
+    # Verify via list: old is superseded, new is active
+    lst = admin_app.get(
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_rotate}/credentials"
+    )
+    assert lst.status_code == 200
+    versions = lst.json()["versions"]
+    statuses = {v["key_version"]: v["status"] for v in versions}
+    assert statuses.get(initial_version) == "superseded", (
+        f"Old credential (key_version={initial_version}) must be superseded; statuses={statuses}"
+    )
+    new_version = body["key_version"]
+    assert statuses.get(new_version) == "active", (
+        f"New credential (key_version={new_version}) must be active; statuses={statuses}"
+    )
+
+
+def test_rotate_credential_uuid_service_id(
+    admin_app: TestClient, cred_tenant: str, postgres_container
+) -> None:
+    """
+    Rotation works when service_id in path is a raw UUID string (not svc_ wire form).
+    The route accepts str; raw UUID passes through _svc_wire_to_db_uuid unchanged.
+    """
+    raw_uuid_svc = _insert_service(postgres_container, cred_tenant, slug="cred-svc-uuid-rot")
+
+    # Register
+    _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{raw_uuid_svc}/credentials",
+        json={"auth_scheme": "api_key_header", "value": "uuid-initial"},
+    )
+
+    # Rotate using raw UUID service_id
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{raw_uuid_svc}/credentials/rotate",
+        json={"auth_scheme": "api_key_header", "value": "uuid-rotated"},
+    )
+    assert rot.status_code == 200, rot.text
+    assert rot.json()["auth_scheme"] == "api_key_header"
+
+
+def test_rotate_credential_svc_hex_wire_form(
+    admin_app: TestClient, cred_tenant: str, postgres_container
+) -> None:
+    """
+    Rotation works with svc_<32-hex> wire form — the old serialised form per ADR-0017.11.
+    """
+    raw_uuid_svc = _insert_service(postgres_container, cred_tenant, slug="cred-svc-hex-rot")
+
+    # Build the svc_<32-hex> wire form from the UUID
+    hex_form = "svc_" + raw_uuid_svc.replace("-", "")
+
+    # Register using raw UUID (existing endpoint only accepts UUID path param)
+    _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{raw_uuid_svc}/credentials",
+        json={"auth_scheme": "bearer_token", "value": "hex-initial"},
+    )
+
+    # Rotate using svc_<32-hex> wire form
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{hex_form}/credentials/rotate",
+        json={"auth_scheme": "bearer_token", "value": "hex-rotated"},
+    )
+    assert rot.status_code == 200, rot.text
+    assert rot.json()["id"].startswith("cred_")
+
+
+def test_rotate_credential_service_not_found_returns_404(
+    admin_app: TestClient, cred_tenant: str
+) -> None:
+    """Rotate with a nonexistent service → 404."""
+    import uuid as _uuid
+    fake_svc = str(_uuid.uuid4())
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{fake_svc}/credentials/rotate",
+        json={"auth_scheme": "bearer_token", "value": "x"},
+    )
+    assert rot.status_code == 404
+    assert rot.json()["mintkey:code"] == "not_found"
+
+
+def test_rotate_credential_no_active_credential_returns_404(
+    admin_app: TestClient, cred_tenant: str, postgres_container
+) -> None:
+    """Rotate when no active credential exists for the given scheme → 404."""
+    svc = _insert_service(postgres_container, cred_tenant, slug="cred-svc-noactive-rot")
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{svc}/credentials/rotate",
+        json={"auth_scheme": "bearer_token"},
+    )
+    assert rot.status_code == 404
+    assert rot.json()["mintkey:code"] == "not_found"
+
+
+def test_rotate_credential_malformed_body_returns_422(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_rotate: str
+) -> None:
+    """Missing required auth_scheme field → 422."""
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_rotate}/credentials/rotate",
+        json={"value": "no-scheme"},  # missing auth_scheme
+    )
+    assert rot.status_code == 422
+
+
+def test_rotate_credential_cross_tenant_rls(
+    admin_app: TestClient,
+    cred_tenant_b: str,
+    cred_service_for_rotate: str,
+) -> None:
+    """
+    Tenant B cannot rotate credentials belonging to Tenant A's service.
+    RLS causes the service lookup to return 0 rows → 404 (not 403, preserving
+    information-hiding — the service doesn't "exist" from tenant B's view).
+    """
+    rot = _post(
+        admin_app,
+        # Use tenant_b's tenant_id but Tenant A's service_id
+        f"/v1/tenants/{cred_tenant_b}/services/{cred_service_for_rotate}/credentials/rotate",
+        json={"auth_scheme": "bearer_token", "value": "cross-tenant-attempt"},
+    )
+    # Service not visible under tenant B → 404
+    assert rot.status_code == 404
+    assert rot.json()["mintkey:code"] == "not_found"

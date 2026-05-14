@@ -98,7 +98,11 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
       edit: { isVisible: false },
       delete: { isVisible: false },
 
-      // T-1.8.4: Rotate action
+      // T-1.8.4: Rotate action — R14a fix.
+      // POSTs to the dedicated rotate endpoint (ADR-0013 §3.1).
+      // serviceId is the wire-form svc_ ID from the record; admin-ui passes it
+      // through without decoding (admin-api decodes — R12/R14a lesson).
+      // credentialId (rotate_from) identifies the credential being superseded.
       rotateCredential: {
         actionType: "record",
         component: Components.ConfirmAction,
@@ -111,29 +115,35 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           }
           const { currentAdmin, record } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
-          const credentialId = request.params.recordId;
+          // record.id is the service wire-form id (svc_…); the record here is a
+          // service record (credentials list reuses services endpoint).
           const serviceId = record?.get("id") as string;
+          // rotate_from is the credential being superseded — passed through
+          // so admin-api can mark it superseded; omitting auto-resolves by scheme.
+          const credentialId = request.params.recordId as string | undefined;
+          const authScheme = record?.get("auth_scheme") as string ?? "bearer_token";
 
           const resp = await apiWrite(
-            `/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
+            `/v1/tenants/${tenantId}/services/${serviceId}/credentials/rotate`,
             "POST",
             {
-              auth_scheme: record?.get("auth_scheme"),
-              rotate_from: credentialId,
+              auth_scheme: authScheme,
+              ...(credentialId ? { rotate_from: credentialId } : {}),
             }
           );
 
           if (!resp.ok) {
-            const err = await resp.json().catch(() => ({})) as { title?: string };
+            const errBody = await resp.json().catch(() => ({})) as { title?: string; detail?: string };
+            const msg = errBody.title ?? errBody.detail ?? "Rotation failed";
             return {
               record: await recordJSON(context),
-              notice: { message: err.title ?? "Rotation failed", type: "error" },
+              notice: { message: msg, type: "error" },
             };
           }
 
           return {
             record: await recordJSON(context),
-            notice: { message: "Credential rotated — old version deprecated, new version active", type: "success" },
+            notice: { message: "Credential rotated successfully", type: "success" },
           };
         },
       },
