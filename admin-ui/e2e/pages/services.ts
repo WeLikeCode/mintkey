@@ -92,10 +92,11 @@ export class ServicesPage extends BasePage {
     const deleteBtn = this.page.locator('[data-testid="action-delete"]');
     await deleteBtn.waitFor({ state: "visible", timeout: 15_000 });
     await deleteBtn.click();
-    // AdminJS 7 opens a React modal (not window.confirm) for guarded actions.
-    // The modal has "Cancel" and "Confirm" buttons.
-    const confirmBtn = this.page.getByRole("button", { name: /^confirm$/i });
-    await confirmBtn.waitFor({ state: "visible", timeout: 5_000 });
+    // Phase 1d (commit 582ac29b): services.delete now uses the ConfirmAction component,
+    // which renders a full confirmation page (not an in-page modal).
+    // The confirm button is data-testid="confirm-action-button" with text "Confirm delete".
+    const confirmBtn = this.page.locator('[data-testid="confirm-action-button"]');
+    await confirmBtn.waitFor({ state: "visible", timeout: 10_000 });
     // Wait for AdminJS delete API response so the delete is complete before returning
     await Promise.all([
       this.page.waitForResponse(
