@@ -9,3 +9,6 @@ __pycache__/
 .env
 .env.local
 data/
+# Stray root-level Node artefacts (Playwright config lives in admin-ui/)
+/package.json
+/pnpm-lock.yaml
