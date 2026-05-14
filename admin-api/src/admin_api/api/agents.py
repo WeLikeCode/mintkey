@@ -163,7 +163,18 @@ async def create_agent(
     await set_tenant_context(session, tenant_id)
 
     agent_id = _new_agent_id()
-    internal_id = uuid.uuid4()
+    # Derive the DB UUID from the ULID's 128-bit value — R8-redux (ADR-0017.11).
+    # _new_agent_id() returns "agent_<26-char Crockford ULID>"; decode the 26-char
+    # tail to the same 128-bit integer and wrap as uuid.UUID so the stored row PK
+    # is algebraically identical to what _wire_id_to_uuid() decodes from the wire ID.
+    # Dropping the independent uuid.uuid4() eliminates the asymmetry that caused silent
+    # 404s: POST returned agent_<Crockford> whose bits never matched the stored PK.
+    _crockford_tail = agent_id[len("agent_"):]
+    _val = 0
+    for _ch in _crockford_tail.upper():
+        _val = (_val << 5) | _CROCKFORD.index(_ch)
+    _val &= (1 << 128) - 1
+    internal_id = uuid.UUID(int=_val)
     now = datetime.now(timezone.utc)
 
     plaintext, api_key_hash, fingerprint = _generate_agent_api_key()
