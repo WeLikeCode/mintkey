@@ -19,6 +19,7 @@ import { Components } from "../components/index.js";
 const _agentsResource = new RestResource({
   id: "agents", name: "Agents",
   listPath: "/v1/tenants/{tenantId}/agents",
+  getPath: "/v1/tenants/{tenantId}/agents/{id}",
   listKey: "agents",
   idField: "id",
   filterKeys: ["q", "has_access_to_service_id"],
@@ -112,12 +113,9 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
-          // list returns agent_<32hex> — convert to UUID format for admin-api
-          const raw = request.params.recordId ?? "";
-          const hex = raw.replace(/^agent_/, "");
-          const agentId = hex.length === 32
-            ? `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
-            : raw;
+          // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
+          // agent_<32hex> (list endpoint) and agent_<26Crockford> (create redirect / getPath).
+          const agentId = request.params.recordId ?? "";
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}`,
@@ -158,12 +156,9 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
-          // admin-api stores UUID as PK; list returns agent_<32hex> — convert to UUID format
-          const raw = request.params.recordId ?? "";
-          const hex = raw.replace(/^agent_/, "");
-          const agentId = hex.length === 32
-            ? `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`
-            : raw;
+          // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
+          // agent_<32hex> (list endpoint) and agent_<26Crockford> (create redirect / getPath).
+          const agentId = request.params.recordId ?? "";
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/revoke`,

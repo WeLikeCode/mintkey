@@ -59,28 +59,49 @@ export class AgentsPage extends BasePage {
     ]);
 
     let apiKey = "";
+    let crockfordId = "";
     try {
       const body = await response.json() as { notice?: { message?: string }; redirectUrl?: string };
       const noticeMsg = body.notice?.message ?? "";
       const keyMatch = noticeMsg.match(/API key \(shown once\):\s*(\S+)/);
       apiKey = keyMatch?.[1] ?? "";
+      // Agent ID is embedded in the notice as [<id>] so E2E tests can parse it without
+      // URL dependency (ADR-0014.4 / create handler comment).
+      const idMatch = noticeMsg.match(/\[([^\]]+)\]/);
+      crockfordId = idMatch?.[1] ?? "";
+      // Fallback: parse ID from redirectUrl if notice parse missed
+      if (!crockfordId && body.redirectUrl) {
+        const urlMatch = body.redirectUrl.match(/\/records\/([^/]+)\/show/);
+        crockfordId = urlMatch?.[1] ?? "";
+      }
     } catch {
-      // apiKey stays ""
+      // crockfordId / apiKey stay ""
     }
 
-    // The admin-api CREATE response returns a ULID-format id (agent_01KRH...) but the DB
-    // primary key is a UUID. The LIST endpoint returns agent_<32hex> format which is what
-    // the admin-api write endpoints accept after UUID conversion in the handler.
-    // Navigate to the filtered list to get the canonical hex-UUID record id.
-    await this.goto(`/admin/resources/agents?filters.q=${encodeURIComponent(data.name)}`);
+    // Wait for the show-page redirect to complete (succeeds via getPath — R15 fix).
     await this.page.waitForLoadState("networkidle");
 
-    const row = this.page.locator("tr").filter({ hasText: data.name });
-    await row.first().waitFor({ state: "visible", timeout: 15_000 });
-    const showLink = await row.first()
-      .locator('a[href*="/records/"][href*="/show"]')
-      .getAttribute("href");
-    const agentId = showLink?.match(/\/records\/([^/]+)\/show/)?.[1] ?? "";
+    // Resolve the canonical record ID from the show-page API response.
+    // admin-api normalises all IDs to agent_<32hex> in list/show responses
+    // (_agent_row_to_dict). Action page URLs must use this same 32-hex form so
+    // AdminJS's frontend can match record.id to the URL segment without confusion.
+    // (crockfordId from create response is the Crockford / ULID form — usable for
+    //  API calls, but AdminJS UI routes consistently use the 32-hex form.)
+    let agentId = crockfordId;
+    if (crockfordId) {
+      try {
+        const showResp = await this.page.request.get(
+          `/admin/api/resources/agents/records/${crockfordId}/show`
+        );
+        if (showResp.ok()) {
+          const showBody = await showResp.json() as { record?: { id?: string } };
+          const canonicalId = showBody.record?.id;
+          if (canonicalId) agentId = canonicalId;
+        }
+      } catch {
+        // fall back to crockfordId
+      }
+    }
 
     return { agentId, apiKey };
   }
