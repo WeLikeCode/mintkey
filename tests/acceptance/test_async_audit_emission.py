@@ -100,8 +100,9 @@ def test_broker_wires_auditq_into_issue_handler() -> None:
     """
     main_src = BROKER_MAIN.read_text(encoding="utf-8")
 
-    assert "auditq.New(" in main_src, (
-        "broker main does not call auditq.New()"
+    # #27 migrated from auditq.New() to auditq.NewWithConfig(); accept both.
+    assert "auditq.New(" in main_src or "auditq.NewWithConfig(" in main_src, (
+        "broker main does not call auditq.New() or auditq.NewWithConfig()"
     )
     assert "NewHandlerWithAudit" in main_src, (
         "broker main does not use issue.NewHandlerWithAudit"
@@ -143,8 +144,9 @@ def test_proxy_plugin_wires_auditq() -> None:
     """
     main_src = PROXY_MAIN.read_text(encoding="utf-8")
 
-    assert "auditq.New(" in main_src, (
-        "proxy-plugin main does not call auditq.New()"
+    # #27 migrated from auditq.New() to auditq.NewWithConfig(); accept both.
+    assert "auditq.New(" in main_src or "auditq.NewWithConfig(" in main_src, (
+        "proxy-plugin main does not call auditq.New() or auditq.NewWithConfig()"
     )
     assert "auditQueue.Replay()" in main_src, (
         "proxy-plugin main does not call auditQueue.Replay() on startup"
