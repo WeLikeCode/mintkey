@@ -14,7 +14,8 @@ GO        := go
 
 .PHONY: help dev test test-unit test-arch test-integration test-acceptance \
         test:e2e test:e2e:headed test:e2e:ci \
-        smoke test-golden lint lint-python lint-go lint-ts lint-contracts \
+        smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
+        lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull
 
@@ -32,6 +33,9 @@ help:
 	@echo "  test:e2e:ci            Run Playwright E2E tests in CI mode (Chromium only, retries)"
 	@echo "  smoke                  Run E2E smoke test against running stack"
 	@echo "  test-golden            Run WS-8 cross-stack golden-path E2E test (requires running stack)"
+	@echo "  test-data-plane        Run WS-4 data-plane smoke + resilience tests (requires running stack)"
+	@echo "  test-data-plane-smoke  Run WS-4 per-service smoke tests only"
+	@echo "  test-data-plane-resilience  Run WS-4 resilience/failure-injection tests only"
 	@echo "  lint                   Run all linters (Python + Go + TypeScript + contracts)"
 	@echo "  lint-python            Run ruff + mypy --strict on Python code"
 	@echo "  lint-go                Run golangci-lint on Go code"
@@ -119,6 +123,23 @@ test-golden:
 		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
 	fi
 	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_golden_path.py -v -s
+
+test-data-plane-smoke:
+	@echo "── WS-4 data-plane smoke tests ──"
+	@if ! docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
+		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
+	fi
+	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_data_plane_smoke.py -v
+
+test-data-plane-resilience:
+	@echo "── WS-4 data-plane resilience tests ──"
+	@if ! docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
+		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
+	fi
+	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_data_plane_resilience.py -v
+
+test-data-plane: test-data-plane-smoke test-data-plane-resilience
+	@echo "── WS-4 data-plane tests complete ──"
 
 # ── Playwright E2E UI tests ──────────────────────────────────────────────────
 
