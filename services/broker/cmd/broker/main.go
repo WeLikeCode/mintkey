@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mintkey/mintkey/internal/auditq"
 	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/internal/ulid"
 	"github.com/mintkey/mintkey/services/broker/internal/api/issue"
@@ -52,6 +53,13 @@ func main() {
 	iss := issuer.New(priv, activeKID, ring)
 	log.Printf("broker: starting (env=%s, port=%d)", cfg.Env, cfg.HTTPPort)
 
+	// Async audit queue (#22).
+	// Replay any events left in the WAL from a previous run, then start the
+	// background drainer.  The queue is drained and closed on graceful shutdown.
+	auditQueue := auditq.New(cfg.AdminAPIURL, cfg.BrokerSvcToken, cfg.AuditWALPath)
+	auditQueue.Replay()
+	auditQueue.Start()
+
 	// DB pool for api-key resolution (nil-safe: resolve handler handles nil store gracefully
 	// if DATABASE_URL is not set, but will fail at runtime on actual resolve requests).
 	var resolveStore resolve.Store
@@ -77,7 +85,8 @@ func main() {
 
 	// POST /v1/issue — internal; called by MCP Server only.
 	// Source: ADR-0006; ADR-0008; T-1.6.x.
-	r.Post("/v1/issue", issue.NewHandler(iss, cfg.MCPServiceToken).ServeHTTP)
+	// Audit: token.issued event emitted asynchronously via WAL queue (#22).
+	r.Post("/v1/issue", issue.NewHandlerWithAudit(iss, cfg.MCPServiceToken, auditQueue).ServeHTTP)
 
 	mux := r
 
@@ -102,5 +111,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "broker: serve error: %v\n", err)
 		os.Exit(1)
 	}
+	// Drain the audit queue before exit (5s deadline).
+	auditQueue.Close()
 	log.Println("broker: shutdown complete")
 }

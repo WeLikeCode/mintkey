@@ -35,6 +35,9 @@ type Config struct {
 	BrokerBaseURL     string         // base URL for broker's /v1/api-keys/resolve (ADR-0018)
 	ProxyServiceToken string         // X-Mintkey-Service-Token for broker auth (ADR-0018)
 	AudEnforcement    AudEnforcement // strict | permissive (ADR-0004 addendum)
+	// Audit async emission (#22)
+	AdminAPIURL  string // base URL of admin-api for audit/emit (e.g. http://admin-api:8000)
+	AuditWALPath string // path to the WAL file (default /var/lib/mintkey/proxy-audit.wal)
 }
 
 // Load reads configuration from environment variables, applying sensible
@@ -56,6 +59,9 @@ func Load() *Config {
 		BrokerBaseURL:     brokerBaseURL,
 		ProxyServiceToken: getEnv("MINTKEY_PROXY_SERVICE_TOKEN", ""),
 		AudEnforcement:    loadAudEnforcement(env),
+		// Audit async emission (#22)
+		AdminAPIURL:  getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
+		AuditWALPath: getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/proxy-audit.wal"),
 	}
 }
 

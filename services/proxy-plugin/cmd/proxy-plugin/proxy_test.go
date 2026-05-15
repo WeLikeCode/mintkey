@@ -28,7 +28,7 @@ func testHandler() *proxyHandler {
 		AudEnforcement: config.AudEnforcementPermissive,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck)
+	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil)
 }
 
 func testHandlerStrict() *proxyHandler {
@@ -40,7 +40,7 @@ func testHandlerStrict() *proxyHandler {
 		AudEnforcement: config.AudEnforcementStrict,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil)
 	return h
 }
 

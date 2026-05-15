@@ -9,7 +9,13 @@ POST /v1/internal/proxy-hit  — called by Egress Proxy to record a proxy.hit
     audit event.  Accepts optional api-key fields for the classical-key branch
     (auth_method, api_key_id, key_fingerprint, used_at) — Req 8.7, 10.5.
 
-Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5; long-lived-api-keys task 7.5.
+POST /v1/internal/audit/emit  — generic audit-emit endpoint consumed by broker
+    (token.issued) and proxy-plugin (proxy.hit, proxy.error) via their async
+    WAL queue.  Accepts the auditq.Event wire shape and calls audit_emit().
+    Authenticated by X-Mintkey-Service-Token (any registered service token).
+
+Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5; long-lived-api-keys task 7.5;
+        #22 async audit emission.
 """
 from __future__ import annotations
 
@@ -21,7 +27,7 @@ from uuid import UUID
 
 import argon2
 from argon2.exceptions import VerifyMismatchError
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -203,5 +209,118 @@ async def proxy_hit(
                     "tid": str(tenant_uuid),
                 },
             )
+
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# audit/emit — generic async audit-event ingress (#22)
+# ---------------------------------------------------------------------------
+# Allowed event types for this endpoint (broker + proxy-plugin events).
+# Admin-api's own events go through audit_emit() directly in their handlers.
+_ALLOWED_EVENT_TYPES = frozenset(
+    {
+        "token.issued",
+        "proxy.hit",
+        "proxy.error",
+    }
+)
+
+# Registered service tokens that may call this endpoint.
+# We accept any of the known service-to-service secrets so broker and
+# proxy-plugin can both use the same endpoint without sharing a token.
+_SERVICE_TOKEN_VARS = [
+    "MINTKEY_BROKER_SERVICE_TOKEN",
+    "MINTKEY_PROXY_SERVICE_TOKEN",
+    "MINTKEY_MCP_SERVICE_TOKEN",
+]
+
+
+def _get_allowed_service_tokens() -> set[str]:
+    """Return the set of non-empty service tokens from environment variables."""
+    import os
+    return {
+        t for var in _SERVICE_TOKEN_VARS
+        if (t := os.getenv(var, ""))
+    }
+
+
+class AuditEmitRequest(BaseModel):
+    event_type: str
+    tenant_id: str
+    actor_id: Optional[str] = None
+    actor_type: str = "system"
+    target_id: Optional[str] = None
+    target_type: Optional[str] = None
+    payload: dict = {}
+
+
+@router.post("/audit/emit")
+async def audit_emit_endpoint(
+    request: Request,
+    body: AuditEmitRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Generic audit-event ingress for broker and proxy-plugin async queues.
+
+    Accepts the auditq.Event wire shape (Go struct).  Authenticates via
+    X-Mintkey-Service-Token.  Validates event_type against the allowlist and
+    delegates to audit_emit() which serialises via the per-tenant advisory lock
+    (hash chain safe for concurrent callers).
+
+    Source: #22; ADR-0014.7; S-SEC-1.
+    """
+    # Authenticate: any known service token is accepted.
+    svc_token = request.headers.get("X-Mintkey-Service-Token", "")
+    allowed = _get_allowed_service_tokens()
+    if not svc_token or svc_token not in allowed:
+        return JSONResponse(status_code=401, content={"mintkey:code": "unauthenticated"})
+
+    # Validate event type.
+    if body.event_type not in _ALLOWED_EVENT_TYPES:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_event_type",
+                "title": f"event_type '{body.event_type}' not in allowlist",
+            },
+        )
+
+    # Parse tenant_id.
+    try:
+        tenant_uuid = UUID(body.tenant_id)
+    except (ValueError, TypeError):
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_tenant_id"},
+        )
+
+    await set_tenant_context(session, tenant_uuid)
+
+    actor_uuid: Optional[UUID] = None
+    if body.actor_id:
+        try:
+            actor_uuid = UUID(body.actor_id)
+        except (ValueError, TypeError):
+            actor_uuid = None
+
+    target_uuid: Optional[UUID] = None
+    if body.target_id:
+        try:
+            target_uuid = UUID(body.target_id)
+        except (ValueError, TypeError):
+            target_uuid = None
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_uuid,
+        event_type=body.event_type,
+        actor_id=actor_uuid,
+        actor_type=body.actor_type,
+        target_id=target_uuid,
+        target_type=body.target_type,
+        payload=body.payload,
+    )
 
     return JSONResponse(status_code=200, content={"status": "ok"})

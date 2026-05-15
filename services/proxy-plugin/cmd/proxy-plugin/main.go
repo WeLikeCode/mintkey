@@ -32,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mintkey/mintkey/internal/auditq"
 	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
@@ -60,16 +61,26 @@ func main() {
 	log.Printf("proxy-plugin: starting env=%s vault=%s jwks=%s port=%d aud_enforcement=%s",
 		cfg.Env, cfg.VaultAddrGRPC, cfg.JWKSEndpoint, cfg.PluginPort, cfg.AudEnforcement)
 
+	// Async audit queue (#22).
+	// Replay any events left in the WAL from a previous run, then start the
+	// background drainer.  The queue is drained and closed on graceful shutdown.
+	auditQueue := auditq.New(cfg.AdminAPIURL, cfg.ProxyServiceToken, cfg.AuditWALPath)
+	auditQueue.Replay()
+	auditQueue.Start()
+
 	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, "")
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
+
+	// Wire AuditEmitter for classical-key path (was nil, causing WS-9 gap).
+	ckAuditEmitter := &classicalKeyAuditAdapter{q: auditQueue}
 	ckHandler := classicalkey.NewHandler(classicalkey.Config{
 		BrokerURL:    cfg.BrokerBaseURL,
 		ProxyToken:   cfg.ProxyServiceToken,
 		CacheTTL:     60 * time.Second,
-		AuditEmitter: nil, // audit via proxy.hit; nil emitter is safe
+		AuditEmitter: ckAuditEmitter,
 	})
 
-	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler)
+	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler, auditQueue)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.PluginPort),
@@ -102,7 +113,36 @@ func main() {
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutCtx)
+	// Drain the audit queue before exit (5s deadline).
+	auditQueue.Close()
 	log.Println("proxy-plugin: shutdown complete")
+}
+
+// classicalKeyAuditAdapter adapts *auditq.Queue to classicalkey.AuditEmitter.
+type classicalKeyAuditAdapter struct {
+	q *auditq.Queue
+}
+
+func (a *classicalKeyAuditAdapter) EmitProxyHit(ctx context.Context, p classicalkey.ProxyHitPayload) {
+	evt := auditq.Event{
+		EventType:  "proxy.hit",
+		ActorType:  "agent",
+		TargetType: "service",
+		Payload: map[string]any{
+			"auth_method":     p.AuthMethod,
+			"api_key_id":      p.APIKeyID,
+			"key_fingerprint": p.KeyFingerprint,
+			"service_id":      p.ServiceID,
+			"status_code":     p.StatusCode,
+			"method":          p.Method,
+			"path_template":   p.PathTemplate,
+			"latency_ms":      p.LatencyMS,
+		},
+	}
+	if p.UsedAt != nil {
+		evt.Payload["used_at"] = p.UsedAt.UTC().Format(time.RFC3339)
+	}
+	a.q.Enqueue(evt)
 }
 
 // proxyHandler is the HTTP handler that validates JWTs, fetches credentials,
@@ -112,16 +152,18 @@ type proxyHandler struct {
 	vaultClient *vault.Client
 	jwksLimiter *proxyjwt.JWKSRefreshLimiter
 	ckHandler   *classicalkey.Handler
+	audit       *auditq.Queue // may be nil (audit disabled)
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 }
 
-func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler) *proxyHandler {
+func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue) *proxyHandler {
 	return &proxyHandler{
 		cfg:         cfg,
 		vaultClient: vaultClient,
 		jwksLimiter: limiter,
 		ckHandler:   ck,
+		audit:       aq,
 		pubKeys:     make(map[string]ed25519.PublicKey),
 	}
 }
@@ -271,7 +313,41 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	proxy.ServeHTTP(w, r)
+	// Wrap the ResponseWriter to capture the upstream status code for audit.
+	jtiClaim, _ := claims["jti"].(string)
+	startTime := time.Now()
+	rw := &statusCapture{ResponseWriter: w}
+	proxy.ServeHTTP(rw, r)
+
+	// Async audit: proxy.hit / proxy.error (#22).
+	// Emission is O(1) non-blocking; never carries credentials (S-SEC-1).
+	if h.audit != nil {
+		latencyMS := time.Since(startTime).Milliseconds()
+		statusCode := rw.status
+		if statusCode == 0 {
+			statusCode = http.StatusOK // WriteHeader not called → 200
+		}
+		eventType := "proxy.hit"
+		outcome := "allowed"
+		if statusCode >= 400 {
+			eventType = "proxy.error"
+			outcome = "error"
+		}
+		h.audit.Enqueue(auditq.Event{
+			EventType:  eventType,
+			TenantID:   tenantID,
+			ActorID:    agentID,
+			ActorType:  "agent",
+			TargetID:   serviceID,
+			TargetType: "service",
+			Payload: map[string]any{
+				"jti":                 jtiClaim,
+				"upstream_status":     statusCode,
+				"upstream_latency_ms": latencyMS,
+				"outcome":             outcome,
+			},
+		})
+	}
 }
 
 // handleClassicalKey handles the ADR-0018 classical service API key path.
@@ -493,4 +569,23 @@ func (h *proxyHandler) refreshJWKS(ctx context.Context) error {
 	}
 	h.pubKeys = newKeys
 	return nil
+}
+
+// statusCapture is a minimal ResponseWriter wrapper that records the HTTP
+// status code written by the upstream reverse proxy so the audit event can
+// carry it.
+type statusCapture struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusCapture) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+// Unwrap satisfies http.ResponseController so http.Flush/http.Hijack still
+// work through the wrapper.
+func (s *statusCapture) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
 }

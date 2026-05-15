@@ -7,17 +7,30 @@
 //   - ttl_seconds must be 1–3600; defaults to 600 when 0.
 //   - Response: {token, expires_at} where expires_at is Unix timestamp int64.
 //   - Error shape: {"mintkey:code": "...", "title": "..."} — same as resolve.go.
+//
+// Audit (#22): after a successful JWT issue the handler enqueues a
+// token.issued event via the injected AuditEnqueuer.  The enqueue is O(1)
+// (non-blocking channel send + disk WAL); it never blocks the request path.
 package issue
 
 import (
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/mintkey/mintkey/internal/auditq"
 	"github.com/mintkey/mintkey/services/broker/internal/issuer"
 )
+
+// AuditEnqueuer is satisfied by *auditq.Queue.  It is an interface so tests
+// can inject a no-op implementation without starting a real queue.
+type AuditEnqueuer interface {
+	Enqueue(e auditq.Event)
+}
 
 // issueRequest is the JSON body expected by the endpoint.
 type issueRequest struct {
@@ -42,8 +55,9 @@ type errBody struct {
 
 // Handler holds the dependencies for the issue endpoint.
 type Handler struct {
-	iss      *issuer.Issuer
+	iss    *issuer.Issuer
 	mcpToken string
+	audit  AuditEnqueuer // nil → audit disabled (safe zero value)
 }
 
 // NewHandler constructs an issue.Handler.
@@ -51,6 +65,12 @@ type Handler struct {
 // X-Mintkey-Service-Token to authenticate its requests.
 func NewHandler(iss *issuer.Issuer, mcpToken string) http.Handler {
 	return &Handler{iss: iss, mcpToken: mcpToken}
+}
+
+// NewHandlerWithAudit constructs an issue.Handler with async audit emission.
+// audit may be nil to disable audit (safe — no panic).
+func NewHandlerWithAudit(iss *issuer.Issuer, mcpToken string, audit AuditEnqueuer) http.Handler {
+	return &Handler{iss: iss, mcpToken: mcpToken, audit: audit}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +116,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	expiresAt := time.Now().Unix() + int64(ttl)
 
+	// Async audit: token.issued (#22).
+	// Non-blocking O(1) enqueue; never carries the JWT value itself (S-SEC-1).
+	if h.audit != nil {
+		h.audit.Enqueue(auditq.Event{
+			EventType:  "token.issued",
+			TenantID:   req.TenantID,
+			ActorID:    req.AgentID,
+			ActorType:  "agent",
+			TargetID:   req.ServiceID,
+			TargetType: "service",
+			Payload: map[string]any{
+				"scope":    req.Scope,
+				"jti":      jti(token),
+				"exp_ts":   expiresAt,
+				"agent_id": req.AgentID,
+			},
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(issueResponse{Token: token, ExpiresAt: expiresAt})
@@ -105,4 +144,24 @@ func writeErr(w http.ResponseWriter, status int, code, title string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(errBody{Code: code, Title: title})
+}
+
+// jti extracts the "jti" claim from a JWT string by base64-decoding the
+// middle (claims) segment.  Returns "" on any parse error — the audit event
+// is still emitted without a jti value rather than blocking the response.
+func jti(tokenStr string) string {
+	parts := strings.SplitN(tokenStr, ".", 3)
+	if len(parts) != 3 {
+		return ""
+	}
+	claimsJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+		return ""
+	}
+	v, _ := claims["jti"].(string)
+	return v
 }

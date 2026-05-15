@@ -17,6 +17,10 @@ type Config struct {
 	ProxyServiceToken string // shared secret the Egress Proxy must supply for /v1/api-keys/resolve
 	MCPServiceToken   string // shared secret the MCP Server must supply for /v1/issue
 	DatabaseURL       string // postgres DSN for api-key resolution queries
+	// Audit async emission (#22)
+	AdminAPIURL      string // base URL of admin-api for audit/emit (e.g. http://admin-api:8000)
+	BrokerSvcToken   string // X-Mintkey-Service-Token sent to admin-api audit/emit
+	AuditWALPath     string // path to the WAL file (default /var/lib/mintkey/broker-audit.wal)
 }
 
 // Load reads configuration from environment variables.
@@ -29,6 +33,10 @@ func Load() *Config {
 		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"),  // /run/secrets/ in compose
 		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),    // shared with MCP Server
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
+		// Audit async emission (#22)
+		AdminAPIURL:    getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
+		BrokerSvcToken: os.Getenv("MINTKEY_BROKER_SERVICE_TOKEN"),
+		AuditWALPath:   getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/broker-audit.wal"),
 	}
 }
 
