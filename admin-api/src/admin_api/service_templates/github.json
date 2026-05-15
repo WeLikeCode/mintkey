@@ -1,0 +1,15 @@
+{
+  "slug": "github",
+  "name": "GitHub",
+  "display_name": "GitHub REST API",
+  "description": "GitHub v3 REST API — issues, repos, PRs, workflows. Use a Personal Access Token (classic or fine-grained).",
+  "base_url": "https://api.github.com",
+  "auth_scheme": "bearer_token",
+  "openapi_url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+  "credential_hint": {
+    "field": "value",
+    "help": "Create a fine-grained PAT at https://github.com/settings/tokens?type=beta",
+    "format": "ghp_... or github_pat_..."
+  },
+  "category": "developer-tools"
+}

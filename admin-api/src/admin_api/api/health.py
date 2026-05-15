@@ -45,6 +45,8 @@ try:
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     _PROMETHEUS_AVAILABLE = False
+    _REQUESTS_TOTAL = None  # type: ignore[assignment]
+    _REQUEST_DURATION = None  # type: ignore[assignment]
 
 
 async def check_db() -> bool:

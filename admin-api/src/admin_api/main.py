@@ -37,10 +37,12 @@ from admin_api.api.health import router as health_router
 from admin_api.api.internal import router as internal_router
 from admin_api.api.permissions import router as permissions_router, tenant_permissions_router, validation_error_handler
 from admin_api.api.proxy import router as proxy_router
+from admin_api.api.service_templates import router as service_templates_router
 from admin_api.api.services import router as services_router
 from admin_api.api.settings import router as settings_router
 from admin_api.api.tenants import router as tenants_router
 from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+from admin_api.middleware.metrics import MetricsMiddleware
 from admin_api.middleware.otel import configure_otel
 from admin_api.services.vault_client import close_channel
 
@@ -73,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router)
     app.include_router(tenants_router)
     app.include_router(proxy_router)
+    app.include_router(service_templates_router)
 
     app.add_exception_handler(RequestValidationError, validation_error_handler)
 
@@ -94,6 +97,11 @@ def create_app() -> FastAPI:
     csrf_exempt("/v1/proxy/call")
 
     app.add_middleware(CsrfMiddleware)
+
+    # MetricsMiddleware added LAST → Starlette reverse-add order makes it the
+    # OUTERMOST wrapper, so it measures the full round-trip including all inner
+    # middleware and route handler time. Source: OPS-N.
+    app.add_middleware(MetricsMiddleware)
 
     configure_otel(app)
 

@@ -2558,6 +2558,130 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /v1/tenants/{tenant_id}/services/test-transient:
+    post:
+      operationId: testServiceTransient
+      tags: [Services]
+      summary: Validate a candidate service config without persisting to DB or vault.
+      description: |
+        Operator-initiated dry-run test (OPS-T). Accepts the full candidate
+        service config + credential value inline, builds a request per the
+        supplied auth_scheme, sends it to base_url + path, and returns the
+        result. Nothing is written to the database or vault — the credential
+        value is used only in-memory for the duration of the HTTP call.
+        Emits `service.test_executed` with `transient: true` (ADR-0017 C-09).
+        SSRF guardrail applies (RFC1918 / loopback / link-local rejected — S-SEC-1).
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransientTestRequest" }
+            example:
+              service:
+                name: candidate
+                base_url: "https://httpbin.org"
+                auth_scheme: bearer_token
+              credential:
+                value: "my-secret-token"
+              test:
+                method: GET
+                path: "/get"
+                timeout_ms: 5000
+      responses:
+        "200":
+          description: Test executed; see body for ok/error and timing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestRunResponse" }
+              examples:
+                ok:
+                  summary: Backend responded 200.
+                  value:
+                    ok: true
+                    status_code: 200
+                    latency_ms: 42
+                    response_body_truncated: '{"url":"https://httpbin.org/get"}'
+                timeout:
+                  summary: Upstream timed out.
+                  value:
+                    ok: false
+                    latency_ms: 5000
+                    error: "timeout"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: |
+            Test rejected before sending (forbidden destination, invalid
+            input). Body is application/problem+json with mintkey:code
+            either `forbidden_destination` or `validation_failed`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  ###########################################################################
+  # Service Templates — OPS-R
+  ###########################################################################
+
+  /v1/service-templates:
+    get:
+      operationId: listServiceTemplates
+      tags: [Services]
+      summary: List operator-curated starter templates for well-known services.
+      description: |
+        Returns a summary list of all bundled service templates (GitHub, Stripe,
+        OpenAI, Slack, Twilio, etc.). Templates pre-fill the new-service form
+        in the Admin Console. Read-only; no audit emission.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplateSummary'
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/service-templates/{slug}:
+    get:
+      operationId: getServiceTemplate
+      tags: [Services]
+      summary: Get a service template by slug.
+      description: |
+        Returns the full template document for the given slug, including
+        `credential_hint` and `openapi_url`.
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+          description: Template slug (e.g. github, stripe, openai).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '404':
+          description: Not found
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
 
   ###########################################################################
@@ -3497,6 +3621,7 @@ components:
         - service.registered
         - service.updated
         - service.removed
+        - service.test_executed
         - credential.registered
         - credential.rotated
         - credential.revoked
@@ -3955,6 +4080,61 @@ components:
               default: false
               description: |
                 Require `source_ip_allowlist` constraint on every created key.
+    TransientServiceCandidate:
+      type: object
+      additionalProperties: false
+      required: [base_url, auth_scheme]
+      properties:
+        name:
+          type: string
+          default: candidate
+        base_url:
+          type: string
+          description: Candidate base URL for the service.
+        auth_scheme:
+          type: string
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls]
+
+    TransientCredentialCandidate:
+      type: object
+      additionalProperties: false
+      required: [value]
+      description: |
+        Candidate credential. The `value` field is used inline for the HTTP
+        call and is NEVER written to DB or vault. It must not appear in any
+        audit payload, log line, or response body.
+      properties:
+        value:
+          type: string
+          description: Plaintext credential value (used in-memory only; never persisted).
+        header_name:
+          type: string
+          description: HTTP header name for api_key_header scheme.
+        query_param:
+          type: string
+          description: Query parameter name for api_key_query scheme.
+        token_url:
+          type: string
+          description: Token URL for oauth2_client_credentials scheme (future).
+        client_id:
+          type: string
+          description: Client ID for oauth2_client_credentials scheme (future).
+
+    TransientTestRequest:
+      type: object
+      additionalProperties: false
+      required: [service, credential]
+      description: |
+        Request body for POST /test-transient (OPS-T). Carries the full
+        candidate service config + credential inline. Nothing is persisted.
+      properties:
+        service:
+          $ref: "#/components/schemas/TransientServiceCandidate"
+        credential:
+          $ref: "#/components/schemas/TransientCredentialCandidate"
+        test:
+          $ref: "#/components/schemas/TestRunRequest"
+
     TestRunRequest:
       type: object
       additionalProperties: false
@@ -4028,6 +4208,82 @@ components:
         kid:   { type: string, description: "Key ID for the broker's signing keypair." }
 
   # End of round-3 schema additions. Keep `securitySchemes:` as the next sibling.
+
+    # ----- Service Templates — OPS-R -----
+
+    TemplateSummary:
+      type: object
+      description: |
+        Condensed view of a service template as returned by listServiceTemplates.
+        Full detail (credential_hint, openapi_url) requires getServiceTemplate.
+      required: [slug, name, display_name, description]
+      properties:
+        slug:
+          type: string
+          description: Machine-readable identifier (e.g. github, stripe).
+        name:
+          type: string
+          description: Short human name (e.g. GitHub, Stripe).
+        display_name:
+          type: string
+          description: Full display label for UI (e.g. GitHub REST API).
+        description:
+          type: string
+          description: One-line description shown in the template picker.
+        category:
+          type: string
+          nullable: true
+          description: Grouping category (e.g. developer-tools, payments, ai, communication).
+        icon:
+          type: string
+          nullable: true
+          description: Optional icon URL or identifier. Absent for bundled templates.
+
+    Template:
+      type: object
+      description: |
+        Full service template document. Pre-fills the new-service form.
+      required: [slug, name, display_name, description, base_url, auth_scheme]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        base_url:
+          type: string
+          format: uri
+          description: Default base URL for this service.
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        openapi_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL of the service's OpenAPI spec, if publicly available.
+        credential_hint:
+          type: object
+          nullable: true
+          description: UI hints for filling in the credential fields.
+          properties:
+            field:
+              type: string
+              description: Which credential field this hint applies to (e.g. value).
+            help:
+              type: string
+              description: Human-readable help text shown below the field.
+            format:
+              type: string
+              description: Expected format / example value (e.g. sk_live_...).
+        category:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          nullable: true
 
 x-mintkey-error-codes:
   description: |

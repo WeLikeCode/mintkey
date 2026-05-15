@@ -1,0 +1,15 @@
+{
+  "slug": "twilio",
+  "name": "Twilio",
+  "display_name": "Twilio API",
+  "description": "Twilio messaging and voice API. Uses HTTP Basic auth with AccountSID:AuthToken.",
+  "base_url": "https://api.twilio.com",
+  "auth_scheme": "basic_auth",
+  "openapi_url": null,
+  "credential_hint": {
+    "field": "value",
+    "help": "Use the AccountSID as username and AuthToken as password from https://console.twilio.com",
+    "format": "AC<sid>:<token> (base64-encoded as Basic auth)"
+  },
+  "category": "communication"
+}
