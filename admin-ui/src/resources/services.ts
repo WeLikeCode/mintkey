@@ -63,6 +63,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       },
       new: {
         isVisible: true,
+        component: Components.ServiceCreateForm,
         handler: async (request, response, context) => {
           const { currentAdmin } = context;
           // AdminJS calls handler on GET to get the empty form record
