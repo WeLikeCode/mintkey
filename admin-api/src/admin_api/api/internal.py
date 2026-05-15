@@ -13,9 +13,11 @@ POST /v1/internal/audit/emit  — generic audit-emit endpoint consumed by broker
     (token.issued) and proxy-plugin (proxy.hit, proxy.error) via their async
     WAL queue.  Accepts the auditq.Event wire shape and calls audit_emit().
     Authenticated by X-Mintkey-Service-Token (any registered service token).
+    Rate-limited to MINTKEY_AUDIT_EMIT_RATE_LIMIT_RPS per service-token bucket
+    (default 100 req/s) — #26.
 
 Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5; long-lived-api-keys task 7.5;
-        #22 async audit emission.
+        #22 async audit emission; #26 rate limiting.
 """
 from __future__ import annotations
 
@@ -35,6 +37,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.auth.internal import DUMMY_HASH
 from admin_api.db.deps import get_db_session
+from admin_api.services.audit_emit_rate_limiter import (
+    AuditEmitRateLimiter,
+    get_rate_limiter,
+    token_log_id,
+)
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -223,6 +230,7 @@ _ALLOWED_EVENT_TYPES = frozenset(
         "token.issued",
         "proxy.hit",
         "proxy.error",
+        "proxy.aud_mismatch_rejected",
     }
 )
 
@@ -260,6 +268,7 @@ async def audit_emit_endpoint(
     request: Request,
     body: AuditEmitRequest,
     session: AsyncSession = Depends(get_db_session),
+    _rate_limiter: AuditEmitRateLimiter = Depends(get_rate_limiter),
 ) -> JSONResponse:
     """
     Generic audit-event ingress for broker and proxy-plugin async queues.
@@ -268,6 +277,10 @@ async def audit_emit_endpoint(
     X-Mintkey-Service-Token.  Validates event_type against the allowlist and
     delegates to audit_emit() which serialises via the per-tenant advisory lock
     (hash chain safe for concurrent callers).
+
+    Rate-limited at MINTKEY_AUDIT_EMIT_RATE_LIMIT_RPS req/s per service-token
+    bucket (default 100).  The rate check runs after authentication so that
+    unauthenticated callers still receive 401, not 429 (#26).
 
     Cross-tenant scope check (Option Y, #22-redux S-SEC-1):
     Service tokens identify a trusted system service, not a tenant.  Before
@@ -280,7 +293,7 @@ async def audit_emit_endpoint(
       is allowed but logged at WARN for auditability.
     - Mismatch → 403 {"mintkey:code": "aud_mismatch_rejected"}.
 
-    Source: #22; #22-redux; ADR-0014.7; S-SEC-1.
+    Source: #22; #22-redux; ADR-0014.7; S-SEC-1; #26.
     """
     import logging as _logging
 
@@ -291,6 +304,22 @@ async def audit_emit_endpoint(
     allowed = _get_allowed_service_tokens()
     if not svc_token or svc_token not in allowed:
         return JSONResponse(status_code=401, content={"mintkey:code": "unauthenticated"})
+
+    # Rate-limit: per-service-token bucket (MINTKEY_AUDIT_EMIT_RATE_LIMIT_RPS).
+    # Runs after auth so unauthenticated requests still receive 401, not 429.
+    if not await _rate_limiter.try_acquire(svc_token):
+        _log.warning(
+            "audit_emit rate limit exceeded: token_id=%s",
+            token_log_id(svc_token),
+        )
+        return JSONResponse(
+            status_code=429,
+            headers={"Retry-After": "1"},
+            content={
+                "mintkey:code": "rate_limited",
+                "title": "audit_emit rate limit exceeded",
+            },
+        )
 
     # Validate event type.
     if body.event_type not in _ALLOWED_EVENT_TYPES:
