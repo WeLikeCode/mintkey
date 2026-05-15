@@ -8,12 +8,15 @@ Source: design §4 middleware/otel.py; ADR-0017.6; T-1.0.14; T-1.3.3.
 """
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from mintkey_models.otel_redaction import RedactingSpanProcessor
 
@@ -22,8 +25,9 @@ def configure_otel(app: FastAPI, service_name: str = "admin-api") -> None:
     """Wire OTel SDK + FastAPI instrumentation with redaction layer per ADR-0017.6."""
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
     provider.add_span_processor(
-        RedactingSpanProcessor(BatchSpanProcessor(ConsoleSpanExporter()))
+        RedactingSpanProcessor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)))
     )
     trace.set_tracer_provider(provider)
     FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)

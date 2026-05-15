@@ -166,6 +166,7 @@ services:
       MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
       MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -228,6 +229,7 @@ services:
       MINTKEY_ENV: dev
       BROKER_BASE_URL: http://broker:8083
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
     ports:
       - "8082:8082"
     networks:
