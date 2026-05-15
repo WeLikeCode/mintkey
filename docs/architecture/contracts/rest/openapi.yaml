@@ -829,8 +829,8 @@ paths:
           $ref: "#/components/responses/NotFound"
     post:
       tags: [Credentials]
-      operationId: registerOrRotateCredential
-      summary: Register or rotate a credential.
+      operationId: registerCredential
+      summary: Register a new credential for a service.
       description: |
         Always creates a new `key_version` (monotonic per service). The
         plaintext value is returned **exactly once**, in this response.
@@ -838,9 +838,12 @@ paths:
         is retained until soft-deleted (see `DELETE`).
 
         The credential is stored encrypted via the Vault Adapter
-        (ADR-0003). A `credential.rotated` audit event is emitted; a
-        `credential.rotated` change event is published on
+        (ADR-0003). A `credential.registered` audit event is emitted; a
+        `credential.registered` change event is published on
         `mintkey:credential` (tenant_id is in payload) (ADR-0010).
+
+        To replace an existing credential atomically, use
+        `POST .../credentials/rotate` instead.
       requestBody:
         required: true
         content:
@@ -886,6 +889,69 @@ paths:
                 value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 created_at: "2026-05-10T14:00:00Z"
                 updated_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/tenants/{tenant_id}/services/{service_id}/credentials/rotate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/ServiceId"
+    post:
+      tags: [Credentials]
+      operationId: rotateCredential
+      summary: Rotate the active credential for a service.
+      description: |
+        Atomically marks the current active credential as `superseded` and
+        inserts a new `active` credential. The plaintext value is returned
+        **exactly once** in this response and is never stored or logged
+        (ADR-0014.4, S-SEC-1).
+
+        `rotate_from` (optional): the `cred_` wire ID of the specific
+        credential to supersede. When provided, the endpoint filters the
+        supersede target to that exact credential — returns 404 if no
+        active credential with that ID exists. When omitted, the
+        highest `key_version` active credential for `auth_scheme` is
+        superseded (deterministic rule).
+
+        Emits a `credential.rotated` audit event; publishes a
+        `credential.rotated` change event on `mintkey:credential`
+        (ADR-0010, ADR-0014.7).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CredentialRotateRequest"
+            examples:
+              bearer-rotate:
+                value:
+                  auth_scheme: "bearer_token"
+                  value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              bearer-rotate-from:
+                value:
+                  auth_scheme: "bearer_token"
+                  rotate_from: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C3"
+                  value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        "200":
+          description: Credential rotated. New credential metadata returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialRotateResponse"
+              example:
+                id: "cred_01HX5J9F8V8H8V0CG3F2Y5J6C5"
+                key_version: 5
+                auth_scheme: "bearer_token"
+                effective_at: "2026-05-14T10:00:00Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -3111,6 +3177,62 @@ components:
         - status
         - created_at
         - updated_at
+
+    CredentialRotateRequest:
+      type: object
+      description: |
+        Request body for `POST .../credentials/rotate` — ADR-0013 §3.1.
+
+        `rotate_from` is optional: when supplied it pins the credential to
+        supersede by its `cred_` wire ID.  When omitted, the highest
+        `key_version` active credential for `auth_scheme` is superseded.
+
+        `value` is the new plaintext secret material (write-only,
+        `x-mintkey-sensitive: true` — never stored or returned).
+      properties:
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        rotate_from:
+          type: [string, "null"]
+          pattern: "^cred_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: |
+            Wire ID of the specific credential to supersede. When omitted,
+            the deterministic rule (highest key_version) applies.
+        value:
+          type: [string, "null"]
+          x-mintkey-sensitive: true
+          description: |
+            New secret material. Passed to the Vault Adapter; never stored
+            or returned (ADR-0014.4, S-SEC-1).
+      required:
+        - auth_scheme
+
+    CredentialRotateResponse:
+      type: object
+      description: |
+        Response body for `POST .../credentials/rotate` — ADR-0013 §3.1.
+        Contains metadata of the newly-created active credential only.
+        Plaintext is never included (ADR-0014.4, S-SEC-1).
+      properties:
+        id:
+          type: string
+          pattern: "^cred_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Wire ID of the newly-created active credential.
+        key_version:
+          type: integer
+          minimum: 1
+          description: Monotonic version of the new credential.
+        auth_scheme:
+          $ref: "#/components/schemas/AuthScheme"
+        effective_at:
+          type: string
+          format: date-time
+          description: UTC timestamp when the new credential became active.
+      required:
+        - id
+        - key_version
+        - auth_scheme
+        - effective_at
 
     RegisterCredentialRequest:
       description: |
