@@ -4,16 +4,27 @@ Vault Adapter gRPC client.
 Calls the Go vault-adapter service over insecure gRPC (dev mode).
 Plaintext is passed in-flight only; never logged, cached, or returned.
 
-Source: ADR-0011; ADR-0014.4; vault.proto; T-1.3.1; WS-9.
+Source: ADR-0011; ADR-0014.4; vault.proto; T-1.3.1; WS-9; WS-11.
+
+WS-11 changes (perf):
+- Migrated from sync grpc.Channel + blocking stub calls to grpc.aio.Channel
+  with fully async awaitable calls — no thread-pool / executor shim.
+- Singleton channel: one grpc.aio.Channel shared for the process lifetime,
+  opened lazily on first call and closed via FastAPI lifespan shutdown hook.
+  grpc.aio handles transparent reconnection after vault-adapter restart.
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 
 import grpc
+import grpc.aio
 
 from admin_api.services import vault_pb2, vault_pb2_grpc
+
+logger = logging.getLogger(__name__)
 
 # Auth-scheme string → proto enum int (mirrors vault.proto AuthScheme).
 _AUTH_SCHEME_MAP: dict[str, int] = {
@@ -28,13 +39,41 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
 
+# ---------------------------------------------------------------------------
+# Singleton channel — one per process, shared across all requests.
+# grpc.aio reconnects automatically when vault-adapter restarts; no manual
+# reconnect logic is required.
+# ---------------------------------------------------------------------------
+_channel: grpc.aio.Channel | None = None
+
+
+def _get_channel() -> grpc.aio.Channel:
+    """Return the singleton grpc.aio channel, creating it on first call."""
+    global _channel
+    if _channel is None:
+        _channel = grpc.aio.insecure_channel(_VAULT_ADDR)
+        logger.info("vault_client: grpc.aio channel ready → %s", _VAULT_ADDR)
+    return _channel
+
+
+async def close_channel() -> None:
+    """Close the singleton channel.  Call from FastAPI lifespan shutdown."""
+    global _channel
+    if _channel is not None:
+        await _channel.close()
+        _channel = None
+        logger.info("vault_client: grpc.aio channel closed")
+
 
 class VaultAdapterClient:
-    """gRPC client for the Go vault-adapter service."""
+    """gRPC client for the Go vault-adapter service.
+
+    Uses the module-level singleton grpc.aio.Channel so all concurrent
+    requests multiplex over the same HTTP/2 connection.
+    """
 
     def _stub(self) -> vault_pb2_grpc.VaultAdapterStub:
-        channel = grpc.insecure_channel(_VAULT_ADDR)
-        return vault_pb2_grpc.VaultAdapterStub(channel)
+        return vault_pb2_grpc.VaultAdapterStub(_get_channel())
 
     async def put_credential(
         self,
@@ -53,7 +92,7 @@ class VaultAdapterClient:
             value=plaintext.encode(),
             target_url=target_url,
         )
-        resp = self._stub().PutCredential(req)
+        resp = await self._stub().PutCredential(req)
         return {
             "credential_id": f"cred_{tenant_id[:8]}_{service_id[:8]}",
             "key_version": resp.key_version,
@@ -75,29 +114,63 @@ class VaultAdapterClient:
             key_version=0,
         )
         try:
-            resp = self._stub().GetCredential(req)
+            resp = await self._stub().GetCredential(req)
             return {
                 "plaintext": resp.value.decode("utf-8", errors="replace"),
                 "auth_scheme": resp.auth_scheme,
                 "key_version": resp.returned_key_version,
             }
-        except grpc.RpcError:
+        except grpc.aio.AioRpcError:
             return None
 
     async def list_versions(self, tenant_id: str, service_id: str) -> list:
-        """List credential version descriptors (no plaintext)."""
+        """List credential version descriptors (no plaintext).
+
+        Returns a list of dicts with metadata fields per VersionDescriptor:
+          key_version, auth_scheme, is_current, status, created_at (ISO-8601).
+
+        Raises on real gRPC errors so callers are not silently blinded.
+        Returns [] only when the vault-adapter reports Unimplemented
+        (backward-compat for pre-WS-10 deployments during rolling upgrade).
+        """
         req = vault_pb2.ListVersionsRequest(
             tenant_id=tenant_id,
             service_id=service_id,
         )
         try:
-            resp = self._stub().ListVersions(req)
+            resp = await self._stub().ListVersions(req)
             return [
-                {"key_version": v.key_version, "auth_scheme": v.auth_scheme}
+                {
+                    "key_version": v.key_version,
+                    "auth_scheme": v.auth_scheme,
+                    "is_current": v.is_current,
+                    "status": v.status,
+                    "created_at": (
+                        v.created_at.ToDatetime().isoformat()
+                        if v.HasField("created_at")
+                        else None
+                    ),
+                }
                 for v in resp.versions
             ]
-        except grpc.RpcError:
-            return []
+        except grpc.aio.AioRpcError as exc:
+            if exc.code() == grpc.StatusCode.UNIMPLEMENTED:
+                # Backward-compat: old vault-adapter deployment; log and return empty.
+                logger.warning(
+                    "vault_client.list_versions: vault-adapter returned UNIMPLEMENTED "
+                    "(pre-WS-10 deployment?) — returning []. tenant=%s service=%s",
+                    tenant_id,
+                    service_id,
+                )
+                return []
+            logger.error(
+                "vault_client.list_versions: gRPC error %s — %s. tenant=%s service=%s",
+                exc.code(),
+                exc.details(),
+                tenant_id,
+                service_id,
+            )
+            raise
 
 
 _vault_client = VaultAdapterClient()

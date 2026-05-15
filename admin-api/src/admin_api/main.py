@@ -2,8 +2,11 @@
 Admin API FastAPI application factory.
 
 Source: design §4 main.py; Req 1 AC7, AC8.
+WS-11: lifespan context closes the singleton grpc.aio channel on shutdown.
 """
 from __future__ import annotations
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -25,10 +28,20 @@ from admin_api.api.settings import router as settings_router
 from admin_api.api.tenants import router as tenants_router
 from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 from admin_api.middleware.otel import configure_otel
+from admin_api.services.vault_client import close_channel
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):  # noqa: ARG001
+    """FastAPI lifespan: startup → yield → shutdown."""
+    # Nothing to do on startup — channel opens lazily on first call.
+    yield
+    # Shutdown: close the singleton grpc.aio channel cleanly.
+    await close_channel()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Mintkey Admin API", version="0.1.0-experimental")
+    app = FastAPI(title="Mintkey Admin API", version="0.1.0-experimental", lifespan=_lifespan)
 
     app.include_router(health_router)
     app.include_router(auth_router)
