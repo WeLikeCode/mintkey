@@ -14,7 +14,7 @@ GO        := go
 
 .PHONY: help dev test test-unit test-arch test-integration test-acceptance \
         test:e2e test:e2e:headed test:e2e:ci \
-        smoke lint lint-python lint-go lint-ts lint-contracts \
+        smoke test-golden lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull
 
@@ -31,6 +31,7 @@ help:
 	@echo "  test:e2e:headed        Run Playwright E2E tests in headed mode (for debugging)"
 	@echo "  test:e2e:ci            Run Playwright E2E tests in CI mode (Chromium only, retries)"
 	@echo "  smoke                  Run E2E smoke test against running stack"
+	@echo "  test-golden            Run WS-8 cross-stack golden-path E2E test (requires running stack)"
 	@echo "  lint                   Run all linters (Python + Go + TypeScript + contracts)"
 	@echo "  lint-python            Run ruff + mypy --strict on Python code"
 	@echo "  lint-go                Run golangci-lint on Go code"
@@ -111,6 +112,13 @@ smoke:
 		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
 	fi
 	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_e2e_smoke.py -v -s
+
+test-golden:
+	@echo "── WS-8 cross-stack golden-path E2E test ──"
+	@if ! docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then \
+		echo "ERROR: docker compose stack not running. Run 'make dev' first."; exit 1; \
+	fi
+	MINTKEY_INTEGRATION_TEST=true $(PYTHON) -m pytest tests/acceptance/test_golden_path.py -v -s
 
 # ── Playwright E2E UI tests ──────────────────────────────────────────────────
 

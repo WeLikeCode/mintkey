@@ -1,5 +1,33 @@
 # Endpoint Coverage Matrix
 
+## WS-8 Cross-Stack Golden-Path E2E Test
+
+`test_golden_path.py` is the single test that exercises the complete production data flow end-to-end:
+agent → MCP bootstrap → MCP request_token → admin-api validate-agent-key → broker JWT issuance →
+Kong/proxy-plugin JWT verification → vault-adapter credential fetch → mock-backend upstream.
+
+To run:
+```sh
+# Requires the docker-compose stack to be running
+make dev            # start the stack (first time)
+make test-golden    # run the golden-path test
+# or directly:
+MINTKEY_INTEGRATION_TEST=true python3 -m pytest tests/acceptance/test_golden_path.py -v -s
+```
+
+**Current status (WS-8):** The test surfaces a cross-stack regression at Hop 4 (proxy→vault).
+`admin-api/src/admin_api/services/vault_client.py` uses an in-memory stub instead of calling the
+real vault-adapter gRPC endpoint. Credentials stored via admin-api are never written to vault-adapter's
+SQLite store, so proxy-plugin's `GetCredential` returns "not found" and the proxy returns
+`502 bad gateway: vault error`. Fix tracked as WS-9: wire the real gRPC client.
+
+The 4 structural tests (`test_golden_path_chain_components_exist`,
+`test_golden_path_bootstrap_skill_has_required_sections`,
+`test_golden_path_admin_api_vault_client_is_stub`,
+`test_golden_path_broker_jwt_claims_present`) always run (no Docker required).
+
+
+
 **59 rows total: 36 both, 7 openapi-only (OQ-escalated), 8 router-only (proxy counted as 1 row)**
 
 Enumeration counts:
