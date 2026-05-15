@@ -159,6 +159,20 @@ async def create_credential(
     # Step 1: Set tenant context — bound parameters, ADR-0008
     await set_tenant_context(session, tenant_id)
 
+    # Step 1b: Fetch service base_url so vault-adapter can use it as the proxy target.
+    # Fail fast with 422 if the service doesn't exist (RLS ensures tenant isolation).
+    svc_result = await session.execute(
+        text("SELECT base_url FROM services WHERE id = :sid AND tenant_id = :tid"),
+        {"sid": str(service_id), "tid": str(tenant_id)},
+    )
+    svc_row = svc_result.fetchone()
+    if svc_row is None:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+    service_base_url: str = svc_row.base_url or ""
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     vault_result = await vault.put_credential(
@@ -166,6 +180,7 @@ async def create_credential(
         service_id=str(service_id),
         auth_scheme=body.auth_scheme,
         plaintext=body.value,  # plaintext leaves scope here; vault encrypts it
+        target_url=service_base_url,
     )
     key_version: int = vault_result["key_version"]
 
@@ -288,15 +303,18 @@ async def rotate_credential(
     db_svc_uuid = _svc_wire_to_db_uuid(service_id)
 
     # Step 3: Verify service exists under this tenant (enforces RLS + ownership)
+    # Also fetch base_url so vault-adapter can store it as the proxy target (WS-9).
     svc_result = await session.execute(
-        text("SELECT id FROM services WHERE id = :sid AND tenant_id = :tid"),
+        text("SELECT id, base_url FROM services WHERE id = :sid AND tenant_id = :tid"),
         {"sid": db_svc_uuid, "tid": str(tenant_id)},
     )
-    if svc_result.fetchone() is None:
+    svc_row_rotate = svc_result.fetchone()
+    if svc_row_rotate is None:
         return JSONResponse(
             status_code=404,
             content={"mintkey:code": "not_found", "title": "Service not found"},
         )
+    rotate_service_base_url: str = svc_row_rotate.base_url or ""
 
     # Step 4: Resolve the old credential to supersede.
     # C1: when rotate_from is provided it identifies a specific credential by its
@@ -359,6 +377,7 @@ async def rotate_credential(
         service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
         plaintext=plaintext,
+        target_url=rotate_service_base_url,
     )
     new_key_version: int = vault_result["key_version"]
 

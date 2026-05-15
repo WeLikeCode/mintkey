@@ -36,12 +36,28 @@ _PLAINTEXT_VALUE = "sk-secret-test-credential-value-xyz"
 
 
 def _make_mock_session():
-    """Return an async-capable mock DB session."""
+    """Return an async-capable mock DB session.
+
+    Call sequence for create_credential (WS-9):
+      0: set_tenant_context (SELECT set_config)
+      1: SELECT base_url FROM services WHERE ... → fake service row for target_url
+      2+: INSERT, notify, etc. → None
+    """
     session = MagicMock()
+    _call_count = {"n": 0}
 
     async def _execute(*args, **kwargs):
         result = MagicMock()
-        result.fetchone.return_value = None
+        _call_count["n"] += 1
+        n = _call_count["n"]
+        if n == 2:
+            # create_credential: second execute is SELECT base_url FROM services
+            svc_row = MagicMock()
+            svc_row.id = SERVICE_ID
+            svc_row.base_url = "http://mock-backend:8999"
+            result.fetchone.return_value = svc_row
+        else:
+            result.fetchone.return_value = None
         result.fetchall.return_value = []
         return result
 
@@ -94,7 +110,9 @@ async def test_rotation_increments_key_version() -> None:
     call_count = 0
 
     class _CyclingVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+        ):
             nonlocal call_count
             call_count += 1
             return {
@@ -141,7 +159,9 @@ async def test_rotation_audit_event_has_previous_version() -> None:
     from admin_api.services.vault_client import VaultAdapterClient
 
     class _RotationVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+        ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000002",
                 "key_version": 2,
@@ -190,7 +210,9 @@ async def test_rotation_notifies_credential_channel() -> None:
     from admin_api.services.vault_client import VaultAdapterClient
 
     class _RotationVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+        ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000002",
                 "key_version": 2,

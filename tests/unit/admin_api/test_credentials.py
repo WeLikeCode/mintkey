@@ -42,9 +42,14 @@ _PLAINTEXT_VALUE = "sk-secret-test-credential-value-xyz"
 def _make_mock_session(active_credential=None):
     """Return an async-capable mock DB session.
 
-    active_credential: if set, fetchone() returns a mock row with these attrs
-    so that the rotate endpoint's service-lookup and credential-lookup succeed.
-    Expects dict with keys: id, key_version, status (optional — defaults to row None).
+    For create_credential: call sequence is
+      0: set_tenant_context (SELECT set_config)
+      1: SELECT base_url FROM services (WS-9 target_url lookup) → fake service row
+      2+: INSERT, notify, etc. → None
+
+    active_credential: if set (for rotate tests), fetchone() returns the right
+    rows for the rotate endpoint's service-lookup and credential-lookup.
+    Expects dict with keys: id, key_version, status.
     """
     session = MagicMock()
 
@@ -53,18 +58,27 @@ def _make_mock_session(active_credential=None):
     async def _execute(*args, **kwargs):
         result = MagicMock()
         _call_count["n"] += 1
-        if active_credential is not None and _call_count["n"] == 1:
-            # First execute: service existence check → return a fake service row
+        n = _call_count["n"]
+        if active_credential is not None and n == 1:
+            # First execute (rotate path): service existence check → fake service row
             svc_row = MagicMock()
             svc_row.id = SERVICE_ID
+            svc_row.base_url = "http://mock-backend:8999"
             result.fetchone.return_value = svc_row
-        elif active_credential is not None and _call_count["n"] == 2:
-            # Second execute: credential lookup → return fake active credential
+        elif active_credential is not None and n == 2:
+            # Second execute (rotate path): credential lookup → fake active credential
             cred_row = MagicMock()
             cred_row.id = active_credential.get("id", "some-uuid")
             cred_row.key_version = active_credential.get("key_version", 1)
             cred_row.status = active_credential.get("status", "active")
             result.fetchone.return_value = cred_row
+        elif active_credential is None and n == 2:
+            # create_credential path: second execute is SELECT base_url FROM services
+            # (call_n 1 = set_tenant_context, call_n 2 = service lookup)
+            svc_row = MagicMock()
+            svc_row.id = SERVICE_ID
+            svc_row.base_url = "http://mock-backend:8999"
+            result.fetchone.return_value = svc_row
         else:
             result.fetchone.return_value = None
         result.fetchall.return_value = []
@@ -101,7 +115,9 @@ def create_test_app():
 
     # Override vault client with mock that returns stable metadata
     class _MockVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+        ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000001",
                 "key_version": 1,
@@ -280,9 +296,10 @@ def _make_rotate_mock_session():
             # set_tenant_context: SELECT set_config — return doesn't matter
             result.fetchone.return_value = None
         elif call_n == 1:
-            # service existence check → return a fake service row
+            # service existence check (now also fetches base_url for WS-9 target_url)
             svc_row = MagicMock()
             svc_row.id = SERVICE_ID
+            svc_row.base_url = "http://mock-backend:8999"
             result.fetchone.return_value = svc_row
         elif call_n == 2:
             # credential lookup → return fake active credential
@@ -321,7 +338,9 @@ def create_rotate_test_app():
     app.dependency_overrides[get_db_session] = mock_db_session
 
     class _MockVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+        ):
             return {"credential_id": "cred_rotate_mock", "key_version": 2, "created_at": 1_700_000_000.0}
 
         async def list_versions(self, tenant_id, service_id):

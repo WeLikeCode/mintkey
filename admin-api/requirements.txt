@@ -8,3 +8,5 @@ authlib>=1.3
 structlog>=24.1
 httpx>=0.27
 psycopg2-binary>=2.9
+grpcio>=1.80
+protobuf>=6.31
