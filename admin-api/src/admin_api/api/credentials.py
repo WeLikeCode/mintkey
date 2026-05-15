@@ -21,6 +21,7 @@ Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0013; ADR-0014.4; ADR-0014.
 """
 from __future__ import annotations
 
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -172,8 +173,12 @@ async def create_credential(
     key_version: int = vault_result["key_version"]
 
     # Step 3: Generate wire ID and internal UUID — ADR-0017.11
+    # Group E fix: derive internal_id from the wire ID so that decoding the
+    # cred_ wire form always yields the UUID stored in the DB.  Previously
+    # cred_wire_id and internal_id were generated independently, making the
+    # wire form un-decodable to the DB row (rotate_from couldn't target it).
     cred_wire_id = _new_cred_id()
-    internal_id = uuid.uuid4()
+    internal_id = uuid.UUID(_wire_to_db(cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
 
     # Step 4: Insert metadata-only record (NO plaintext stored) — ADR-0014.4
@@ -310,7 +315,27 @@ async def rotate_credential(
     # already superseded/revoked) we return 404 per the documented contract.
     # When rotate_from is omitted, the deterministic rule applies: highest
     # key_version active row for the given auth_scheme is superseded.
+    #
+    # Group E fix: decode the cred_ wire form to a DB UUID before the query.
+    # asyncpg rejects raw wire-form strings (e.g. "cred_01KRKJ…") as invalid UUIDs
+    # since their length (31) is outside the 32-36 char range accepted for UUID cols.
+    # Decoder: _wire_to_db (utils.wire_ids.wire_to_db_uuid) — ADR-0017.11; #13.
+    # If decoding fails (malformed wire ID) return 422 instead of letting asyncpg 500.
     if body.rotate_from is not None:
+        try:
+            rotate_from_uuid = _wire_to_db(body.rotate_from, "cred")
+            # Validate that the decoded/passthrough value is a UUID the DB will accept.
+            # _wire_to_db returns the input unchanged for non-prefixed strings (passthrough
+            # for raw UUIDs); validate to avoid asyncpg rejecting garbage strings with 500.
+            uuid.UUID(rotate_from_uuid)
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_rotate_from",
+                    "title": "rotate_from is not a valid cred_ wire-form ID",
+                },
+            )
         old_result = await session.execute(
             text(
                 "SELECT id, key_version, status FROM credentials"
@@ -323,7 +348,7 @@ async def rotate_credential(
                 "tid": str(tenant_id),
                 "sid": db_svc_uuid,
                 "scheme": body.auth_scheme,
-                "rotate_from_id": body.rotate_from,
+                "rotate_from_id": rotate_from_uuid,
             },
         )
     else:
@@ -355,9 +380,14 @@ async def rotate_credential(
     old_internal_id: Any = old_row.id
 
     # Step 5: Call Vault Adapter for new credential — plaintext never stored
-    plaintext: str = ""
+    # When body.value is None (e.g., operator clicked Rotate in the UI without
+    # supplying a new value), auto-generate a cryptographically-random secret.
+    # The vault adapter rejects empty plaintext; auto-generation prevents the 500.
+    # ADR-0014.4: generated plaintext is passed through and never stored or returned.
     if body.value is not None:
-        plaintext = body.value if isinstance(body.value, str) else str(body.value)
+        plaintext: str = body.value if isinstance(body.value, str) else str(body.value)
+    else:
+        plaintext = secrets.token_urlsafe(32)  # 256-bit random secret
 
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
@@ -369,8 +399,10 @@ async def rotate_credential(
     new_key_version: int = vault_result["key_version"]
 
     # Step 6: Generate new cred ID and UUID — ADR-0017.11
+    # Group E fix: derive new_internal_id from the wire ID (same as create_credential)
+    # so the wire form is decodable to the DB row UUID for future rotate_from targeting.
     new_cred_wire_id = _new_cred_id()
-    new_internal_id = uuid.uuid4()
+    new_internal_id = uuid.UUID(_wire_to_db(new_cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
 
     # Step 7: Atomic DB transaction — mark old superseded, insert new active

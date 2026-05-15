@@ -594,3 +594,30 @@ def test_rotate_from_nonexistent_id_returns_404(
     )
     assert rot.status_code == 404, rot.text
     assert rot.json()["mintkey:code"] == "not_found"
+
+
+def test_rotate_from_malformed_returns_422(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_rotate_from: str
+) -> None:
+    """
+    Group E: rotate_from with a garbage (non-wire-form) value returns 422.
+
+    The decoder (_wire_to_db with "cred" prefix) raises ValueError for values
+    that start with "cred_" but have an invalid tail, OR for values that don't
+    match the "cred_" prefix at all (raw garbage strings).  Admin-api must catch
+    the ValueError and return 422 with mintkey:code "invalid_rotate_from" rather
+    than letting asyncpg 500 on an invalid UUID.
+
+    Source: Group E fix — ADR-0017.11; #13.
+    """
+    rot = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_rotate_from}/credentials/rotate",
+        json={
+            "auth_scheme": "bearer_token",
+            "value": "malformed-rotate",
+            "rotate_from": "not_a_wire_id",
+        },
+    )
+    assert rot.status_code == 422, rot.text
+    assert rot.json()["mintkey:code"] == "invalid_rotate_from"
