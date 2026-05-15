@@ -161,9 +161,12 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         component: Components.ConfirmAction,
         label: "Revoke",
         icon: "Ban",
-        // UX-CLARITY chunk C: permanent-revocation warning shown in ConfirmAction
-        // (ConfirmAction description prop added in Chunk F, already merged).
-        description: "Revocation is permanent — to restore access, create a new agent.",
+        // UX-CLARITY chunk H: warning routed via action.custom.description because
+        // AdminJS does NOT serialize action.description — only action.custom is part
+        // of ActionJSON (action-decorator.ts:339-360).
+        custom: {
+          description: "Revocation is permanent — to restore access, create a new agent.",
+        },
         // isVisible receives RecordJSON (plain object, no .get()) during HTML routing —
         // use params.status to avoid TypeError that AdminJS catches as a 404.
         isVisible: (context) => {

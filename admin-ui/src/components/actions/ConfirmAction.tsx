@@ -33,13 +33,22 @@ interface ConfirmActionProps {
    * Optional explanatory copy shown in the dialog body, below the record label
    * and above the confirm/cancel buttons. When omitted (or empty) nothing extra
    * is rendered so existing callers are unaffected.
+   *
+   * Alternatively, set `action.custom.description` on the action config — preferred
+   * when the description string is action-scoped, because the same path works for
+   * any future revoke-like action without per-call prop plumbing.
    */
   description?: string;
   [key: string]: unknown;
 }
 
 const ConfirmAction = (props: Record<string, unknown>): React.ReactElement => {
-  const { record, resource, action, description = "" } = props as ConfirmActionProps;
+  const propsTyped = props as ConfirmActionProps;
+  const { record, resource, action } = propsTyped;
+  const description =
+    propsTyped.description ??
+    (action as { custom?: { description?: string } })?.custom?.description ??
+    "";
 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);

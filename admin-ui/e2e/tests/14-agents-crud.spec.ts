@@ -147,6 +147,21 @@ test.describe("14 — Agents CRUD round-trip", () => {
       timeout: 5_000,
     });
 
+    // ── Revoke confirm page: permanent-warning must be visible ──────────────
+    // Navigate to the revokeAgent confirm page and verify the warning text
+    // is rendered before proceeding. We cancel rather than confirm to avoid
+    // destroying the test agent (the spec verifies the warning, not the revoke).
+    await revokeBtn.click();
+    await page.waitForLoadState("networkidle");
+    const confirmDescription = page.getByTestId("confirm-action-description");
+    await expect(confirmDescription).toBeVisible({ timeout: 5_000 });
+    await expect(confirmDescription).toContainText(/permanent/i);
+    await expect(confirmDescription).toContainText(/create a new agent/i);
+    // Cancel — navigate back to show page without revoking
+    const cancelBtn = page.getByTestId("cancel-action-button");
+    await cancelBtn.click();
+    await page.waitForLoadState("networkidle");
+
     void consoleErrors;
   });
 });

@@ -132,9 +132,17 @@ describe("AgentsResource — UX-CLARITY descriptive uplift (chunk C)", () => {
 
   it("revokeAgent action has description for permanent-revocation copy", () => {
     const actions = AgentsResource.options?.actions ?? {};
-    const revoke = (actions as Record<string, { description?: string }>).revokeAgent;
-    expect(revoke?.description).toMatch(/permanent/i);
-    expect(revoke?.description).toMatch(/create a new agent/i);
+    const revoke = (actions as Record<string, { custom?: { description?: string } }>).revokeAgent;
+    expect(revoke?.custom?.description).toMatch(/permanent/i);
+    expect(revoke?.custom?.description).toMatch(/create a new agent/i);
+  });
+
+  it("revokeAgent description is wired via action.custom (AdminJS serializes custom, not description)", () => {
+    const actions = AgentsResource.options?.actions ?? {};
+    const revoke = (actions as Record<string, { custom?: { description?: string } }>).revokeAgent;
+    expect(revoke).toBeDefined();
+    expect(revoke?.custom).toBeDefined();
+    expect(revoke?.custom?.description).toBeTruthy();
   });
 });
 

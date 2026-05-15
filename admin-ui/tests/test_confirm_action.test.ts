@@ -57,8 +57,15 @@ describe("ConfirmAction — description prop (UX-CLARITY chunk F)", () => {
     expect(src).toContain('data-testid="cancel-action-button"');
   });
 
-  it("description prop defaults to empty string in destructuring", () => {
-    // Default value in destructuring: description = ""
-    expect(src).toContain('description = ""');
+  it("description resolves to empty string when neither prop nor custom.description is set", () => {
+    // The fallback chain ends with "" to ensure description is never undefined
+    // Note: the actual code spans multiple lines so we check for the terminal value
+    expect(src).toContain('custom?.description ??');
+    expect(src).toContain('"";');
+  });
+
+  it("falls back to action.custom.description when top-level description prop is absent", () => {
+    expect(src).toContain("custom?: { description?: string }");
+    expect(src).toContain("custom?.description");
   });
 });
