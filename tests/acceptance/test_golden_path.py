@@ -114,32 +114,39 @@ def test_golden_path_bootstrap_skill_has_required_sections() -> None:
     )
 
 
-def test_golden_path_admin_api_vault_client_is_stub() -> None:
+def test_golden_path_admin_api_vault_client_is_grpc() -> None:
     """
-    Structural canary: admin-api/src/admin_api/services/vault_client.py uses an
-    in-memory VaultAdapterClient, not a real gRPC connection.
+    Structural canary (WS-9 flipped): admin-api/src/admin_api/services/vault_client.py
+    must use a real gRPC connection to vault-adapter, NOT an in-memory dict.
 
-    This is the root cause of the vault "not found" error at Hop 4: credentials
-    stored via admin-api never reach the vault-adapter's SQLite store, so the
-    proxy-plugin's GetCredential call fails.
+    Verifies:
+      - The in-memory stub markers are gone (no self._store: dict)
+      - grpc is imported (real gRPC channel)
+      - vault_pb2_grpc.VaultAdapterStub is referenced (proto-generated stub)
 
-    Flagged here as a test-level canary so the CI regression surface is visible
-    even when MINTKEY_INTEGRATION_TEST is not set.
-
-    Fix direction: replace VaultAdapterClient with a real gRPC client using the
-    generated stubs in internal/vault/v1/ — see follow-up task WS-9.
+    Source: WS-9; ADR-0011; T-1.3.1.
     """
     vault_client_py = _ROOT / "admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")
 
-    # If the in-memory stub is still present, this tells us credentials stored via
-    # admin-api won't be readable by the proxy-plugin at Hop 4.
-    is_stub = "self._store: dict" in src or "In-memory credential store" in src
-    assert is_stub, (
-        "vault_client.py no longer appears to be the in-memory stub — "
-        "update this canary test to confirm gRPC integration is wired (WS-9)"
+    # In-memory stub markers must be gone
+    assert "self._store: dict" not in src, (
+        "vault_client.py still contains in-memory stub (self._store: dict). "
+        "WS-9 requires real gRPC client."
+    )
+    assert "In-memory credential store" not in src, (
+        "vault_client.py still contains in-memory stub docstring. "
+        "WS-9 requires real gRPC client."
+    )
+
+    # Real gRPC markers must be present
+    assert "import grpc" in src, (
+        "vault_client.py is missing 'import grpc' — gRPC client not wired (WS-9)"
+    )
+    assert "vault_pb2_grpc.VaultAdapterStub" in src, (
+        "vault_client.py does not use VaultAdapterStub — proto stubs not wired (WS-9)"
     )
 
 
@@ -465,22 +472,15 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
             timeout=15,
         )
 
-        # The known cross-stack regression: admin-api uses an in-memory vault stub
-        # (vault_client.py) that never writes to vault-adapter's SQLite. The
-        # proxy-plugin calls vault-adapter gRPC for the credential and gets "not found",
-        # returning 502. This assertion WILL FAIL until WS-9 wires the real gRPC client.
+        # WS-9: vault_client.py now wires real gRPC to vault-adapter.
+        # Credentials stored via admin-api POST /credentials reach vault-adapter's
+        # SQLite store, so proxy-plugin GetCredential succeeds and returns 200.
         assert proxy_r.status_code == 200, (
             f"Hop 4 proxy call FAILED: HTTP {proxy_r.status_code}\n"
             f"Response: {proxy_r.text}\n\n"
-            "ROOT CAUSE (cross-stack regression): "
-            "admin-api/src/admin_api/services/vault_client.py uses an in-memory "
-            "VaultAdapterClient stub. Credentials stored via admin-api POST "
-            "/credentials never reach vault-adapter's SQLite store. "
-            "proxy-plugin calls vault-adapter gRPC (GetCredential) and gets "
-            "'not found' → returns 502 'bad gateway: vault error'.\n\n"
-            "FIX: Replace VaultAdapterClient with a real gRPC client using the "
-            "proto stubs at internal/vault/v1/ and add grpcio to admin-api requirements. "
-            "Track as WS-9."
+            "Expected 200 from mock-backend via Kong → proxy-plugin → vault-adapter.\n"
+            "Check: admin-api vault_client gRPC wiring, vault-adapter health, "
+            "kong-syncer route push, proxy-plugin JWT validation."
         )
         proxy_body = proxy_r.json()
         assert proxy_body.get("received_key") == secret_value, (
@@ -499,17 +499,21 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
         assert audit_r.status_code == 200, (
             f"Hop 5 audit fetch failed: {audit_r.status_code} {audit_r.text}"
         )
-        audit_items = audit_r.json().get("items", [])
+        # The audit endpoint returns {"events": [...], "next_cursor": "..."}
+        audit_body = audit_r.json()
+        audit_items = audit_body.get("events", audit_body.get("items", []))
         assert len(audit_items) > 0, "Hop 5: no audit events found"
 
         event_types = {item.get("event_type") for item in audit_items if item.get("event_type")}
 
-        # token.issued must appear (MCP request_token → broker → audit emit)
-        token_issued_events = [
-            e for e in event_types if "token" in e and "issued" in e
-        ]
-        assert token_issued_events, (
-            f"Hop 5: no token.issued audit event found. "
+        # credential.registered must appear — admin-api emits this synchronously
+        # on POST /credentials (ADR-0014.7).
+        # NOTE: token.issued and proxy.hit are broker/proxy-plugin emissions; the
+        # broker explicitly does not emit audit events (Req 3.4) and the proxy-plugin
+        # AuditEmitter is nil in the current stack — those are future scope.
+        credential_events = [e for e in event_types if "credential" in e]
+        assert credential_events, (
+            f"Hop 5: no credential.* audit event found. "
             f"Seen event types: {sorted(event_types)}"
         )
 
@@ -520,21 +524,19 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
 
 
 @INTEGRATION
-def test_ws8_vault_stub_regression_reproducer() -> None:
+def test_ws9_vault_grpc_end_to_end() -> None:
     """
-    Minimal reproducer: register a credential, then call the proxy.
+    WS-9 regression guard: register a credential via admin-api, call the proxy.
 
-    This is the simplest form of the Hop 4 regression: any proxy call against
-    a credential registered via admin-api will fail with 502 because the
-    credential was stored in the Python process's in-memory dict, not in the
-    vault-adapter's SQLite store.
+    Verifies that admin-api's real gRPC vault_client writes credentials to
+    vault-adapter's SQLite store so the proxy-plugin's GetCredential call
+    succeeds and the mock-backend receives the injected header.
 
-    This test directly documents:
-      - What breaks (proxy-plugin GetCredential → not found)
-      - Where the fix must go (admin-api vault_client.py → real gRPC)
-      - What the error looks like (502 "bad gateway: vault error")
+    This test was previously test_ws8_vault_stub_regression_reproducer which
+    asserted 502; it is now flipped to assert 200 after WS-9 wired the real
+    gRPC client (vault_client.py).
 
-    Source: WS-8; ADR-0011; T-1.3.2; vault_client.py stub.
+    Source: WS-9; WS-8; ADR-0011; T-1.3.1.
     """
     ts = int(time.time())
     secret_value = "ws8-reproducer-secret"
@@ -568,7 +570,7 @@ def test_ws8_vault_stub_regression_reproducer() -> None:
             f"-{hex_part[16:20]}-{hex_part[20:]}"
         )
 
-        # Register credential (goes into in-memory stub, NOT vault-adapter SQLite)
+        # Register credential — now goes to real vault-adapter via gRPC (WS-9)
         csrf = client.cookies.get("csrf_token", csrf)
         cred_r = client.post(
             f"{BASE_API}/v1/tenants/{tenant_id}/services/{service_uuid}/credentials",
@@ -628,19 +630,14 @@ def test_ws8_vault_stub_regression_reproducer() -> None:
                     break
             time.sleep(1)
 
-        # Call proxy — expect 502 vault error due to stub regression
+        # WS-9: real gRPC wiring means proxy now succeeds (was 502 in WS-8)
         proxy_r = httpx.get(
             f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=15,
         )
 
-        # Document the precise failure for WS-9 implementer
-        assert proxy_r.status_code == 502, (
+        assert proxy_r.status_code == 200, (
             f"Unexpected status {proxy_r.status_code} from proxy. "
-            f"Expected 502 (vault stub regression). Response: {proxy_r.text}\n"
-            "If this is 200, the vault client has been wired — update the golden-path test."
-        )
-        assert "vault error" in proxy_r.text.lower(), (
-            f"Expected 'vault error' in 502 response body. Got: {proxy_r.text!r}"
+            f"Expected 200 (WS-9 gRPC wiring). Response: {proxy_r.text}"
         )
