@@ -288,13 +288,35 @@ def sf_api_key_a_alpha(admin_app, postgres_container, sf_tenant, sf_agent_a,
 
 
 # ---------------------------------------------------------------------------
-# Helper to format UUID as svc_ wire ID
+# Helpers to convert DB UUIDs to canonical Crockford wire IDs (post-#13)
 # ---------------------------------------------------------------------------
+
+_CROCKFORD_ALPHA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _db_uuid_to_wire(uuid_str: str, prefix: str) -> str:
+    """Convert a plain dashed UUID string to <prefix>_<26-char Crockford> wire form.
+
+    Post-#13 (ADR-0017.11): all list/get endpoints emit Crockford ULID wire IDs.
+    """
+    import uuid as _uuid_mod
+    val = _uuid_mod.UUID(uuid_str.replace("-", "")).int
+    chars: list = []
+    for _ in range(26):
+        chars.append(_CROCKFORD_ALPHA[val & 0x1F])
+        val >>= 5
+    chars.reverse()
+    return f"{prefix}_{''.join(chars)}"
 
 
 def _svc_wire(uuid_str: str) -> str:
-    """Convert a plain UUID string to svc_<32 hex> wire form."""
-    return "svc_" + uuid_str.replace("-", "")
+    """Convert a plain UUID string to canonical svc_<Crockford> wire form (post-#13)."""
+    return _db_uuid_to_wire(uuid_str, "svc")
+
+
+def _agent_wire(uuid_str: str) -> str:
+    """Convert a plain UUID string to canonical agent_<Crockford> wire form (post-#13)."""
+    return _db_uuid_to_wire(uuid_str, "agent")
 
 
 # ===========================================================================
@@ -421,8 +443,9 @@ class TestAgentSearch:
         resp = admin_app.get(f"/v1/tenants/{sf_tenant}/agents")
         assert resp.status_code == 200
         ids = {a["id"] for a in resp.json()["agents"]}
-        wire_a = "agent_" + sf_agent_a.replace("-", "")
-        wire_b = "agent_" + sf_agent_b.replace("-", "")
+        # Post-#13: IDs are Crockford ULID wire form (agent_<26>) — ADR-0017.11 / #13
+        wire_a = _agent_wire(sf_agent_a)
+        wire_b = _agent_wire(sf_agent_b)
         assert wire_a in ids
         assert wire_b in ids
 
@@ -430,8 +453,8 @@ class TestAgentSearch:
         resp = admin_app.get(f"/v1/tenants/{sf_tenant}/agents", params={"q": "Alpha"})
         assert resp.status_code == 200
         agents = resp.json()["agents"]
-        wire_a = "agent_" + sf_agent_a.replace("-", "")
-        wire_b = "agent_" + sf_agent_b.replace("-", "")
+        wire_a = _agent_wire(sf_agent_a)
+        wire_b = _agent_wire(sf_agent_b)
         ids = {a["id"] for a in agents}
         assert wire_a in ids
         assert wire_b not in ids
@@ -440,7 +463,7 @@ class TestAgentSearch:
         resp = admin_app.get(f"/v1/tenants/{sf_tenant}/agents", params={"q": "beta tasks"})
         assert resp.status_code == 200
         ids = {a["id"] for a in resp.json()["agents"]}
-        wire_b = "agent_" + sf_agent_b.replace("-", "")
+        wire_b = _agent_wire(sf_agent_b)
         assert wire_b in ids
 
     def test_has_access_to_service_id_uuid(self, admin_app, sf_tenant, sf_agent_a,
@@ -452,8 +475,8 @@ class TestAgentSearch:
         )
         assert resp.status_code == 200
         ids = {a["id"] for a in resp.json()["agents"]}
-        wire_a = "agent_" + sf_agent_a.replace("-", "")
-        wire_b = "agent_" + sf_agent_b.replace("-", "")
+        wire_a = _agent_wire(sf_agent_a)
+        wire_b = _agent_wire(sf_agent_b)
         assert wire_a in ids
         assert wire_b not in ids
 
@@ -467,7 +490,7 @@ class TestAgentSearch:
         )
         assert resp.status_code == 200
         ids = {a["id"] for a in resp.json()["agents"]}
-        wire_a = "agent_" + sf_agent_a.replace("-", "")
+        wire_a = _agent_wire(sf_agent_a)
         assert wire_a in ids
 
     def test_combined_q_and_service_filter(self, admin_app, sf_tenant, sf_agent_a,
@@ -479,7 +502,7 @@ class TestAgentSearch:
         )
         assert resp.status_code == 200
         agents = resp.json()["agents"]
-        wire_a = "agent_" + sf_agent_a.replace("-", "")
+        wire_a = _agent_wire(sf_agent_a)
         assert any(a["id"] == wire_a for a in agents)
 
     def test_q_percent_safe(self, admin_app, sf_tenant):
@@ -519,7 +542,9 @@ class TestPermissionSearch:
         )
         assert resp.status_code == 200
         grants = resp.json()["grants"]
-        assert all(g["service_id"] == sf_svc_alpha for g in grants)
+        # Post-#13: service_id in response is Crockford wire form (svc_<26>) — ADR-0017.11 / #13
+        wire_alpha = _svc_wire(sf_svc_alpha)
+        assert all(g["service_id"] == wire_alpha for g in grants)
 
     def test_service_id_filter_no_match(self, admin_app, sf_tenant, sf_agent_a, sf_svc_beta):
         """Agent A has no grant on svc_beta — should return empty."""
@@ -596,7 +621,9 @@ class TestApiKeySearch:
         assert resp.status_code == 200
         items = resp.json()
         assert len(items) >= 1
-        assert all(i["service_id"] == sf_svc_alpha for i in items)
+        # Post-#13: service_id in response is Crockford wire form (svc_<26>) — ADR-0017.11 / #13
+        wire_alpha = _svc_wire(sf_svc_alpha)
+        assert all(i["service_id"] == wire_alpha for i in items)
 
     def test_service_id_no_match(self, admin_app, sf_tenant, sf_agent_a, sf_svc_beta):
         resp = admin_app.get(

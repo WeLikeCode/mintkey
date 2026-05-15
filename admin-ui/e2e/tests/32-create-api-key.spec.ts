@@ -36,9 +36,28 @@ const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d3
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-/** Convert UUID hex to agent_<32hex> wire-form. */
+/** Convert UUID hex to agent_<32hex> wire-form. @deprecated Post-#13 use Crockford form */
 function uuidToWireForm(uuid: string): string {
   return "agent_" + uuid.replace(/-/g, "");
+}
+
+// ---------------------------------------------------------------------------
+// Wire-ID helpers (post-#13: Crockford ULID form — ADR-0017.11)
+// ---------------------------------------------------------------------------
+
+const _CROCKFORD_ALPHA_32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/** Encode a plain UUID string to <prefix>_<26-char Crockford> wire form (post-#13). */
+function dbUuidToWire(uuidStr: string, prefix: string): string {
+  const hex = uuidStr.replace(/-/g, "");
+  let val = BigInt("0x" + hex);
+  const chars: string[] = [];
+  for (let i = 0; i < 26; i++) {
+    chars.push(_CROCKFORD_ALPHA_32[Number(val & BigInt(0x1F))]);
+    val >>= BigInt(5);
+  }
+  chars.reverse();
+  return `${prefix}_${chars.join("")}`;
 }
 
 /** Decode agent wire-form to UUID.
@@ -266,14 +285,12 @@ test.describe("32 — createApiKey show-once flow", () => {
     const agentBody = await agentResp.json() as { id: string };
     const rawAgentId = agentBody.id; // may be agent_<32hex> or agent_<26Crockford>
     expect(rawAgentId, "agent id must be present").toBeTruthy();
-    // Wire-form can be agent_<32hex> (UUID-based) or agent_<26Crockford> (ULID-based)
+    // Post-#13: all list/get endpoints return Crockford ULID wire IDs (agent_<26>) — ADR-0017.11 / #13
     expect(rawAgentId, "agent id must be wire-form (agent_ prefix)").toMatch(/^agent_[0-9A-Za-z]{26,32}$/);
 
-    // Convert to hex wire-form (agent_<32hex>) so it matches what AdminJS agents list returns.
-    // AdminJS normalises all agent IDs to hex form (via idField mapping); ULID forms get converted.
-    const agentUuidFromId = wireFormToUuid(rawAgentId);
-    // hex wire-form = agent_ + UUID without dashes
-    const wireAgentId = "agent_" + agentUuidFromId.replace(/-/g, "");
+    // Post-#13: use the Crockford wire-form directly as the dropdown option value.
+    // AdminJS agents list now returns agent_<Crockford> which is used as the option value.
+    const wireAgentId = rawAgentId;
 
     // Grant permission: use agent-scoped endpoint POST /v1/tenants/{tid}/agents/{agent_wire}/permissions
     // (The flat POST /v1/tenants/{tid}/permissions returns 405 — agent-scoped is the correct path)
@@ -353,18 +370,20 @@ test.describe("32 — createApiKey show-once flow", () => {
     await page.screenshot({ path: "test-results/r10-a4-step-d-service-populated.png" });
 
     // ── Step 6: Select the synthesised service ───────────────────────────────
-    // Find the option matching our synthesised service UUID
-    const hasServiceOption = await page.evaluate((svcUuid: string) => {
+    // Post-#13: permissions list returns service_id as svc_<Crockford> (ADR-0017.11 / #13).
+    // The service dropdown option values come from permissions.service_id which is now Crockford.
+    const svcWireId = dbUuidToWire(serviceUuid, "svc");
+    const hasServiceOption = await page.evaluate((svcWire: string) => {
       const sel = document.querySelector('[data-testid="field-service-id"] select') as HTMLSelectElement;
-      return Array.from(sel?.options ?? []).some((o) => o.value === svcUuid);
-    }, serviceUuid);
+      return Array.from(sel?.options ?? []).some((o) => o.value === svcWire);
+    }, svcWireId);
 
     expect(
       hasServiceOption,
-      `Synthesised service ${serviceUuid} must appear in the service dropdown`
+      `Synthesised service ${serviceUuid} (wire: ${svcWireId}) must appear in the service dropdown`
     ).toBe(true);
 
-    await serviceSelect.selectOption({ value: serviceUuid });
+    await serviceSelect.selectOption({ value: svcWireId });
 
     // ── Step 7: Fill the name field ──────────────────────────────────────────
     await page.locator('[data-testid="field-name"] input').fill(keyName);

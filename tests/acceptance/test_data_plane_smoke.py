@@ -67,6 +67,31 @@ BOOTSTRAP_PASSWORD = os.getenv(
 
 
 # ---------------------------------------------------------------------------
+# Wire-ID helpers (post-#13: Crockford ULID form — ADR-0017.11)
+# ---------------------------------------------------------------------------
+
+_CROCKFORD_ALPHA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _wire_to_uuid(wire_id: str, prefix: str) -> str:
+    """Decode <prefix>_<26-char Crockford> or <prefix>_<32hex> → dashed UUID string.
+
+    Post-#13 all list/get endpoints return Crockford ULID wire IDs.
+    """
+    tail = wire_id[len(prefix) + 1:]  # strip "prefix_"
+    if len(tail) == 26:
+        val = 0
+        for ch in tail.upper():
+            val = (val << 5) | _CROCKFORD_ALPHA.index(ch)
+        val &= (1 << 128) - 1
+        h = f"{val:032x}"
+        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    if len(tail) == 32:
+        return f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}-{tail[16:20]}-{tail[20:]}"
+    raise ValueError(f"Cannot decode wire ID: {wire_id!r}")
+
+
+# ---------------------------------------------------------------------------
 # Helper: admin-api login + setup
 # ---------------------------------------------------------------------------
 
@@ -128,11 +153,8 @@ def _create_agent_and_service(
     svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
     services_list = svcs_r.json().get("services", [])
     svc_wire = next(s["id"] for s in services_list if s.get("name") == svc_name)
-    hex_part = svc_wire[4:]
-    service_uuid = (
-        f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-        f"-{hex_part[16:20]}-{hex_part[20:]}"
-    )
+    # Post-#13: svc_wire is Crockford ULID form (svc_<26>) — decode to UUID (ADR-0017.11 / #13)
+    service_uuid = _wire_to_uuid(svc_wire, "svc")
 
     # Register credential
     csrf = client.cookies.get("csrf_token", csrf)

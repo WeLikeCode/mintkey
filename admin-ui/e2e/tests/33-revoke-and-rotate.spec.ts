@@ -24,6 +24,31 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // webkit: AdminJS/Axios CORS — tracked W8.
 const skipWebkit = ({ browserName }: { browserName: string }) => browserName === "webkit";
 
+// ---------------------------------------------------------------------------
+// Wire-ID helpers (post-#13: Crockford ULID form — ADR-0017.11)
+// ---------------------------------------------------------------------------
+
+const _CROCKFORD_ALPHA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/** Decode <prefix>_<26-char Crockford> → dashed UUID string. */
+function wireToUuid(wireId: string, prefix: string): string {
+  const tail = wireId.slice(prefix.length + 1); // strip "prefix_"
+  if (tail.length === 26) {
+    let val = BigInt(0);
+    for (const ch of tail.toUpperCase()) {
+      val = (val << BigInt(5)) | BigInt(_CROCKFORD_ALPHA.indexOf(ch));
+    }
+    val &= (BigInt(1) << BigInt(128)) - BigInt(1);
+    const h = val.toString(16).padStart(32, "0");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+  if (tail.length === 32) {
+    // Legacy 32-hex form
+    return `${tail.slice(0, 8)}-${tail.slice(8, 12)}-${tail.slice(12, 16)}-${tail.slice(16, 20)}-${tail.slice(20)}`;
+  }
+  throw new Error(`Cannot decode wire ID: ${wireId}`);
+}
+
 // Bootstrap tenant (t_default) — known from seed data.
 const TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
 const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
@@ -228,21 +253,21 @@ test.describe("33 — revokeAgent / rotateCredential confirmation pages", () => 
     });
     expect(svcIdRaw, "failed to create test service via admin-api").not.toEqual("");
 
-    // ── Resolve canonical svc_<32-hex> + UUID BEFORE creating credential ────
+    // ── Resolve canonical svc_<Crockford> + UUID BEFORE creating credential ────
     // createTestService returns svc_<26-char Crockford>; the credentials POST
     // endpoint requires service_id as a UUID (not wire form). The credentials
     // list endpoint also requires a UUID. Resolve both from the single-service GET
-    // (which accepts both wire forms and returns the canonical svc_<32-hex> form).
+    // (which accepts both wire forms and returns the canonical Crockford form post-#13).
     const svcDetailData = await apiGet(
       `/v1/tenants/${TENANT_ID}/services/${svcIdRaw}`,
     ) as { id?: string };
-    const svcId = svcDetailData.id ?? "";  // canonical svc_<32-hex> for AdminJS routes
+    const svcId = svcDetailData.id ?? "";  // canonical svc_<Crockford> for AdminJS routes
     expect(svcId, "Could not resolve canonical svc ID via single-service GET").not.toEqual("");
-    expect(svcId, "Canonical svc ID must be svc_<32-hex>").toMatch(/^svc_[0-9a-f]{32}$/);
+    // Post-#13: IDs are Crockford ULID wire form (svc_<26>) — ADR-0017.11 / #13
+    expect(svcId, "Canonical svc ID must be svc_<Crockford>").toMatch(/^svc_[0-9A-Z]{26}$/);
 
-    // Convert svc_<32-hex> → UUID for direct admin-api endpoints that require UUID path params
-    const hexTail = svcId.slice(4);  // strip "svc_" prefix
-    const svcUuid = `${hexTail.slice(0, 8)}-${hexTail.slice(8, 12)}-${hexTail.slice(12, 16)}-${hexTail.slice(16, 20)}-${hexTail.slice(20)}`;
+    // Convert svc_<Crockford> → UUID for direct admin-api endpoints that require UUID path params
+    const svcUuid = wireToUuid(svcId, "svc");
 
     await createTestCredential({
       tenantId: TENANT_ID,

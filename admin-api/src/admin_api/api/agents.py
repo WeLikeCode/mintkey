@@ -266,12 +266,19 @@ def _wire_id_to_uuid(wire_id: str, prefix: str) -> str:
       - <prefix>_<26 Crockford base32 chars> — canonical post-R13 form
       - <prefix>_<32 hex chars>              — legacy pre-R13 list form
 
+    The ``prefix`` argument may include a trailing underscore (historic callers
+    pass ``"agent_"``, ``"svc_"`` etc.) — the trailing underscore is stripped
+    before forwarding to ``wire_to_db_uuid`` which builds ``f"{prefix}_"``
+    internally.
+
     Raises ValueError if the wire_id looks like a prefixed ID but cannot be decoded.
 
     Source: ADR-0017.11; R8; #13.
     """
     from admin_api.utils.wire_ids import wire_to_db_uuid as _decode  # noqa: PLC0415
-    return _decode(wire_id, prefix)
+    # Normalise: strip trailing underscore if callers pass "agent_" instead of "agent"
+    bare_prefix = prefix.rstrip("_")
+    return _decode(wire_id, bare_prefix)
 
 
 @router.get("")

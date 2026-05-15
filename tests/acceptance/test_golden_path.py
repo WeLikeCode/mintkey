@@ -65,6 +65,33 @@ BOOTSTRAP_PASSWORD = os.getenv(
 )
 
 # ---------------------------------------------------------------------------
+# Wire-ID helpers (post-#13: Crockford ULID form — ADR-0017.11)
+# ---------------------------------------------------------------------------
+
+_CROCKFORD_ALPHA = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+
+def _wire_to_uuid(wire_id: str, prefix: str) -> str:
+    """Decode <prefix>_<26-char Crockford> or <prefix>_<32hex> → dashed UUID string.
+
+    Post-#13 all list/get endpoints return Crockford ULID wire IDs.
+    The DB UUID is derived from the same ULID bits, so round-trip decode is exact.
+    """
+    tail = wire_id[len(prefix) + 1:]  # strip "prefix_"
+    if len(tail) == 26:
+        val = 0
+        for ch in tail.upper():
+            val = (val << 5) | _CROCKFORD_ALPHA.index(ch)
+        val &= (1 << 128) - 1
+        h = f"{val:032x}"
+        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    if len(tail) == 32:
+        # Legacy 32-hex form
+        return f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}-{tail[16:20]}-{tail[20:]}"
+    raise ValueError(f"Cannot decode wire ID: {wire_id!r}")
+
+
+# ---------------------------------------------------------------------------
 # Kong admin helpers — paginated route lookup (mirrors WS-4 pattern)
 # ---------------------------------------------------------------------------
 
@@ -368,18 +395,14 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
         svc_body = svc_r.json()
         svc_name = svc_body["name"]
 
-        # Resolve service UUID from list (svc_<32hex> → UUID)
+        # Resolve service UUID from list (post-#13: svc_<Crockford> → UUID)
         svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
         assert svcs_r.status_code == 200, f"Setup list services failed: {svcs_r.status_code}"
         services_list = svcs_r.json().get("services", [])
         matching = [s for s in services_list if s.get("name") == svc_name]
         assert matching, f"Setup: created service {svc_name!r} not found in list"
-        svc_wire = matching[0]["id"]  # svc_<32hex>
-        hex_part = svc_wire[4:]
-        service_uuid = (
-            f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-            f"-{hex_part[16:20]}-{hex_part[20:]}"
-        )
+        svc_wire = matching[0]["id"]  # svc_<Crockford> (post-#13 / ADR-0017.11)
+        service_uuid = _wire_to_uuid(svc_wire, "svc")
 
         # Register credential via admin-api (→ in-memory vault stub)
         csrf_token = client.cookies.get("csrf_token", csrf_token)
@@ -600,11 +623,8 @@ def test_ws9_vault_grpc_end_to_end() -> None:
         svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
         services_list = svcs_r.json().get("services", [])
         svc_wire = next(s["id"] for s in services_list if s.get("name") == svc_name)
-        hex_part = svc_wire[4:]
-        service_uuid = (
-            f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-            f"-{hex_part[16:20]}-{hex_part[20:]}"
-        )
+        # Post-#13: svc_wire is Crockford ULID form (svc_<26>) — decode to UUID (ADR-0017.11 / #13)
+        service_uuid = _wire_to_uuid(svc_wire, "svc")
 
         # Register credential — now goes to real vault-adapter via gRPC (WS-9)
         csrf = client.cookies.get("csrf_token", csrf)

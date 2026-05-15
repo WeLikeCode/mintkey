@@ -153,9 +153,34 @@ def ak_tenant_b_uuid(admin_app: TestClient, postgres_container) -> str:
     return _insert_tenant(postgres_container, "test-apikey-tenant-b")
 
 
+def _wire_to_uuid(wire_id: str, prefix: str) -> str:
+    """Decode <prefix>_<26Crockford> → dashed UUID string.
+
+    Post-#13 all list/get endpoints return Crockford wire IDs.
+    The DB stores the UUID derived from the same ULID bits.
+    """
+    _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    tail = wire_id[len(prefix) + 1:]  # strip "prefix_"
+    if len(tail) == 26:
+        val = 0
+        for ch in tail.upper():
+            val = (val << 5) | _CROCKFORD.index(ch)
+        val &= (1 << 128) - 1
+        h = f"{val:032x}"
+        return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    if len(tail) == 32:
+        # Legacy 32-hex form (kept for backward compat)
+        return f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}-{tail[16:20]}-{tail[20:]}"
+    raise ValueError(f"Cannot decode wire ID: {wire_id!r}")
+
+
 @pytest.fixture(scope="module")
 def ak_agent_uuid(admin_app: TestClient, ak_tenant_uuid: str) -> str:
-    """Create an agent via API; return its internal UUID (from list)."""
+    """Create an agent via API; return its internal UUID (from list).
+
+    Post-#13: list endpoint emits Crockford ULID wire IDs (agent_<26>).
+    Decode to dashed UUID so DB queries can use it directly.
+    """
     resp = _post(
         admin_app,
         f"/v1/tenants/{ak_tenant_uuid}/agents",
@@ -169,10 +194,8 @@ def ak_agent_uuid(admin_app: TestClient, ak_tenant_uuid: str) -> str:
     agents = list_resp.json()["agents"]
     matches = [a for a in agents if a["name"] == "apikey-test-agent"]
     assert matches, f"Agent not found: {agents}"
-    # id is formatted as "agent_{hex_uuid}" — strip prefix and restore dashes
-    hex_id = matches[0]["id"].replace("agent_", "")
-    # UUID with dashes
-    return f"{hex_id[:8]}-{hex_id[8:12]}-{hex_id[12:16]}-{hex_id[16:20]}-{hex_id[20:]}"
+    # Post-#13: id is Crockford ULID wire form "agent_<26>" — decode to dashed UUID
+    return _wire_to_uuid(matches[0]["id"], "agent")
 
 
 @pytest.fixture(scope="module")
@@ -303,14 +326,21 @@ def test_get_single_api_key_returns_200(
     assert create_resp.status_code == 201
 
     # Get internal UUID directly from DB
-    kid = _get_latest_api_key_uuid(postgres_container, ak_agent_uuid, ak_tenant_uuid)
+    kid_uuid = _get_latest_api_key_uuid(postgres_container, ak_agent_uuid, ak_tenant_uuid)
 
+    # GET endpoint accepts a plain UUID path param (no wire-form decoding needed)
     resp = admin_app.get(
-        f"/v1/tenants/{ak_tenant_uuid}/agents/{ak_agent_uuid}/api-keys/{kid}"
+        f"/v1/tenants/{ak_tenant_uuid}/agents/{ak_agent_uuid}/api-keys/{kid_uuid}"
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["api_key_id"] == kid
+    # Post-#13: api_key_id in response is Crockford wire form (svckey_<26>) — ADR-0017.11 / #13
+    assert body["api_key_id"].startswith("svckey_"), (
+        f"Expected svckey_ wire form, got: {body['api_key_id']!r}"
+    )
+    assert len(body["api_key_id"]) == len("svckey_") + 26, (
+        f"Expected 26-char Crockford tail, got: {body['api_key_id']!r}"
+    )
     assert "plaintext_key" not in body
     assert body["status"] in ("active", "revoked", "expired")
 
