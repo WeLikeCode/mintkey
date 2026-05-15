@@ -270,3 +270,93 @@ def test_audit_cross_tenant_isolation(
     assert events_b == []
     for ev in events_a:
         assert ev["tenant_id"] == audit_tenant_uuid
+
+
+def test_audit_list_response_includes_actor_target_fields(
+    admin_app: TestClient,
+    audit_tenant_uuid: str,
+    audit_service_id: str,
+) -> None:
+    """
+    GET /v1/tenants/{id}/audit response events include actor_id, actor_type,
+    target_id, target_type — UX-D; these were previously omitted from _row_to_dict.
+    Source: T-1.7.1; ADR-0014.7.
+    """
+    resp = admin_app.get(f"/v1/tenants/{audit_tenant_uuid}/audit")
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert events, "Expected at least one event"
+    for ev in events:
+        assert "actor_id" in ev, f"Missing actor_id in event {ev.get('id')}"
+        assert "actor_type" in ev, f"Missing actor_type in event {ev.get('id')}"
+        assert "target_id" in ev, f"Missing target_id in event {ev.get('id')}"
+        assert "target_type" in ev, f"Missing target_type in event {ev.get('id')}"
+
+
+def test_audit_filter_by_actor_type(
+    admin_app: TestClient,
+    audit_tenant_uuid: str,
+    audit_service_id: str,
+) -> None:
+    """
+    ?actor_type=operator returns only events where actor_type='operator' — UX-D.
+    The service.registered event emitted during setup has actor_type='operator'.
+    Source: T-1.7.1; ADR-0008.
+    """
+    resp = admin_app.get(
+        f"/v1/tenants/{audit_tenant_uuid}/audit",
+        params={"actor_type": "operator"},
+    )
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert events, "Expected at least one operator event (service.registered)"
+    for ev in events:
+        assert ev["actor_type"] == "operator", (
+            f"Expected actor_type='operator', got {ev['actor_type']!r} for event {ev.get('id')}"
+        )
+
+
+def test_audit_filter_by_actor_type_no_match(
+    admin_app: TestClient,
+    audit_tenant_uuid: str,
+    audit_service_id: str,
+) -> None:
+    """
+    ?actor_type=agent returns empty list when no agent-originated events exist — UX-D.
+    Source: T-1.7.1; ADR-0008.
+    """
+    resp = admin_app.get(
+        f"/v1/tenants/{audit_tenant_uuid}/audit",
+        params={"actor_type": "agent"},
+    )
+    assert resp.status_code == 200
+    # The integration tenant only has service.registered events (actor_type=operator)
+    # so filtering for agent should return nothing.
+    events = resp.json()["events"]
+    for ev in events:
+        assert ev["actor_type"] == "agent", (
+            f"actor_type filter leaked a non-agent event: {ev!r}"
+        )
+
+
+def test_audit_filter_by_target_type(
+    admin_app: TestClient,
+    audit_tenant_uuid: str,
+    audit_service_id: str,
+) -> None:
+    """
+    ?target_type=service returns only events where target_type='service' — UX-D.
+    The service.registered event has target_type='service'.
+    Source: T-1.7.1; ADR-0008.
+    """
+    resp = admin_app.get(
+        f"/v1/tenants/{audit_tenant_uuid}/audit",
+        params={"target_type": "service"},
+    )
+    assert resp.status_code == 200
+    events = resp.json()["events"]
+    assert events, "Expected at least one service-targeted event"
+    for ev in events:
+        assert ev["target_type"] == "service", (
+            f"Expected target_type='service', got {ev['target_type']!r} for event {ev.get('id')}"
+        )

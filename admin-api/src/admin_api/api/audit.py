@@ -7,7 +7,8 @@ Architecture constraints:
   - Tenant context via set_tenant_context (bound parameters, RLS) — ADR-0008.
   - All SQL uses bound parameters — no f-string interpolation — ADR-0008, T-1.0.15.
   - Cursor-based pagination: WHERE id > :after ORDER BY id ASC LIMIT :limit.
-  - audit_events columns: id, event_type, tenant_id, payload (jsonb), hash, prev_hash, created_at.
+  - audit_events columns: id, event_type, tenant_id, actor_id, actor_type,
+    target_id, target_type, payload (jsonb), hash, prev_hash, at.
 
 Source: T-1.7.1; ADR-0008; ADR-0014.7; ADR-0017.11.
 """
@@ -67,6 +68,10 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "id": str(row.id),
         "event_type": row.event_type,
         "tenant_id": str(row.tenant_id),
+        "actor_id": str(row.actor_id) if row.actor_id is not None else None,
+        "actor_type": row.actor_type,
+        "target_id": str(row.target_id) if row.target_id is not None else None,
+        "target_type": row.target_type,
         "payload": row.payload if isinstance(row.payload, dict) else {},
         "hash": _bytes_to_hex(row.hash),
         "prev_hash": _bytes_to_hex(row.prev_hash),
@@ -87,7 +92,9 @@ async def list_audit_events(
     service_id: Optional[str] = None,
     event_type: Optional[str] = None,
     actor_id: Optional[str] = None,
+    actor_type: Optional[str] = None,
     target_id: Optional[str] = None,
+    target_type: Optional[str] = None,
     from_ts: Optional[str] = None,
     to_ts: Optional[str] = None,
     after: Optional[str] = None,
@@ -98,16 +105,18 @@ async def list_audit_events(
     List audit events for a tenant with optional filters and cursor pagination.
 
     Query parameters:
-      q          — substring search on event_type (case-insensitive)
-      agent_id   — filter by agent ID in payload
-      service_id — filter by service ID in payload
-      event_type — exact match on event_type column
-      actor_id   — exact match on actor_id column
-      target_id  — exact match on target_id column (UUID string)
-      from_ts    — ISO8601 inclusive lower bound on created_at
-      to_ts      — ISO8601 exclusive upper bound on created_at
-      after      — cursor: return events with id > after (opaque event id)
-      limit      — max events per page (default 50)
+      q           — substring search on event_type (case-insensitive)
+      agent_id    — filter by agent ID in payload
+      service_id  — filter by service ID in payload
+      event_type  — exact match on event_type column
+      actor_id    — exact match on actor_id column (UUID string)
+      actor_type  — exact match on actor_type column (e.g. "operator", "agent")
+      target_id   — exact match on target_id column (UUID string)
+      target_type — exact match on target_type column (e.g. "service", "credential")
+      from_ts     — ISO8601 inclusive lower bound on event time (at column)
+      to_ts       — ISO8601 exclusive upper bound on event time (at column)
+      after       — cursor: return events with id > after (opaque event id)
+      limit       — max events per page (default 50)
 
     Returns {"events": [...], "next_cursor": "<id> | null"}.
     next_cursor is the id of the last event when limit rows are returned,
@@ -125,7 +134,9 @@ async def list_audit_events(
 
     result = await session.execute(
         text(
-            "SELECT id, event_type, tenant_id, payload, hash, prev_hash, at AS created_at"
+            "SELECT id, event_type, tenant_id,"
+            " actor_id, actor_type, target_id, target_type,"
+            " payload, hash, prev_hash, at AS created_at"
             " FROM audit_events"
             " WHERE tenant_id = :tenant_id"
             " AND (CAST(:after AS uuid) IS NULL OR id > CAST(:after AS uuid))"
@@ -136,7 +147,9 @@ async def list_audit_events(
             " AND (CAST(:agent_id AS text) IS NULL OR payload->>'agent_id' = CAST(:agent_id AS text))"
             " AND (CAST(:service_id AS text) IS NULL OR payload->>'service_id' = CAST(:service_id AS text))"
             " AND (CAST(:actor_id AS text) IS NULL OR CAST(actor_id AS text) = CAST(:actor_id AS text))"
+            " AND (CAST(:actor_type AS text) IS NULL OR actor_type = CAST(:actor_type AS text))"
             " AND (CAST(:target_id AS text) IS NULL OR CAST(target_id AS text) = CAST(:target_id AS text))"
+            " AND (CAST(:target_type AS text) IS NULL OR target_type = CAST(:target_type AS text))"
             " ORDER BY id ASC"
             " LIMIT :limit"
         ),
@@ -150,7 +163,9 @@ async def list_audit_events(
             "agent_id": agent_id,
             "service_id": service_id,
             "actor_id": actor_id,
+            "actor_type": actor_type,
             "target_id": target_id,
+            "target_type": target_type,
             "limit": limit,
         },
     )

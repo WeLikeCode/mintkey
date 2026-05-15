@@ -157,6 +157,8 @@ class VaultAdapterClient:
                 "plaintext": resp.value.decode("utf-8", errors="replace"),
                 "auth_scheme": resp.auth_scheme,
                 "key_version": resp.returned_key_version,
+                "header_name": resp.header_name,
+                "query_param": resp.query_param,
             }
         except grpc.aio.AioRpcError:
             return None

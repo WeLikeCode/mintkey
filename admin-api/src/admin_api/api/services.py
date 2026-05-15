@@ -20,12 +20,15 @@ Source: design §4 api/services.py; Req 3; ADR-0008; ADR-0014.7; ADR-0017.11.
 from __future__ import annotations
 
 import ipaddress
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from urllib.parse import urlparse, urljoin
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, Response
@@ -436,21 +439,42 @@ async def test_service(
     vault = await get_vault_client()
     cred_entry = await vault.get_credential(str(tenant_id), str(row.id))
 
-    # Build request headers based on auth_scheme
-    headers: dict[str, str] = {}
-    if cred_entry and cred_entry.get("plaintext"):
-        plaintext: str = cred_entry["plaintext"]
-        if auth_scheme == "bearer_token":
-            headers["Authorization"] = f"Bearer {plaintext}"
-        elif auth_scheme == "api_key":
-            headers["X-Api-Key"] = plaintext
-
     # Build the final URL: urljoin handles leading-slash on path correctly.
     # urljoin('http://x:8999', '/health') == 'http://x:8999/health'
     # urljoin('http://x:8999/', '/health') == 'http://x:8999/health'
     base_url_stripped = base_url.rstrip("/")
     path_part = req.path if req.path.startswith("/") else "/" + req.path
     final_url = base_url_stripped + path_part
+
+    # Build request headers based on auth_scheme
+    headers: dict[str, str] = {}
+    if cred_entry and cred_entry.get("plaintext"):
+        plaintext: str = cred_entry["plaintext"]
+        if auth_scheme == "bearer_token":
+            headers["Authorization"] = f"Bearer {plaintext}"
+        elif auth_scheme == "api_key_header":
+            header_name: str = cred_entry.get("header_name") or ""
+            if not header_name:
+                logger.warning(
+                    "test_service: api_key_header credential missing header_name — "
+                    "falling back to 'X-API-Key'. service=%s tenant=%s",
+                    service_id,
+                    str(tenant_id),
+                )
+                header_name = "X-API-Key"
+            headers[header_name] = plaintext
+        elif auth_scheme == "api_key_query":
+            query_param: str = cred_entry.get("query_param") or ""
+            if not query_param:
+                logger.warning(
+                    "test_service: api_key_query credential missing query_param — "
+                    "falling back to 'api_key'. service=%s tenant=%s",
+                    service_id,
+                    str(tenant_id),
+                )
+                query_param = "api_key"
+            separator = "&" if "?" in final_url else "?"
+            final_url = f"{final_url}{separator}{query_param}={plaintext}"
 
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(req.headers or {})}

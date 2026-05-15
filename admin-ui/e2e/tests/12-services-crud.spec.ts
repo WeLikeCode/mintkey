@@ -48,8 +48,22 @@ test.describe("12 — Services CRUD round-trip", () => {
     ]);
     expect(createResp.status(), "create must return 2xx").toBeLessThan(400);
 
-    await page.waitForURL(/\/admin\/resources\/services/, { timeout: 10_000 });
+    // UX-C5 Bug 1: after create, AdminJS must redirect to the show page
+    // (/admin/resources/services/records/{id}/show), NOT back to the list.
+    // The show page is where testService lives — operators need to find it.
+    await page.waitForURL(
+      /\/admin\/resources\/services\/records\/[^/]+\/show/,
+      { timeout: 10_000 },
+    );
     await page.waitForLoadState("networkidle");
+
+    // Confirm the show page actually rendered the service
+    const showUrlAfterCreate = page.url();
+    expect(showUrlAfterCreate, "redirect URL must be the show page").toMatch(
+      /\/admin\/resources\/services\/records\/[^/]+\/show/,
+    );
+    const showBodyAfterCreate = (await page.locator("body").innerText().catch(() => "")) ?? "";
+    expect(showBodyAfterCreate, "show page after create must contain the service name").toContain(name);
 
     // ── List contains new row ───────────────────────────────────────────────
     await svc.gotoList();

@@ -78,15 +78,19 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
             request.payload
           );
 
+          const body = await resp.json().catch(() => ({})) as { id?: string; title?: string };
+
           if (!resp.ok) {
-            const err = await resp.json() as { title?: string };
             return {
               record: await recordJSON(context, request.payload ?? {}),
-              notice: { message: err.title ?? "Failed to create service", type: "error" },
+              notice: { message: body.title ?? "Failed to create service", type: "error" },
             };
           }
 
-          return { record: await recordJSON(context, request.payload ?? {}), redirectUrl: "/admin/resources/services" };
+          return {
+            record: await recordJSON(context, request.payload ?? {}),
+            redirectUrl: `/admin/resources/services/records/${body.id}/show`,
+          };
         },
       },
       edit: {

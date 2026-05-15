@@ -306,3 +306,156 @@ def test_delete_service_returns_204(admin_app: TestClient, tenant_uuid: str) -> 
 
     del_resp = _delete(admin_app, f"/v1/tenants/{tenant_uuid}/services/{svc_id}")
     assert del_resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# POST /test — UX-C5 Bug 2: api_key_header with specific header_name
+# ---------------------------------------------------------------------------
+
+
+def test_post_service_test_api_key_header_uses_header_name(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    POST /…/test for an api_key_header service must inject the credential
+    under the header name specified in the vault response (header_name field).
+
+    The mock vault client returns header_name="X-Custom-Auth"; the mock
+    httpx client captures the headers passed to client.request() and asserts
+    that "X-Custom-Auth" is present with the credential value.
+
+    Source: UX-C5 Bug 2; Bug 3.
+    """
+    # Create a service with auth_scheme=api_key_header
+    create_resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-api-key-header-test",
+            "base_url": "https://echo.example.com/api",
+            "auth_scheme": "api_key_header",
+        },
+    )
+    assert create_resp.status_code == 201, f"create failed: {create_resp.text}"
+
+    # Get canonical ID from list
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    services = list_resp.json()["services"]
+    matches = [s for s in services if s["name"] == "svc-api-key-header-test"]
+    assert matches, f"Created service not found in list: {services}"
+    svc_id = matches[0]["id"]
+
+    # Track the headers that httpx would send outbound
+    captured_headers: dict = {}
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = '{"status":"ok"}'
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _capture_request(**kwargs):
+        captured_headers.update(kwargs.get("headers", {}))
+        return mock_response
+
+    mock_client.request = _capture_request
+
+    # Vault mock: returns plaintext + header_name="X-Custom-Auth"
+    mock_vault = MagicMock()
+    mock_vault.get_credential = AsyncMock(return_value={
+        "plaintext": "my-secret-api-key",
+        "auth_scheme": 1,
+        "key_version": 1,
+        "header_name": "X-Custom-Auth",
+        "query_param": "",
+    })
+
+    with (
+        patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client),
+        # get_vault_client is imported locally inside test_service(), so patch
+        # at the canonical module path rather than via the services module namespace.
+        patch("admin_api.services.vault_client.get_vault_client", AsyncMock(return_value=mock_vault)),
+    ):
+        resp = _post(admin_app, f"/v1/tenants/{tenant_uuid}/services/{svc_id}/test")
+
+    assert resp.status_code == 200, f"test endpoint failed: {resp.text}"
+    body = resp.json()
+    assert body["ok"] is True
+
+    assert "X-Custom-Auth" in captured_headers, (
+        f"Expected 'X-Custom-Auth' header in outbound request; got headers: {list(captured_headers.keys())}"
+    )
+    assert captured_headers["X-Custom-Auth"] == "my-secret-api-key", (
+        f"Header value mismatch: {captured_headers.get('X-Custom-Auth')!r}"
+    )
+    # Ensure the old wrong header name is NOT present
+    assert "X-Api-Key" not in captured_headers, (
+        "Old bug: 'X-Api-Key' header must not be present after Bug 2 fix"
+    )
+
+
+def test_post_service_test_api_key_header_fallback_to_default(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    When vault returns an empty header_name for api_key_header, test_service
+    must fall back to 'X-API-Key' and log a warning (safety net per UX-C5).
+
+    Source: UX-C5 Bug 2 — fallback default.
+    """
+    create_resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-api-key-header-fallback",
+            "base_url": "https://echo.example.com/api",
+            "auth_scheme": "api_key_header",
+        },
+    )
+    assert create_resp.status_code == 201
+
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    services = list_resp.json()["services"]
+    matches = [s for s in services if s["name"] == "svc-api-key-header-fallback"]
+    assert matches
+    svc_id = matches[0]["id"]
+
+    captured_headers: dict = {}
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = '{"status":"ok"}'
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    async def _capture_request(**kwargs):
+        captured_headers.update(kwargs.get("headers", {}))
+        return mock_response
+
+    mock_client.request = _capture_request
+
+    # Vault mock: empty header_name → should trigger fallback
+    mock_vault = MagicMock()
+    mock_vault.get_credential = AsyncMock(return_value={
+        "plaintext": "fallback-key",
+        "auth_scheme": 1,
+        "key_version": 1,
+        "header_name": "",
+        "query_param": "",
+    })
+
+    with (
+        patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client),
+        patch("admin_api.services.vault_client.get_vault_client", AsyncMock(return_value=mock_vault)),
+    ):
+        resp = _post(admin_app, f"/v1/tenants/{tenant_uuid}/services/{svc_id}/test")
+
+    assert resp.status_code == 200
+    assert "X-API-Key" in captured_headers, (
+        f"Expected fallback 'X-API-Key' header; got: {list(captured_headers.keys())}"
+    )
+    assert captured_headers["X-API-Key"] == "fallback-key"

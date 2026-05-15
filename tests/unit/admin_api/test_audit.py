@@ -43,6 +43,10 @@ def _make_audit_row(
     event_id: str = "audit_00000000000000000000000001",
     event_type: str = "agent.created",
     tenant_id: str = TENANT_ID,
+    actor_id: str = None,
+    actor_type: str = "operator",
+    target_id: str = None,
+    target_type: str = "agent",
     payload: dict = None,
 ):
     """Return a mock row matching the audit_events columns."""
@@ -50,6 +54,10 @@ def _make_audit_row(
     row.id = event_id
     row.event_type = event_type
     row.tenant_id = tenant_id
+    row.actor_id = actor_id
+    row.actor_type = actor_type
+    row.target_id = target_id
+    row.target_type = target_type
     row.payload = payload or {}
     row.hash = b"\x00" * 32
     row.prev_hash = b"\x00" * 32
@@ -208,6 +216,80 @@ async def test_pagination_via_after_cursor() -> None:
     assert len(body["events"]) == 10
     # Full page → next_cursor is the id of the last event
     assert body["next_cursor"] == rows[-1].id
+
+
+@pytest.mark.asyncio
+async def test_filter_by_actor_type() -> None:
+    """
+    ?actor_type=agent is forwarded as a bound parameter; response includes
+    actor_id, actor_type, target_id, target_type fields — UX-D.
+    Source: T-1.7.1; ADR-0008.
+    """
+    row = _make_audit_row(
+        event_type="token.issued",
+        actor_id="00000000-0000-0000-0000-000000000099",
+        actor_type="agent",
+        target_id="00000000-0000-0000-0000-000000000088",
+        target_type="service",
+    )
+    app = _create_test_app(rows=[row])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(BASE_URL_PATH, params={"actor_type": "agent"})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["events"]) == 1
+    ev = body["events"][0]
+    assert ev["actor_type"] == "agent"
+    assert ev["actor_id"] == "00000000-0000-0000-0000-000000000099"
+    assert ev["target_type"] == "service"
+    assert ev["target_id"] == "00000000-0000-0000-0000-000000000088"
+
+
+@pytest.mark.asyncio
+async def test_filter_by_target_type() -> None:
+    """
+    ?target_type=credential is forwarded as a bound parameter — UX-D.
+    Source: T-1.7.1; ADR-0008.
+    """
+    row = _make_audit_row(
+        event_type="credential.registered",
+        actor_type="operator",
+        target_type="credential",
+    )
+    app = _create_test_app(rows=[row])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(BASE_URL_PATH, params={"target_type": "credential"})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["events"]) == 1
+    assert body["events"][0]["target_type"] == "credential"
+
+
+@pytest.mark.asyncio
+async def test_response_includes_actor_target_fields() -> None:
+    """
+    Every event in the list response includes actor_id, actor_type,
+    target_id, target_type — UX-D; these were previously missing from _row_to_dict.
+    Source: T-1.7.1; ADR-0014.7.
+    """
+    row = _make_audit_row(actor_type="platform_admin", target_type="tenant")
+    app = _create_test_app(rows=[row])
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(BASE_URL_PATH)
+
+    assert resp.status_code == 200, resp.text
+    ev = resp.json()["events"][0]
+    assert "actor_id" in ev
+    assert "actor_type" in ev
+    assert ev["actor_type"] == "platform_admin"
+    assert "target_id" in ev
+    assert "target_type" in ev
+    assert ev["target_type"] == "tenant"
 
 
 @pytest.mark.asyncio
