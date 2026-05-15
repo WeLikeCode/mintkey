@@ -281,7 +281,7 @@ async def list_tenants(
         pattern = f"%{escaped}%"
         result = await session.execute(
             text(
-                "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+                "SELECT id, slug, display_name, isolation_mode, status, settings, created_at, updated_at"
                 " FROM tenants"
                 " WHERE slug ILIKE :pat ESCAPE '\\' OR display_name ILIKE :pat ESCAPE '\\'"
                 " ORDER BY created_at ASC"
@@ -291,7 +291,7 @@ async def list_tenants(
     else:
         result = await session.execute(
             text(
-                "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+                "SELECT id, slug, display_name, isolation_mode, status, settings, created_at, updated_at"
                 " FROM tenants ORDER BY created_at ASC"
             )
         )
@@ -301,6 +301,7 @@ async def list_tenants(
             "id": str(row.id),
             "slug": row.slug,
             "display_name": row.display_name,
+            "isolation_mode": row.isolation_mode,
             "status": row.status,
             "settings": row.settings or {},
             "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -334,7 +335,7 @@ async def get_tenant(
     await _set_platform_admin_rls(session)
     result = await session.execute(
         text(
-            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+            "SELECT id, slug, display_name, isolation_mode, status, settings, created_at, updated_at"
             " FROM tenants WHERE id = :tid"
         ),
         {"tid": tid},
@@ -350,6 +351,7 @@ async def get_tenant(
             "id": str(row.id),
             "slug": row.slug,
             "display_name": row.display_name,
+            "isolation_mode": row.isolation_mode,
             "status": row.status,
             "settings": row.settings or {},
             "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -441,7 +443,7 @@ async def update_tenant(
     # Return updated row
     result2 = await session.execute(
         text(
-            "SELECT id, slug, display_name, status, settings, created_at, updated_at"
+            "SELECT id, slug, display_name, isolation_mode, status, settings, created_at, updated_at"
             " FROM tenants WHERE id = :tid"
         ),
         {"tid": tid},
@@ -453,6 +455,7 @@ async def update_tenant(
             "id": str(updated.id),
             "slug": updated.slug,
             "display_name": updated.display_name,
+            "isolation_mode": updated.isolation_mode,
             "status": updated.status,
             "settings": updated.settings or {},
             "created_at": updated.created_at.isoformat() if updated.created_at else None,

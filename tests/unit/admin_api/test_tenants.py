@@ -33,21 +33,21 @@ for p in (ADMIN_API_SRC, MODELS_SRC):
 BASE_URL_PATH = "/v1/tenants"
 
 
-def _make_mock_session(conflict_on_insert=False):
+def _make_mock_session(conflict_on_insert=False, tenant_rows=None):
     """Return an async-capable mock DB session."""
     session = MagicMock()
     session._execute_calls = []
     session._inserted_chain_state = []
+    session._tenant_rows = tenant_rows or []
 
     async def _execute(stmt, params=None, **kwargs):
         session._execute_calls.append((str(stmt), params))
         result = MagicMock()
-        result.fetchone.return_value = None
-        result.fetchall.return_value = []
+
+        stmt_str = str(stmt)
 
         # Simulate duplicate slug by raising IntegrityError on tenants INSERT
         if conflict_on_insert and params and "slug" in (params or {}):
-            stmt_str = str(stmt)
             if "INSERT INTO tenants" in stmt_str:
                 from sqlalchemy.exc import IntegrityError
                 raise IntegrityError("duplicate key", {}, Exception("unique violation"))
@@ -56,13 +56,41 @@ def _make_mock_session(conflict_on_insert=False):
         if params and "genesis_hash" in (params or {}):
             session._inserted_chain_state.append(params)
 
+        # Return mock tenant rows for SELECT queries
+        if "SELECT" in stmt_str and "FROM tenants" in stmt_str and session._tenant_rows:
+            if "WHERE id = :tid" in stmt_str:
+                # get_tenant — return first matching row or None
+                tid = (params or {}).get("tid")
+                matching = [r for r in session._tenant_rows if str(r.get("id")) == str(tid)]
+                if matching:
+                    row_data = matching[0]
+                    row = MagicMock()
+                    for k, v in row_data.items():
+                        setattr(row, k, v)
+                    result.fetchone.return_value = row
+                else:
+                    result.fetchone.return_value = None
+            else:
+                # list_tenants
+                rows = []
+                for row_data in session._tenant_rows:
+                    row = MagicMock()
+                    for k, v in row_data.items():
+                        setattr(row, k, v)
+                    rows.append(row)
+                result.fetchall.return_value = rows
+                result.fetchone.return_value = None
+        else:
+            result.fetchone.return_value = None
+            result.fetchall.return_value = []
+
         return result
 
     session.execute = _execute
     return session
 
 
-def create_test_app(conflict_on_insert=False):
+def create_test_app(conflict_on_insert=False, tenant_rows=None):
     """
     Create an app with:
       - tenants router included
@@ -78,7 +106,7 @@ def create_test_app(conflict_on_insert=False):
     app.include_router(tenants_router)
 
     async def mock_db_session():
-        yield _make_mock_session(conflict_on_insert=conflict_on_insert)
+        yield _make_mock_session(conflict_on_insert=conflict_on_insert, tenant_rows=tenant_rows)
 
     app.dependency_overrides[get_db_session] = mock_db_session
 
@@ -237,3 +265,89 @@ async def test_duplicate_slug_returns_409() -> None:
     assert resp.status_code == 409, resp.text
     body = resp.json()
     assert body.get("mintkey:code") == "tenant_already_exists"
+
+
+# ---------------------------------------------------------------------------
+# 6. list_tenants includes isolation_mode in each row (UX-CLARITY chunk E)
+# ---------------------------------------------------------------------------
+
+import datetime as _dt
+
+
+def _fake_tenant_row(slug: str, isolation_mode: str = "row") -> dict:
+    """Return a dict that mimics a tenant DB row."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "slug": slug,
+        "display_name": f"{slug} display",
+        "isolation_mode": isolation_mode,
+        "status": "active",
+        "settings": {},
+        "created_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
+        "updated_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
+    }
+
+
+@pytest.mark.asyncio
+async def test_list_tenants_response_includes_isolation_mode() -> None:
+    """
+    GET /v1/tenants must include isolation_mode in each row.
+    Regression: was silently dropped from the SELECT (UX-CLARITY chunk E).
+    Source: OpenAPI listTenants schema.
+    """
+    rows = [
+        _fake_tenant_row("t_row_tenant", "row"),
+        _fake_tenant_row("t_db_tenant", "database"),
+    ]
+    # Override id so they're unique
+    rows[1]["id"] = "00000000-0000-0000-0000-000000000002"
+
+    list_app = create_test_app(tenant_rows=rows)
+
+    with patch("admin_api.api.tenants.audit_emit", new=AsyncMock()):
+        async with AsyncClient(
+            transport=ASGITransport(app=list_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                BASE_URL_PATH,
+                headers={"X-Platform-Admin": "true"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "data" in body
+    tenants = body["data"]
+    assert len(tenants) == 2
+    for t in tenants:
+        assert "isolation_mode" in t, f"isolation_mode missing from row: {t}"
+    slugs = {t["slug"]: t["isolation_mode"] for t in tenants}
+    assert slugs["t_row_tenant"] == "row"
+    assert slugs["t_db_tenant"] == "database"
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_response_includes_isolation_mode() -> None:
+    """
+    GET /v1/tenants/{tid} must include isolation_mode in the response.
+    Regression: was silently dropped from the SELECT (UX-CLARITY chunk E).
+    Source: OpenAPI getTenant schema.
+    """
+    tid = "00000000-0000-0000-0000-000000000042"
+    rows = [_fake_tenant_row("t_iso_tenant", "database")]
+    rows[0]["id"] = tid
+
+    get_app = create_test_app(tenant_rows=rows)
+
+    with patch("admin_api.api.tenants.audit_emit", new=AsyncMock()):
+        async with AsyncClient(
+            transport=ASGITransport(app=get_app), base_url="http://test"
+        ) as client:
+            resp = await client.get(
+                f"{BASE_URL_PATH}/{tid}",
+                headers={"X-Platform-Admin": "true"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "isolation_mode" in body, f"isolation_mode missing from get_tenant response: {body}"
+    assert body["isolation_mode"] == "database"

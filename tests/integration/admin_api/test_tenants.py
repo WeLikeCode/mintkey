@@ -219,7 +219,7 @@ def test_list_tenants_without_platform_admin_returns_403(admin_app: TestClient) 
 
 
 def test_list_tenants_returns_200_with_data(admin_app: TestClient) -> None:
-    """GET /v1/tenants with PlatformAdmin → 200 with data array."""
+    """GET /v1/tenants with PlatformAdmin → 200 with data array including isolation_mode."""
     # Create a tenant first so we have at least one
     _platform_post(
         admin_app,
@@ -232,12 +232,36 @@ def test_list_tenants_returns_200_with_data(admin_app: TestClient) -> None:
     assert "data" in body
     assert isinstance(body["data"], list)
     assert len(body["data"]) >= 1
-    # Verify shape of each tenant
+    # Verify shape of each tenant — isolation_mode must be present (UX-CLARITY chunk E fix)
     for t in body["data"]:
         assert "id" in t
         assert "slug" in t
         assert "display_name" in t
         assert "status" in t
+        assert "isolation_mode" in t, f"isolation_mode missing from list response row: {t}"
+
+
+def test_list_tenants_includes_isolation_mode_database(admin_app: TestClient) -> None:
+    """
+    Create tenant with isolation_mode=database; list → row must show isolation_mode=database.
+    Regression guard: was silently dropped from SELECT (UX-CLARITY chunk E).
+    """
+    slug = "iso-database-tenant"
+    create_resp = _platform_post(
+        admin_app,
+        "/v1/tenants",
+        json={"slug": slug, "name": "Iso DB Tenant", "isolation_mode": "database"},
+    )
+    assert create_resp.status_code == 201, f"Create failed: {create_resp.text}"
+
+    list_resp = admin_app.get("/v1/tenants", headers=_PLATFORM_ADMIN)
+    assert list_resp.status_code == 200, list_resp.text
+    data = list_resp.json()["data"]
+    matching = [t for t in data if t["slug"] == slug]
+    assert len(matching) == 1, f"Expected 1 row with slug={slug}, got {len(matching)}"
+    assert matching[0]["isolation_mode"] == "database", (
+        f"Expected isolation_mode=database, got: {matching[0].get('isolation_mode')}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +291,7 @@ def _create_tenant_and_get_uuid(admin_app: TestClient, postgres_container, slug:
 
 
 def test_get_tenant_returns_200(admin_app: TestClient, postgres_container) -> None:
-    """GET /v1/tenants/{tid} → 200 with tenant fields."""
+    """GET /v1/tenants/{tid} → 200 with tenant fields including isolation_mode."""
     tid = _create_tenant_and_get_uuid(admin_app, postgres_container, "get-single-tenant")
     resp = admin_app.get(f"/v1/tenants/{tid}")
     assert resp.status_code == 200, resp.text
@@ -276,6 +300,47 @@ def test_get_tenant_returns_200(admin_app: TestClient, postgres_container) -> No
     assert body["slug"] == "get-single-tenant"
     assert "display_name" in body
     assert "status" in body
+    assert "isolation_mode" in body, f"isolation_mode missing from get_tenant response: {body}"
+
+
+def test_get_tenant_returns_isolation_mode_database(
+    admin_app: TestClient, postgres_container
+) -> None:
+    """
+    Create tenant with isolation_mode=database; GET /{tid} → isolation_mode=database.
+    Regression guard: was silently dropped from SELECT (UX-CLARITY chunk E).
+    """
+    slug = "get-iso-database-tenant"
+    create_resp = _platform_post(
+        admin_app,
+        "/v1/tenants",
+        json={"slug": slug, "name": "Get Iso DB Tenant", "isolation_mode": "database"},
+    )
+    assert create_resp.status_code == 201, f"Create failed: {create_resp.text}"
+
+    import psycopg2
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM tenants WHERE slug = %s", (slug,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None
+    tid = str(row[0])
+
+    get_resp = admin_app.get(f"/v1/tenants/{tid}")
+    assert get_resp.status_code == 200, get_resp.text
+    body = get_resp.json()
+    assert body["isolation_mode"] == "database", (
+        f"Expected isolation_mode=database, got: {body.get('isolation_mode')}"
+    )
 
 
 def test_get_tenant_not_found_returns_404(admin_app: TestClient) -> None:
