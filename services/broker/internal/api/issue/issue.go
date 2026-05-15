@@ -24,6 +24,7 @@ import (
 
 	"github.com/mintkey/mintkey/internal/auditq"
 	"github.com/mintkey/mintkey/services/broker/internal/issuer"
+	"github.com/mintkey/mintkey/services/broker/internal/metrics"
 )
 
 // AuditEnqueuer is satisfied by *auditq.Queue.  It is an interface so tests
@@ -55,9 +56,10 @@ type errBody struct {
 
 // Handler holds the dependencies for the issue endpoint.
 type Handler struct {
-	iss    *issuer.Issuer
+	iss      *issuer.Issuer
 	mcpToken string
-	audit  AuditEnqueuer // nil → audit disabled (safe zero value)
+	audit    AuditEnqueuer   // nil → audit disabled (safe zero value)
+	metrics  *metrics.Metrics // nil → metrics disabled (safe zero value)
 }
 
 // NewHandler constructs an issue.Handler.
@@ -71,6 +73,13 @@ func NewHandler(iss *issuer.Issuer, mcpToken string) http.Handler {
 // audit may be nil to disable audit (safe — no panic).
 func NewHandlerWithAudit(iss *issuer.Issuer, mcpToken string, audit AuditEnqueuer) http.Handler {
 	return &Handler{iss: iss, mcpToken: mcpToken, audit: audit}
+}
+
+// NewHandlerWithAuditAndMetrics constructs an issue.Handler with async audit
+// emission and Prometheus counter tracking.
+// audit and m may each be nil to disable the respective feature (safe — no panic).
+func NewHandlerWithAuditAndMetrics(iss *issuer.Issuer, mcpToken string, audit AuditEnqueuer, m *metrics.Metrics) http.Handler {
+	return &Handler{iss: iss, mcpToken: mcpToken, audit: audit, metrics: m}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +124,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiresAt := time.Now().Unix() + int64(ttl)
+
+	// Prometheus counter: mintkey_token_issued_total{tenant, service} (OPS-O).
+	if h.metrics != nil {
+		h.metrics.IncTokenIssued(req.TenantID, req.ServiceID)
+	}
 
 	// Async audit: token.issued (#22).
 	// Non-blocking O(1) enqueue; never carries the JWT value itself (S-SEC-1).

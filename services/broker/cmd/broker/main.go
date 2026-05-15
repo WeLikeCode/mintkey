@@ -24,6 +24,7 @@ import (
 	"github.com/mintkey/mintkey/services/broker/internal/config"
 	"github.com/mintkey/mintkey/services/broker/internal/issuer"
 	"github.com/mintkey/mintkey/services/broker/internal/keys"
+	"github.com/mintkey/mintkey/services/broker/internal/metrics"
 )
 
 func main() {
@@ -77,6 +78,9 @@ func main() {
 		resolveStore = resolve.NewPgStore(pool)
 	}
 
+	// Broker metrics: mintkey_token_issued_total (OPS-O).
+	m := metrics.New()
+
 	r := chi.NewRouter()
 	r.Get("/.well-known/jwks.json", keys.JWKSHandler(ring).ServeHTTP)
 	r.Get("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -84,9 +88,9 @@ func main() {
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 
-	// /metrics — Prometheus text exposition (#27).
-	// Exposes auditq gauges/counters so Prometheus can scrape WAL and
-	// dead-letter health metrics from the broker.
+	// /metrics — Prometheus text exposition (#27, OPS-O).
+	// Exposes auditq gauges/counters + mintkey_token_issued_total so Prometheus
+	// can scrape WAL health metrics and token issuance counts from the broker.
 	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		_, _ = fmt.Fprintf(w,
@@ -95,6 +99,7 @@ func main() {
 				"mintkey_broker_up 1\n",
 		)
 		auditQueue.WriteMetricsTo(w)
+		_ = m.WriteTo(w)
 	})
 
 	// POST /v1/api-keys/resolve — internal; called by Egress Proxy only.
@@ -104,7 +109,8 @@ func main() {
 	// POST /v1/issue — internal; called by MCP Server only.
 	// Source: ADR-0006; ADR-0008; T-1.6.x.
 	// Audit: token.issued event emitted asynchronously via WAL queue (#22).
-	r.Post("/v1/issue", issue.NewHandlerWithAudit(iss, cfg.MCPServiceToken, auditQueue).ServeHTTP)
+	// Metrics: mintkey_token_issued_total counter incremented on success (OPS-O).
+	r.Post("/v1/issue", issue.NewHandlerWithAuditAndMetrics(iss, cfg.MCPServiceToken, auditQueue, m).ServeHTTP)
 
 	mux := r
 
