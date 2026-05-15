@@ -11,5 +11,6 @@
     "help": "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token",
     "format": "xoxb-..."
   },
-  "category": "communication"
+  "category": "communication",
+  "test_path": "/api.test"
 }

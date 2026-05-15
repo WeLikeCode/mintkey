@@ -11,5 +11,6 @@
     "help": "Use a restricted key for production; test keys start with sk_test_",
     "format": "sk_live_... or sk_test_..."
   },
-  "category": "payments"
+  "category": "payments",
+  "test_path": "/v1/charges?limit=1"
 }

@@ -7,6 +7,7 @@ Covers:
   GET /v1/service-templates/unknown  — returns 404 with mintkey:code=not_found
   auth_scheme invariant              — each template's auth_scheme is valid
   base_url invariant                 — each template's base_url starts with https://
+  test_path invariant                — each starter template has a non-empty test_path (OPS-JJ)
 """
 from __future__ import annotations
 
@@ -116,3 +117,34 @@ def test_list_templates_slugs_match_starters(admin_app: TestClient):
     assert resp.status_code == 200
     slugs = {t["slug"] for t in resp.json()["templates"]}
     assert slugs == STARTER_SLUGS
+
+
+# Expected test_path values per starter template (OPS-JJ).
+EXPECTED_TEST_PATHS: dict[str, str] = {
+    "github": "/user",
+    "stripe": "/v1/charges?limit=1",
+    "openai": "/models",
+    "slack": "/api.test",
+    "twilio": "/2010-04-01/Accounts.json?PageSize=1",
+}
+
+
+@pytest.mark.parametrize("slug", sorted(STARTER_SLUGS))
+def test_get_template_has_test_path(admin_app: TestClient, slug: str):
+    """Each starter template has a non-empty test_path field (OPS-JJ).
+
+    The test_path is used by ServiceCreateForm instead of the hardcoded /health
+    so that the Test connection button hits a real endpoint for each upstream.
+    """
+    resp = admin_app.get(f"/v1/service-templates/{slug}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "test_path" in body, f"slug={slug}: missing 'test_path' field"
+    assert body["test_path"], f"slug={slug}: 'test_path' is empty"
+    assert body["test_path"].startswith("/"), (
+        f"slug={slug}: test_path {body['test_path']!r} must start with '/'"
+    )
+    assert body["test_path"] == EXPECTED_TEST_PATHS[slug], (
+        f"slug={slug}: expected test_path {EXPECTED_TEST_PATHS[slug]!r}, "
+        f"got {body['test_path']!r}"
+    )

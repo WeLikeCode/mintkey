@@ -63,6 +63,7 @@ interface ServiceTemplate {
   base_url?: string;
   auth_scheme?: string;
   openapi_url?: string;
+  test_path?: string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -119,6 +120,9 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
 
   // ── template pre-fill state ────────────────────────────────────────────────
   const [templateName, setTemplateName] = useState<string | null>(null);
+
+  // ── test path state (editable; pre-filled from template or defaults to /health) ─
+  const [testPath, setTestPath] = useState("/health");
 
   // ── credential fields (dynamic per scheme) ─────────────────────────────────
   // Map of field name → value for scheme-specific hint fields (non-secret)
@@ -201,6 +205,12 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
         if (tDescription) setDescription(tDescription);
         if (tOpenapiUrl) setOpenapiUrl(tOpenapiUrl);
 
+        // Pre-fill test path from template; fall back to /health if absent.
+        const tTestPath = (tpl?.test_path as string | undefined)
+          ?? (flatParams["template.test_path"] as string | undefined)
+          ?? "";
+        setTestPath(tTestPath || "/health");
+
         // DO NOT pre-fill credential value — security boundary (OPS-SUX hard rule)
         setCredFields({}); // ensure cred fields reset (no leakage)
 
@@ -236,7 +246,7 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
       },
       test: {
         method: "GET",
-        path: "/health",
+        path: testPath || "/health",
         timeout_ms: 5000,
       },
     };
@@ -501,6 +511,7 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
               setOpenapiUrl("");
               setTemplateName(null);
               setCredFields({});
+              setTestPath("/health");
               navigate("/admin/resources/services/actions/new");
             }}
           >
@@ -679,6 +690,19 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
 
         {/* ── Test-before-save ─────────────────────────────────────────── */}
         <Box mt="xl" mb="default" data-testid="test-before-save-section">
+          <FieldRow id="test_path" label="Test path">
+            <Input
+              id="test_path"
+              value={testPath}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTestPath(e.target.value)}
+              placeholder="/health"
+              style={inputStyle}
+              data-testid="field-input-test_path"
+            />
+            <Text style={{ fontSize: 12, color: "#6c757d", marginTop: 4 }}>
+              Path appended to base URL for the connection test (e.g. <code>/user</code> for GitHub, <code>/health</code> for generic services).
+            </Text>
+          </FieldRow>
           <Button
             type="button"
             variant="secondary"

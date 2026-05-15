@@ -11,5 +11,6 @@
     "help": "Create a fine-grained PAT at https://github.com/settings/tokens?type=beta",
     "format": "ghp_... or github_pat_..."
   },
-  "category": "developer-tools"
+  "category": "developer-tools",
+  "test_path": "/user"
 }

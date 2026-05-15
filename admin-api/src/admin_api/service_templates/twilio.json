@@ -11,5 +11,6 @@
     "help": "Use the AccountSID as username and AuthToken as password from https://console.twilio.com",
     "format": "AC<sid>:<token> (base64-encoded as Basic auth)"
   },
-  "category": "communication"
+  "category": "communication",
+  "test_path": "/2010-04-01/Accounts.json?PageSize=1"
 }
