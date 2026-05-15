@@ -343,6 +343,74 @@ describe("X-Platform-Admin header propagation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// findOne applies recordTransform — OPS-II fix
+// ---------------------------------------------------------------------------
+
+describe("findOne applies recordTransform (OPS-II)", () => {
+  const proxyBase = "http://localhost:8000";
+  const res = new RestResource({
+    id: "services",
+    name: "Services",
+    listPath: "/v1/tenants/{tenantId}/services",
+    getPath: "/v1/tenants/{tenantId}/services/{id}",
+    listKey: "services",
+    idField: "id",
+    properties: [
+      { path: "id", type: "string", isId: true },
+      { path: "name", type: "string" },
+      { path: "proxy_url", type: "string" },
+    ],
+    filterKeys: [],
+    recordTransform: (item: Record<string, unknown>): Record<string, unknown> => {
+      const id = item.id as string | undefined;
+      if (id) {
+        item.proxy_url = `${proxyBase}/v1/call/${id}/{path}`;
+      }
+      return item;
+    },
+  });
+
+  it("injects proxy_url into the record returned by findOne", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "svc_ABC123", name: "My API" }),
+    });
+
+    const record = await res.findOne("svc_ABC123", makeContext("tid_ops2"));
+    expect(record).not.toBeNull();
+    expect(record!.get("proxy_url")).toBe(
+      `${proxyBase}/v1/call/svc_ABC123/{path}`
+    );
+  });
+
+  it("proxy_url value contains /v1/call/ and the record id", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "svc_XYZ", name: "Other Service" }),
+    });
+
+    const record = await res.findOne("svc_XYZ", makeContext("tid_ops2"));
+    expect(record).not.toBeNull();
+    const proxyUrl = record!.get("proxy_url") as string;
+    expect(proxyUrl).toContain("/v1/call/");
+    expect(proxyUrl).toContain("svc_XYZ");
+  });
+
+  it("find() also injects proxy_url (list page unaffected)", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ services: [{ id: "svc_LIST1", name: "List Service" }] }),
+    });
+
+    const records = await res.find({} as Filter, {}, makeContext("tid_ops2"));
+    expect(records).toHaveLength(1);
+    expect(records[0].get("proxy_url")).toBe(
+      `${proxyBase}/v1/call/svc_LIST1/{path}`
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PropertyDef type:"mixed" — fix-show-page-react-31
 // ---------------------------------------------------------------------------
 

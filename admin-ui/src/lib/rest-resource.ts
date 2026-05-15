@@ -232,7 +232,8 @@ export class RestResource extends BaseResource {
         const resp = await fetch(url, { headers: this._sessionHeaders(context) });
         if (!resp.ok) return null;
         const item = await resp.json() as Record<string, unknown>;
-        return new BaseRecord(item, this);
+        const transform = this.config.recordTransform;
+        return new BaseRecord(transform ? transform(item) : item, this);
       } catch {
         return null;
       }
