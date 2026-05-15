@@ -39,6 +39,7 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
 )
@@ -85,7 +86,8 @@ func main() {
 		AuditEmitter: ckAuditEmitter,
 	})
 
-	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler, auditQueue)
+	proxyMetrics := metrics.New()
+	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler, auditQueue, proxyMetrics)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.PluginPort),
@@ -165,14 +167,18 @@ type proxyHandler struct {
 	ckHandler   *classicalkey.Handler
 	audit       auditEnqueuer // may be nil (audit disabled)
 	auditQ      *auditq.Queue // same as audit but typed to access WriteMetricsTo (#27)
+	metrics     *metrics.Metrics
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 }
 
-func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue) *proxyHandler {
+func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
 	var ae auditEnqueuer
 	if aq != nil {
 		ae = aq
+	}
+	if m == nil {
+		m = metrics.New()
 	}
 	return &proxyHandler{
 		cfg:         cfg,
@@ -181,6 +187,7 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		ckHandler:   ck,
 		audit:       ae,
 		auditQ:      aq,
+		metrics:     m,
 		pubKeys:     make(map[string]ed25519.PublicKey),
 	}
 }
@@ -194,11 +201,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		_, _ = fmt.Fprint(w,
-			"# HELP mintkey_proxy_requests_total Total requests proxied.\n"+
-				"# TYPE mintkey_proxy_requests_total counter\n"+
-				"mintkey_proxy_requests_total 0\n",
-		)
+		// Write proxy-plugin hit/denied/latency metrics (OPS-P).
+		if err := h.metrics.WriteTo(w); err != nil {
+			log.Printf("proxy-plugin: metrics WriteTo error: %v", err)
+		}
 		// Write auditq WAL and dead-letter metrics (#27).
 		if h.auditQ != nil {
 			h.auditQ.WriteMetricsTo(w)
@@ -213,6 +219,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Plugin logic start time — brackets JWT verify + credential fetch + auth
+	// scrub only.  The upstream HTTP call is NOT included (OPS-P).
+	pluginStart := time.Now()
 
 	// Dispatch classical service API keys (ADR-0018 §2).
 	if classicalkey.IsClassicalKey(tokenStr) {
@@ -236,6 +246,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if err != nil {
+			h.metrics.IncProxyDenied("unknown", "unauthenticated")
 			http.Error(w, "unauthorized: "+err.Error(), http.StatusUnauthorized)
 			return
 		}
@@ -247,6 +258,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	agentID, _ := claims["sub"].(string)
 
 	if serviceID == "" || tenantID == "" {
+		h.metrics.IncProxyDenied("unknown", "unauthenticated")
 		http.Error(w, "unauthorized: missing aud or tnt claim", http.StatusUnauthorized)
 		return
 	}
@@ -279,6 +291,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					},
 				})
 			}
+			h.metrics.IncProxyDenied(serviceID, "permission_denied")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = fmt.Fprint(w, `{"error":"scope mismatch"}`)
@@ -295,6 +308,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("proxy-plugin: vault GetCredential error (svc=%s tnt=%s): %v", serviceID, tenantID, err)
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
 		return
 	}
@@ -311,12 +325,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		target = h.cfg.DefaultTarget
 	}
 	if target == "" {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
 		return
 	}
 
 	targetURL, err := url.Parse(target)
 	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
 		return
 	}
@@ -352,6 +368,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("proxy-plugin: inject error: %v", injectErr)
 		}
 	}
+
+	// Plugin logic is complete: record added latency (JWT verify + credential
+	// fetch + Director setup) — NOT the upstream HTTP call (OPS-P).
+	pluginElapsed := time.Since(pluginStart).Seconds()
+	h.metrics.ObserveAddedLatency(serviceID, pluginElapsed)
+	h.metrics.IncProxyHit(serviceID)
 
 	// Wrap the ResponseWriter to capture the upstream status code for audit.
 	jtiClaim, _ := claims["jti"].(string)
