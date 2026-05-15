@@ -12,9 +12,20 @@ WS-11 changes (perf):
 - Singleton channel: one grpc.aio.Channel shared for the process lifetime,
   opened lazily on first call and closed via FastAPI lifespan shutdown hook.
   grpc.aio handles transparent reconnection after vault-adapter restart.
+
+Concurrency safety (WS-11 polish):
+- _channel_lock (asyncio.Lock) guards lazy init so that concurrent first
+  callers don't each open a separate channel and leak the extras.  The
+  double-checked pattern (check → lock → check) avoids lock contention on
+  the hot path once the channel is set.
+- CPython single-worker uvicorn: GIL alone would be sufficient, but the
+  lock is nearly free and documents the intent explicitly.
+- Multi-worker uvicorn (--workers N): each OS process has its own lock and
+  its own singleton — the per-process singleton remains safe.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -45,14 +56,41 @@ _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
 # reconnect logic is required.
 # ---------------------------------------------------------------------------
 _channel: grpc.aio.Channel | None = None
+_channel_lock: asyncio.Lock | None = None
 
 
-def _get_channel() -> grpc.aio.Channel:
-    """Return the singleton grpc.aio channel, creating it on first call."""
+def _get_lock() -> asyncio.Lock:
+    """Return the module-level lock, creating it lazily (must be called from an async context)."""
+    global _channel_lock
+    if _channel_lock is None:
+        _channel_lock = asyncio.Lock()
+    return _channel_lock
+
+
+async def _get_channel() -> grpc.aio.Channel:
+    """Return the singleton grpc.aio channel, creating it on first call.
+
+    Uses a double-checked asyncio.Lock to prevent multiple concurrent
+    callers from each opening a channel on the very first request:
+
+      fast path (channel already set): no lock acquired.
+      slow path (channel is None): acquire lock, re-check, then create.
+
+    Safety properties:
+    - Single-worker CPython uvicorn: GIL makes the fast-path assignment
+      atomic; the lock adds defence-in-depth at near-zero cost.
+    - Multi-worker uvicorn (--workers N): each OS process has its own
+      event loop, its own lock, and its own singleton — fully isolated.
+    - Concurrent asyncio tasks on first call: at most one channel is
+      created; all others reuse it after the lock is released.
+    """
     global _channel
-    if _channel is None:
-        _channel = grpc.aio.insecure_channel(_VAULT_ADDR)
-        logger.info("vault_client: grpc.aio channel ready → %s", _VAULT_ADDR)
+    if _channel is not None:
+        return _channel
+    async with _get_lock():
+        if _channel is None:
+            _channel = grpc.aio.insecure_channel(_VAULT_ADDR)
+            logger.info("vault_client: grpc.aio channel ready → %s", _VAULT_ADDR)
     return _channel
 
 
@@ -72,8 +110,8 @@ class VaultAdapterClient:
     requests multiplex over the same HTTP/2 connection.
     """
 
-    def _stub(self) -> vault_pb2_grpc.VaultAdapterStub:
-        return vault_pb2_grpc.VaultAdapterStub(_get_channel())
+    async def _stub(self) -> vault_pb2_grpc.VaultAdapterStub:
+        return vault_pb2_grpc.VaultAdapterStub(await _get_channel())
 
     async def put_credential(
         self,
@@ -92,7 +130,7 @@ class VaultAdapterClient:
             value=plaintext.encode(),
             target_url=target_url,
         )
-        resp = await self._stub().PutCredential(req)
+        resp = await (await self._stub()).PutCredential(req)
         return {
             "credential_id": f"cred_{tenant_id[:8]}_{service_id[:8]}",
             "key_version": resp.key_version,
@@ -114,7 +152,7 @@ class VaultAdapterClient:
             key_version=0,
         )
         try:
-            resp = await self._stub().GetCredential(req)
+            resp = await (await self._stub()).GetCredential(req)
             return {
                 "plaintext": resp.value.decode("utf-8", errors="replace"),
                 "auth_scheme": resp.auth_scheme,
@@ -138,7 +176,7 @@ class VaultAdapterClient:
             service_id=service_id,
         )
         try:
-            resp = await self._stub().ListVersions(req)
+            resp = await (await self._stub()).ListVersions(req)
             return [
                 {
                     "key_version": v.key_version,

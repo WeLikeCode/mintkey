@@ -3,10 +3,24 @@ Admin API FastAPI application factory.
 
 Source: design §4 main.py; Req 1 AC7, AC8.
 WS-11: lifespan context closes the singleton grpc.aio channel on shutdown.
+WS-11 polish: logging.basicConfig wired so stdlib loggers (e.g. vault_client)
+  emit to stdout inside the container without needing a separate handler
+  on each module logger.
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
+
+# Wire a stdout handler for the root stdlib logger so all modules that use
+# logging.getLogger(__name__) — including vault_client — emit to container
+# stdout and appear in `docker compose logs admin-api`.
+# uvicorn also respects this setup; setting it here (before app creation)
+# ensures the handler is present from the first request.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError

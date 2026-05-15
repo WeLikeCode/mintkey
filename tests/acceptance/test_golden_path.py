@@ -730,7 +730,12 @@ def test_ws10_list_versions_end_to_end() -> None:
     secret_a = f"ws10-secret-a-{ts}"
     secret_b = f"ws10-secret-b-{ts}"
 
-    vault_addr = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
+    # VAULT_GRPC_ADDR allows overriding the gRPC endpoint:
+    #   - Host/pytest invocation: defaults to localhost:8084 (docker-compose
+    #     maps vault-adapter's gRPC port 8084 → host port 8084).
+    #   - Inside docker-compose network (make test-golden / CI): set
+    #     VAULT_GRPC_ADDR=vault-adapter:8084 so the Docker hostname resolves.
+    vault_addr = os.getenv("VAULT_GRPC_ADDR", "localhost:8084")
     channel = grpc.insecure_channel(vault_addr)
     stub = vault_pb2_grpc.VaultAdapterStub(channel)
 
