@@ -57,8 +57,8 @@ func main() {
 		defer func() { _ = otelShutdown(context.Background()) }()
 	}
 
-	log.Printf("proxy-plugin: starting env=%s vault=%s jwks=%s port=%d",
-		cfg.Env, cfg.VaultAddrGRPC, cfg.JWKSEndpoint, cfg.PluginPort)
+	log.Printf("proxy-plugin: starting env=%s vault=%s jwks=%s port=%d aud_enforcement=%s",
+		cfg.Env, cfg.VaultAddrGRPC, cfg.JWKSEndpoint, cfg.PluginPort, cfg.AudEnforcement)
 
 	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, "")
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
@@ -186,6 +186,23 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if serviceID == "" || tenantID == "" {
 		http.Error(w, "unauthorized: missing aud or tnt claim", http.StatusUnauthorized)
 		return
+	}
+
+	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service_id
+	// embedded in the URL path.  Both are in the canonical UUID form (the JWT aud
+	// contains the DB UUID; the URL path /v1/call/<uuid>/... also carries the UUID).
+	// Kong routes are named /v1/call/{service_uuid} so the first non-empty path
+	// segment after stripping /v1/call/ is the UUID to compare against.
+	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
+		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
+			urlSvcID, serviceID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprint(w, `{"error":"scope mismatch"}`)
+			return
+		}
+		// Permissive: log warning, proceed.
 	}
 
 	// Fetch credential from Vault Adapter.
@@ -353,6 +370,62 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+// urlServiceID extracts the service UUID from a Kong-routed path of the form
+// /v1/call/<uuid>[/...] or /<uuid>[/...] (legacy catch-all).
+// Returns "" if no UUID-shaped segment is found so callers skip the check.
+func urlServiceID(path string) string {
+	// Strip /v1/call/ prefix (Kong-syncer generated routes).
+	trimmed := strings.TrimPrefix(path, "/v1/call/")
+	if trimmed == path {
+		// Fallback: bare /<svc_id>/... path (legacy static catch-all).
+		trimmed = strings.TrimPrefix(path, "/")
+	}
+	// Take the first path segment.
+	if i := strings.IndexByte(trimmed, '/'); i >= 0 {
+		trimmed = trimmed[:i]
+	}
+	// Accept UUID form (8-4-4-4-12 hex) or bare 32-hex.
+	if isUUIDShape(trimmed) {
+		return trimmed
+	}
+	return ""
+}
+
+// isUUIDShape returns true for strings that look like a UUID
+// (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, 36 chars) or a 32-char hex string.
+func isUUIDShape(s string) bool {
+	if len(s) == 36 {
+		// Must match xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+		for i, c := range s {
+			if i == 8 || i == 13 || i == 18 || i == 23 {
+				if c != '-' {
+					return false
+				}
+			} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return true
+	}
+	if len(s) == 32 {
+		for _, c := range s {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// audCheckResult returns the result string for the structured log line.
+func audCheckResult(mode config.AudEnforcement) string {
+	if mode == config.AudEnforcementStrict {
+		return "reject"
+	}
+	return "warn"
 }
 
 // audFirst returns the first element of the aud claim (string or []any).

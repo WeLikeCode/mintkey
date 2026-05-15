@@ -338,6 +338,9 @@ services:
       DEFAULT_TARGET: http://mock-backend:8999
       MINTKEY_PROXY_SERVICE_TOKEN: dev-proxy-service-token
       DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      # ADR-0004 addendum: permissive in dev (default); operators set strict in production.
+      # Override with MINTKEY_AUD_ENFORCEMENT=strict to test strict mode locally.
+      MINTKEY_AUD_ENFORCEMENT: permissive
     ports:
       - "8086:8086"
     networks:

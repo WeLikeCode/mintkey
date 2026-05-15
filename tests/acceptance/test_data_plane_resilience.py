@@ -733,3 +733,114 @@ def test_wrong_scope_jwt_rejected() -> None:
             )
             # It's acceptable for the proxy to serve svcA's credential (aud-based routing),
             # but svcB's credential MUST NOT be served with svcA's token.
+
+
+# ===========================================================================
+# Scenario D-strict: MINTKEY_AUD_ENFORCEMENT=strict must reject aud/URL mismatch
+# ===========================================================================
+
+
+@INTEGRATION
+@pytest.mark.skip(
+    reason=(
+        "ADR-0004 addendum: strict-mode test requires restarting proxy-plugin with "
+        "MINTKEY_AUD_ENFORCEMENT=strict.  Harness gap: docker-compose does not support "
+        "per-test env-var overrides at runtime.  To run manually: "
+        "'docker compose up -d --no-deps --build proxy-plugin' with "
+        "MINTKEY_AUD_ENFORCEMENT=strict set in the environment, then re-run this test "
+        "with -k test_wrong_scope_strict_mode_rejects_with_403.  "
+        "See ADR-0004 addendum §'Integration test harness gap'."
+    )
+)
+def test_wrong_scope_strict_mode_rejects_with_403() -> None:
+    """
+    Scenario D-strict (ADR-0004 addendum): proxy with MINTKEY_AUD_ENFORCEMENT=strict
+    must return 403 when JWT.aud != URL svc_id.
+
+    Prerequisites (manual):
+      1. Set MINTKEY_AUD_ENFORCEMENT=strict in docker-compose proxy-plugin env.
+      2. docker compose up -d --no-deps proxy-plugin
+      3. Remove the skip marker and run this test.
+
+    Setup:   create service A (with credential), create service B (with credential).
+    Action:  issue JWT for svc_A; call Kong route for svc_B with that JWT.
+    Assert:  proxy returns 403 (not 200 or 502 as in permissive mode).
+    Assert:  response body contains {"error":"scope mismatch"}.
+
+    Sources: WS-4; ADR-0004 addendum; Scenario D.
+    """
+    ts = int(time.time())
+
+    with httpx.Client(timeout=30) as client:
+        tenant_id, csrf = _admin_login(client)
+
+        api_key_a, svc_wire_a, agent_db_id_a, svc_uuid_a, csrf = _create_full_setup(
+            client, tenant_id, csrf, ts, "ws4-strict-svcA", f"secret-strict-svcA-{ts}"
+        )
+
+        # Create service B
+        csrf = client.cookies.get("csrf_token", csrf)
+        svc_b_r = client.post(
+            f"{BASE_API}/v1/tenants/{tenant_id}/services",
+            json={
+                "name": f"ws4-strict-svcB-{ts}",
+                "base_url": "http://mock-backend:8999",
+                "auth_scheme": "api_key_header",
+                "settings": {},
+            },
+            headers={"X-Mintkey-Csrf": csrf},
+        )
+        assert svc_b_r.status_code == 201
+        svc_b_name = svc_b_r.json()["name"]
+
+        svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
+        services_list = svcs_r.json().get("services", [])
+        svc_b_wire = next(s["id"] for s in services_list if s.get("name") == svc_b_name)
+        hex_b = svc_b_wire[4:]
+        svc_uuid_b = (
+            f"{hex_b[:8]}-{hex_b[8:12]}-{hex_b[12:16]}"
+            f"-{hex_b[16:20]}-{hex_b[20:]}"
+        )
+
+        # Register credential for svcB so its Kong route exists
+        csrf = client.cookies.get("csrf_token", csrf)
+        cred_b_r = client.post(
+            f"{BASE_API}/v1/tenants/{tenant_id}/services/{svc_uuid_b}/credentials",
+            json={
+                "auth_scheme": "api_key_header",
+                "value": f"secret-strict-svcB-{ts}",
+                "header_name": "X-API-Key",
+            },
+            headers={"X-Mintkey-Csrf": csrf},
+        )
+        assert cred_b_r.status_code == 201
+
+        # Issue JWT for svcA
+        jwt_for_svc_a = _get_jwt_for_service(client, api_key_a, svc_wire_a)
+
+        _wait_for_kong_route(svc_uuid_a, timeout=12)
+        _wait_for_kong_route(svc_uuid_b, timeout=12)
+
+        # Under strict enforcement: JWT(aud=svcA) against /v1/call/{svcB} → 403
+        proxy_r = httpx.get(
+            f"{BASE_KONG}/v1/call/{svc_uuid_b}/api-key-header",
+            headers={"Authorization": f"Bearer {jwt_for_svc_a}"},
+            timeout=15,
+        )
+
+        assert proxy_r.status_code == 403, (
+            f"Scenario D-strict FAIL: expected 403, got {proxy_r.status_code}. "
+            f"Body: {proxy_r.text}\n"
+            "Ensure proxy-plugin is running with MINTKEY_AUD_ENFORCEMENT=strict."
+        )
+
+        import json as _json
+        try:
+            body_json = _json.loads(proxy_r.text)
+        except _json.JSONDecodeError:
+            body_json = {}
+
+        assert body_json.get("error") == "scope mismatch", (
+            f"Scenario D-strict: expected {{\"error\":\"scope mismatch\"}}, "
+            f"got: {proxy_r.text!r}"
+        )
