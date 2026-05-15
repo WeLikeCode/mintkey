@@ -55,11 +55,19 @@ export class AuditPage extends BasePage {
     await this.goto(`/admin/resources/audit_events/records/${eventId}/show`);
   }
 
+  /**
+   * Returns a locator for the hash value field on the show page.
+   * AdminJS renders string properties as text nodes inside a <section> element
+   * with a data-testid of "property-show-<field>". We look for the section that
+   * contains a 64-char hex string (SHA-256 output) in its text content.
+   */
   getHashValue(): Locator {
-    return this.page.locator("td, dd").filter({ hasText: /^[a-f0-9]{64}$/ });
+    return this.page.locator(
+      "[data-testid='property-show-hash'], [data-testid='property-show-prev_hash']"
+    ).filter({ hasText: /[a-f0-9]{64}/ }).first();
   }
 
   getPrevHashValue(): Locator {
-    return this.page.locator("td, dd").filter({ hasText: /^[a-f0-9]{64}$/ });
+    return this.page.locator("[data-testid='property-show-prev_hash']").filter({ hasText: /[a-f0-9]{64}/ });
   }
 }
