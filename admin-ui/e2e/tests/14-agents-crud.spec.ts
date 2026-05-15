@@ -93,6 +93,46 @@ test.describe("14 — Agents CRUD round-trip", () => {
       expect(afterSaveBody, "edit save must not show JS error").not.toContain("Javascript Error");
     }
 
+    // ── Edit page: UX-CLARITY field descriptions (chunk C) ──────────────
+    // AdminJS renders `description` as a tooltip icon (HelpCircle) in the EDIT
+    // form (via PropertyLabel) and in the FILTER panel. The SHOW view uses
+    // ValueGroup which does not render description tooltips (AdminJS behaviour).
+    // We verify on the edit page: hover SVG help icons and confirm the tooltip
+    // text appears. At least 2 of 3 fields must be accessible.
+    await page.goto(`/admin/resources/agents/records/${agentId}/edit`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForLoadState("networkidle");
+
+    const descriptionChecks = [
+      { field: "api_key_fingerprint", substring: "First 16 hex chars" },
+      { field: "mcp_endpoint", substring: "mcpServers.mintkey.url" },
+      { field: "rate_limit_rps", substring: "emergency stop" },
+    ];
+    let passedDescriptions = 0;
+    const svgIcons = page.locator("label svg");
+    const svgCount = await svgIcons.count();
+    for (const check of descriptionChecks) {
+      let found = false;
+      for (let i = 0; i < Math.min(svgCount, 12) && !found; i++) {
+        try {
+          await svgIcons.nth(i).hover({ force: true, timeout: 1500 });
+          await page.waitForTimeout(200);
+          const bodyHtml = await page.locator("body").innerHTML().catch(() => "");
+          if (bodyHtml.includes(check.substring)) {
+            passedDescriptions++;
+            found = true;
+          }
+        } catch {
+          // hover failed — try next icon
+        }
+      }
+    }
+    expect(
+      passedDescriptions,
+      `Expected at least 2 UX-CLARITY field descriptions via tooltip on edit page, got ${passedDescriptions}`
+    ).toBeGreaterThanOrEqual(2);
+
     // ── Revoke button is accessible ─────────────────────────────────────────
     // Navigate to show to assert the revoke action is rendered.
     // (Actual revoke flow — including status propagation — is covered by 04-agent.spec.ts.)

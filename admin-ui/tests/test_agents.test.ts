@@ -94,6 +94,50 @@ describe("AgentsResource — create handler", () => {
   });
 });
 
+describe("AgentsResource — UX-CLARITY descriptive uplift (chunk C)", () => {
+  it("api_key_fingerprint has updated label and description", () => {
+    const props = AgentsResource.options?.properties ?? {};
+    const fp = (props as Record<string, { label?: string; description?: string }>).api_key_fingerprint;
+    expect(fp?.label).toBe("API Key Fingerprint (SHA-256 prefix)");
+    expect(fp?.description).toMatch(/First 16 hex chars of SHA-256/);
+    expect(fp?.description).toMatch(/cannot be reversed/);
+  });
+
+  it("mcp_endpoint has description explaining mcpServers config", () => {
+    const props = AgentsResource.options?.properties ?? {};
+    const ep = (props as Record<string, { description?: string }>).mcp_endpoint;
+    expect(ep?.description).toMatch(/mcpServers\.mintkey\.url/);
+    expect(ep?.description).toMatch(/\/v1\/tools/);
+  });
+
+  it("rate_limit_rps has description covering blank and 0 semantics", () => {
+    const props = AgentsResource.options?.properties ?? {};
+    const rps = (props as Record<string, { description?: string }>).rate_limit_rps;
+    expect(rps?.description).toMatch(/Requests per second cap/);
+    expect(rps?.description).toMatch(/emergency stop/);
+  });
+
+  it("status has availableValues with active and revoked", () => {
+    const props = AgentsResource.options?.properties ?? {};
+    const status = (props as Record<string, { availableValues?: { value: string; label: string }[] }>).status;
+    expect(status?.availableValues).toBeDefined();
+    const values = (status?.availableValues ?? []).map((v) => v.value);
+    expect(values).toContain("active");
+    expect(values).toContain("revoked");
+    // Each entry must have a label too
+    for (const entry of status?.availableValues ?? []) {
+      expect(entry.label).toBeTruthy();
+    }
+  });
+
+  it("revokeAgent action has description for permanent-revocation copy", () => {
+    const actions = AgentsResource.options?.actions ?? {};
+    const revoke = (actions as Record<string, { description?: string }>).revokeAgent;
+    expect(revoke?.description).toMatch(/permanent/i);
+    expect(revoke?.description).toMatch(/create a new agent/i);
+  });
+});
+
 describe("getMcpConnectSnippet", () => {
   it("generates a valid JSON snippet with mcp_endpoint", () => {
     const snippet = getMcpConnectSnippet({

@@ -22,7 +22,7 @@ const _agentsResource = new RestResource({
   getPath: "/v1/tenants/{tenantId}/agents/{id}",
   listKey: "agents",
   idField: "id",
-  filterKeys: ["q", "has_access_to_service_id"],
+  filterKeys: ["q", "has_access_to_service_id", "status"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "name", type: "string" },
@@ -50,6 +50,23 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
     filterProperties: ["q", "has_access_to_service_id", "name", "status"],
     properties: {
+      api_key_fingerprint: {
+        label: "API Key Fingerprint (SHA-256 prefix)",
+        description: "First 16 hex chars of SHA-256(api_key). Safe to share in logs and audit events; cannot be reversed to the plaintext key. Use this to identify a key in audit events without exposing the secret.",
+      },
+      mcp_endpoint: {
+        description: "URL to copy into your MCP client configuration as `mcpServers.mintkey.url`. The `/v1/agents/{agent_id}` suffix is informational only — actual MCP tool routes live under `/v1/tools/*` and the agent is identified by the bearer API key, not the URL path.",
+      },
+      rate_limit_rps: {
+        description: "Requests per second cap. Blank = no limit. `0` = block ALL requests (emergency stop).",
+      },
+      status: {
+        isVisible: { list: true, show: true, edit: false, filter: true },
+        availableValues: [
+          { value: "active", label: "active" },
+          { value: "revoked", label: "revoked" },
+        ],
+      },
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (name)",
@@ -144,6 +161,9 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         component: Components.ConfirmAction,
         label: "Revoke",
         icon: "Ban",
+        // UX-CLARITY chunk C: permanent-revocation warning shown in ConfirmAction
+        // (ConfirmAction description prop added in Chunk F, already merged).
+        description: "Revocation is permanent — to restore access, create a new agent.",
         // isVisible receives RecordJSON (plain object, no .get()) during HTML routing —
         // use params.status to avoid TypeError that AdminJS catches as a 404.
         isVisible: (context) => {
