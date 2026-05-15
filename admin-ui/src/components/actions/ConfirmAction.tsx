@@ -9,20 +9,37 @@
  *   POST → user clicks Confirm → ApiClient.recordAction({ method: "post" })
  *          → handler executes → component shows notice / navigates away
  *
+ * Props (beyond the standard AdminJS record/resource/action triple):
+ *   description?: string — optional explanatory copy rendered below the record
+ *     label and above the action buttons. Intended for per-action guidance, e.g.:
+ *       "Revocation is permanent — to restore access, create a new agent."
+ *     Defaults to empty string; when empty nothing extra is rendered (no regression
+ *     for existing callers).
+ *
  * Source: Phase 1b of action-grid completion; ADMIN_UI_ACTION_MATRIX.md.
+ *         UX-CLARITY chunk F — description prop added.
  */
 
 import React, { useState } from "react";
 import { Box, H3, Text, Button } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ConfirmAction = (props: Record<string, any>): React.ReactElement => {
-  const { record, resource, action } = props as {
-    record: { id: string | number; params: Record<string, unknown> };
-    resource: { id: string };
-    action: { name: string; label: string };
-  };
+/** Props passed to ConfirmAction by AdminJS plus our optional extension. */
+interface ConfirmActionProps {
+  record: { id: string | number; params: Record<string, unknown> };
+  resource: { id: string };
+  action: { name: string; label: string };
+  /**
+   * Optional explanatory copy shown in the dialog body, below the record label
+   * and above the confirm/cancel buttons. When omitted (or empty) nothing extra
+   * is rendered so existing callers are unaffected.
+   */
+  description?: string;
+  [key: string]: unknown;
+}
+
+const ConfirmAction = (props: Record<string, unknown>): React.ReactElement => {
+  const { record, resource, action, description = "" } = props as ConfirmActionProps;
 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -75,6 +92,11 @@ const ConfirmAction = (props: Record<string, any>): React.ReactElement => {
       <Text mb="default">
         Record: <strong>{recordLabel}</strong>
       </Text>
+      {description && (
+        <Text mb="lg" data-testid="confirm-action-description">
+          {description}
+        </Text>
+      )}
       {notice && (
         <Box
           mb="lg"
