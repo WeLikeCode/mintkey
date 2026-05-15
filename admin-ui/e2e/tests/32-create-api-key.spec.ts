@@ -158,7 +158,7 @@ test.describe("32 — createApiKey show-once flow", () => {
     void consoleErrors;
   });
 
-  test("agent dropdown is present", async ({
+  test("agent combobox is present", async ({
     page,
     consoleErrors,
     browserName,
@@ -171,10 +171,10 @@ test.describe("32 — createApiKey show-once flow", () => {
     );
     await page.waitForLoadState("networkidle");
 
-    // agent_id dropdown must be present
+    // agent combobox input must be present (UX-A: replaced <select> with AsyncCombobox)
     await expect(
-      page.locator('[data-testid="field-agent-id"]'),
-      "agent_id dropdown/field must be present"
+      page.locator('[data-testid="combobox-agent-input"]'),
+      "agent combobox input must be present"
     ).toBeVisible({ timeout: 10_000 });
 
     void consoleErrors;
@@ -198,30 +198,20 @@ test.describe("32 — createApiKey show-once flow", () => {
       page.locator('[data-testid="api-key-create-form"]')
     ).toBeVisible({ timeout: 10_000 });
 
-    // Wait for agents to load (select must have at least one option beyond the placeholder)
-    const agentSelect = page.locator('[data-testid="field-agent-id"] select');
-    await agentSelect.waitFor({ state: "visible", timeout: 10_000 });
-    // Wait for at least one real option to appear (beyond the "select an agent" placeholder)
-    await page.waitForFunction(() => {
-      const sel = document.querySelector('[data-testid="field-agent-id"] select') as HTMLSelectElement;
-      return sel && sel.options.length > 1;
-    }, undefined, { timeout: 15_000 });
+    // UX-A: agent field is now an AsyncCombobox (not a <select>).
+    // Open the agent combobox and wait for the dropdown to appear with options.
+    const agentInput = page.locator('[data-testid="combobox-agent-input"]');
+    await agentInput.waitFor({ state: "visible", timeout: 10_000 });
+    await agentInput.click();
+    // Dropdown should appear with at least one option
+    await page.locator('[data-testid="combobox-agent-dropdown"]').waitFor({ state: "visible", timeout: 15_000 });
+    // Pick the first option
+    const firstOption = page.locator('[data-testid="combobox-agent-dropdown"] li[data-value]').first();
+    await firstOption.waitFor({ state: "visible", timeout: 10_000 });
+    await firstOption.click();
 
-    // Select the first real agent option
-    const firstAgentValue = await page.evaluate(() => {
-      const sel = document.querySelector('[data-testid="field-agent-id"] select') as HTMLSelectElement;
-      return sel && sel.options.length > 1 ? sel.options[1].value : "";
-    });
-    expect(firstAgentValue, "Must have at least one agent option").not.toEqual("");
-    await agentSelect.selectOption({ value: firstAgentValue });
-
-    // Service dropdown should now be enabled with options (or empty if no permissions)
-    // We can still try to submit even without a service — the form will show an error
-    // For a positive test, we just submit without service and verify the error is from our form
-    // (not the old "action component" error)
-
-    // Submit the form — expect either success (with modal) or a form validation error
-    // The key assertion is that we do NOT see the "implement action component" error
+    // Service combobox should now have options (or empty if agent has no permissions)
+    // We submit without a service to verify the form validation error (not action-component error)
     await page.locator('[data-testid="api-key-create-submit"]').click();
 
     // Wait a moment for response or modal
@@ -320,44 +310,63 @@ test.describe("32 — createApiKey show-once flow", () => {
     // Screenshot A: form loaded
     await page.screenshot({ path: "test-results/r10-a4-step-b-form.png" });
 
-    // ── Step 4: Select the synthesised agent ─────────────────────────────────
-    const agentSelect = page.locator('[data-testid="field-agent-id"] select');
-    await agentSelect.waitFor({ state: "visible", timeout: 10_000 });
-    // Wait for agents to load
+    // ── Step 4: Select the synthesised agent via combobox (UX-A) ─────────────
+    // UX-A: agent field is now an AsyncCombobox. Type the agent wire-id to filter,
+    // then click the option. The combobox fetches agents with ?q=<text> on the
+    // resource list endpoint — wire IDs are searchable (ILIKE name, description).
+    const agentInput = page.locator('[data-testid="combobox-agent-input"]');
+    await agentInput.waitFor({ state: "visible", timeout: 10_000 });
+    await agentInput.click();
+    // Wait for initial dropdown to appear
+    await page.locator('[data-testid="combobox-agent-dropdown"]').waitFor({ state: "visible", timeout: 20_000 });
+
+    // Type the unique agent name (r10-e2e-agent-<ts>) to narrow the list via API q= filter.
+    // The API searches ILIKE on name/description, not on wire IDs.
+    await agentInput.fill(`r10-e2e-agent-${ts}`);
+    // Wait 700ms for debounce (300ms) + API response + React re-render
+    await page.waitForTimeout(700);
+
+    // Wait for any li[data-value] option to appear (Loading… resolved)
+    await page.locator('[data-testid="combobox-agent-dropdown"] li[data-value]').first().waitFor({
+      state: "visible",
+      timeout: 15_000,
+    }).catch(() => { /* will fail on the specific option check below */ });
+
+    // Wait for the agent option with our wire-id to appear in the dropdown
+    const agentOptionSelector = `[data-testid="combobox-agent-dropdown"] li[data-value="${wireAgentId}"]`;
+    await page.locator(agentOptionSelector).waitFor({ state: "visible", timeout: 15_000 }).catch(async () => {
+      // If exact wire-id not visible — show all options for debugging
+      const opts = await page.evaluate(() => {
+        return Array.from(
+          document.querySelectorAll('[data-testid="combobox-agent-dropdown"] li[data-value]')
+        ).map((el) => (el as HTMLElement).dataset.value ?? "");
+      });
+      throw new Error(
+        `FAIL: Agent ${wireAgentId} not found in combobox dropdown. ` +
+        `Visible options: [${opts.join(", ")}]. ` +
+        "If this fails, the agents list endpoint may not be returning the newly created agent."
+      );
+    });
+
+    await page.locator(agentOptionSelector).click();
+
+    // Verify the chip shows after selection
+    await page.locator('[data-testid="combobox-agent-chip"]').waitFor({ state: "visible", timeout: 5_000 });
+
+    // ── Step 5: Wait for service combobox to populate ────────────────────────
+    // After agent selection, ApiKeyCreate fetches permission grants and builds
+    // staticOptions for the service combobox. The "Loading services…" text appears
+    // briefly, then the service combobox becomes interactive.
     await page.waitForFunction(() => {
-      const sel = document.querySelector('[data-testid="field-agent-id"] select') as HTMLSelectElement;
-      return sel && sel.options.length > 1;
-    }, undefined, { timeout: 20_000 });
-
-    // Verify the synthesised agent is in the list
-    const hasAgentOption = await page.evaluate((wid: string) => {
-      const sel = document.querySelector('[data-testid="field-agent-id"] select') as HTMLSelectElement;
-      return Array.from(sel?.options ?? []).some((o) => o.value === wid);
-    }, wireAgentId);
-
-    expect(
-      hasAgentOption,
-      `Synthesised agent ${wireAgentId} must appear in the agent dropdown. ` +
-      "If this fails, the agents list endpoint may not be returning the newly created agent."
-    ).toBe(true);
-
-    await agentSelect.selectOption({ value: wireAgentId });
-
-    // ── Step 5: Wait for service dropdown to populate ────────────────────────
-    // The production code now normalises agent_id to wire-form in permissions.ts
-    // recordTransform (ADR-0017: wire-form on the wire). No route interception needed.
-    const serviceSelect = page.locator('[data-testid="field-service-id"] select');
-    await serviceSelect.waitFor({ state: "visible", timeout: 10_000 });
-
-    // FAIL LOUDLY if service dropdown is not populated — this means R9's permissions
-    // endpoint is not returning the grant, or the BFF normalisation (permissions.ts
-    // recordTransform) is not working.
-    await page.waitForFunction(() => {
-      const sel = document.querySelector('[data-testid="field-service-id"] select') as HTMLSelectElement;
-      return sel && sel.options.length > 1;
+      // Service combobox should be present (not loading text)
+      const loadingText = document.body.innerText;
+      const stillLoading = loadingText.includes("Loading services");
+      // The input should be visible and enabled
+      const input = document.querySelector('[data-testid="combobox-service-input"]') as HTMLInputElement | null;
+      return !stillLoading && input !== null && !input.disabled;
     }, undefined, { timeout: 15_000 }).catch(() => {
       throw new Error(
-        "FAIL: Service dropdown was not populated after selecting the synthesised agent. " +
+        "FAIL: Service combobox was not available after selecting the synthesised agent. " +
         "This means the permission grant is not being returned by the permissions endpoint " +
         "(R9 regression), or the BFF agent_id normalisation (permissions.ts recordTransform) failed. " +
         "Expected at least 1 service option for agent: " + wireAgentId + " (raw: " + rawAgentId + "). " +
@@ -366,24 +375,32 @@ test.describe("32 — createApiKey show-once flow", () => {
       );
     });
 
-    // Screenshot B: service dropdown populated (before step d assertion screenshot)
+    // Screenshot B: service combobox available
     await page.screenshot({ path: "test-results/r10-a4-step-d-service-populated.png" });
 
-    // ── Step 6: Select the synthesised service ───────────────────────────────
+    // ── Step 6: Select the synthesised service via combobox ──────────────────
     // Post-#13: permissions list returns service_id as svc_<Crockford> (ADR-0017.11 / #13).
-    // The service dropdown option values come from permissions.service_id which is now Crockford.
     const svcWireId = dbUuidToWire(serviceUuid, "svc");
-    const hasServiceOption = await page.evaluate((svcWire: string) => {
-      const sel = document.querySelector('[data-testid="field-service-id"] select') as HTMLSelectElement;
-      return Array.from(sel?.options ?? []).some((o) => o.value === svcWire);
-    }, svcWireId);
+    const serviceInput = page.locator('[data-testid="combobox-service-input"]');
+    await serviceInput.click();
+    await page.locator('[data-testid="combobox-service-dropdown"]').waitFor({ state: "visible", timeout: 10_000 });
 
-    expect(
-      hasServiceOption,
-      `Synthesised service ${serviceUuid} (wire: ${svcWireId}) must appear in the service dropdown`
-    ).toBe(true);
+    // Verify the service option exists in the dropdown
+    const svcOptionSelector = `[data-testid="combobox-service-dropdown"] li[data-value="${svcWireId}"]`;
+    await page.locator(svcOptionSelector).waitFor({ state: "visible", timeout: 10_000 }).catch(async () => {
+      const opts = await page.evaluate(() => {
+        return Array.from(
+          document.querySelectorAll('[data-testid="combobox-service-dropdown"] li[data-value]')
+        ).map((el) => (el as HTMLElement).dataset.value ?? "");
+      });
+      throw new Error(
+        `FAIL: Service ${svcWireId} not found in service combobox dropdown. ` +
+        `Visible options: [${opts.join(", ")}]. ` +
+        `Synthesised service ${serviceUuid} (wire: ${svcWireId}) must appear in the service dropdown.`
+      );
+    });
 
-    await serviceSelect.selectOption({ value: svcWireId });
+    await page.locator(svcOptionSelector).click();
 
     // ── Step 7: Fill the name field ──────────────────────────────────────────
     await page.locator('[data-testid="field-name"] input').fill(keyName);

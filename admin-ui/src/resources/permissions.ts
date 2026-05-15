@@ -75,6 +75,15 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         label: "Search (action)",
         description: "Search by action (e.g., 'read', 'write').",
       },
+      // UX-A: replace plain text inputs with typeahead comboboxes for agent + service
+      agent_id: {
+        isVisible: { list: true, show: true, edit: true, filter: true },
+        components: { edit: Components.AgentCombobox },
+      },
+      service_id: {
+        isVisible: { list: true, show: true, edit: true, filter: true },
+        components: { edit: Components.ServiceCombobox },
+      },
       constraints: {
         type: "mixed",
         isArray: false,

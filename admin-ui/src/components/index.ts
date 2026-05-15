@@ -32,6 +32,11 @@ export const Components = {
   ConfirmAction: componentLoader.add("ConfirmAction", "./actions/ConfirmAction"),
   // Service API key show-once create flow (ADR-0018; R1 action-grid remediation)
   ApiKeyCreate: componentLoader.add("ApiKeyCreate", "./actions/ApiKeyCreate"),
+  // Service create form with bundled credential + test CTA (UX-C6)
+  ServiceCreateForm: componentLoader.add("ServiceCreateForm", "./actions/ServiceCreateForm"),
   // Tenant show page: associated services panel (UX-E)
   TenantServicesPanel: componentLoader.add("TenantServicesPanel", "./sections/TenantServicesPanel"),
+  // Typeahead combobox property components — agent_id + service_id pickers (UX-A)
+  AgentCombobox: componentLoader.add("AgentCombobox", "./properties/AgentCombobox"),
+  ServiceCombobox: componentLoader.add("ServiceCombobox", "./properties/ServiceCombobox"),
 };

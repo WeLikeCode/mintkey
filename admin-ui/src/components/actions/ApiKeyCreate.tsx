@@ -27,18 +27,9 @@ import {
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 import { useNavigate } from "react-router-dom";
+import AsyncCombobox, { type ComboboxOption } from "../properties/AsyncCombobox.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
-
-interface AgentOption {
-  value: string;
-  label: string;
-}
-
-interface ServiceOption {
-  value: string;
-  label: string;
-}
 
 interface PermissionGrant {
   service_id: string;
@@ -200,10 +191,9 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
   const [expiresAt, setExpiresAt] = useState("");
   const [constraints, setConstraints] = useState<string>("{}");
 
-  // Options fetched from admin-api
-  const [agents, setAgents] = useState<AgentOption[]>([]);
-  const [services, setServices] = useState<ServiceOption[]>([]);
-  const [loadingAgents, setLoadingAgents] = useState(true);
+  // Service options — ComboboxOption[] built from agent's permission grants;
+  // passed as staticOptions to the service AsyncCombobox (no repeated API calls).
+  const [serviceOptions, setServiceOptions] = useState<ComboboxOption[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
 
   // Submission state
@@ -213,49 +203,17 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
   // Show-once modal state — plaintext NEVER persisted beyond this component's lifetime
   const [plaintextKey, setPlaintextKey] = useState<string | null>(null);
 
-  // Fetch agents list from the AdminJS action handler response
-  // The resource handler returns agent list from the GET context
-  useEffect(() => {
-    let cancelled = false;
-    const api = new ApiClient();
+  // Agent options are fetched lazily by the AsyncCombobox for "agents" resource.
+  // No explicit fetch effect needed here — the combobox manages its own list state.
 
-    // Fetch agents via AdminJS resource API by calling the resource-level GET
-    // We call the admin-api agents endpoint indirectly through AdminJS
-    const fetchAgents = async () => {
-      try {
-        const resp = await api.resourceAction({
-          resourceId: "agents",
-          actionName: "list",
-          method: "get",
-          params: { perPage: 200 },
-        });
-        if (cancelled) return;
-        const data = resp.data as {
-          records?: Array<{ params: { id: string; name: string; slug?: string } }>;
-        };
-        const opts: AgentOption[] = (data.records ?? []).map((r) => ({
-          value: r.params.id,
-          label: r.params.slug
-            ? `${r.params.slug} — ${r.params.name}`
-            : r.params.name,
-        }));
-        setAgents(opts);
-      } catch {
-        // agents list failed — form still usable with manual entry
-        setAgents([]);
-      } finally {
-        if (!cancelled) setLoadingAgents(false);
-      }
-    };
-
-    void fetchAgents();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Fetch services (permission grants) when agent changes
+  // When the agent changes: fetch permission grants for that agent and build the
+  // static service option list for the service combobox. This preserves the
+  // existing intersection logic (only show services the agent has permissions for)
+  // while making the dropdown a typeahead combobox that filters locally as the
+  // operator types (no backend call per keystroke for the service field).
   useEffect(() => {
     if (!agentId) {
-      setServices([]);
+      setServiceOptions([]);
       setServiceId("");
       setConstraints("{}");
       return;
@@ -267,7 +225,6 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
     const fetchPermissions = async () => {
       try {
         const api = new ApiClient();
-        // Call AdminJS action handler which proxies to admin-api permissions endpoint
         const resp = await api.resourceAction({
           resourceId: "permission_grants",
           actionName: "list",
@@ -275,22 +232,24 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
           params: { perPage: 200 },
         });
         if (cancelled) return;
-        // Filter by agent_id — permissions list includes agent_id in params
+        // Filter by agent_id (permissions.ts normalises agent_id to wire-form via recordTransform)
         const data = resp.data as {
           records?: Array<{ params: PermissionGrant & { agent_id?: string } }>;
         };
         const agentPerms = (data.records ?? []).filter(
           (r) => r.params.agent_id === agentId
         );
-        const opts: ServiceOption[] = agentPerms.map((r) => ({
-          value: r.params.service_id,
-          label: r.params.service_slug
-            ? `${r.params.service_slug} — ${r.params.service_name ?? r.params.service_id}`
-            : r.params.service_id,
-        }));
-        setServices(opts);
+        // Build ComboboxOption[] with "name (wire_id)" labels — passed as staticOptions
+        // so the service combobox filters locally (no backend call on keystroke).
+        const opts: ComboboxOption[] = agentPerms.map((r) => {
+          const name = r.params.service_name ?? r.params.service_slug ?? "";
+          const id = r.params.service_id;
+          const label = name ? `${name} (${id})` : id;
+          return { value: id, label };
+        });
+        setServiceOptions(opts);
       } catch {
-        setServices([]);
+        setServiceOptions([]);
       } finally {
         if (!cancelled) setLoadingServices(false);
       }
@@ -300,11 +259,9 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
     return () => { cancelled = true; };
   }, [agentId]);
 
-  // Update constraints when service selection changes
+  // Update constraints when service selection changes (v1: constraints are informational)
   const handleServiceChange = (sid: string) => {
     setServiceId(sid);
-    // Find the constraints from the selected permission grant (read-only inheritance)
-    // v1: constraints display is informational only
     setConstraints("{}");
   };
 
@@ -392,64 +349,33 @@ const ApiKeyCreate = (props: Props): React.ReactElement => {
         </Text>
 
         <form onSubmit={handleSubmit}>
-          {/* Agent selector */}
+          {/* Agent selector — typeahead combobox (UX-A) */}
           <Box mb="default" data-testid="field-agent-id">
             <Label required>Agent</Label>
-            {loadingAgents ? (
-              <Text style={{ color: "#6c757d" }}>Loading agents…</Text>
-            ) : (
-              <select
-                value={agentId}
-                onChange={(e) => { setAgentId(e.target.value); setServiceId(""); }}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: 4,
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                }}
-                required
-              >
-                <option value="">— select an agent —</option>
-                {agents.map((a) => (
-                  <option key={a.value} value={a.value}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-            )}
+            <AsyncCombobox
+              resourceId="agents"
+              value={agentId}
+              onChange={(id) => { setAgentId(id); setServiceId(""); }}
+              placeholder="Search agents by name or ID"
+              testId="combobox-agent"
+            />
           </Box>
 
-          {/* Service selector */}
+          {/* Service selector — typeahead combobox filtered to agent's permission grants (UX-A) */}
           <Box mb="default" data-testid="field-service-id">
             <Label required>Service</Label>
             {loadingServices ? (
               <Text style={{ color: "#6c757d" }}>Loading services…</Text>
             ) : (
-              <select
+              <AsyncCombobox
+                resourceId="services"
                 value={serviceId}
-                onChange={(e) => handleServiceChange(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #dee2e6",
-                  borderRadius: 4,
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                }}
-                required
+                onChange={handleServiceChange}
+                placeholder={agentId ? "Search services by name or ID" : "Select an agent first"}
+                staticOptions={serviceOptions}
                 disabled={!agentId}
-              >
-                <option value="">
-                  {agentId ? "— select a service —" : "— select an agent first —"}
-                </option>
-                {services.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+                testId="combobox-service"
+              />
             )}
           </Box>
 
