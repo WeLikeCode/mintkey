@@ -34,9 +34,11 @@ _ALLOWLISTED_KEYS = {"mintkey.tenant_id", "mintkey.agent_id"}
 
 # Regex patterns that must appear in blocked_values (one per credential family).
 _REQUIRED_BLOCKED_PATTERNS = [
-    re.compile(r"sk_"),    # Stripe-style secret keys
-    re.compile(r"pk_"),    # Public keys
-    re.compile(r"eyJ"),    # JWT-shaped tokens
+    re.compile(r"sk_"),       # Stripe-style secret keys
+    re.compile(r"pk_"),       # Public keys
+    re.compile(r"eyJ"),       # JWT-shaped tokens
+    re.compile(r"mk_agent_"), # Mintkey agent API keys
+    re.compile(r"mk_svckey_"), # Mintkey service API keys
 ]
 
 

@@ -30,6 +30,8 @@ processors:
       - 'sk_[a-zA-Z0-9_-]{20,}'
       - 'pk_[a-zA-Z0-9_-]{20,}'
       - 'eyJ[A-Za-z0-9+/=._-]{20,}'
+      - 'mk_agent_[a-zA-Z0-9_-]{8,}'
+      - 'mk_svckey_[a-zA-Z0-9_-]{8,}'
     summary: silent
 
 exporters:
@@ -37,6 +39,10 @@ exporters:
     endpoint: http://jaeger:4318
   prometheus:
     endpoint: 0.0.0.0:8889
+  # debug exporter — logs redacted spans to collector stdout for CI verification.
+  # Verbosity "detailed" prints span attributes so redaction can be confirmed.
+  debug:
+    verbosity: detailed
 
 extensions:
   health_check:
@@ -48,7 +54,7 @@ service:
     traces:
       receivers:  [otlp]
       processors: [batch, attributes/redact, redaction]
-      exporters:  [otlphttp/jaeger]
+      exporters:  [otlphttp/jaeger, debug]
     metrics:
       receivers:  [otlp]
       processors: [batch]

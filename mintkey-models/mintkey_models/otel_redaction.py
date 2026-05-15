@@ -29,7 +29,9 @@ SUFFIX_REDACT = (
 _CREDENTIAL_PATTERNS = [
     re.compile(r"^sk_"),
     re.compile(r"^pk_"),
-    re.compile(r"^eyJ"),  # JWT shape
+    re.compile(r"^eyJ"),       # JWT shape
+    re.compile(r"^mk_agent_"), # Mintkey agent API keys
+    re.compile(r"^mk_svckey_"), # Mintkey service API keys
 ]
 
 
@@ -78,8 +80,8 @@ class RedactingSpanProcessor:
     def on_start(self, span: Any, parent_context: Any = None) -> None:
         self._wrapped.on_start(span, parent_context)
 
-    def _on_ending(self, span: Any) -> None:
-        # Span is still mutable here — redact before it becomes a ReadableSpan.
+    def _scrub_span(self, span: Any) -> None:
+        """Mutate span._attributes in-place, removing any sensitive entries."""
         if hasattr(span, "_attributes") and span._attributes:
             keys_to_delete = [
                 k for k, v in span._attributes.items()
@@ -87,9 +89,20 @@ class RedactingSpanProcessor:
             ]
             for k in keys_to_delete:
                 del span._attributes[k]
-        self._wrapped._on_ending(span)
+
+    def _on_ending(self, span: Any) -> None:
+        # Called by the real SDK's BatchSpanProcessor while the span is still
+        # mutable (before it becomes a ReadOnlySpan).  Redact here for early
+        # defence-in-depth, then forward to the wrapped processor.
+        self._scrub_span(span)
+        if hasattr(self._wrapped, "_on_ending"):
+            self._wrapped._on_ending(span)
 
     def on_end(self, span: Any) -> None:
+        # Public SpanProcessor interface — scrub any remaining sensitive attrs
+        # (covers spans that never went through _on_ending, e.g. in tests with
+        # mutable mock spans, or when a SimpleSpanProcessor is the delegate).
+        self._scrub_span(span)
         self._wrapped.on_end(span)
 
     def shutdown(self) -> None:
