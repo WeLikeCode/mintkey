@@ -7,17 +7,19 @@
  * 2. 6-step static onboarding flow ("Get started") with CTA links.
  * 3. Quick-start checklist (data-driven done/not-done items).
  * 4. At-a-glance counts.
+ * 5. MCP onboarding modal — opened by the "Connect your LLM via MCP" CTA in
+ *    both the onboarding flow and the quick-start checklist (UI-MCP-modal chunk).
  *
  * Imports of `react`, `@adminjs/design-system` and `adminjs` are treated as
  * externals by AdminJS's component bundler (AssetBundler.DEFAULT_EXTERNALS) —
  * they resolve to the `React` / `AdminJSDesignSystem` / `AdminJS` globals the
  * AdminJS frontend already ships, so this component adds no new dependency.
  *
- * Source: ADMIN_UI_SPEC.md §2.1; ADR-0019; admin-ui-ux-uplift chunk.
+ * Source: ADMIN_UI_SPEC.md §2.1; ADR-0019; admin-ui-ux-uplift chunk; UI-MCP-modal chunk.
  */
 
 import React, { useEffect, useState } from "react";
-import { Box, H2, H4, H5, Text, Badge, Button, Illustration } from "@adminjs/design-system";
+import { Box, H2, H3, H4, H5, Text, Badge, Button, Illustration } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 
 interface Checklist {
@@ -44,6 +46,145 @@ interface Step {
   ctaLabel: string;
   ctaHref: string;
 }
+
+// ── MCP config modal ─────────────────────────────────────────────────────────
+
+/**
+ * The mcp.config.json snippet that operators copy into Claude Desktop / Claude
+ * Code / any MCP client.  The transport is HTTP-SSE (streamable-http) because
+ * the Mintkey MCP server exposes a FastAPI HTTP endpoint, not a local process.
+ *
+ * URL hierarchy (swap in order of specificity):
+ *   1. Your production domain  →  https://mintkey.example.com/v1
+ *   2. Your docker-compose dev →  http://localhost:8082/v1
+ *
+ * The bootstrap tool (/v1/tools/bootstrap) is unauthenticated — no credentials
+ * or headers are required in this config.
+ *
+ * Source: UI-MCP-modal chunk; mcp-server port 8082 (docker-compose.yml #6).
+ */
+const MCP_CONFIG_SNIPPET = JSON.stringify(
+  {
+    mcpServers: {
+      mintkey: {
+        type: "http",
+        url: "http://localhost:8082/v1",
+        description:
+          "Mintkey credential broker — call mintkey_bootstrap first (no auth required)",
+      },
+    },
+  },
+  null,
+  2,
+);
+
+const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [copied, setCopied] = useState(false);
+  const [copySupported, setCopySupported] = useState(true);
+
+  useEffect(() => {
+    if (!navigator.clipboard) setCopySupported(false);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    if (!navigator.clipboard) {
+      setCopySupported(false);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(MCP_CONFIG_SNIPPET);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      setCopySupported(false);
+    }
+  };
+
+  return (
+    <div
+      data-testid="mcp-config-modal"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,0,0,0.5)",
+      }}
+      onClick={onClose}
+    >
+      <Box
+        variant="white"
+        p="xxl"
+        style={{ maxWidth: 600, width: "100%", borderRadius: 8, position: "relative" }}
+        data-testid="mcp-config-modal-inner"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
+        <H3 mb="default">Connect your LLM via MCP</H3>
+
+        <Text mb="lg">
+          Add this snippet to your MCP client config (e.g.{" "}
+          <code>~/.claude/mcp.json</code> for Claude Desktop, or{" "}
+          <code>.mcp.json</code> in your project for Claude Code) to let your AI
+          agents bootstrap into Mintkey. The{" "}
+          <code>mintkey_bootstrap</code> tool is unauthenticated — call it first
+          and it will tell your agent how to authenticate and discover services.
+          Replace{" "}
+          <code>http://localhost:8082</code> with your production Mintkey URL
+          (e.g. <code>https://mintkey.example.com</code>) before deploying.
+        </Text>
+
+        <Box
+          mb="lg"
+          p="lg"
+          style={{
+            background: "#f8f9fa",
+            border: "1px solid #dee2e6",
+            borderRadius: 4,
+            fontFamily: "monospace",
+            fontSize: 13,
+            whiteSpace: "pre",
+            overflowX: "auto",
+            color: "#212529",
+          }}
+          data-testid="mcp-config-snippet"
+        >
+          {MCP_CONFIG_SNIPPET}
+        </Box>
+
+        <Box flex style={{ gap: 12 }}>
+          {copySupported ? (
+            <Button
+              onClick={handleCopy}
+              variant="primary"
+              data-testid="mcp-config-copy-btn"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </Button>
+          ) : (
+            <Text style={{ color: "#6c757d", fontSize: 13, alignSelf: "center" }}>
+              Select and copy the snippet above manually.
+            </Text>
+          )}
+          <Button
+            onClick={onClose}
+            variant="light"
+            data-testid="mcp-config-close-btn"
+          >
+            Close
+          </Button>
+        </Box>
+      </Box>
+    </div>
+  );
+};
+
+// ── Dashboard data / steps ────────────────────────────────────────────────────
 
 const STEPS: Step[] = [
   { key: "hasServices", title: "Register a backend service", ctaLabel: "Register a service", ctaHref: "/admin/resources/services/actions/new" },
@@ -155,7 +296,13 @@ const DataModelDiagram: React.FC = () => (
 );
 
 /** 6-step onboarding cards */
-const OnboardingStep: React.FC<{ n: number; label: string; href: string; resource: string }> = ({ n, label, href, resource }) => (
+const OnboardingStep: React.FC<{
+  n: number;
+  label: string;
+  href: string;
+  resource: string;
+  onMcpClick?: () => void;
+}> = ({ n, label, href, resource, onMcpClick }) => (
   <Box
     flex
     alignItems="center"
@@ -178,13 +325,31 @@ const OnboardingStep: React.FC<{ n: number; label: string; href: string; resourc
     <Box flexGrow={1}>
       <Text style={{ margin: 0 }}>{label}</Text>
     </Box>
-    <Button as="a" href={href} size="sm" variant="light" data-resource={resource}>
-      Open {label.replace(/^\(Optional\) /, "").split(" ").slice(0, 3).join(" ")}
-    </Button>
+    {onMcpClick ? (
+      <Button
+        onClick={onMcpClick}
+        size="sm"
+        variant="light"
+        data-resource={resource}
+        data-testid="mcp-connect-cta"
+      >
+        Show MCP config
+      </Button>
+    ) : (
+      <Button as="a" href={href} size="sm" variant="light" data-resource={resource}>
+        Open {label.replace(/^\(Optional\) /, "").split(" ").slice(0, 3).join(" ")}
+      </Button>
+    )}
   </Box>
 );
 
-const ChecklistItem: React.FC<{ done: boolean; title: string; ctaLabel: string; ctaHref: string }> = ({ done, title, ctaLabel, ctaHref }) => (
+const ChecklistItem: React.FC<{
+  done: boolean;
+  title: string;
+  ctaLabel: string;
+  ctaHref: string;
+  onMcpClick?: () => void;
+}> = ({ done, title, ctaLabel, ctaHref, onMcpClick }) => (
   <Box flex alignItems="center" mb="lg" data-testid="dashboard-checklist-item">
     <Box mr="lg" style={{ fontSize: 22, lineHeight: "22px" }}>{done ? "☑" : "☐"}</Box>
     <Box flexGrow={1}>
@@ -192,6 +357,15 @@ const ChecklistItem: React.FC<{ done: boolean; title: string; ctaLabel: string; 
     </Box>
     {done ? (
       <Badge variant="success">done</Badge>
+    ) : onMcpClick ? (
+      <Button
+        onClick={onMcpClick}
+        size="sm"
+        variant="primary"
+        data-testid="mcp-connect-cta"
+      >
+        {ctaLabel}
+      </Button>
     ) : (
       <Button as="a" href={ctaHref} size="sm" variant="primary">{ctaLabel}</Button>
     )}
@@ -201,6 +375,7 @@ const ChecklistItem: React.FC<{ done: boolean; title: string; ctaLabel: string; 
 const Dashboard: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [mcpModalOpen, setMcpModalOpen] = useState(false);
 
   useEffect(() => {
     const api = new ApiClient();
@@ -219,6 +394,10 @@ const Dashboard: React.FC = () => {
     (data?.servicesCount ?? 0) === 0 && (data?.agentsCount ?? 0) === 0;
 
   return (
+    <>
+      {/* ── MCP config modal ─────────────────────────────── */}
+      {mcpModalOpen && <McpConfigModal onClose={() => setMcpModalOpen(false)} />}
+
     <Box variant="grey">
       <Box variant="white" mb="xxl">
         <H2>Mintkey — credential broker for AI agents</H2>
@@ -238,7 +417,14 @@ const Dashboard: React.FC = () => {
       <Box variant="white" mb="xxl" data-testid="get-started-section">
         <H4 mb="lg">Get started</H4>
         {ONBOARDING_STEPS.map((s) => (
-          <OnboardingStep key={s.n} n={s.n} label={s.label} href={s.href} resource={s.resource} />
+          <OnboardingStep
+            key={s.n}
+            n={s.n}
+            label={s.label}
+            href={s.href}
+            resource={s.resource}
+            onMcpClick={s.n === 6 ? () => setMcpModalOpen(true) : undefined}
+          />
         ))}
       </Box>
 
@@ -270,6 +456,7 @@ const Dashboard: React.FC = () => {
                 title={s.title}
                 ctaLabel={s.ctaLabel}
                 ctaHref={s.ctaHref}
+                onMcpClick={s.key === "hasTested" ? () => setMcpModalOpen(true) : undefined}
               />
             ))}
           </Box>
@@ -298,6 +485,7 @@ const Dashboard: React.FC = () => {
         </>
       )}
     </Box>
+    </>
   );
 };
 
