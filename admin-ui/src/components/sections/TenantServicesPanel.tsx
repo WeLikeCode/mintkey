@@ -4,25 +4,31 @@
  * Rendered as a property.components.show override on a virtual `_services_panel`
  * property on the Tenants show page (AdminJS 7.x property component pattern).
  *
- * Behaviour:
- *   - Fetches services via the AdminJS `list` action on the "services" resource.
- *   - The services resource's RestResource.find() uses the session's tenantId to
- *     build the /v1/tenants/{tenantId}/services path server-side; the AdminJS
- *     ApiClient list call therefore returns services for the session tenant.
- *   - PLATFORMADMIN LIMITATION: when a PlatformAdmin views *another* tenant's
- *     show page, the session tenantId is the PA's own tenant — the services
- *     returned will belong to the PA's tenant, not the viewed tenant. Until a
- *     cross-tenant view API is wired in the UI, this panel shows a warning banner
- *     rather than silently showing wrong data.
- *   - Open follow-up: OPEN-UX-E-1 — cross-tenant services view for PlatformAdmin
- *     (requires a /v1/tenants/{targetId}/services call bypassing session tenantId).
+ * Behaviour (UX-BL4):
+ *   - On mount, compares the session tenantId (from useCurrentAdmin) with
+ *     record.params.id (the viewed tenant).
+ *   - Same tenant (operator viewing their own tenant show page):
+ *       Uses the normal AdminJS list action on the "services" resource —
+ *       existing behaviour unchanged.
+ *   - Different tenant + PlatformAdmin:
+ *       Calls the new `crossTenantServicesList` resource action on the "tenants"
+ *       resource, passing tenant_id=<viewedTenantId> as a query parameter.
+ *       The BFF action forwards X-Platform-Admin:true to admin-api, which lets
+ *       RLS through to return the viewed tenant's services.
+ *   - Different tenant + NOT PlatformAdmin:
+ *       Shows an empty state — "You don't have access to this tenant's services".
+ *       This path should not be reachable in practice (non-PAs can't view other
+ *       tenants' show pages) but is handled defensively to avoid data leakage.
+ *
+ * The yellow cross-tenant mismatch warning banner from UX-E is removed — the
+ * correct data is now shown instead (OPEN-UX-E-1 resolved by UX-BL4).
  *
  * Visual style follows the existing show-page conventions:
- *   - Box / Text / H5 from @adminjs/design-system
+ *   - Box / Text from @adminjs/design-system
  *   - Inline table with same column widths and hover colour as AdminJS native tables
  *   - Error and empty states match the ConfirmAction / JsonValue error palette
  *
- * Source: UX-E spec; ADMIN_UI_SPEC.md §2.x; AdminJS 7.x ComponentLoader.
+ * Source: UX-E spec; UX-BL4; ADMIN_UI_SPEC.md §2.x; AdminJS 7.x ComponentLoader.
  */
 
 import React, { useEffect, useState } from "react";
@@ -30,7 +36,7 @@ import { Box, Text } from "@adminjs/design-system";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — adminjs re-exports ValueGroup from @adminjs/design-system
 import { ValueGroup } from "@adminjs/design-system";
-import { ApiClient } from "adminjs";
+import { ApiClient, useCurrentAdmin } from "adminjs";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -55,45 +61,110 @@ interface Props {
 const TenantServicesPanel: React.FC<Props> = ({ record, property }) => {
   const label = property?.label ?? "Services";
 
-  // The tenant ID surfaced in the record being shown
+  // The tenant ID surfaced in the record being shown (the viewed tenant)
   const viewedTenantId = record?.params?.id as string | undefined;
+
+  // Session operator from AdminJS Redux store — includes tenantId + isPlatformAdmin
+  // set by auth.ts authenticate() and stored in the @adminjs/express session.
+  const [currentAdmin] = useCurrentAdmin();
+  const sessionTenantId = (currentAdmin as { tenantId?: string } | null)?.tenantId;
+  const isPlatformAdmin = (currentAdmin as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true;
 
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+
+  // Determine which fetch path to use:
+  //   "own"   — viewed tenant === session tenant → use standard list action
+  //   "cross" — viewed tenant ≠ session tenant + PA → use crossTenantServicesList
+  //   "deny"  — viewed tenant ≠ session tenant + not PA → block (empty state)
+  //   "own"   — viewedTenantId or sessionTenantId unknown → fall back to standard list
+  const fetchMode: "own" | "cross" | "deny" =
+    viewedTenantId && sessionTenantId && viewedTenantId !== sessionTenantId
+      ? isPlatformAdmin
+        ? "cross"
+        : "deny"
+      : "own";
 
   useEffect(() => {
     let cancelled = false;
 
+    if (fetchMode === "deny") {
+      setLoading(false);
+      return;
+    }
+
     const fetchServices = async () => {
       try {
         const api = new ApiClient();
-        const resp = await api.resourceAction({
-          resourceId: "services",
-          actionName: "list",
-          method: "get",
-          params: { perPage: 200 },
-        });
+        let rows: ServiceRow[] = [];
+
+        if (fetchMode === "cross") {
+          // UX-BL4: call the BFF crossTenantServicesList action with the
+          // viewed tenant's ID as a query param. The BFF action forwards
+          // X-Platform-Admin:true to admin-api.
+          const resp = await api.resourceAction({
+            resourceId: "tenants",
+            actionName: "crossTenantServicesList",
+            method: "get",
+            params: { tenant_id: viewedTenantId },
+          });
+
+          const data = resp.data as {
+            services?: Array<Record<string, unknown>>;
+            record?: { params?: { services?: Array<Record<string, unknown>>; error?: string } };
+          };
+
+          // The BFF returns the services array in two places:
+          //   resp.data.services (top-level) and
+          //   resp.data.record.params.services (AdminJS record envelope)
+          // Try top-level first, fall back to record envelope.
+          const rawServices = Array.isArray(data.services)
+            ? data.services
+            : Array.isArray(data.record?.params?.services)
+              ? (data.record!.params!.services as Array<Record<string, unknown>>)
+              : [];
+
+          const errorMsg = data.record?.params?.error;
+          if (typeof errorMsg === "string" && errorMsg) {
+            if (!cancelled) {
+              setError(errorMsg);
+              setLoading(false);
+            }
+            return;
+          }
+
+          rows = rawServices.map((r) => ({
+            id: String(r.id ?? ""),
+            name: r.name as string | undefined,
+            slug: r.slug as string | undefined,
+            auth_scheme: r.auth_scheme as string | undefined,
+            status: r.status as string | undefined,
+          }));
+        } else {
+          // Standard path: list action scoped to session tenant
+          const resp = await api.resourceAction({
+            resourceId: "services",
+            actionName: "list",
+            method: "get",
+            params: { perPage: 200 },
+          });
+
+          const data = resp.data as {
+            records?: Array<{ params: Record<string, unknown> }>;
+            meta?: { total?: number };
+          };
+
+          rows = (data.records ?? []).map((r) => ({
+            id: String(r.params.id ?? ""),
+            name: r.params.name as string | undefined,
+            slug: r.params.slug as string | undefined,
+            auth_scheme: r.params.auth_scheme as string | undefined,
+            status: r.params.status as string | undefined,
+          }));
+        }
 
         if (cancelled) return;
-
-        const data = resp.data as {
-          records?: Array<{ params: Record<string, unknown> }>;
-          meta?: { total?: number };
-        };
-
-        const rows: ServiceRow[] = (data.records ?? []).map((r) => ({
-          id: String(r.params.id ?? ""),
-          name: r.params.name as string | undefined,
-          slug: r.params.slug as string | undefined,
-          auth_scheme: r.params.auth_scheme as string | undefined,
-          status: r.params.status as string | undefined,
-        }));
-
-        // Infer session tenantId from records if available — not directly
-        // exposed by AdminJS client-side API. We store the viewed ID vs
-        // what we know about the session to detect cross-tenant mismatch.
         setServices(rows);
         setLoading(false);
       } catch (err: unknown) {
@@ -104,66 +175,19 @@ const TenantServicesPanel: React.FC<Props> = ({ record, property }) => {
       }
     };
 
-    // Retrieve session tenant from the window if admin-ui embeds it, otherwise
-    // infer from the first record's implicit scope — not available client-side.
-    // We use a best-effort approach: the admin-ui session injects tenantId as a
-    // meta tag or stores it in the page (no standard mechanism in AdminJS 7.x).
-    // Fall back to the viewedTenantId so the warning logic is conservative.
-    const win = window as unknown as { __ADMINJS_SESSION_TENANT_ID__?: string };
-    setSessionTenantId(win.__ADMINJS_SESSION_TENANT_ID__ ?? null);
-
     void fetchServices();
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Cross-tenant mismatch detection:
-  // If the session tenantId is known AND it differs from the viewed tenant's ID,
-  // log a warning and surface a banner. This is the PlatformAdmin limitation.
-  const mismatch =
-    sessionTenantId !== null &&
-    viewedTenantId !== undefined &&
-    sessionTenantId !== viewedTenantId;
-
-  if (mismatch) {
-    // PLATFORMADMIN LIMITATION (OPEN-UX-E-1): session tenant ≠ viewed tenant.
-    // We cannot scope the services call to the viewed tenant without a dedicated
-    // BFF endpoint that bypasses session-scoped tenantId substitution.
-    console.warn(
-      "[TenantServicesPanel] Session tenantId (%s) differs from viewed tenantId (%s). " +
-        "Services panel shows data for the session tenant, not the viewed tenant. " +
-        "See OPEN-UX-E-1 for the cross-tenant view follow-up.",
-      sessionTenantId,
-      viewedTenantId,
-    );
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchMode, viewedTenantId]);
 
   return (
     <ValueGroup label={label}>
       <Box data-testid="tenant-services-panel">
-        {/* PlatformAdmin cross-tenant mismatch warning */}
-        {mismatch && (
-          <Box
-            mb="default"
-            p="lg"
-            style={{
-              background: "#fff3cd",
-              border: "1px solid #ffc107",
-              borderRadius: 4,
-            }}
-            data-testid="tenant-services-panel-mismatch-warning"
-          >
-            <Text style={{ fontSize: 13, color: "#856404" }}>
-              <strong>PlatformAdmin note:</strong> The services below belong to{" "}
-              <em>your session tenant</em>, not this tenant. Cross-tenant view
-              is not yet supported (OPEN-UX-E-1).
-            </Text>
-          </Box>
-        )}
 
         {/* Loading state */}
-        {loading && (
+        {loading && fetchMode !== "deny" && (
           <Text
             style={{ color: "#6c757d", fontSize: 13 }}
             data-testid="tenant-services-panel-loading"
@@ -187,8 +211,18 @@ const TenantServicesPanel: React.FC<Props> = ({ record, property }) => {
           </Box>
         )}
 
+        {/* Denied: non-PA operator somehow viewing another tenant's page */}
+        {fetchMode === "deny" && (
+          <Text
+            style={{ color: "#6c757d", fontSize: 13 }}
+            data-testid="tenant-services-panel-empty"
+          >
+            You don{"'"}t have access to this tenant{"'"}s services.
+          </Text>
+        )}
+
         {/* Empty state */}
-        {!loading && error === null && services.length === 0 && (
+        {!loading && error === null && fetchMode !== "deny" && services.length === 0 && (
           <Text
             style={{ color: "#6c757d", fontSize: 13 }}
             data-testid="tenant-services-panel-empty"

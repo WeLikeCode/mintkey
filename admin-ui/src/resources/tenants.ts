@@ -7,7 +7,12 @@
  *
  * WRITE: create/edit tenant via apiWrite (session + CSRF, ADR-0014.5).
  *
- * Source: T-1.12.4; Req 13 AC1, AC6; ADR-0016.3.
+ * UX-BL4: crossTenantServicesList resource action — PlatformAdmin can fetch
+ * services for any tenant. The panel calls this when viewed tenant ≠ session
+ * tenant. The action forwards X-Platform-Admin:true and the operator's session
+ * cookie to admin-api GET /v1/tenants/{tenant_id}/services.
+ *
+ * Source: T-1.12.4; Req 13 AC1, AC6; ADR-0016.3; UX-BL4.
  */
 
 import type { ResourceWithOptions, ActionContext } from "adminjs";
@@ -15,6 +20,8 @@ import { apiWrite } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
+
+const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 
 function assertPlatformAdmin(context: ActionContext): void {
   const admin = context.currentAdmin as { isPlatformAdmin?: boolean };
@@ -159,6 +166,93 @@ Cannot be changed after tenant creation.`,
         },
       },
       delete: { isVisible: false },
+
+      // UX-BL4: BFF passthrough — cross-tenant services list for PlatformAdmin.
+      //
+      // The panel calls this resource action when the viewed tenant differs from
+      // the session tenant AND the operator is a PlatformAdmin. The action:
+      //   1. Validates that the operator is a PlatformAdmin.
+      //   2. Extracts the target tenant_id from the request query string.
+      //   3. Fetches GET /v1/tenants/{tenant_id}/services from admin-api with:
+      //        Cookie: mintkey_session=<operator session token>
+      //        X-Platform-Admin: true
+      //   4. Returns the services array in record.params.services.
+      //
+      // The non-PA case is blocked at step 1 — a 403-equivalent notice is returned
+      // so the panel can render an empty state rather than leaking data.
+      //
+      // This is a GET (no CSRF needed). The operator-session cookie is threaded
+      // through context.currentAdmin.sessionToken (set by RestResource._sessionHeaders).
+      //
+      // Source: UX-BL4; ADR-0016.3; admin-api _is_platform_admin MVP gate.
+      crossTenantServicesList: {
+        actionType: "resource" as const,
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          const admin = context.currentAdmin as {
+            isPlatformAdmin?: boolean;
+            sessionToken?: string;
+          };
+
+          // Gate: PlatformAdmin only
+          if (!admin.isPlatformAdmin) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: {
+                ...baseRecord,
+                params: { ...baseRecord.params, services: [], error: "PlatformAdmin required" },
+              },
+              services: [],
+            };
+          }
+
+          const targetTenantId = (request.query?.tenant_id as string | undefined) ?? "";
+          if (!targetTenantId) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, services: [], error: "tenant_id query parameter required" } },
+              services: [],
+            };
+          }
+
+          const headers: Record<string, string> = {
+            "X-Platform-Admin": "true",
+          };
+          if (admin.sessionToken) {
+            headers["Cookie"] = `mintkey_session=${admin.sessionToken}`;
+          }
+
+          try {
+            const resp = await fetch(
+              `${ADMIN_API_URL}/v1/tenants/${encodeURIComponent(targetTenantId)}/services`,
+              { headers }
+            );
+
+            if (!resp.ok) {
+              const baseRecord = await recordJSON(context, {});
+              return {
+                record: { ...baseRecord, params: { ...baseRecord.params, services: [], error: `admin-api ${resp.status}` } },
+                services: [],
+              };
+            }
+
+            const data = await resp.json() as { services?: unknown[] };
+            const services = Array.isArray(data.services) ? data.services : [];
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, services } },
+              services,
+            };
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "fetch failed";
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, services: [], error: msg } },
+              services: [],
+            };
+          }
+        },
+      },
     },
   },
 };
