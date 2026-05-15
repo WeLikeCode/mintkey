@@ -179,11 +179,86 @@ def test_proxy_plugin_no_credential_in_audit_payload() -> None:
         )
 
 
+def test_proxy_plugin_emits_aud_mismatch_rejected() -> None:
+    """
+    proxy-plugin main.go must enqueue proxy.aud_mismatch_rejected in the
+    strict-mode 403 branch (#24).
+
+    Checks:
+    - The event type string is present.
+    - Payload carries jti, aud, url_service_id, mode.
+    - No JWT raw value or credential in the payload.
+    - The Enqueue call is inside the AudEnforcementStrict branch.
+    """
+    main_src = PROXY_MAIN.read_text(encoding="utf-8")
+
+    assert '"proxy.aud_mismatch_rejected"' in main_src, (
+        "proxy-plugin main.go missing proxy.aud_mismatch_rejected event type (#24)"
+    )
+
+    # Extract the Enqueue block that follows "proxy.aud_mismatch_rejected".
+    # Split on the event type string; the text AFTER the first occurrence is
+    # the payload map definition up to the closing of the Enqueue call.
+    parts = main_src.split('"proxy.aud_mismatch_rejected"')
+    assert len(parts) >= 2, "Expected at least 2 parts after split"
+    reject_region = parts[1].split("return")[0]
+
+    assert '"jti"' in reject_region, (
+        "proxy.aud_mismatch_rejected payload missing jti field"
+    )
+    assert '"aud"' in reject_region, (
+        "proxy.aud_mismatch_rejected payload missing aud field"
+    )
+    assert '"url_service_id"' in reject_region, (
+        "proxy.aud_mismatch_rejected payload missing url_service_id field"
+    )
+    assert '"mode"' in reject_region, (
+        "proxy.aud_mismatch_rejected payload missing mode field"
+    )
+
+    # S-SEC-1: payload must not carry raw JWT or credential.
+    forbidden_payload = ['"token"', '"jwt"', '"credential"', '"plaintext"', '"secret"']
+    for field in forbidden_payload:
+        assert field not in reject_region, (
+            f"proxy.aud_mismatch_rejected payload must not contain {field!r} (S-SEC-1)"
+        )
+
+    # The event must be inside the AudEnforcementStrict branch.
+    strict_block = main_src.split("AudEnforcementStrict")[1] if "AudEnforcementStrict" in main_src else ""
+    assert '"proxy.aud_mismatch_rejected"' in strict_block, (
+        "proxy.aud_mismatch_rejected must be emitted inside the AudEnforcementStrict branch"
+    )
+
+
+def test_proxy_plugin_proxy_hit_carries_actor_id() -> None:
+    """
+    proxy-plugin main.go must pass ActorID (JWT.sub) in proxy.hit / proxy.error
+    Enqueue calls (#25).
+
+    This asserts the wiring is present in the source so the live row will
+    have actor_id != null.
+    """
+    main_src = PROXY_MAIN.read_text(encoding="utf-8")
+
+    # Find the proxy.hit / proxy.error Enqueue block.
+    enqueue_regions = []
+    for segment in main_src.split("h.audit.Enqueue("):
+        enqueue_regions.append(segment.split(")")[0])
+
+    # At least one Enqueue block must contain ActorID: agentID
+    actor_wired = any("ActorID:" in region and "agentID" in region
+                      for region in enqueue_regions)
+    assert actor_wired, (
+        "proxy-plugin main.go: no Enqueue call carries ActorID: agentID "
+        "— proxy.hit rows will have actor_id=null (#25)"
+    )
+
+
 def test_admin_api_audit_emit_endpoint_exists() -> None:
     """
     admin-api/src/admin_api/api/internal.py must define
     POST /v1/internal/audit/emit and include token.issued / proxy.hit /
-    proxy.error in the allowlist.
+    proxy.error / proxy.aud_mismatch_rejected in the allowlist.
     """
     src = ADMIN_API_INTERNAL.read_text(encoding="utf-8")
 
@@ -198,6 +273,9 @@ def test_admin_api_audit_emit_endpoint_exists() -> None:
     )
     assert '"proxy.error"' in src, (
         "admin-api audit/emit allowlist missing proxy.error"
+    )
+    assert '"proxy.aud_mismatch_rejected"' in src, (
+        "admin-api audit/emit allowlist missing proxy.aud_mismatch_rejected (#24)"
     )
 
 
@@ -365,6 +443,96 @@ def test_proxy_hit_event_appears_after_proxy_call() -> None:
     Requires the same env vars as test_token_issued_event_appears_after_jwt_issue.
     """
     pytest.skip("Live stack not available in CI — enable with MINTKEY_INTEGRATION_TEST=true")
+
+
+@INTEGRATION
+def test_proxy_hit_actor_id_non_null() -> None:
+    """
+    After a normal proxy call, the proxy.hit row in audit_events must have
+    actor_id != null (JWT.sub wired via ActorID — #25).
+
+    Requires:
+      - Full docker-compose stack running.
+      - MINTKEY_ADMIN_API_URL, MINTKEY_TEST_TENANT_ID, MINTKEY_TEST_AGENT_ID,
+        MINTKEY_TEST_SERVICE_ID, MINTKEY_TEST_SESSION_TOKEN env vars.
+      - A valid JWT in MINTKEY_TEST_PROXY_JWT (pre-issued by broker).
+      - MINTKEY_PROXY_URL (defaults to http://localhost:8086).
+    """
+    import time
+    import httpx
+
+    admin_url = os.getenv("MINTKEY_ADMIN_API_URL", "http://localhost:8000")
+    proxy_url = os.getenv("MINTKEY_PROXY_URL", "http://localhost:8086")
+    tenant_id = os.getenv("MINTKEY_TEST_TENANT_ID", "")
+    agent_id = os.getenv("MINTKEY_TEST_AGENT_ID", "")
+    service_id = os.getenv("MINTKEY_TEST_SERVICE_ID", "")
+    session_token = os.getenv("MINTKEY_TEST_SESSION_TOKEN", "")
+    proxy_jwt = os.getenv("MINTKEY_TEST_PROXY_JWT", "")
+
+    if not all([tenant_id, agent_id, service_id, proxy_jwt]):
+        pytest.skip(
+            "Set MINTKEY_TEST_TENANT_ID, MINTKEY_TEST_AGENT_ID, "
+            "MINTKEY_TEST_SERVICE_ID, MINTKEY_TEST_PROXY_JWT to run this test"
+        )
+
+    # Issue a proxy request with the JWT (matching aud).
+    resp = httpx.get(
+        f"{proxy_url}/v1/call/{service_id}/healthz",
+        headers={"Authorization": f"Bearer {proxy_jwt}"},
+        timeout=5.0,
+    )
+    # 502/4xx is expected if backend is not up; we only care that the proxy
+    # processed the JWT and emitted an audit event.
+    assert resp.status_code < 500 or resp.status_code in (502, 503), (
+        f"proxy request failed unexpectedly: {resp.status_code}"
+    )
+
+    # Poll audit_events for a proxy.hit row with non-null actor_id within 3s.
+    deadline = time.monotonic() + 3.0
+    found_with_actor = False
+    while time.monotonic() < deadline:
+        audit_resp = httpx.get(
+            f"{admin_url}/v1/tenants/{tenant_id}/audit",
+            params={"event_type": "proxy.hit", "limit": 10},
+            headers={"Cookie": f"session={session_token}"},
+            timeout=5.0,
+        )
+        if audit_resp.status_code == 200:
+            for evt in audit_resp.json().get("events", []):
+                if (evt.get("event_type") == "proxy.hit"
+                        and evt.get("actor_id") is not None
+                        and str(evt.get("actor_id")) == agent_id):
+                    found_with_actor = True
+                    break
+        if found_with_actor:
+            break
+        time.sleep(0.2)
+
+    assert found_with_actor, (
+        f"proxy.hit row with actor_id={agent_id!r} not found in audit_events "
+        "within 3s — actor_id wiring may be broken (#25)"
+    )
+
+
+@INTEGRATION
+def test_aud_mismatch_rejected_event_emitted_in_strict_mode() -> None:
+    """
+    Under MINTKEY_AUD_ENFORCEMENT=strict, a request with JWT.aud != URL
+    service_id must produce a proxy.aud_mismatch_rejected row in audit_events
+    within 3s (#24).
+
+    The payload must carry jti/aud/url_service_id/mode and must NOT contain
+    any plaintext or JWT raw value (S-SEC-1).
+
+    This test is marked SKIPPED per Scenario D's harness gap — the integration
+    environment may not be configured for strict mode.  The unit test
+    (TestAudMismatchRejected_EmitsAuditEvent) exercises the emission path fully.
+    """
+    pytest.skip(
+        "Strict-mode integration test requires MINTKEY_AUD_ENFORCEMENT=strict "
+        "stack restart and a crafted mismatching JWT — exercise via unit test "
+        "TestAudMismatchRejected_EmitsAuditEvent instead (Scenario D harness gap)"
+    )
 
 
 @INTEGRATION

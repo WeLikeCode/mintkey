@@ -10,14 +10,37 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/mintkey/mintkey/internal/auditq"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
 )
+
+// mockAuditQueue implements auditEnqueuer and captures emitted events for
+// assertion in tests.
+type mockAuditQueue struct {
+	mu     sync.Mutex
+	events []auditq.Event
+}
+
+func (m *mockAuditQueue) Enqueue(e auditq.Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.events = append(m.events, e)
+}
+
+func (m *mockAuditQueue) captured() []auditq.Event {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]auditq.Event, len(m.events))
+	copy(out, m.events)
+	return out
+}
 
 func testHandler() *proxyHandler {
 	cfg := &config.Config{
@@ -48,6 +71,13 @@ func testHandlerStrict() *proxyHandler {
 // The returned public key must be loaded into handler.pubKeys["testkey"].
 func buildTestJWT(t *testing.T, audUUID string) (string, ed25519.PublicKey) {
 	t.Helper()
+	return buildTestJWTWithClaims(t, audUUID, "agent_test", "")
+}
+
+// buildTestJWTWithClaims creates a signed test JWT with explicit sub and jti.
+// Pass jti="" to omit the jti claim.
+func buildTestJWTWithClaims(t *testing.T, audUUID, sub, jti string) (string, ed25519.PublicKey) {
+	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
@@ -58,11 +88,14 @@ func buildTestJWT(t *testing.T, audUUID string) (string, ed25519.PublicKey) {
 
 	claimsMap := map[string]any{
 		"iss":   "mintkey/broker",
-		"sub":   "agent_test",
+		"sub":   sub,
 		"aud":   []string{audUUID},
 		"tnt":   "tenant-test-uuid-0001",
 		"scope": "call",
 		"exp":   time.Now().Unix() + 600,
+	}
+	if jti != "" {
+		claimsMap["jti"] = jti
 	}
 	payload := base64.RawURLEncoding.EncodeToString(mustMarshalJSON(t, claimsMap))
 
@@ -195,6 +228,143 @@ func TestAudEnforcement_Strict_Mismatch(t *testing.T) {
 	}
 	if respJSON["error"] != "scope mismatch" {
 		t.Fatalf("strict+mismatch: expected error=scope mismatch, got: %v", respJSON)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #24: proxy.aud_mismatch_rejected audit emission tests
+// ---------------------------------------------------------------------------
+
+// testHandlerStrictWithAudit builds a strict-mode handler with a mock audit
+// queue wired in.  The mock captures all Enqueue calls for assertion.
+func testHandlerStrictWithAudit(mock *mockAuditQueue) *proxyHandler {
+	cfg := &config.Config{
+		VaultAddrGRPC:  "localhost:1",
+		JWKSEndpoint:   "http://localhost:1/.well-known/jwks.json",
+		PluginPort:     8086,
+		DefaultTarget:  "http://localhost:1",
+		AudEnforcement: config.AudEnforcementStrict,
+	}
+	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil)
+	h.audit = mock
+	return h
+}
+
+// TestAudMismatchRejected_EmitsAuditEvent verifies that strict-mode 403
+// rejection emits a proxy.aud_mismatch_rejected event with the correct
+// payload shape: {jti, aud, url_service_id, mode} — no credentials (#24).
+func TestAudMismatchRejected_EmitsAuditEvent(t *testing.T) {
+	mock := &mockAuditQueue{}
+	h := testHandlerStrictWithAudit(mock)
+
+	const testJTI = "test-jti-abc123"
+	const testAgentID = "agent_00000000000000000000001"
+
+	// JWT audience is svcA; request URL targets svcB → mismatch.
+	token, pub := buildTestJWTWithClaims(t, testSvcUUIDA, testAgentID, testJTI)
+	h.pubKeys["testkey"] = pub
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDB+"/path", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rw.Code)
+	}
+
+	events := mock.captured()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	evt := events[0]
+
+	if evt.EventType != "proxy.aud_mismatch_rejected" {
+		t.Errorf("EventType: want proxy.aud_mismatch_rejected, got %q", evt.EventType)
+	}
+	if evt.ActorID != testAgentID {
+		t.Errorf("ActorID: want %q, got %q", testAgentID, evt.ActorID)
+	}
+	if evt.ActorType != "agent" {
+		t.Errorf("ActorType: want agent, got %q", evt.ActorType)
+	}
+	if evt.TargetID != testSvcUUIDA {
+		t.Errorf("TargetID: want %q (aud), got %q", testSvcUUIDA, evt.TargetID)
+	}
+	if evt.TargetType != "service" {
+		t.Errorf("TargetType: want service, got %q", evt.TargetType)
+	}
+
+	// Payload checks.
+	if evt.Payload["jti"] != testJTI {
+		t.Errorf("Payload.jti: want %q, got %v", testJTI, evt.Payload["jti"])
+	}
+	if evt.Payload["aud"] != testSvcUUIDA {
+		t.Errorf("Payload.aud: want %q (JWT aud), got %v", testSvcUUIDA, evt.Payload["aud"])
+	}
+	if evt.Payload["url_service_id"] != testSvcUUIDB {
+		t.Errorf("Payload.url_service_id: want %q, got %v", testSvcUUIDB, evt.Payload["url_service_id"])
+	}
+	if evt.Payload["mode"] != "strict" {
+		t.Errorf("Payload.mode: want %q, got %v", "strict", evt.Payload["mode"])
+	}
+
+	// S-SEC-1: no credential or JWT raw value in payload.
+	forbidden := []string{"credential", "api_key_value", "token_value", "secret", "plaintext", "token"}
+	for _, key := range forbidden {
+		if _, exists := evt.Payload[key]; exists {
+			t.Errorf("Payload must not contain field %q (S-SEC-1)", key)
+		}
+	}
+}
+
+// TestAudMismatchRejected_NoEmitWhenAuditNil verifies that the strict-mode
+// 403 path still works correctly when no audit queue is wired (nil).
+func TestAudMismatchRejected_NoEmitWhenAuditNil(t *testing.T) {
+	h := testHandlerStrict() // audit=nil
+	token, pub := buildTestJWT(t, testSvcUUIDA)
+	h.pubKeys["testkey"] = pub
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDB+"/path", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req) // must not panic
+
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 with nil audit, got %d", rw.Code)
+	}
+}
+
+// TestAudEnforcement_Permissive_NoAuditEvent verifies that permissive mode
+// does NOT emit proxy.aud_mismatch_rejected (only strict mode should).
+func TestAudEnforcement_Permissive_NoAuditEvent(t *testing.T) {
+	mock := &mockAuditQueue{}
+	cfg := &config.Config{
+		VaultAddrGRPC:  "localhost:1",
+		JWKSEndpoint:   "http://localhost:1/.well-known/jwks.json",
+		PluginPort:     8086,
+		DefaultTarget:  "http://localhost:1",
+		AudEnforcement: config.AudEnforcementPermissive,
+	}
+	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil)
+	h.audit = mock
+
+	token, pub := buildTestJWT(t, testSvcUUIDA)
+	h.pubKeys["testkey"] = pub
+
+	// Permissive + mismatch → vault call (will fail), but no aud_mismatch_rejected.
+	req := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDB+"/path", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+
+	// No proxy.aud_mismatch_rejected events.
+	for _, e := range mock.captured() {
+		if e.EventType == "proxy.aud_mismatch_rejected" {
+			t.Errorf("permissive mode must not emit proxy.aud_mismatch_rejected")
+		}
 	}
 }
 
