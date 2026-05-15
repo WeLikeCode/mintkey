@@ -115,7 +115,7 @@ export async function createTestCredential(opts: {
 }, token?: string): Promise<string> {
   const resp = await apiPost(
     `/v1/tenants/${opts.tenantId}/services/${opts.serviceId}/credentials`,
-    { auth_scheme: opts.authScheme, plaintext: opts.plaintext },
+    { auth_scheme: opts.authScheme, value: opts.plaintext },  // admin-api field is "value", not "plaintext"
     token
   );
   const data = await resp.json() as { id?: string; credential_id?: string };
