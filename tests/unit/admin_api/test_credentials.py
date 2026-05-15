@@ -116,7 +116,8 @@ def create_test_app():
     # Override vault client with mock that returns stable metadata
     class _MockVaultClient(VaultAdapterClient):
         async def put_credential(
-            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
+            header_name="", query_param=""
         ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000001",
@@ -249,6 +250,50 @@ async def test_audit_payload_has_no_plaintext(app, mock_audit) -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST with svc_ wire-form service_id — OPS-AA Bug 1 regression guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_credential_svc_hex_wire_form_returns_201(mock_audit) -> None:
+    """
+    POST .../credentials with svc_<32-hex> service_id in path → 201.
+
+    This is the OPS-AA Bug 1 regression guard: before the fix, service_id was
+    declared as `UUID` in the FastAPI path parameter, causing Pydantic to reject
+    svc_<wire> forms with a 422 validation_failed.  After the fix (service_id: str
+    + _svc_wire_to_db_uuid decoder), the wire form is decoded to a UUID before
+    the DB query, and the handler should return 201.
+
+    Source: OPS-AA #2; R12/R14a; ADR-0017.11.
+    """
+    svc_wire_path = f"/v1/tenants/{TENANT_ID}/services/{_SVC_32HEX}/credentials"
+
+    # The app fixture hard-codes SERVICE_ID in the mock session, but we need a
+    # fresh app whose session mock maps svc_<32-hex> → the same decoded UUID.
+    # We reuse create_test_app() which already wires the mock session where
+    # call-2 returns the service row — the decoded uuid matches SERVICE_ID.
+    test_app = create_test_app()
+
+    from admin_api.middleware.csrf import csrf_exempt
+    csrf_exempt(svc_wire_path)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.post(
+            svc_wire_path,
+            json={"auth_scheme": "bearer_token", "value": _PLAINTEXT_VALUE},
+        )
+
+    assert resp.status_code == 201, (
+        f"Expected 201 for svc_ wire-form service_id, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body["id"].startswith("cred_"), f"Expected cred_ prefix: {body.get('id')}"
+    assert body["key_version"] == 1
+    assert body["auth_scheme"] == "bearer_token"
+
+
+# ---------------------------------------------------------------------------
 # GET — list credential versions
 # ---------------------------------------------------------------------------
 
@@ -304,7 +349,7 @@ def _make_rotate_mock_session():
         elif call_n == 2:
             # credential lookup → return fake active credential
             cred_row = MagicMock()
-            cred_row.id = "aaaa-bbbb-cccc-dddd-eeeeffffffff"
+            cred_row.id = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
             cred_row.key_version = 1
             cred_row.status = "active"
             result.fetchone.return_value = cred_row
@@ -459,7 +504,7 @@ async def test_rotate_credential_audit_emitted(rotate_app, mock_audit_rotate) ->
 # POST /rotate with rotate_from — C1 unit tests (R14a)
 # ---------------------------------------------------------------------------
 
-_KNOWN_CRED_ID = "aaaa-bbbb-cccc-dddd-eeeeffffffff"  # returned by _make_rotate_mock_session
+_KNOWN_CRED_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"  # valid UUID returned by _make_rotate_mock_session
 
 
 @pytest.mark.asyncio
@@ -502,6 +547,7 @@ def _make_rotate_no_cred_session():
             # service existence check → service found
             svc_row = MagicMock()
             svc_row.id = SERVICE_ID
+            svc_row.base_url = "http://mock-backend:8999"
             result.fetchone.return_value = svc_row
         else:
             # credential lookup → no row (rotate_from does not match)
@@ -530,7 +576,10 @@ def create_rotate_no_cred_app():
     app.dependency_overrides[get_db_session] = mock_db_session
 
     class _MockVaultClient(VaultAdapterClient):
-        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+        async def put_credential(
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
+            header_name="", query_param=""
+        ):
             return {"credential_id": "cred_mock", "key_version": 2, "created_at": 0.0}
 
         async def list_versions(self, tenant_id, service_id):
@@ -552,8 +601,11 @@ async def test_rotate_with_rotate_from_nonexistent_returns_404(
     rotate_no_cred_app,
 ) -> None:
     """
-    C1: rotate_from pointing at a nonexistent credential ID → 404 not_found.
+    C1: rotate_from pointing at a valid UUID that has no matching row → 404 not_found.
+    Uses a proper UUID string so it passes the wire-ID validator; mock session returns None.
     """
+    # A syntactically valid UUID that the mock returns no row for
+    valid_but_absent = "00000000-0000-0000-0000-000000000099"
     async with AsyncClient(
         transport=ASGITransport(app=rotate_no_cred_app), base_url="http://test"
     ) as client:
@@ -562,7 +614,7 @@ async def test_rotate_with_rotate_from_nonexistent_returns_404(
             json={
                 "auth_scheme": "bearer_token",
                 "value": "irrelevant",
-                "rotate_from": "does-not-exist-id",
+                "rotate_from": valid_but_absent,
             },
         )
 

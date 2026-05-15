@@ -15,7 +15,7 @@ Architecture constraints:
   - ULID IDs with prefix "cred_" — ADR-0017.11.
   - Global channel "mintkey:credential" — ADR-0014.1.
   - Rotation: old credential marked superseded, new inserted active, atomic — ADR-0013 §3.1.
-  - service_id in rotate accepts both svc_ Crockford and svc_ 32-hex wire forms — R12/R14a.
+  - service_id in ALL endpoints accepts both svc_ Crockford and svc_ 32-hex wire forms — R12/R14a/OPS-AA.
 
 Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0013; ADR-0014.4; ADR-0014.7; ADR-0017.11.
 """
@@ -132,7 +132,7 @@ class CredentialRotateRequest(BaseModel):
 @router.post("", status_code=201)
 async def create_credential(
     tenant_id: UUID,
-    service_id: UUID,
+    service_id: str,
     body: CredentialCreate,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
@@ -144,8 +144,14 @@ async def create_credential(
     is persisted locally and returned. The plaintext value is NEVER stored,
     logged, audited, or returned — ADR-0014.4, S-SEC-1.
 
+    service_id accepts both svc_<26-char Crockford> and svc_<32-hex> wire forms
+    (admin-ui passes wire form through; admin-api decodes — R12/R14a lesson).
+
     Source: T-1.3.2; ADR-0008; ADR-0011; ADR-0014.4; ADR-0014.7; ADR-0017.11.
     """
+    # Step 0: Decode wire-form service_id → DB UUID (mirrors rotate endpoint)
+    db_svc_uuid = _svc_wire_to_db_uuid(service_id)
+
     # Step 1: Set tenant context — bound parameters, ADR-0008
     await set_tenant_context(session, tenant_id)
 
@@ -153,7 +159,7 @@ async def create_credential(
     # Fail fast with 422 if the service doesn't exist (RLS ensures tenant isolation).
     svc_result = await session.execute(
         text("SELECT base_url FROM services WHERE id = :sid AND tenant_id = :tid"),
-        {"sid": str(service_id), "tid": str(tenant_id)},
+        {"sid": db_svc_uuid, "tid": str(tenant_id)},
     )
     svc_row = svc_result.fetchone()
     if svc_row is None:
@@ -167,7 +173,7 @@ async def create_credential(
     # and is NOT stored, logged, or returned. ADR-0014.4.
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
-        service_id=str(service_id),
+        service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
         plaintext=body.value,  # plaintext leaves scope here; vault encrypts it
         target_url=service_base_url,
@@ -201,7 +207,7 @@ async def create_credential(
         {
             "id": str(internal_id),
             "tenant_id": str(tenant_id),
-            "service_id": str(service_id),
+            "service_id": db_svc_uuid,
             "key_version": key_version,
             "ciphertext": b"",          # filled by real vault-adapter in T-1.3.1
             "nonce": b"",               # filled by real vault-adapter in T-1.3.1
@@ -489,7 +495,7 @@ async def rotate_credential(
 @router.delete("/{key_version}", status_code=204)
 async def delete_credential_version(
     tenant_id: UUID,
-    service_id: UUID,
+    service_id: str,
     key_version: int,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
@@ -499,8 +505,14 @@ async def delete_credential_version(
     Returns 404 if the version does not exist for this service/tenant.
     Returns 409 if the version is already revoked.
 
+    service_id accepts both svc_<26-char Crockford> and svc_<32-hex> wire forms
+    (mirrors create and rotate — R12/R14a lesson).
+
     Source: OpenAPI deleteCredentialVersion; ADR-0014.4; ADR-0008.
     """
+    # Decode wire-form service_id → DB UUID (mirrors create/rotate endpoints)
+    db_svc_uuid = _svc_wire_to_db_uuid(service_id)
+
     await set_tenant_context(session, tenant_id)
 
     result = await session.execute(
@@ -508,7 +520,7 @@ async def delete_credential_version(
             "SELECT id, status FROM credentials"
             " WHERE service_id = :sid AND tenant_id = :tid AND key_version = :kv"
         ),
-        {"sid": str(service_id), "tid": str(tenant_id), "kv": key_version},
+        {"sid": db_svc_uuid, "tid": str(tenant_id), "kv": key_version},
     )
     row = result.fetchone()
     if row is None:
@@ -528,7 +540,7 @@ async def delete_credential_version(
             "UPDATE credentials SET status = 'revoked', revoked_at = :now"
             " WHERE service_id = :sid AND tenant_id = :tid AND key_version = :kv"
         ),
-        {"now": now, "sid": str(service_id), "tid": str(tenant_id), "kv": key_version},
+        {"now": now, "sid": db_svc_uuid, "tid": str(tenant_id), "kv": key_version},
     )
 
     # Emit audit event — ADR-0014.7
@@ -541,7 +553,7 @@ async def delete_credential_version(
         target_id=row.id,
         target_type="credential",
         payload={
-            "service_id": str(service_id),
+            "service_id": service_id,  # wire form preserved in audit, mirrors rotate
             "key_version": key_version,
         },
     )
@@ -553,7 +565,7 @@ async def delete_credential_version(
         {
             "event": "credential.revoked",
             "tenant_id": str(tenant_id),
-            "service_id": str(service_id),
+            "service_id": service_id,  # wire form preserved in notify, mirrors rotate
             "key_version": key_version,
         },
     )
@@ -569,7 +581,7 @@ def _escape_like(value: str) -> str:
 @router.get("")
 async def list_credential_versions(
     tenant_id: UUID,
-    service_id: UUID,
+    service_id: str,
     q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
@@ -582,10 +594,16 @@ async def list_credential_versions(
 
     Returns version metadata only — no plaintext, no ciphertext — S-SEC-1.
 
+    service_id accepts both svc_<26-char Crockford> and svc_<32-hex> wire forms
+    (mirrors create and rotate — R12/R14a lesson).
+
     Note: credentials have no human-readable name field; q matches auth_scheme only.
 
     Source: T-1.3.2; ADR-0008.
     """
+    # Decode wire-form service_id → DB UUID (mirrors create/rotate/delete endpoints)
+    db_svc_uuid = _svc_wire_to_db_uuid(service_id)
+
     await set_tenant_context(session, tenant_id)
 
     if q is not None:
@@ -599,7 +617,7 @@ async def list_credential_versions(
                 " AND auth_scheme ILIKE :pat ESCAPE '\\'"
                 " ORDER BY key_version DESC"
             ),
-            {"sid": str(service_id), "tid": str(tenant_id), "pat": pattern},
+            {"sid": db_svc_uuid, "tid": str(tenant_id), "pat": pattern},
         )
     else:
         result = await session.execute(
@@ -609,7 +627,7 @@ async def list_credential_versions(
                 " WHERE service_id = :sid AND tenant_id = :tid"
                 " ORDER BY key_version DESC"
             ),
-            {"sid": str(service_id), "tid": str(tenant_id)},
+            {"sid": db_svc_uuid, "tid": str(tenant_id)},
         )
     rows = result.fetchall()
 
