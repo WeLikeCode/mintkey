@@ -46,6 +46,21 @@ def _parse_ts(ts_str: Optional[str]) -> Optional[datetime]:
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/audit")
 
 
+def _bytes_to_hex(value: Any) -> Optional[str]:
+    """
+    Coerce a DB bytea value (bytes, memoryview, or str) to a lowercase hex string.
+    Returns None for NULL values. SHA-256 produces 32 bytes → 64 hex chars.
+    """
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        value = bytes(value)
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    # Already a hex string (some DB drivers return hex for bytea)
+    return str(value)
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Map an audit_events row to the wire representation."""
     return {
@@ -53,6 +68,8 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "event_type": row.event_type,
         "tenant_id": str(row.tenant_id),
         "payload": row.payload if isinstance(row.payload, dict) else {},
+        "hash": _bytes_to_hex(row.hash),
+        "prev_hash": _bytes_to_hex(row.prev_hash),
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
