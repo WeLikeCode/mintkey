@@ -42,7 +42,7 @@ SVC_ID_2 = str(uuid4())
 # ---------------------------------------------------------------------------
 
 
-def _make_service_row(svc_id: str, name: str, openapi_url=None):
+def _make_service_row(svc_id: str, name: str, openapi_url=None, description=None):
     """Return a MagicMock that looks like a DB row for a service."""
     row = MagicMock()
     row.id = svc_id
@@ -51,6 +51,7 @@ def _make_service_row(svc_id: str, name: str, openapi_url=None):
     row.base_url = f"https://{name.lower()}.example.com"
     row.auth_scheme = "bearer_token"
     row.openapi_url = openapi_url
+    row.description = description
     return row
 
 
