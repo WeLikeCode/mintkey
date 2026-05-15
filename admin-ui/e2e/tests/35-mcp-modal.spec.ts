@@ -9,6 +9,10 @@
  *   4. The Copy button is present in the modal.
  *   5. Clicking the Copy button copies the JSON to clipboard.
  *   6. Clicking Close dismisses the modal.
+ *   7. (MCP-checklist-flag fix) Checklist "Connect your LLM to MCP" item shows
+ *      "not done" (☐ + CTA button) when localStorage flag is absent, and "done"
+ *      (☑ + done badge) after opening the modal and reloading the dashboard.
+ *      Uses mintkey:mcp-modal-opened localStorage key, NOT hasTested.
  *
  * Does NOT use page.route — hits real admin-ui at localhost:8081.
  *
@@ -194,6 +198,107 @@ test.describe("35 — MCP config modal", () => {
       path: path.resolve(__dirname, "../test-results/mcp-modal.png"),
       fullPage: false,
     });
+
+    void consoleErrors;
+  });
+
+  /**
+   * MCP-checklist-flag fix: the "Connect your LLM to MCP" checklist item must
+   * use the mintkey:mcp-modal-opened localStorage flag — NOT hasTested — as its
+   * done predicate.
+   *
+   * Sequence:
+   *   1. Clear localStorage flag → item shows "not done" (CTA button visible).
+   *   2. Open modal via checklist CTA → close modal.
+   *   3. Reload dashboard → item shows "done" (badge visible, no CTA button).
+   */
+  test("checklist MCP item toggles from not-done to done after opening modal (localStorage flag)", async ({
+    page,
+    consoleErrors,
+  }) => {
+    // ── Step 1: clear the flag and navigate ────────────────────────────────
+    await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await page
+      .getByText(/Mintkey — credential broker for AI agents/i)
+      .first()
+      .waitFor({ timeout: 25_000 });
+
+    // Ensure localStorage flag is absent before the test
+    await page.evaluate(() => localStorage.removeItem("mintkey:mcp-modal-opened"));
+
+    // Reload so the component re-initialises from clean localStorage
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page
+      .getByText(/Mintkey — credential broker for AI agents/i)
+      .first()
+      .waitFor({ timeout: 25_000 });
+
+    // The Quick-start checklist is only rendered when nothingExists === false.
+    const body = (await page.locator("body").innerText().catch(() => "")) ?? "";
+    if (!body.includes("Quick start")) {
+      // Stack is empty — checklist not shown. Skip gracefully.
+      void consoleErrors;
+      return;
+    }
+
+    // ── Step 2: assert "not done" state ───────────────────────────────────
+    const mcpChecklistItem = page
+      .locator('[data-testid="dashboard-checklist-item"]')
+      .filter({ hasText: /Connect your LLM/i });
+
+    await mcpChecklistItem.waitFor({ state: "visible", timeout: 10_000 });
+
+    // Before: CTA button must be visible (item not done)
+    const mcpCtaBtn = mcpChecklistItem.locator('[data-testid="mcp-connect-cta"]');
+    await expect(mcpCtaBtn).toBeVisible({ timeout: 5_000 });
+
+    // Before: done badge must NOT be visible
+    const doneBadgeBefore = mcpChecklistItem.locator('text="done"');
+    await expect(doneBadgeBefore).not.toBeVisible();
+
+    // Verify the localStorage flag is absent (confirm clear worked)
+    const flagBefore = await page.evaluate(() =>
+      localStorage.getItem("mintkey:mcp-modal-opened")
+    );
+    expect(flagBefore, "flag should be absent before opening modal").toBeNull();
+
+    // ── Step 3: open modal via checklist CTA, then close it ───────────────
+    await mcpCtaBtn.click();
+
+    const modal = page.locator('[data-testid="mcp-config-modal"]');
+    await modal.waitFor({ state: "visible", timeout: 8_000 });
+
+    // Verify localStorage flag is now set
+    const flagAfterOpen = await page.evaluate(() =>
+      localStorage.getItem("mintkey:mcp-modal-opened")
+    );
+    expect(flagAfterOpen, "flag should be set after opening modal").toBe("true");
+
+    // Close the modal
+    const closeBtn = modal.locator('[data-testid="mcp-config-close-btn"]');
+    await closeBtn.click();
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+
+    // ── Step 4: reload and assert "done" state ────────────────────────────
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page
+      .getByText(/Mintkey — credential broker for AI agents/i)
+      .first()
+      .waitFor({ timeout: 25_000 });
+
+    const mcpChecklistItemAfter = page
+      .locator('[data-testid="dashboard-checklist-item"]')
+      .filter({ hasText: /Connect your LLM/i });
+
+    await mcpChecklistItemAfter.waitFor({ state: "visible", timeout: 10_000 });
+
+    // After reload: done badge must be visible
+    const doneBadgeAfter = mcpChecklistItemAfter.locator('text="done"');
+    await expect(doneBadgeAfter).toBeVisible({ timeout: 5_000 });
+
+    // After reload: CTA button must NOT be visible (item is done)
+    const mcpCtaBtnAfter = mcpChecklistItemAfter.locator('[data-testid="mcp-connect-cta"]');
+    await expect(mcpCtaBtnAfter).not.toBeVisible();
 
     void consoleErrors;
   });

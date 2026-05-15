@@ -28,6 +28,10 @@ interface Checklist {
   hasAgents: boolean;
   hasPermissions: boolean;
   hasTested: boolean;
+  /** Client-side flag: true once the operator has opened the MCP config modal.
+   *  Stored in localStorage under MCP_MODAL_OPENED_KEY — NOT derived from
+   *  hasTested (which tracks credential tests, not MCP connection). */
+  hasMcpModalOpened: boolean;
 }
 
 interface DashboardData {
@@ -39,6 +43,9 @@ interface DashboardData {
   auditCount24h: number;
   checklist: Checklist;
 }
+
+/** localStorage key for the MCP modal opened flag (per browser profile). */
+const MCP_MODAL_OPENED_KEY = "mintkey:mcp-modal-opened";
 
 interface Step {
   key: keyof Checklist;
@@ -198,7 +205,7 @@ const STEPS: Step[] = [
   { key: "hasCredentials", title: "Add its credential and test it", ctaLabel: "Configure credentials", ctaHref: "/admin/resources/services" },
   { key: "hasAgents", title: "Create an agent", ctaLabel: "Create an agent", ctaHref: "/admin/resources/agents/actions/new" },
   { key: "hasPermissions", title: "Grant the agent a permission", ctaLabel: "Grant a permission", ctaHref: "/admin/resources/permission_grants/actions/new" },
-  { key: "hasTested", title: "Connect your LLM to MCP", ctaLabel: "Show MCP config", ctaHref: "/admin/resources/agents" },
+  { key: "hasMcpModalOpened", title: "Connect your LLM to MCP", ctaLabel: "Show MCP config", ctaHref: "/admin/resources/agents" },
 ];
 
 /** 6-step static onboarding flow (admin-ui-ux-uplift chunk). */
@@ -383,6 +390,11 @@ const Dashboard: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [mcpModalOpen, setMcpModalOpen] = useState(false);
+  // Client-side flag: has the operator ever opened the MCP config modal?
+  // Stored in localStorage; independent of hasTested (credential-test flag).
+  const [hasMcpModalOpened, setHasMcpModalOpened] = useState<boolean>(
+    () => localStorage.getItem(MCP_MODAL_OPENED_KEY) === "true"
+  );
 
   useEffect(() => {
     const api = new ApiClient();
@@ -393,8 +405,21 @@ const Dashboard: React.FC = () => {
       .finally(() => setLoaded(true));
   }, []);
 
-  const checklist: Checklist = data?.checklist ?? {
-    hasServices: false, hasCredentials: false, hasAgents: false, hasPermissions: false, hasTested: false,
+  /** Open MCP modal and persist the "opened" flag to localStorage. */
+  const openMcpModal = () => {
+    setMcpModalOpen(true);
+    if (!hasMcpModalOpened) {
+      localStorage.setItem(MCP_MODAL_OPENED_KEY, "true");
+      setHasMcpModalOpened(true);
+    }
+  };
+
+  const checklist: Checklist = {
+    ...(data?.checklist ?? {
+      hasServices: false, hasCredentials: false, hasAgents: false, hasPermissions: false, hasTested: false,
+    }),
+    // hasMcpModalOpened is client-side only — not from the API.
+    hasMcpModalOpened,
   };
   const nothingExists =
     loaded && !checklist.hasServices && !checklist.hasAgents && !checklist.hasPermissions &&
@@ -430,7 +455,7 @@ const Dashboard: React.FC = () => {
             label={s.label}
             href={s.href}
             resource={s.resource}
-            onMcpClick={s.n === 6 ? () => setMcpModalOpen(true) : undefined}
+            onMcpClick={s.n === 6 ? openMcpModal : undefined}
           />
         ))}
       </Box>
@@ -463,7 +488,7 @@ const Dashboard: React.FC = () => {
                 title={s.title}
                 ctaLabel={s.ctaLabel}
                 ctaHref={s.ctaHref}
-                onMcpClick={s.key === "hasTested" ? () => setMcpModalOpen(true) : undefined}
+                onMcpClick={s.key === "hasMcpModalOpened" ? openMcpModal : undefined}
               />
             ))}
           </Box>
