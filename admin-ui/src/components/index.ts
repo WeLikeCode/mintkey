@@ -38,9 +38,15 @@ export const Components = {
   TestServiceForm: componentLoader.add("TestServiceForm", "./actions/TestServiceForm"),
   // Tenant show page: associated services panel (UX-E)
   TenantServicesPanel: componentLoader.add("TenantServicesPanel", "./sections/TenantServicesPanel"),
+  // Credential show page: intro panel with service link + audit link (OPS-Y)
+  CredentialShowPanel: componentLoader.add("CredentialShowPanel", "./sections/CredentialShowPanel"),
   // Typeahead combobox property components — agent_id + service_id pickers (UX-A)
   AgentCombobox: componentLoader.add("AgentCombobox", "./properties/AgentCombobox"),
   ServiceCombobox: componentLoader.add("ServiceCombobox", "./properties/ServiceCombobox"),
+  // Template picker — browse + pick a service template before creating (OPS-S)
+  ServiceTemplatePicker: componentLoader.add("ServiceTemplatePicker", "./actions/ServiceTemplatePicker"),
+  // Copyable value — monospace code block + copy-to-clipboard button (OPS-X)
+  CopyableValue: componentLoader.add("CopyableValue", "./properties/CopyableValue"),
 };
 
 // Global override: show-page renderer that inlines property.description below

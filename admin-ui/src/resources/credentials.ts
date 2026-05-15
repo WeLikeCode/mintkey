@@ -35,6 +35,8 @@ const _credentialsResource = new RestResource({
     { path: "status", type: "string" },
     // Virtual filter-only: free-text search on service name/slug
     { path: "q", type: "string" },
+    // Virtual show-only: intro panel (service link + audit link + backlog note) (OPS-Y)
+    { path: "_credentialShowPanel", type: "string" },
   ],
 });
 
@@ -45,7 +47,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
     navigation: { name: "Credentials", icon: "Lock" },
     // Service is first column per ADMIN_UI_SPEC.md §2.4
     listProperties: ["name", "auth_scheme", "current_key_version", "status"],
-    showProperties: ["id", "name", "slug", "auth_scheme", "current_key_version", "status"],
+    showProperties: ["_credentialShowPanel", "id", "name", "slug", "auth_scheme", "current_key_version", "status"],
     editProperties: ["service_id", "auth_scheme"],
     filterProperties: ["q", "auth_scheme", "status"],
     properties: {
@@ -53,6 +55,18 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (service name / slug)",
         description: "Case-insensitive substring match on service name and slug.",
+      },
+      // Renamed for clarity: the list is service-centric; "name" is the service name
+      name: {
+        label: "Service",
+      },
+      // Virtual show-page intro panel — renders above the property table (OPS-Y)
+      _credentialShowPanel: {
+        label: "About this credential",
+        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        components: {
+          show: Components.CredentialShowPanel,
+        },
       },
     },
     actions: {
