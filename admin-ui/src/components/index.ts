@@ -42,3 +42,11 @@ export const Components = {
   AgentCombobox: componentLoader.add("AgentCombobox", "./properties/AgentCombobox"),
   ServiceCombobox: componentLoader.add("ServiceCombobox", "./properties/ServiceCombobox"),
 };
+
+// Global override: show-page renderer that inlines property.description below
+// each value (UX-CLARITY chunk G). Uses override() not add() because
+// DefaultShowProperty is one of AdminJS's defaultComponents.
+componentLoader.override(
+  "DefaultShowProperty",
+  "./properties/DescriptiveShowProperty"
+);
