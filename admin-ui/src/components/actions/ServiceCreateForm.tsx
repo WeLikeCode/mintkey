@@ -162,24 +162,49 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
       .then((resp) => {
         const data = resp.data as {
           template?: ServiceTemplate;
-          record?: { params?: { template?: ServiceTemplate } };
+          record?: { params?: Record<string, unknown> };
         };
+        // Primary: top-level template object (BFF returns it directly).
+        // Fallback A: record.params.template (nested object form).
+        // Fallback B: flat record.params["template.*"] keys (EE belt-and-suspenders fix).
         const tpl: ServiceTemplate | null | undefined =
-          data?.template ?? data?.record?.params?.template;
+          data?.template ??
+          (data?.record?.params?.["template"] as ServiceTemplate | undefined) ??
+          null;
 
-        if (!tpl) return;
+        const flatParams = data?.record?.params ?? {};
 
-        // Pre-fill service fields from template
-        if (tpl.name) setName(tpl.name);
-        if (tpl.base_url) setBaseUrl(tpl.base_url);
-        if (tpl.auth_scheme) setAuthScheme(tpl.auth_scheme);
-        if (tpl.description) setDescription(tpl.description);
-        if (tpl.openapi_url) setOpenapiUrl(tpl.openapi_url);
+        // Helper to get a field: prefer nested tpl object, then flat param key
+        const getField = (key: keyof ServiceTemplate): string => {
+          const fromTpl = tpl?.[key] as string | undefined;
+          if (fromTpl) return fromTpl;
+          const flat = flatParams[`template.${key}`] as string | undefined;
+          return flat ?? "";
+        };
+
+        const hasAnyField =
+          tpl != null ||
+          Object.keys(flatParams).some((k) => k.startsWith("template."));
+
+        if (!hasAnyField) return;
+
+        // Pre-fill service fields from template (EE fix: all 5 fields)
+        const tName = getField("name");
+        const tBaseUrl = getField("base_url");
+        const tAuthScheme = getField("auth_scheme");
+        const tDescription = getField("description");
+        const tOpenapiUrl = getField("openapi_url");
+
+        if (tName) setName(tName);
+        if (tBaseUrl) setBaseUrl(tBaseUrl);
+        if (tAuthScheme) setAuthScheme(tAuthScheme);
+        if (tDescription) setDescription(tDescription);
+        if (tOpenapiUrl) setOpenapiUrl(tOpenapiUrl);
 
         // DO NOT pre-fill credential value — security boundary (OPS-SUX hard rule)
         setCredFields({}); // ensure cred fields reset (no leakage)
 
-        setTemplateName(tpl.name ?? slug);
+        setTemplateName(tName || slug);
       })
       .catch(() => {
         // Template fetch failed — silently proceed with blank form

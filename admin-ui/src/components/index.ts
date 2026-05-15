@@ -47,6 +47,12 @@ export const Components = {
   ServiceTemplatePicker: componentLoader.add("ServiceTemplatePicker", "./actions/ServiceTemplatePicker"),
   // Copyable value — monospace code block + copy-to-clipboard button (OPS-X)
   CopyableValue: componentLoader.add("CopyableValue", "./properties/CopyableValue"),
+  // Agent created notice — show-once API key screen with Copy buttons (OPS-DDEE DD-2)
+  AgentCreatedNotice: componentLoader.add("AgentCreatedNotice", "./actions/AgentCreatedNotice"),
+  // Credential new form — pre-fills service_id from URL query param (OPS-DDEE DD-1)
+  CredentialNewForm: componentLoader.add("CredentialNewForm", "./actions/CredentialNewForm"),
+  // Redirect action — immediately redirects to record.params.redirectTo URL (OPS-DDEE DD-1)
+  RedirectAction: componentLoader.add("RedirectAction", "./actions/RedirectAction"),
 };
 
 // Global override: show-page renderer that inlines property.description below

@@ -74,9 +74,12 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
         component: Components.CredentialsIntro,
       },
       // Create via admin-api (plaintext only sent once, never stored in AdminJS)
+      // (OPS-DDEE DD-1) CredentialNewForm reads ?service_id= from URL and
+      // pre-fills + disables the service_id field when arriving via Set Credential CTA.
       new: {
         isVisible: true,
         label: "Register Credential",
+        component: Components.CredentialNewForm,
         handler: async (request, response, context) => {
           if (request.method === "get") {
             return { record: await recordJSON(context, {}) };

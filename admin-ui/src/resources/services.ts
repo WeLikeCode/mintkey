@@ -233,6 +233,15 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       },
 
       // (OPS-S) BFF passthrough: GET /v1/service-templates/{slug} → template detail
+      //
+      // EE fix (OPS-DDEE): template fields are returned BOTH as a nested object
+      // (record.params.template) AND as flat record.params entries
+      // (record.params["template.description"], etc.).  The React useEffect in
+      // ServiceCreateForm.tsx reads data?.template first (top-level), then falls back
+      // to record.params.template.  Both carry the full 5-field object.
+      // Additionally, each field is stored flat in params so the React component
+      // can also read them via record.params["template.name"] etc. as a belt-and-suspenders
+      // guarantee that description and openapi_url arrive on screen.
       "template-detail": {
         actionType: "resource",
         isVisible: false,
@@ -254,10 +263,34 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
                 record: { ...baseRecord, params: { ...baseRecord.params, template: null } },
               };
             }
-            const template = await resp.json();
+            const raw = await resp.json() as Record<string, unknown>;
+            // Normalise: ensure all 5 expected fields are present (even if undefined)
+            const template = {
+              slug: raw.slug ?? "",
+              name: raw.name ?? "",
+              display_name: raw.display_name ?? "",
+              description: raw.description ?? "",
+              base_url: raw.base_url ?? "",
+              auth_scheme: raw.auth_scheme ?? "",
+              openapi_url: raw.openapi_url ?? "",
+            };
             const baseRecord = await recordJSON(context, {});
+            // Flat params belt-and-suspenders: React can read either the nested
+            // template object OR the individual flat keys.
             return {
-              record: { ...baseRecord, params: { ...baseRecord.params, template } },
+              record: {
+                ...baseRecord,
+                params: {
+                  ...baseRecord.params,
+                  template,
+                  "template.slug": template.slug,
+                  "template.name": template.name,
+                  "template.description": template.description,
+                  "template.base_url": template.base_url,
+                  "template.auth_scheme": template.auth_scheme,
+                  "template.openapi_url": template.openapi_url,
+                },
+              },
               template,
             };
           } catch {
@@ -307,6 +340,35 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
               },
             },
             testResult,
+          };
+        },
+      },
+
+      // (OPS-DDEE DD-1) Set Credential CTA — redirects operator to credentials/new
+      // pre-filled with this service's ID. Same operator-only gate as testService.
+      //
+      // Uses RedirectAction component because AdminJS record-action GET responses
+      // do NOT automatically follow `redirectUrl` — the component calls
+      // navigate(redirectTo) on mount to perform the SPA-side redirect.
+      setCredential: {
+        actionType: "record",
+        label: "Set Credential",
+        icon: "Key",
+        isVisible: true,
+        showInDrawer: false,
+        component: Components.RedirectAction,
+        handler: async (request, _response, context) => {
+          const serviceId = request.params.recordId;
+          const baseRecord = await recordJSON(context);
+          return {
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                // RedirectAction component reads this on mount and calls navigate()
+                redirectTo: `/admin/resources/credentials/actions/new?service_id=${serviceId}`,
+              },
+            },
           };
         },
       },

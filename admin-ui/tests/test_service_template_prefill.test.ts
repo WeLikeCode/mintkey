@@ -63,23 +63,27 @@ describe("ServiceCreateForm — URL-param template pre-fill (OPS-S integration)"
   });
 
   it("sets name from template (pre-fill)", () => {
-    expect(formSrc).toContain("setName(tpl.name)");
+    // EE fix: fields are extracted via getField() helper (supports nested + flat params)
+    expect(formSrc).toContain("setName(tName)");
   });
 
   it("sets base_url from template (pre-fill)", () => {
-    expect(formSrc).toContain("setBaseUrl(tpl.base_url)");
+    expect(formSrc).toContain("setBaseUrl(tBaseUrl)");
   });
 
   it("sets auth_scheme from template (pre-fill)", () => {
-    expect(formSrc).toContain("setAuthScheme(tpl.auth_scheme)");
+    expect(formSrc).toContain("setAuthScheme(tAuthScheme)");
   });
 
   it("sets description from template (pre-fill)", () => {
-    expect(formSrc).toContain("setDescription(tpl.description)");
+    // EE fix: description is now extracted via getField("description") so it
+    // populates reliably even when record.params uses flat "template.description" keys
+    expect(formSrc).toContain("setDescription(tDescription)");
   });
 
   it("sets openapi_url from template (pre-fill)", () => {
-    expect(formSrc).toContain("setOpenapiUrl(tpl.openapi_url)");
+    // EE fix: openapi_url is extracted via getField("openapi_url")
+    expect(formSrc).toContain("setOpenapiUrl(tOpenapiUrl)");
   });
 
   it("DOES NOT pre-fill credential value (security boundary — hard rule)", () => {

@@ -84,6 +84,8 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
       },
       new: {
         isVisible: true,
+        // (OPS-DDEE DD-2) Custom component renders the API key with a Copy button.
+        component: Components.AgentCreatedNotice,
         handler: async (request, response, context) => {
           if (request.method === "get") {
             return { record: await recordJSON(context, {}) };
@@ -106,17 +108,28 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             };
           }
 
+          // (OPS-DDEE DD-2) Embed api_key + agent_id in record.params so
+          // AgentCreatedNotice component can read them for the Copy button.
+          // The notice message retains the bracket form for E2E test compatibility.
+          const baseRecord = await recordJSON(context, request.payload ?? {});
           return {
-            record: await recordJSON(context, request.payload ?? {}),
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                // DD-2: one-time key fields for AgentCreatedNotice component
+                created_agent_id: body.id ?? "",
+                created_api_key: body.api_key ?? "",
+              },
+            },
             notice: {
-              // API key shown once — displayed in the notice banner (Req 5 AC2)
-              // Agent ID embedded in brackets so E2E tests can parse it without URL dependency.
+              // Retain legacy message format for E2E + vitest compatibility
               message: body.api_key
                 ? `Agent created [${body.id}]. API key (shown once): ${body.api_key}`
                 : `Agent created [${body.id}].`,
               type: "success",
             },
-            redirectUrl: `/admin/resources/agents/records/${body.id}/show`,
+            // No redirectUrl — AgentCreatedNotice handles navigation
           };
         },
       },
