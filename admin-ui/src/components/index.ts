@@ -34,6 +34,8 @@ export const Components = {
   ApiKeyCreate: componentLoader.add("ApiKeyCreate", "./actions/ApiKeyCreate"),
   // Service create form with bundled credential + test CTA (UX-C6)
   ServiceCreateForm: componentLoader.add("ServiceCreateForm", "./actions/ServiceCreateForm"),
+  // Test Service form — 5-field form + curl preview + result panel (UX-CLARITY P0)
+  TestServiceForm: componentLoader.add("TestServiceForm", "./actions/TestServiceForm"),
   // Tenant show page: associated services panel (UX-E)
   TenantServicesPanel: componentLoader.add("TenantServicesPanel", "./sections/TenantServicesPanel"),
   // Typeahead combobox property components — agent_id + service_id pickers (UX-A)

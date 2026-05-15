@@ -158,29 +158,50 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         label: "Test Connection",
         icon: "Activity",
         isVisible: true,
-        component: Components.ConfirmAction,
+        component: Components.TestServiceForm,
         handler: async (request, response, context) => {
+          // GET: form load — return the record so the React component can read
+          // base_url from record.params (no side-effect).
           if (request.method === "get") {
             return { record: await recordJSON(context) };
           }
+
+          // POST with no payload (e.g. empty form submit): fall through gracefully.
+          if (!request.payload || !request.payload.method) {
+            return { record: await recordJSON(context) };
+          }
+
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
 
+          // Thread operator-supplied payload directly — no hardcoded values.
+          // request.payload contains: method, path, headers?, body?, timeout_ms
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}/test`,
             "POST",
-            { method: "GET", path: "/health", timeout_ms: 5000 }
+            request.payload
           );
 
-          const result = await resp.json() as { ok: boolean; status_code?: number; latency_ms?: number };
+          const testResult = await resp.json() as {
+            ok: boolean;
+            status_code?: number;
+            latency_ms?: number;
+            final_url?: string;
+            response_body_truncated?: string;
+            error?: string;
+          };
+
+          // Embed testResult in the record's params so the React component (option C)
+          // can read it from response.data.record.params.testResult.
+          const baseRecord = await recordJSON(context);
           return {
-            record: await recordJSON(context),
-            notice: {
-              message: result.ok
-                ? `✓ ${result.status_code} OK · ${result.latency_ms}ms`
-                : `✗ ${result.status_code} · failed`,
-              type: result.ok ? "success" : "error",
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                testResult,
+              },
             },
           };
         },

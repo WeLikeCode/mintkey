@@ -5,10 +5,12 @@
  * - testService action exists on ServicesResource
  * - Action type is "record"
  * - Handler calls admin-api POST .../services/{id}/test
- * - Returns ok notice on success
- * - Returns error notice on failure
+ * - Returns testResult embedded in record.params (option C — UX-CLARITY P0)
  *
  * Source: ADMIN_UI_SPEC.md §2.3; T-1.2.3; ADR-0014.5.
+ * Updated: UX-CLARITY P0 switched from notice-based response to option-C
+ *   (record.params.testResult) so the React component can render the full
+ *   result panel (final_url, response_body_truncated, etc.).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -59,31 +61,41 @@ describe("testService action", () => {
     expect(isVisible).toBe(true);
   });
 
-  it("handler returns success notice with status and latency when ok", async () => {
-    // First fetch: buildSignedRequest calls (mocked at module level)
-    // Second fetch: the actual test call
+  it("handler embeds testResult in record.params when test succeeds (option C)", async () => {
+    // UX-CLARITY P0: handler no longer returns a notice; it embeds the full
+    // TestRunResponse in record.params.testResult for the React component to render.
     mockFetch
-      .mockResolvedValueOnce(makeFetchResponse({ ok: true, status_code: 200, latency_ms: 42 }));
+      .mockResolvedValueOnce(makeFetchResponse({
+        ok: true,
+        status_code: 200,
+        latency_ms: 42,
+        final_url: "https://api.example.com/health",
+        response_body_truncated: '{"status":"ok"}',
+      }));
 
     const actions = ServicesResource.options?.actions ?? {};
     const handler = (actions as Record<string, { handler?: Function }>).testService?.handler;
     expect(handler).toBeDefined();
 
     const result = await handler!(
-      { params: { recordId: "svc_test123" } },
+      { method: "post", params: { recordId: "svc_test123" }, payload: { method: "GET", path: "/health", timeout_ms: 5000 } },
       {},
       {
         currentAdmin: mockCurrentAdmin(),
-        record: { toJSON: () => ({ id: "svc_test123" }) },
+        record: { toJSON: () => ({ id: "svc_test123", params: { id: "svc_test123" }, errors: {}, populated: {} }) },
+        resource: { build: async (p: Record<string, unknown>) => ({ toJSON: () => ({ id: null, params: p, errors: {}, populated: {} }) }) },
       }
     );
 
-    expect(result.notice?.type).toBe("success");
-    expect(result.notice?.message).toContain("200");
-    expect(result.notice?.message).toContain("42");
+    const tr = result.record?.params?.testResult;
+    expect(tr).toBeDefined();
+    expect(tr?.ok).toBe(true);
+    expect(tr?.status_code).toBe(200);
+    expect(tr?.latency_ms).toBe(42);
+    expect(tr?.final_url).toBe("https://api.example.com/health");
   });
 
-  it("handler returns error notice when test fails", async () => {
+  it("handler embeds testResult with ok=false when test fails", async () => {
     mockFetch
       .mockResolvedValueOnce(makeFetchResponse({ ok: false, status_code: 502, latency_ms: 1000 }));
 
@@ -91,15 +103,18 @@ describe("testService action", () => {
     const handler = (actions as Record<string, { handler?: Function }>).testService?.handler;
 
     const result = await handler!(
-      { params: { recordId: "svc_test123" } },
+      { method: "post", params: { recordId: "svc_test123" }, payload: { method: "GET", path: "/health", timeout_ms: 5000 } },
       {},
       {
         currentAdmin: mockCurrentAdmin(),
-        record: { toJSON: () => ({ id: "svc_test123" }) },
+        record: { toJSON: () => ({ id: "svc_test123", params: { id: "svc_test123" }, errors: {}, populated: {} }) },
+        resource: { build: async (p: Record<string, unknown>) => ({ toJSON: () => ({ id: null, params: p, errors: {}, populated: {} }) }) },
       }
     );
 
-    expect(result.notice?.type).toBe("error");
-    expect(result.notice?.message).toContain("502");
+    const tr = result.record?.params?.testResult;
+    expect(tr).toBeDefined();
+    expect(tr?.ok).toBe(false);
+    expect(tr?.status_code).toBe(502);
   });
 });

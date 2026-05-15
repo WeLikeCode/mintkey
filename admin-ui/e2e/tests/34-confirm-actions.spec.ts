@@ -93,8 +93,10 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
   });
 
   // ── testService ──────────────────────────────────────────────────────────────
+  // UX-CLARITY P0: testService now renders TestServiceForm (5-field form + curl
+  // preview + result panel) instead of the generic ConfirmAction two-button page.
 
-  test("testService: confirmation page renders (no action-component error)", async ({
+  test("testService: TestServiceForm renders (no action-component error)", async ({
     page,
     consoleErrors,
     browserName,
@@ -120,21 +122,24 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     const body = await page.locator("body").innerText();
     expect(body, "Must not show action-component error").not.toContain("implement action component");
 
+    // TestServiceForm renders (UX-CLARITY P0 replaced ConfirmAction)
     await expect(
-      page.locator('[data-testid="confirm-action-page"]'),
-      "Confirmation page must render",
+      page.locator('[data-testid="test-service-form"]'),
+      "TestServiceForm must render",
     ).toBeVisible({ timeout: 10_000 });
     await expect(
-      page.locator('[data-testid="confirm-action-button"]'),
+      page.locator('[data-testid="test-service-submit"]'),
+      "Run Test button must be visible",
     ).toBeVisible();
     await expect(
-      page.locator('[data-testid="cancel-action-button"]'),
+      page.locator('[data-testid="test-service-cancel"]'),
+      "Cancel button must be visible",
     ).toBeVisible();
 
     void consoleErrors;
   });
 
-  test("testService: confirm button fires test and shows result notice", async ({
+  test("testService: Run Test button fires test and shows result panel", async ({
     page,
     consoleErrors,
     browserName,
@@ -154,7 +159,7 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     await page.goto(`/admin/resources/services/records/${serviceId}/testService`, {
       waitUntil: "domcontentloaded",
     });
-    await expect(page.locator('[data-testid="confirm-action-page"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="test-service-form"]')).toBeVisible({ timeout: 10_000 });
 
     const [response] = await Promise.all([
       page.waitForResponse(
@@ -163,12 +168,12 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
           r.request().method() === "POST",
         { timeout: 15_000 },
       ),
-      page.locator('[data-testid="confirm-action-button"]').click(),
+      page.locator('[data-testid="test-service-submit"]').click(),
     ]);
     expect(response.status(), "testService POST must return 2xx").toBeLessThan(400);
 
-    // Wait for notice — result can be success or error (backend may be unreachable)
-    await page.locator('[data-testid="action-notice"]').waitFor({ state: "visible", timeout: 15_000 });
+    // Wait for result panel — result can be success or error (backend may be unreachable)
+    await page.locator('[data-testid="test-result-panel"]').waitFor({ state: "visible", timeout: 15_000 });
 
     void consoleErrors;
   });
