@@ -143,6 +143,33 @@ def test_create_agent_returns_201(
     assert body["status"] == "active"
 
 
+def test_create_agent_mcp_endpoint_uses_port_8082(
+    admin_app: TestClient, agent_tenant: str
+) -> None:
+    """
+    OPS-FF Fix 2: mcp_endpoint in creation response must use port 8082, not 8100.
+
+    The code default was changed from http://localhost:8100 to http://localhost:8082
+    and docker-compose.yml sets MCP_BASE_URL=http://localhost:8082 explicitly.
+    Port 8100 was never mapped and caused every agent's mcp_endpoint to be broken.
+    """
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{agent_tenant}/agents",
+        json={"name": "mcp-endpoint-port-check-agent"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    mcp_endpoint = body.get("mcp_endpoint", "")
+    assert mcp_endpoint, "mcp_endpoint must be present in agent creation response"
+    assert "8082" in mcp_endpoint, (
+        f"mcp_endpoint must contain port 8082 (OPS-FF Fix 2), got: {mcp_endpoint!r}"
+    )
+    assert "8100" not in mcp_endpoint, (
+        f"mcp_endpoint must NOT contain broken port 8100, got: {mcp_endpoint!r}"
+    )
+
+
 def test_create_agent_api_key_returned_only_once(
     admin_app: TestClient, agent_tenant: str
 ) -> None:

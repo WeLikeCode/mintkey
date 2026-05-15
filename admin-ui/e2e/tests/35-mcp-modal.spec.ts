@@ -69,6 +69,17 @@ test.describe("35 — MCP config modal", () => {
     expect(snippetText).toContain("mcpServers");
     expect(snippetText).toContain("mintkey");
 
+    // OPS-FF Fix 1: snippet must include Authorization header + placeholder — operators
+    // need the header to authenticate all non-bootstrap tool calls.
+    expect(snippetText).toContain("Authorization");
+    expect(snippetText).toContain("<PASTE_AGENT_API_KEY>");
+
+    // OPS-FF Fix 1: modal prose must guide operators to replace the placeholder.
+    const modalInner = page.locator('[data-testid="mcp-config-modal-inner"]');
+    const modalText = (await modalInner.textContent()) ?? "";
+    expect(modalText).toContain("<PASTE_AGENT_API_KEY>");
+    expect(modalText).toContain("bootstrap tool is unauthenticated");
+
     // ── 5. Copy button is present ────────────────────────────────────────────
     const copyBtn = page.locator('[data-testid="mcp-config-copy-btn"]');
     await expect(copyBtn).toBeVisible();
@@ -91,6 +102,9 @@ test.describe("35 — MCP config modal", () => {
     );
     expect(clipboardText).toContain("mcpServers");
     expect(clipboardText).toContain("mintkey");
+    // OPS-FF Fix 1: copied JSON must include the Authorization header + placeholder
+    expect(clipboardText).toContain("Authorization");
+    expect(clipboardText).toContain("<PASTE_AGENT_API_KEY>");
 
     // ── 7. Close button dismisses the modal ─────────────────────────────────
     const closeBtn = page.locator('[data-testid="mcp-config-close-btn"]');

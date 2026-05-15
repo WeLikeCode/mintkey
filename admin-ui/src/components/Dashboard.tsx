@@ -65,10 +65,10 @@ interface Step {
  *   1. Your production domain  →  https://mintkey.example.com/v1
  *   2. Your docker-compose dev →  http://localhost:8082/v1
  *
- * The bootstrap tool (/v1/tools/bootstrap) is unauthenticated — no credentials
- * or headers are required in this config.
+ * The Authorization header is required for all tools except mintkey_bootstrap.
+ * Replace <PASTE_AGENT_API_KEY> with the mk_agent_... key returned at agent creation.
  *
- * Source: UI-MCP-modal chunk; mcp-server port 8082 (docker-compose.yml #6).
+ * Source: UI-MCP-modal chunk; mcp-server port 8082 (docker-compose.yml #6); OPS-FF Fix 1.
  */
 const MCP_CONFIG_SNIPPET = JSON.stringify(
   {
@@ -76,8 +76,10 @@ const MCP_CONFIG_SNIPPET = JSON.stringify(
       mintkey: {
         type: "http",
         url: "http://localhost:8082/v1",
-        description:
-          "Mintkey credential broker — call mintkey_bootstrap first (no auth required)",
+        headers: {
+          Authorization: "Bearer <PASTE_AGENT_API_KEY>",
+        },
+        description: "Mintkey credential broker — paste your agent API key above (mk_agent_...).",
       },
     },
   },
@@ -145,10 +147,11 @@ const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           Add this snippet to your MCP client config (e.g.{" "}
           <code>~/.claude/mcp.json</code> for Claude Desktop, or{" "}
           <code>.mcp.json</code> in your project for Claude Code) to let your AI
-          agents bootstrap into Mintkey. The{" "}
-          <code>mintkey_bootstrap</code> tool is unauthenticated — call it first
-          and it will tell your agent how to authenticate and discover services.
-          Replace{" "}
+          agents connect to Mintkey. Replace{" "}
+          <code>&lt;PASTE_AGENT_API_KEY&gt;</code> with the{" "}
+          <code>mk_agent_…</code> key you got when creating your agent. The
+          bootstrap tool is unauthenticated but all other tools require this
+          header. Replace{" "}
           <code>http://localhost:8082</code> with your production Mintkey URL
           (e.g. <code>https://mintkey.example.com</code>) before deploying.
         </Text>

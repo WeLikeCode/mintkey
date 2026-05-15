@@ -167,6 +167,9 @@ services:
       MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      # OPS-FF Fix 2: explicit MCP_BASE_URL so agent mcp_endpoint URLs use correct port.
+      # Override via .env if mcp-server is exposed on a different host/port.
+      MCP_BASE_URL: "http://localhost:8082"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -232,6 +235,9 @@ services:
       BROKER_BASE_URL: http://broker:8083
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      # OPS-FF Fix 3: override internal Docker DNS default so bootstrap returns
+      # a host-reachable proxy URL. mintkey-proxy:8000 remains correct for in-cluster.
+      MINTKEY_PROXY_URL: "http://localhost:8000"
     ports:
       - "8082:8082"
     networks:

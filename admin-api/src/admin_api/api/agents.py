@@ -182,7 +182,7 @@ async def create_agent(
 
     plaintext, api_key_hash, fingerprint = _generate_agent_api_key()
 
-    mcp_base = os.getenv("MCP_BASE_URL", "http://localhost:8100")
+    mcp_base = os.getenv("MCP_BASE_URL", "http://localhost:8082")
     mcp_endpoint = f"{mcp_base}/v1/agents/{agent_id}"
 
     await session.execute(
