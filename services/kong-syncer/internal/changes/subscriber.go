@@ -27,6 +27,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/kong"
+	"github.com/mintkey/mintkey/services/kong-syncer/internal/wireids"
 )
 
 // AllTenants is the sentinel value for a global (all-tenant) subscriber.
@@ -370,6 +371,14 @@ WHERE s.status = 'active'`
 		if err := rows.Scan(&e.ID, &e.TenantID, &e.TenantSlug, &e.Slug, &e.BaseURL); err != nil {
 			return nil, fmt.Errorf("scan: %w", err)
 		}
+		// Convert the raw DB UUID to the canonical svc_ wire-form ID so that
+		// Kong routes are published with /v1/call/svc_<26-char Crockford> paths
+		// matching the IDs returned by list_services (ADR-0017.11; OPS-GG).
+		wireID, err := wireids.DBUUIDToWire(e.ID, "svc")
+		if err != nil {
+			return nil, fmt.Errorf("DBUUIDToWire service %q: %w", e.ID, err)
+		}
+		e.ID = wireID
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
