@@ -42,6 +42,28 @@ describe("PermissionsResource configuration", () => {
   });
 });
 
+describe("PermissionsResource — UX-CLARITY field descriptions (Chunk D)", () => {
+  it("action property has a description covering <verb>:<resource> pattern and `call` sentinel", () => {
+    const props = (PermissionsResource.options?.properties ?? {}) as Record<string, { description?: string }>;
+    const desc = props.action?.description ?? "";
+    expect(desc).toBeTruthy();
+    expect(desc).toMatch(/call/);
+    expect(desc).toMatch(/<verb>:<resource>/);
+    expect(desc).toMatch(/read:contacts|write:invoices|delete:invoices/);
+  });
+
+  it("constraints property has a description listing all allowed keys", () => {
+    const props = (PermissionsResource.options?.properties ?? {}) as Record<string, { description?: string }>;
+    const desc = props.constraints?.description ?? "";
+    expect(desc).toBeTruthy();
+    expect(desc).toMatch(/rate_limit/);
+    expect(desc).toMatch(/time_window/);
+    expect(desc).toMatch(/request_path_prefix/);
+    expect(desc).toMatch(/source_ip_allowlist/);
+    expect(desc).toMatch(/422/);
+  });
+});
+
 describe("PermissionsResource — new action handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();

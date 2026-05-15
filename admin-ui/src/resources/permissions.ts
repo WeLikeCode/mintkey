@@ -84,10 +84,16 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: { list: true, show: true, edit: true, filter: true },
         components: { edit: Components.ServiceCombobox },
       },
+      action: {
+        description:
+          "Action scope this agent may invoke on this service. Use `call` for unrestricted access, or a `<verb>:<resource>` pattern for narrower scopes (e.g., `read:contacts`, `write:invoices`, `delete:invoices`). The API key created from this grant must include only actions from this set.",
+      },
       constraints: {
         type: "mixed",
         isArray: false,
         components: { show: Components.JsonValue },
+        description:
+          "Optional JSON object restricting this grant. Closed schema — unknown keys return 422.\n\nAllowed keys (all optional, mix freely):\n• rate_limit: {\"requests_per_second\": 10, \"burst\": 5}\n• time_window: {\"timezone\": \"America/New_York\", \"days\": [\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\"], \"start_local\": \"09:00\", \"end_local\": \"17:00\"}\n• request_path_prefix: {\"prefix\": \"/v2/orders\"}\n• source_ip_allowlist: {\"cidrs\": [\"1.2.3.4/32\", \"10.0.0.0/8\"]}\n\nLeave empty for no restrictions.",
       },
     },
     actions: {

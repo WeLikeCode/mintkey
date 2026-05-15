@@ -72,6 +72,16 @@ describe("ApiKeysResource — long-lived-api-keys tasks 9.1–9.4", () => {
     }
   });
 
+  it("allowed_actions property has a UX-CLARITY description mentioning comma-separated, subset, and 422 (Chunk D)", () => {
+    const props = (ApiKeysResource.options?.properties ?? {}) as Record<string, { description?: string }>;
+    const desc = props.allowed_actions?.description ?? "";
+    expect(desc).toBeTruthy();
+    expect(desc).toMatch(/[Cc]omma.?separated/);
+    expect(desc).toMatch(/subset/);
+    expect(desc).toMatch(/422/);
+    expect(desc).toMatch(/call/);
+  });
+
   it("list properties include key_fingerprint, service_id, status, last_used_at (Req 9.1)", () => {
     const listProps = ApiKeysResource.options?.listProperties ?? [];
     expect(listProps).toContain("key_fingerprint");

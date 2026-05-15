@@ -58,6 +58,8 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
       allowed_actions: {
         type: "mixed",
         components: { show: Components.JsonValue },
+        description:
+          "Comma-separated list of actions this key may invoke. Must be a subset of the bound agent's permission grants for the service (e.g., if the agent has `read:contacts` and `write:contacts`, the key may include either or both but not `delete:contacts`). Use `call` if the agent has the universal-grant sentinel. Validation happens server-side; submitting an action not in the agent's grants returns 422.",
       },
       constraints: {
         type: "mixed",

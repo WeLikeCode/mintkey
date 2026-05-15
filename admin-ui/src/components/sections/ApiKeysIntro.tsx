@@ -9,7 +9,7 @@ import React from "react";
 import InlineSearchList from "../list/InlineSearchList.js";
 
 const INTRO =
-  "Service API Keys (`mk_svckey_…`) are the classical long-lived key flavour for non-agent clients — scripts, CI jobs, integrations that can't run the JWT-broker flow themselves. See ADR-0018. Each key is bound to one Agent, one Service, and a subset of the Agent's Permission Grants (with optional expiry and Constraints). Keys are Argon2id-hashed at rest, fingerprint-indexed, and instantly revocable. Mintkey resolves the key server-side and proxies the call.";
+  "Service API Keys (`mk_svckey_…`) are the classical long-lived key flavour for non-agent clients — scripts, CI jobs, integrations that can't run the JWT-broker flow themselves. See ADR-0018. Each key is bound to one Agent, one Service, and a subset of the Agent's Permission Grants (with optional expiry and Constraints). Keys are Argon2id-hashed at rest, fingerprint-indexed, and instantly revocable. Mintkey resolves the key server-side and proxies the call.\n\nAPI keys are issued from an agent's permission grants. When you create a key, you choose a subset of the agent's actions and bind to a single service. The key's allowed_actions cannot exceed the agent's grants — validation enforces this at create time.";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ApiKeysIntro = (props: Record<string, any>): React.ReactElement => (
