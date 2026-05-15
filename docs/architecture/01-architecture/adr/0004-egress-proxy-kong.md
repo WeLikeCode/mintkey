@@ -110,3 +110,83 @@ Exposes typed `get_credential(service_id, key_version) → (plaintext, auth_sche
 - [ADR‑0003 credential‑storage‑strategy](0003-credential-storage-strategy.md) — Vault Adapter contract.
 - [ADR‑0001 record‑architecture‑decisions](0001-record-architecture-decisions.md).
 - [ADR‑0008 multi‑tenancy](0008-multi-tenancy-row-level-with-db-tier.md) — plugin cache key gains `tenant_id`; JWT `tnt` claim enforced; audit emits `tenant_id`; Kong‑syncer scopes routes by tenant.
+
+---
+
+## Addendum — 2026-05-14: aud-vs-URL enforcement (Scenario D / WS-4)
+
+### Problem
+
+WS-4 Scenario D revealed that the proxy-plugin uses the JWT `aud` claim exclusively to
+identify the target service, and does not cross-check the service UUID embedded in the URL
+path (`/v1/call/{service_uuid}/...`).  A malicious agent could craft a JWT for service A
+and call Kong's route for service B; the proxy would fetch service A's credential (from
+`aud`) and forward it through service B's URL — a misleading but credential-safe exploit.
+There is no privilege escalation (the credential still belongs to the authorised service),
+but the mismatched URL creates a confusing audit trail and opens a vector for future abuse
+if the route enforcement is ever relaxed.
+
+### Decision
+
+Introduce a `MINTKEY_AUD_ENFORCEMENT` runtime flag with two modes:
+
+| Mode | Behavior on JWT.aud ≠ URL svc_id |
+|------|----------------------------------|
+| `strict` | Reject with HTTP 403 `{"error":"scope mismatch"}`. Emits structured log: `event=aud_check … result=reject`. |
+| `permissive` | Log a structured warning (`result=warn`) and proceed. |
+
+**Default policy:**
+- `MINTKEY_ENV=production` (unset `MINTKEY_AUD_ENFORCEMENT`) → `strict`
+- any other `MINTKEY_ENV` (unset `MINTKEY_AUD_ENFORCEMENT`) → `permissive`
+- `docker-compose.yml` dev stack → `MINTKEY_AUD_ENFORCEMENT=permissive` (explicit, no surprise)
+
+### Implementation
+
+- `services/proxy-plugin/internal/config/config.go`: `AudEnforcement` field + `loadAudEnforcement()`.
+- `services/proxy-plugin/cmd/proxy-plugin/main.go`:
+  - Startup log includes `aud_enforcement=<mode>`.
+  - After JWT validation, `urlServiceID()` extracts the UUID from the path; if mismatch, strict → 403, permissive → warn + proceed.
+  - `isUUIDShape()` recognises both dashed UUID (36-char) and raw 32-hex forms.
+- Both paths emit: `event=aud_check service_id_url=… aud=… mode=… result=allow|reject|warn`.
+
+### UUID canonicalisation
+
+The JWT `aud` claim contains the service DB UUID in dashed form (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+The Kong-syncer routes are also keyed on the same UUID, so the URL path segment is identical in form.
+No Crockford-to-UUID decoding is required for this check; both values arrive as dashed UUIDs.
+(If a future route change introduces Crockford wire-IDs in the path, add a decode step mirroring
+`_wire_to_uuid` in the acceptance tests.)
+
+### Audit emission
+
+`AuditEmitter` on the plugin struct is `nil` (per WS-9 finding — audit infrastructure wiring is a
+parallel workstream).  The mismatch-rejected event is logged as structured text only.  When the
+audit-emission workstream wires `AuditEmitter`, the `proxy.aud_mismatch_rejected` event should be
+added to the strict-mode rejection path.
+
+### Production deployment posture
+
+Set `MINTKEY_ENV=production` (or explicitly `MINTKEY_AUD_ENFORCEMENT=strict`) in the container
+environment.  Do NOT set `MINTKEY_AUD_ENFORCEMENT=permissive` in production — this would silently
+allow URL-spoofed calls.
+
+### Integration test harness gap
+
+The acceptance test `test_wrong_scope_strict_mode_rejects_with_403` (in
+`tests/acceptance/test_data_plane_resilience.py`) is marked `pytest.mark.skip` because the
+docker-compose harness cannot restart a single service with a different env var mid-test-run.
+Manual procedure:
+
+```
+# Terminal 1 — set strict and rebuild
+MINTKEY_AUD_ENFORCEMENT=strict docker compose up -d --no-deps --build proxy-plugin
+
+# Terminal 2 — run only the strict test (remove skip temporarily)
+MINTKEY_INTEGRATION_TEST=true pytest tests/acceptance/test_data_plane_resilience.py \
+    -k test_wrong_scope_strict_mode_rejects_with_403 -v
+
+# Reset to default
+docker compose up -d --no-deps proxy-plugin
+```
+
+Follow-up: add a `make test-strict-mode` target that automates the restart + test + reset cycle.
