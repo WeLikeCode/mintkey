@@ -667,3 +667,131 @@ def test_ws9_vault_grpc_end_to_end() -> None:
             f"Unexpected status {proxy_r.status_code} from proxy. "
             f"Expected 200 (WS-9 gRPC wiring). Response: {proxy_r.text}"
         )
+
+
+# ---------------------------------------------------------------------------
+# WS-10: vault-adapter ListVersions structural + integration tests
+# ---------------------------------------------------------------------------
+
+
+def test_ws10_vault_client_list_versions_parses_metadata() -> None:
+    """
+    Structural canary (WS-10): admin-api vault_client.list_versions must now
+    parse the full VersionDescriptor fields (key_version, auth_scheme,
+    is_current, status, created_at) instead of only key_version + auth_scheme.
+
+    Also verifies the Unimplemented-only silent-swallow is in place and
+    the function no longer blindly suppresses all gRPC errors.
+
+    Source: WS-10; vault.proto; T-1.3.1.
+    """
+    vault_client_py = _ROOT / "admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
+    assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
+
+    src = vault_client_py.read_text(encoding="utf-8")
+
+    # Full metadata fields must be parsed.
+    assert "is_current" in src, (
+        "vault_client.list_versions does not parse 'is_current' field (WS-10)"
+    )
+    assert '"status"' in src or "'status'" in src, (
+        "vault_client.list_versions does not parse 'status' field (WS-10)"
+    )
+    assert "created_at" in src, (
+        "vault_client.list_versions does not parse 'created_at' field (WS-10)"
+    )
+
+    # Must only suppress UNIMPLEMENTED — not all gRPC errors.
+    assert "UNIMPLEMENTED" in src or "StatusCode.UNIMPLEMENTED" in src, (
+        "vault_client.list_versions must handle UNIMPLEMENTED specifically (WS-10 backward-compat)"
+    )
+    # The raise statement must be present so non-Unimplemented errors propagate.
+    assert "raise" in src, (
+        "vault_client.list_versions must re-raise non-Unimplemented gRPC errors (WS-10)"
+    )
+
+
+@INTEGRATION
+def test_ws10_list_versions_end_to_end() -> None:
+    """
+    WS-10 integration guard: register two credentials via admin-api for the
+    same service, then assert that a direct call to vault-adapter's
+    ListVersions gRPC endpoint returns 2 version descriptors with correct
+    metadata and no plaintext bytes.
+
+    Requires MINTKEY_INTEGRATION_TEST=true and running docker-compose stack.
+
+    Source: WS-10; vault.proto; ADR-0003.
+    """
+    import grpc
+    from admin_api.services import vault_pb2, vault_pb2_grpc  # type: ignore[import]
+
+    ts = int(time.time())
+    secret_a = f"ws10-secret-a-{ts}"
+    secret_b = f"ws10-secret-b-{ts}"
+
+    vault_addr = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
+    channel = grpc.insecure_channel(vault_addr)
+    stub = vault_pb2_grpc.VaultAdapterStub(channel)
+
+    tenant_id = f"tenant_ws10_{ts}"
+    service_id = f"svc_ws10_{ts}"
+
+    # Put version 1.
+    r1 = stub.PutCredential(vault_pb2.PutCredentialRequest(
+        tenant_id=tenant_id,
+        service_id=service_id,
+        auth_scheme=1,  # API_KEY_HEADER
+        value=secret_a.encode(),
+    ))
+    assert r1.key_version == 1, f"Expected key_version=1, got {r1.key_version}"
+
+    # Put version 2 (rotation).
+    r2 = stub.PutCredential(vault_pb2.PutCredentialRequest(
+        tenant_id=tenant_id,
+        service_id=service_id,
+        auth_scheme=1,
+        value=secret_b.encode(),
+    ))
+    assert r2.key_version == 2, f"Expected key_version=2, got {r2.key_version}"
+
+    # ListVersions.
+    lv = stub.ListVersions(vault_pb2.ListVersionsRequest(
+        tenant_id=tenant_id,
+        service_id=service_id,
+    ))
+
+    assert len(lv.versions) == 2, (
+        f"WS-10: expected 2 versions from ListVersions, got {len(lv.versions)}"
+    )
+
+    # Ordering: ASC by key_version.
+    key_versions = [v.key_version for v in lv.versions]
+    assert key_versions == sorted(key_versions), (
+        f"WS-10: versions not in ASC order: {key_versions}"
+    )
+
+    # Only v2 should be current.
+    for v in lv.versions:
+        want_current = v.key_version == 2
+        assert v.is_current == want_current, (
+            f"WS-10: version {v.key_version}: is_current={v.is_current}, want {want_current}"
+        )
+
+    # Convenience field.
+    assert lv.current_key_version == 2, (
+        f"WS-10: current_key_version={lv.current_key_version}, want 2"
+    )
+
+    # PLAINTEXT-LEAK CHECK: no version descriptor should contain plaintext bytes.
+    for v in lv.versions:
+        # VersionDescriptor has no 'value' field; proto repr must not leak secrets.
+        v_str = str(v)
+        assert secret_a not in v_str, (
+            f"WS-10 SECURITY: plaintext {secret_a!r} leaked in VersionDescriptor for v{v.key_version}"
+        )
+        assert secret_b not in v_str, (
+            f"WS-10 SECURITY: plaintext {secret_b!r} leaked in VersionDescriptor for v{v.key_version}"
+        )
+
+    channel.close()

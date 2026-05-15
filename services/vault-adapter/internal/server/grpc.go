@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // VaultServer is the gRPC server. It holds the KEK and VaultService.
@@ -80,9 +81,42 @@ func (g *grpcVaultServer) RevokeCredential(_ context.Context, _ *vaultv1.RevokeC
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
-// ListVersions is not yet implemented.
-func (g *grpcVaultServer) ListVersions(_ context.Context, _ *vaultv1.ListVersionsRequest) (*vaultv1.ListVersionsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+// ListVersions returns metadata-only descriptors for all versions of (tenant_id, service_id).
+// Plaintext is never included — only metadata fields are populated.
+func (g *grpcVaultServer) ListVersions(ctx context.Context, req *vaultv1.ListVersionsRequest) (*vaultv1.ListVersionsResponse, error) {
+	result, err := g.svc.ListVersions(ctx, ListVersionsArgs{
+		TenantID:        req.GetTenantId(),
+		ServiceID:       req.GetServiceId(),
+		AfterKeyVersion: req.GetAfterKeyVersion(),
+		Limit:           req.GetLimit(),
+		CallerActorID:   req.GetCallerActorId(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "ListVersions: %v", err)
+	}
+
+	versions := make([]*vaultv1.VersionDescriptor, 0, len(result.Versions))
+	for _, d := range result.Versions {
+		credStatus := vaultv1.CredentialStatus_CREDENTIAL_STATUS_ACTIVE
+		if d.IsRevoked {
+			credStatus = vaultv1.CredentialStatus_CREDENTIAL_STATUS_REVOKED
+		}
+		versions = append(versions, &vaultv1.VersionDescriptor{
+			CredentialId: d.CredentialID,
+			KeyVersion:   d.KeyVersion,
+			IsCurrent:    d.IsCurrent,
+			Status:       credStatus,
+			AuthScheme:   vaultv1.AuthScheme(d.AuthScheme),
+			CreatedAt:    timestamppb.New(d.CreatedAt),
+			// value/plaintext is intentionally absent — ListVersions is metadata-only.
+		})
+	}
+
+	return &vaultv1.ListVersionsResponse{
+		Versions:            versions,
+		NextAfterKeyVersion: result.NextAfterKeyVersion,
+		CurrentKeyVersion:   result.CurrentKeyVersion,
+	}, nil
 }
 
 // ValidateServiceIdentity is not yet implemented.
