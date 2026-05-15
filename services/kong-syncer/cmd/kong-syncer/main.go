@@ -1,6 +1,6 @@
-// Kong-syncer — startup, health endpoint, and changes subscriber stub.
+// Kong-syncer — startup, health endpoint, metrics, and changes subscriber.
 //
-// Source: design §9; ADR-0014.1; T-1.0.6.
+// Source: design §9; ADR-0014.1; T-1.0.6; T-1.2.2.
 package main
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/mintkey/mintkey/internal/otelinit"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/changes"
@@ -45,13 +46,29 @@ func main() {
 	)
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /v1/health", health.Handler())
+
+	// Health endpoint: reflects degraded state when last push failed.
+	mux.Handle("GET /v1/health", health.Handler(sub))
+
+	// Metrics endpoint: live counter from sub.Stats.
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = fmt.Fprint(w,
-			"# HELP mintkey_kong_syncer_pushes_total Total Kong config pushes.\n"+
+
+		total := sub.Stats.Total()
+		lastPush := sub.Stats.LastPushUnix()
+		var lastPushAge float64
+		if lastPush > 0 {
+			lastPushAge = float64(time.Now().Unix() - lastPush)
+		}
+
+		_, _ = fmt.Fprintf(w,
+			"# HELP mintkey_kong_syncer_pushes_total Total successful Kong config pushes.\n"+
 				"# TYPE mintkey_kong_syncer_pushes_total counter\n"+
-				"mintkey_kong_syncer_pushes_total 0\n",
+				"mintkey_kong_syncer_pushes_total %d\n"+
+				"# HELP mintkey_kong_syncer_last_push_seconds Seconds since the last successful Kong config push (0 = never pushed).\n"+
+				"# TYPE mintkey_kong_syncer_last_push_seconds gauge\n"+
+				"mintkey_kong_syncer_last_push_seconds %.0f\n",
+			total, lastPushAge,
 		)
 	})
 

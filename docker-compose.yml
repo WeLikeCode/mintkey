@@ -327,7 +327,7 @@ services:
     environment:
       MINTKEY_ENV: dev
       KONG_ADMIN_URL: http://kong:8001
-      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey?sslmode=disable
       KONG_SYNCER_HTTP_PORT: "8085"
     ports:
       - "8085:8085"
