@@ -61,10 +61,15 @@ func main() {
 	log.Printf("proxy-plugin: starting env=%s vault=%s jwks=%s port=%d aud_enforcement=%s",
 		cfg.Env, cfg.VaultAddrGRPC, cfg.JWKSEndpoint, cfg.PluginPort, cfg.AudEnforcement)
 
-	// Async audit queue (#22).
+	// Async audit queue (#22, #27).
 	// Replay any events left in the WAL from a previous run, then start the
 	// background drainer.  The queue is drained and closed on graceful shutdown.
-	auditQueue := auditq.New(cfg.AdminAPIURL, cfg.ProxyServiceToken, cfg.AuditWALPath)
+	// NewWithConfig provides the service label for Prometheus metrics and the
+	// WAL compaction policy (timer + size threshold).
+	auditQueue := auditq.NewWithConfig(
+		cfg.AdminAPIURL, cfg.ProxyServiceToken, cfg.AuditWALPath,
+		"proxy-plugin", cfg.AuditCompact,
+	)
 	auditQueue.Replay()
 	auditQueue.Start()
 
@@ -145,6 +150,12 @@ func (a *classicalKeyAuditAdapter) EmitProxyHit(ctx context.Context, p classical
 	a.q.Enqueue(evt)
 }
 
+// auditEnqueuer is a narrow interface so tests can inject a mock audit sink
+// without depending on the full *auditq.Queue concrete type.
+type auditEnqueuer interface {
+	Enqueue(auditq.Event)
+}
+
 // proxyHandler is the HTTP handler that validates JWTs, fetches credentials,
 // and reverse-proxies to the target backend.
 type proxyHandler struct {
@@ -152,18 +163,24 @@ type proxyHandler struct {
 	vaultClient *vault.Client
 	jwksLimiter *proxyjwt.JWKSRefreshLimiter
 	ckHandler   *classicalkey.Handler
-	audit       *auditq.Queue // may be nil (audit disabled)
+	audit       auditEnqueuer // may be nil (audit disabled)
+	auditQ      *auditq.Queue // same as audit but typed to access WriteMetricsTo (#27)
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue) *proxyHandler {
+	var ae auditEnqueuer
+	if aq != nil {
+		ae = aq
+	}
 	return &proxyHandler{
 		cfg:         cfg,
 		vaultClient: vaultClient,
 		jwksLimiter: limiter,
 		ckHandler:   ck,
-		audit:       aq,
+		audit:       ae,
+		auditQ:      aq,
 		pubKeys:     make(map[string]ed25519.PublicKey),
 	}
 }
@@ -176,12 +193,16 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/metrics" {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		_, _ = fmt.Fprint(w,
 			"# HELP mintkey_proxy_requests_total Total requests proxied.\n"+
 				"# TYPE mintkey_proxy_requests_total counter\n"+
 				"mintkey_proxy_requests_total 0\n",
 		)
+		// Write auditq WAL and dead-letter metrics (#27).
+		if h.auditQ != nil {
+			h.auditQ.WriteMetricsTo(w)
+		}
 		return
 	}
 
@@ -239,6 +260,25 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
 			urlSvcID, serviceID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
 		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
+			// Emit audit event for strict-mode rejection (#24).
+			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
+			if h.audit != nil {
+				jtiForReject, _ := claims["jti"].(string)
+				h.audit.Enqueue(auditq.Event{
+					EventType:  "proxy.aud_mismatch_rejected",
+					TenantID:   tenantID,
+					ActorID:    agentID,
+					ActorType:  "agent",
+					TargetID:   serviceID,
+					TargetType: "service",
+					Payload: map[string]any{
+						"jti":            jtiForReject,
+						"aud":            serviceID,
+						"url_service_id": urlSvcID,
+						"mode":           string(h.cfg.AudEnforcement),
+					},
+				})
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = fmt.Fprint(w, `{"error":"scope mismatch"}`)

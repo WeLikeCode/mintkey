@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/mintkey/mintkey/internal/auditq"
 )
 
 // AudEnforcement controls how the proxy-plugin enforces the JWT aud-vs-URL
@@ -38,6 +40,8 @@ type Config struct {
 	// Audit async emission (#22)
 	AdminAPIURL  string // base URL of admin-api for audit/emit (e.g. http://admin-api:8000)
 	AuditWALPath string // path to the WAL file (default /var/lib/mintkey/proxy-audit.wal)
+	// WAL compaction (#27)
+	AuditCompact auditq.CompactConfig
 }
 
 // Load reads configuration from environment variables, applying sensible
@@ -62,6 +66,11 @@ func Load() *Config {
 		// Audit async emission (#22)
 		AdminAPIURL:  getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
 		AuditWALPath: getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/proxy-audit.wal"),
+		// WAL compaction (#27)
+		AuditCompact: auditq.CompactConfig{
+			IntervalSec:    getEnvInt("MINTKEY_AUDIT_WAL_COMPACT_INTERVAL_SEC", 300),
+			ThresholdBytes: getEnvInt64("MINTKEY_AUDIT_WAL_COMPACT_THRESHOLD_BYTES", 64<<20),
+		},
 	}
 }
 
@@ -94,6 +103,15 @@ func getEnv(key, fallback string) string {
 func getEnvInt(key string, fallback int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func getEnvInt64(key string, fallback int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
 		}
 	}

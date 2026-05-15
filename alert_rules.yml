@@ -73,6 +73,32 @@ groups:
           summary: "Operator login failure spike"
           description: "{{ $value }} login failures/s over the last 5m — possible credential stuffing."
 
+  - name: mintkey.auditq
+    rules:
+      - alert: AuditDeadLetterGrowing
+        expr: rate(auditq_dead_letter_events_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Audit dead-letter queue growing on {{ $labels.service }}"
+          description: >
+            auditq_dead_letter_events_total is growing at {{ $value | humanize }} events/s
+            (threshold: >0.1/s) for 10 minutes on service {{ $labels.service }}.
+            Check /var/lib/mintkey/*.wal.dead and admin-api reachability.
+
+      - alert: AuditWALSizeHigh
+        expr: auditq_wal_size_bytes > 104857600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Audit WAL size high on {{ $labels.service }}"
+          description: >
+            auditq_wal_size_bytes is {{ $value | humanizeBytes }} (threshold: >100 MiB)
+            for 5 minutes on service {{ $labels.service }}.
+            Compaction may be stalled or drain is falling behind.
+
   - name: mintkey.memory
     rules:
       - alert: MintkeyContainerMemHigh

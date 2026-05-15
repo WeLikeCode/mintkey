@@ -53,10 +53,15 @@ func main() {
 	iss := issuer.New(priv, activeKID, ring)
 	log.Printf("broker: starting (env=%s, port=%d)", cfg.Env, cfg.HTTPPort)
 
-	// Async audit queue (#22).
+	// Async audit queue (#22, #27).
 	// Replay any events left in the WAL from a previous run, then start the
 	// background drainer.  The queue is drained and closed on graceful shutdown.
-	auditQueue := auditq.New(cfg.AdminAPIURL, cfg.BrokerSvcToken, cfg.AuditWALPath)
+	// NewWithConfig provides the service label for Prometheus metrics and the
+	// WAL compaction policy (timer + size threshold).
+	auditQueue := auditq.NewWithConfig(
+		cfg.AdminAPIURL, cfg.BrokerSvcToken, cfg.AuditWALPath,
+		"broker", cfg.AuditCompact,
+	)
 	auditQueue.Replay()
 	auditQueue.Start()
 
@@ -77,6 +82,19 @@ func main() {
 	r.Get("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
+	})
+
+	// /metrics — Prometheus text exposition (#27).
+	// Exposes auditq gauges/counters so Prometheus can scrape WAL and
+	// dead-letter health metrics from the broker.
+	r.Get("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		_, _ = fmt.Fprintf(w,
+			"# HELP mintkey_broker_up Broker process is running.\n"+
+				"# TYPE mintkey_broker_up gauge\n"+
+				"mintkey_broker_up 1\n",
+		)
+		auditQueue.WriteMetricsTo(w)
 	})
 
 	// POST /v1/api-keys/resolve — internal; called by Egress Proxy only.

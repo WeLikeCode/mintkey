@@ -20,13 +20,20 @@
 // deadline; anything not drained within the deadline remains in the WAL for
 // the next startup.
 //
+// WAL compaction: a background goroutine periodically rewrites the WAL,
+// removing tombstoned (delivered) lines.  Triggered by a timer (default 5m)
+// or a size threshold (default 64 MiB), whichever fires first (#27).
+//
+// Dead-letter monitoring: Prometheus-format metrics are maintained via
+// sync/atomic counters and exposed via WriteMetricsTo / MetricsHandler (#27).
+//
 // Design rules (ADR-0014.7; S-SEC-1):
 //   - Payloads MUST NOT contain any credential plaintext (callers' responsibility).
 //   - The queue does not enforce ordering across multiple service instances;
 //     admin-api's audit_emit serialises concurrent appends via a per-tenant
 //     advisory lock + SELECT FOR UPDATE on audit_chain_state.
 //
-// Source: #22 async audit emission.
+// Source: #22 async audit emission; #27 WAL compaction + dead-letter metrics.
 package auditq
 
 import (
@@ -94,17 +101,37 @@ type Queue struct {
 	doneCh chan struct{}
 
 	// walMu guards all WAL file I/O so concurrent Enqueue calls don't
-	// interleave JSON lines.
+	// interleave JSON lines.  compactWorker also acquires this mutex for the
+	// read-filter-rename sequence, ensuring Enqueue never races with compaction.
 	walMu sync.Mutex
+
+	// metrics holds all Prometheus-format gauges and counters for this queue.
+	metrics *Metrics
+
+	// compactCfg controls when the compaction worker triggers.
+	compactCfg CompactConfig
 }
 
 // New creates a Queue targeting adminAPIURL/v1/internal/audit/emit.
 // serviceToken is sent in X-Mintkey-Service-Token on every request.
 // walPath is the path to the WAL file (created on first Enqueue if absent).
 //
+// The serviceLabel is used as the Prometheus label value for {service="..."}
+// on all auditq metrics.  Pass "broker" or "proxy-plugin" (or any identifier).
+// If empty, the label is set to "unknown".
+//
 // Call Replay after New to drain any events left in the WAL from a previous
 // run, then call Start to begin the background drainer.
 func New(adminAPIURL, serviceToken, walPath string) *Queue {
+	return NewWithConfig(adminAPIURL, serviceToken, walPath, "unknown", DefaultCompactConfig())
+}
+
+// NewWithConfig is like New but accepts an explicit service label for
+// Prometheus metrics and a CompactConfig controlling the compaction policy.
+func NewWithConfig(adminAPIURL, serviceToken, walPath, serviceLabel string, cc CompactConfig) *Queue {
+	if serviceLabel == "" {
+		serviceLabel = "unknown"
+	}
 	return &Queue{
 		adminAPIURL:  adminAPIURL,
 		serviceToken: serviceToken,
@@ -113,6 +140,8 @@ func New(adminAPIURL, serviceToken, walPath string) *Queue {
 		httpC:        &http.Client{Timeout: 10 * time.Second},
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
+		metrics:      newMetrics(serviceLabel),
+		compactCfg:   cc,
 	}
 }
 
@@ -159,9 +188,11 @@ func (q *Queue) Replay() {
 	}
 }
 
-// Start launches the background drainer goroutine.  Call once after Replay.
+// Start launches the background drainer goroutine and the WAL compaction
+// worker.  Call once after Replay.
 func (q *Queue) Start() {
 	go q.drain()
+	go q.compactWorker(q.compactCfg)
 }
 
 // Enqueue appends event to the WAL (synchronous, durable) then sends it to
@@ -268,7 +299,8 @@ func (q *Queue) tombstoneWAL(e Event) {
 }
 
 // deadLetterWAL appends the event to a side-file named <walPath>.dead so
-// operators can inspect permanently failing events.
+// operators can inspect permanently failing events.  Only counts and file-size
+// metadata are reflected in metrics — no plaintext from the event (S-SEC-1).
 func (q *Queue) deadLetterWAL(e Event, lastErr error) {
 	b, _ := json.Marshal(map[string]any{
 		"event":    e,
@@ -283,6 +315,15 @@ func (q *Queue) deadLetterWAL(e Event, lastErr error) {
 	}
 	defer f.Close()
 	_, _ = f.Write(append(b, '\n'))
+
+	// Increment dead-letter counter (count only — no payload content in metrics).
+	q.metrics.deadLetterTotal.Add(1)
+
+	// Refresh dead-letter file size gauge.
+	if info, statErr := os.Stat(path); statErr == nil {
+		q.metrics.deadLetterFileSizeBytes.Store(info.Size())
+	}
+
 	slog.Error("auditq: event moved to dead-letter file after max retries",
 		"event_type", e.EventType, "dead_letter", path)
 }
@@ -347,6 +388,30 @@ func (q *Queue) emitWithRetry(e Event) {
 	}
 	q.tombstoneWAL(e)
 	q.deadLetterWAL(e, fmt.Errorf("max retries exceeded"))
+}
+
+// TriggerCompact runs one compaction pass synchronously (blocking the caller
+// until it completes).  Intended for tests and one-off operational use.
+// Normal operation uses the background compactWorker.
+func (q *Queue) TriggerCompact() {
+	q.compact("manual")
+}
+
+// DeadLetterTotal returns the current value of the auditq_dead_letter_events_total
+// counter (number of events moved to the dead-letter file since process start).
+func (q *Queue) DeadLetterTotal() int64 {
+	return q.metrics.deadLetterTotal.Load()
+}
+
+// DeadLetterFileSizeBytes returns the last-observed dead-letter file size in bytes.
+func (q *Queue) DeadLetterFileSizeBytes() int64 {
+	return q.metrics.deadLetterFileSizeBytes.Load()
+}
+
+// MetricsHandler returns an http.HandlerFunc that writes auditq metrics in
+// Prometheus text exposition format (0.0.4).
+func (q *Queue) MetricsHandler() http.HandlerFunc {
+	return q.metrics.MetricsHandler()
 }
 
 // emit POSTs the event to admin-api's /v1/internal/audit/emit endpoint.
