@@ -1,15 +1,18 @@
 """
-OPS-V: describe_service returns description + openapi_url.
+OPS-V + OPS-CC: describe_service returns description + openapi_url; IDs in svc_ wire form.
 
 Unit tests (no docker required):
   1. Non-null description + openapi_url round-trip correctly.
   2. NULL description + NULL openapi_url appear as null in the response.
   3. Both fields are present in the response shape (allows null).
+  4. (OPS-CC) Response id field is svc_ wire form.
+  5. (OPS-CC) describe_service called with svc_ wire form → 200.
+  6. (OPS-CC) describe_service called with raw UUID → 200 (backward compat).
 
 Integration tests (MINTKEY_INTEGRATION_TEST=true):
-  4. Live container smoke: describe a seeded service, both fields present.
+  7. Live container smoke: describe a seeded service, both fields present.
 
-Source: OPS-V; Req 6 AC4; ADR-0008.
+Source: OPS-V; OPS-CC; Req 6 AC4; ADR-0008; ADR-0017.11.
 """
 from __future__ import annotations
 
@@ -48,9 +51,13 @@ BOOTSTRAP_PASSWORD = os.getenv(
 # Helpers — ASGI harness
 # ---------------------------------------------------------------------------
 
+# A fixed UUID used across unit tests so wire-form encoding is deterministic.
+_TEST_SERVICE_UUID = "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd"
+
+
 def _make_fake_row(
     *,
-    service_id: str = "some-uuid",
+    service_id: str = _TEST_SERVICE_UUID,
     name: str = "test-svc",
     slug: str = "test-svc",
     base_url: str = "https://example.com",
@@ -58,7 +65,12 @@ def _make_fake_row(
     description=None,
     openapi_url=None,
 ) -> MagicMock:
-    """Return a MagicMock that behaves like a SQLAlchemy row."""
+    """
+    Return a MagicMock that behaves like a SQLAlchemy row.
+
+    service_id must be a valid UUID string — it is passed through
+    db_uuid_to_wire() when building the response (OPS-CC).
+    """
     row = MagicMock()
     row.id = service_id
     row.name = name
@@ -241,6 +253,79 @@ def test_describe_service_response_shape_includes_base_fields() -> None:
     missing = required_keys - set(svc.keys())
     assert not missing, (
         f"describe_service response is missing fields: {missing}. Got: {svc.keys()}"
+    )
+
+
+# ===========================================================================
+# OPS-CC wire-form ID tests
+# ===========================================================================
+
+
+def test_describe_service_response_id_is_wire_form() -> None:
+    """
+    (OPS-CC) The id field in the describe_service response must use the
+    canonical svc_ Crockford wire form, not a raw UUID.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    fake_row = _make_fake_row()  # uses _TEST_SERVICE_UUID
+    resp = _run_describe(fake_row)
+
+    assert resp.status_code == 200, resp.text
+    svc = resp.json()["service"]
+    assert svc["id"].startswith("svc_"), (
+        f"Expected id to start with 'svc_', got: {svc['id']!r}"
+    )
+    # Must be svc_ + 26 Crockford chars
+    tail = svc["id"][4:]  # strip "svc_"
+    assert len(tail) == 26, (
+        f"Expected 26-char Crockford tail, got {len(tail)}-char tail: {tail!r}"
+    )
+
+
+def test_describe_service_accepts_svc_wire_form_id() -> None:
+    """
+    (OPS-CC) describe_service called with a svc_ wire-form ID in the URL
+    path → 200 with full metadata.  The svc_ form is what list_services now
+    returns, so agents that call list_services and then describe_service in
+    sequence must work end-to-end.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    from mcp_server.utils.wire_ids import db_uuid_to_wire
+
+    wire_id = db_uuid_to_wire(_TEST_SERVICE_UUID, "svc")
+    fake_row = _make_fake_row(service_id=_TEST_SERVICE_UUID)
+    resp = _run_describe(fake_row, service_id=wire_id)
+
+    assert resp.status_code == 200, (
+        f"Expected 200 when calling describe_service with svc_ form, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    svc = resp.json()["service"]
+    assert svc["id"].startswith("svc_"), (
+        f"Response id should be svc_ form, got: {svc['id']!r}"
+    )
+
+
+def test_describe_service_accepts_raw_uuid_backward_compat() -> None:
+    """
+    (OPS-CC) describe_service called with a raw UUID (no prefix) → 200.
+    Agents built before OPS-CC pass raw UUIDs and must continue to work.
+
+    Source: OPS-CC backward-compat requirement.
+    """
+    fake_row = _make_fake_row(service_id=_TEST_SERVICE_UUID)
+    resp = _run_describe(fake_row, service_id=_TEST_SERVICE_UUID)
+
+    assert resp.status_code == 200, (
+        f"Expected 200 for backward-compat raw UUID, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    svc = resp.json()["service"]
+    # Response id is always wire form regardless of input form
+    assert svc["id"].startswith("svc_"), (
+        f"Response id should always be svc_ wire form, got: {svc['id']!r}"
     )
 
 

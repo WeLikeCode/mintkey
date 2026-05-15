@@ -1,15 +1,20 @@
 """
-Unit tests: MCP Server discovery tools (T-1.5.2).
+Unit tests: MCP Server discovery tools (T-1.5.2) + OPS-CC wire-form IDs.
 
 Tests:
   1. list_services returns only services with permission grants for the agent.
   2. list_services returns empty list when the agent has no grants.
-  3. describe_service returns full service metadata.
+  3. describe_service returns full service metadata; response id is svc_ form.
   4. describe_service returns 404 when service not found.
   5. get_openapi returns the OpenAPI URL when present.
   6. get_openapi returns {"openapi_url": null} when no URL is set (not 404).
+  7. (OPS-CC) list_services response id starts with "svc_".
+  8. (OPS-CC) describe_service called with svc_ form → 200.
+  9. (OPS-CC) describe_service called with raw UUID → 200 (backward compat).
+  10.(OPS-CC) get_openapi called with svc_ form → 200.
+  11.(OPS-CC) get_openapi called with raw UUID → 200 (backward compat).
 
-Sources: Req 6 AC3, AC4; ADR-0008; ADR-0009.
+Sources: Req 6 AC3, AC4; ADR-0008; ADR-0009; ADR-0017.11; OPS-CC.
 """
 from __future__ import annotations
 
@@ -33,8 +38,9 @@ AGENT_ID = "agent_01HZ0000000000000000000000"
 TENANT_ID = "00000000-0000-0000-0000-000000000001"
 AGENT_CTX = {"agent_id": AGENT_ID, "tenant_id": TENANT_ID, "status": "active"}
 
-SVC_ID_1 = str(uuid4())
-SVC_ID_2 = str(uuid4())
+# Fixed UUIDs so wire-form encoding is deterministic in assertions.
+SVC_ID_1 = "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd"
+SVC_ID_2 = "7f4d0b1c-3a29-4cd8-9e90-6c986c2c06ce"
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +150,10 @@ async def test_list_services_empty_for_no_grants(app_with_overrides) -> None:
 
 @pytest.mark.asyncio
 async def test_describe_service_returns_metadata(app_with_overrides) -> None:
-    """describe_service returns id, name, slug, base_url, auth_scheme (Req 6 AC4)."""
+    """
+    describe_service returns id (svc_ wire form), name, slug, base_url, auth_scheme.
+    Source: Req 6 AC4; OPS-CC (id must be svc_ form).
+    """
     row = _make_service_row(SVC_ID_1, "openai")
     mock_session = _mock_session_execute([row])
     test_app = app_with_overrides(mock_session)
@@ -154,7 +163,13 @@ async def test_describe_service_returns_metadata(app_with_overrides) -> None:
 
     assert resp.status_code == 200, resp.text
     svc = resp.json()["service"]
-    assert svc["id"] == SVC_ID_1
+    # OPS-CC: id must be svc_ wire form, not the raw DB UUID.
+    assert svc["id"].startswith("svc_"), (
+        f"Expected svc_ wire form, got: {svc['id']!r}"
+    )
+    assert len(svc["id"]) == 4 + 26, (  # "svc_" + 26 Crockford chars
+        f"Expected 30-char svc_ ID, got {len(svc['id'])}: {svc['id']!r}"
+    )
     assert svc["name"] == "openai"
     assert svc["slug"] == "openai"
     assert svc["auth_scheme"] == "bearer_token"
@@ -201,3 +216,133 @@ async def test_get_openapi_returns_null_when_no_url(app_with_overrides) -> None:
 
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"openapi_url": None}
+
+
+# ---------------------------------------------------------------------------
+# OPS-CC wire-form ID tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_services_id_is_svc_wire_form(app_with_overrides) -> None:
+    """
+    (OPS-CC) list_services response: each service id must use svc_ Crockford
+    wire form — not a raw UUID.  Agents use this id in subsequent calls.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    rows = [
+        _make_service_row(SVC_ID_1, "openai"),
+        _make_service_row(SVC_ID_2, "anthropic"),
+    ]
+    mock_session = _mock_session_execute(rows)
+    test_app = app_with_overrides(mock_session)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.get("/v1/tools/list_services")
+
+    assert resp.status_code == 200, resp.text
+    services = resp.json()["services"]
+    assert len(services) == 2
+    for svc in services:
+        assert svc["id"].startswith("svc_"), (
+            f"Expected svc_ wire form, got: {svc['id']!r}"
+        )
+        tail = svc["id"][4:]  # strip "svc_"
+        assert len(tail) == 26, (
+            f"Crockford tail should be 26 chars, got {len(tail)}: {tail!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_describe_service_accepts_svc_wire_form(app_with_overrides) -> None:
+    """
+    (OPS-CC) describe_service called with svc_ wire form → 200.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    from mcp_server.utils.wire_ids import db_uuid_to_wire
+    wire_id = db_uuid_to_wire(SVC_ID_1, "svc")
+
+    row = _make_service_row(SVC_ID_1, "openai")
+    mock_session = _mock_session_execute([row])
+    test_app = app_with_overrides(mock_session)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.get(f"/v1/tools/describe_service/{wire_id}")
+
+    assert resp.status_code == 200, (
+        f"Expected 200 with svc_ wire form, got {resp.status_code}: {resp.text}"
+    )
+    assert resp.json()["service"]["id"].startswith("svc_"), (
+        f"Response id should be svc_ form: {resp.json()['service']['id']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_describe_service_accepts_raw_uuid_backward_compat(app_with_overrides) -> None:
+    """
+    (OPS-CC) describe_service called with raw UUID → 200 (backward compat).
+    Agents built before OPS-CC pass raw UUIDs; they must not break.
+
+    Source: OPS-CC backward-compat requirement.
+    """
+    row = _make_service_row(SVC_ID_1, "openai")
+    mock_session = _mock_session_execute([row])
+    test_app = app_with_overrides(mock_session)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.get(f"/v1/tools/describe_service/{SVC_ID_1}")
+
+    assert resp.status_code == 200, (
+        f"Expected 200 with raw UUID (backward compat), got {resp.status_code}: {resp.text}"
+    )
+    # Response id is always svc_ wire form regardless of input form.
+    assert resp.json()["service"]["id"].startswith("svc_"), (
+        f"Response id should always be svc_ form: {resp.json()['service']['id']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_openapi_accepts_svc_wire_form(app_with_overrides) -> None:
+    """
+    (OPS-CC) get_openapi called with svc_ wire form → 200.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    from mcp_server.utils.wire_ids import db_uuid_to_wire
+    wire_id = db_uuid_to_wire(SVC_ID_1, "svc")
+
+    openapi_url = "https://openai.example.com/openapi.json"
+    row = _make_service_row(SVC_ID_1, "openai", openapi_url=openapi_url)
+    mock_session = _mock_session_execute([row])
+    test_app = app_with_overrides(mock_session)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.get(f"/v1/tools/get_openapi/{wire_id}")
+
+    assert resp.status_code == 200, (
+        f"Expected 200 with svc_ wire form in get_openapi, got {resp.status_code}: {resp.text}"
+    )
+    assert resp.json() == {"openapi_url": openapi_url}
+
+
+@pytest.mark.asyncio
+async def test_get_openapi_accepts_raw_uuid_backward_compat(app_with_overrides) -> None:
+    """
+    (OPS-CC) get_openapi called with raw UUID → 200 (backward compat).
+
+    Source: OPS-CC backward-compat requirement.
+    """
+    openapi_url = "https://openai.example.com/openapi.json"
+    row = _make_service_row(SVC_ID_1, "openai", openapi_url=openapi_url)
+    mock_session = _mock_session_execute([row])
+    test_app = app_with_overrides(mock_session)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+        resp = await client.get(f"/v1/tools/get_openapi/{SVC_ID_1}")
+
+    assert resp.status_code == 200, (
+        f"Expected 200 with raw UUID in get_openapi, got {resp.status_code}: {resp.text}"
+    )
+    assert resp.json() == {"openapi_url": openapi_url}

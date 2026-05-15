@@ -34,6 +34,7 @@ from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.policy.constraints import RateLimiter, evaluate_rate_limit, evaluate_time_window
 from mcp_server.tools.discovery import get_agent_context
+from mcp_server.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -74,6 +75,26 @@ async def request_token(
     agent_id: str = agent_ctx["agent_id"]
     tenant_id: str = agent_ctx["tenant_id"]
 
+    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged.
+    # We keep wire_service_id (the operator-facing form) for audit events and the
+    # response body — ADR-0017.11; OPS-CC.
+    try:
+        db_service_id = wire_to_db_uuid(body.service_id, "svc")
+    except ValueError:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "code": "mintkey:not_authorized",
+                "reason_code": "permission_not_found",
+            },
+        )
+    # Canonicalise to wire form for audit log (operator-readable); if the caller
+    # passed a raw UUID we encode it, if they passed wire form it round-trips.
+    try:
+        wire_service_id = db_uuid_to_wire(db_service_id, "svc")
+    except Exception:
+        wire_service_id = body.service_id  # fallback — should not happen
+
     await set_tenant_context(session, tenant_id)
 
     # 1. Look up permission grant
@@ -84,13 +105,13 @@ async def request_token(
             " WHERE agent_id = :aid AND service_id = :sid AND action = :action"
             " LIMIT 1"
         ),
-        {"aid": agent_id, "sid": body.service_id, "action": body.action},
+        {"aid": agent_id, "sid": db_service_id, "action": body.action},
     )
     grant = result.fetchone()
 
     if grant is None:
         await _emit_denial(
-            session, tenant_id, agent_id, body.service_id, body.action,
+            session, tenant_id, agent_id, wire_service_id, body.action,
             "permission_not_found",
         )
         return JSONResponse(
@@ -105,11 +126,11 @@ async def request_token(
 
     # 2. Evaluate rate_limit constraint
     if rate_limit := constraints.get("rate_limit"):
-        key = f"{agent_id}:{body.service_id}:{body.action}"
+        key = f"{agent_id}:{wire_service_id}:{body.action}"
         allowed, reason = evaluate_rate_limit(_rate_limiter, key, rate_limit)
         if not allowed:
             await _emit_denial(
-                session, tenant_id, agent_id, body.service_id, body.action, reason
+                session, tenant_id, agent_id, wire_service_id, body.action, reason
             )
             return JSONResponse(
                 status_code=403,
@@ -121,7 +142,7 @@ async def request_token(
         allowed, reason = evaluate_time_window(time_window)
         if not allowed:
             await _emit_denial(
-                session, tenant_id, agent_id, body.service_id, body.action, reason
+                session, tenant_id, agent_id, wire_service_id, body.action, reason
             )
             return JSONResponse(
                 status_code=403,
@@ -129,6 +150,8 @@ async def request_token(
             )
 
     # 4. Call broker to issue a real JWT.
+    # Pass the DB UUID to the broker — broker is downstream and always uses UUIDs.
+    # DO NOT change the broker payload format (out-of-scope for OPS-CC).
     broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
     mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
     async with httpx.AsyncClient() as client:
@@ -136,7 +159,7 @@ async def request_token(
             f"{broker_url}/v1/issue",
             json={
                 "agent_id": agent_id,
-                "service_id": body.service_id,
+                "service_id": db_service_id,
                 "tenant_id": tenant_id,
                 "scope": body.action,
                 "ttl_seconds": 600,
@@ -151,7 +174,7 @@ async def request_token(
         )
     data = resp.json()
     return JSONResponse(
-        {"token": data["token"], "expires_at": data["expires_at"], "service_id": body.service_id}
+        {"token": data["token"], "expires_at": data["expires_at"], "service_id": wire_service_id}
     )
 
 

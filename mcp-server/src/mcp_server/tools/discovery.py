@@ -8,7 +8,10 @@ GET /v1/tools/get_openapi/{service_id}      — OpenAPI URL or null.
 GET /v1/tools/instructions         — LLM-ready usage guide (no auth required).
 
 All queries run under tenant context (RLS enforces isolation).
-Source: Req 6 AC3, AC4; ADR-0008.
+IDs emitted in responses use the canonical svc_ wire form (ADR-0017.11; OPS-CC).
+Incoming service_id path/body parameters accept BOTH wire form and raw UUID
+for backward-compatibility with agents built before OPS-CC.
+Source: Req 6 AC3, AC4; ADR-0008; ADR-0017.11; OPS-CC.
 """
 from __future__ import annotations
 
@@ -22,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
+from mcp_server.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -127,7 +131,7 @@ async def list_services(
     rows = result.fetchall()
     services = [
         {
-            "id": str(r.id),
+            "id": db_uuid_to_wire(r.id, "svc"),
             "name": r.name,
             "slug": r.slug,
             "base_url": r.base_url,
@@ -166,12 +170,12 @@ async def discover(
     rows = result.fetchall()
     services = [
         {
-            "id": str(r.id),
+            "id": db_uuid_to_wire(r.id, "svc"),
             "name": r.name,
             "slug": r.slug,
             "base_url": r.base_url,
             "auth_scheme": r.auth_scheme,
-            "how_to_call": _make_how_to_call(str(r.id), r.base_url),
+            "how_to_call": _make_how_to_call(db_uuid_to_wire(r.id, "svc"), r.base_url),
         }
         for r in rows
     ]
@@ -201,11 +205,18 @@ async def describe_service(
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
+    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged
+    # (ADR-0017.11; OPS-CC backward-compat).
+    try:
+        db_service_id = wire_to_db_uuid(service_id, "svc")
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
+
     await set_tenant_context(session, agent_ctx["tenant_id"])
 
     result = await session.execute(
         text("SELECT * FROM services WHERE id = :sid"),
-        {"sid": service_id},
+        {"sid": db_service_id},
     )
     row = result.fetchone()
     if row is None:
@@ -214,7 +225,7 @@ async def describe_service(
     return JSONResponse(
         {
             "service": {
-                "id": str(row.id),
+                "id": db_uuid_to_wire(row.id, "svc"),
                 "name": row.name,
                 "slug": row.slug,
                 "base_url": row.base_url,
@@ -240,11 +251,18 @@ async def get_openapi(
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
+    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged
+    # (ADR-0017.11; OPS-CC backward-compat).
+    try:
+        db_service_id = wire_to_db_uuid(service_id, "svc")
+    except ValueError:
+        return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
+
     await set_tenant_context(session, agent_ctx["tenant_id"])
 
     result = await session.execute(
         text("SELECT openapi_url FROM services WHERE id = :sid"),
-        {"sid": service_id},
+        {"sid": db_service_id},
     )
     row = result.fetchone()
     if row is None:

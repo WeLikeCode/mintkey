@@ -1,5 +1,5 @@
 """
-Unit tests: MCP Server request_token tool (T-1.5.4).
+Unit tests: MCP Server request_token tool (T-1.5.4) + OPS-CC wire-form IDs.
 
 Tests:
   1. Valid request with no constraints → returns token bundle.
@@ -7,8 +7,12 @@ Tests:
   3. Rate limit exceeded → 403 constraint_failed:rate_limit.
   4. Time window outside allowed hours → 403 constraint_failed:time_window.
   5. Denial emits token.denied audit event.
+  6. (OPS-CC) request_token with svc_ wire form → 200; response service_id is svc_ form.
+  7. (OPS-CC) request_token with raw UUID → 200 (backward compat); response service_id
+     is svc_ form (canonicalised on the way out).
+  8. (OPS-CC) Denial audit event service_id payload uses svc_ wire form.
 
-Sources: Req 6 AC5, AC10; ADR-0016.4; ADR-0014.7; ADR-0008.
+Sources: Req 6 AC5, AC10; ADR-0016.4; ADR-0014.7; ADR-0008; ADR-0017.11; OPS-CC.
 """
 from __future__ import annotations
 
@@ -35,6 +39,10 @@ TENANT_ID = "00000000-0000-0000-0000-000000000001"
 AGENT_CTX = {"agent_id": AGENT_ID, "tenant_id": TENANT_ID, "status": "active"}
 SERVICE_ID = "svc_01HZ0000000000000000000001"
 ACTION = "call"
+
+# Raw UUID that decodes to the same service as SERVICE_ID — for backward-compat tests.
+# Derived: wire_to_db_uuid("svc_01HZ0000000000000000000001", "svc") == "018fc000-0000-0000-0000-000000000001"
+SERVICE_UUID = "018fc000-0000-0000-0000-000000000001"
 
 
 # ---------------------------------------------------------------------------
@@ -268,4 +276,117 @@ async def test_denial_emits_audit_event(app_factory) -> None:
     event_type = kwargs.get("event_type") or (args[2] if len(args) > 2 else None)
     assert event_type == "token.denied", (
         f"Expected event_type='token.denied', got {event_type!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# OPS-CC wire-form ID tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_request_token_with_svc_wire_form_succeeds(app_factory) -> None:
+    """
+    (OPS-CC) request_token body service_id in svc_ wire form → 200; response
+    service_id is also in svc_ wire form.
+
+    This is the primary post-OPS-CC flow: agents call list_services, get svc_
+    IDs, and use them in request_token.
+
+    Source: OPS-CC; ADR-0017.11.
+    """
+    grant = _make_grant_row(constraints=None)
+    mock_session = _mock_session_for_grant(grant)
+    test_app = app_factory(mock_session)
+
+    fake_token = "aGVhZA.Y2xhaW1z.c2ln"
+    fake_expires = int(time.time()) + 600
+
+    with patch("mcp_server.tools.request_token.audit_emit", new=AsyncMock()):
+        with respx.mock:
+            respx.post("http://broker:8083/v1/issue").mock(
+                return_value=Response(200, json={"token": fake_token, "expires_at": fake_expires})
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/v1/tools/request_token",
+                    json={"service_id": SERVICE_ID, "action": ACTION},
+                )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["service_id"].startswith("svc_"), (
+        f"Response service_id should be svc_ wire form, got: {body['service_id']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_token_with_raw_uuid_backward_compat(app_factory) -> None:
+    """
+    (OPS-CC) request_token body service_id as raw UUID → 200 (backward compat).
+    Agents built before OPS-CC pass raw UUIDs; they must continue to work.
+    Response service_id is canonicalised to svc_ form.
+
+    Source: OPS-CC backward-compat requirement.
+    """
+    grant = _make_grant_row(constraints=None)
+    mock_session = _mock_session_for_grant(grant)
+    test_app = app_factory(mock_session)
+
+    fake_token = "aGVhZA.Y2xhaW1z.c2ln"
+    fake_expires = int(time.time()) + 600
+
+    with patch("mcp_server.tools.request_token.audit_emit", new=AsyncMock()):
+        with respx.mock:
+            respx.post("http://broker:8083/v1/issue").mock(
+                return_value=Response(200, json={"token": fake_token, "expires_at": fake_expires})
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=test_app), base_url="http://test"
+            ) as client:
+                resp = await client.post(
+                    "/v1/tools/request_token",
+                    json={"service_id": SERVICE_UUID, "action": ACTION},
+                )
+
+    assert resp.status_code == 200, (
+        f"Expected 200 for raw UUID (backward compat), got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    # Response service_id must be canonicalised to svc_ wire form.
+    assert body["service_id"].startswith("svc_"), (
+        f"Response service_id should be svc_ wire form even for raw-UUID input, "
+        f"got: {body['service_id']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_denial_audit_event_service_id_is_wire_form(app_factory) -> None:
+    """
+    (OPS-CC) When a request_token is denied, the audit event payload
+    service_id uses svc_ wire form (operator-readable in audit_events).
+
+    Source: OPS-CC; ADR-0014.7; ADR-0017.11.
+    """
+    mock_session = _mock_session_for_grant(None)
+    test_app = app_factory(mock_session)
+
+    mock_audit = AsyncMock()
+    with patch("mcp_server.tools.request_token.audit_emit", new=mock_audit):
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            await client.post(
+                "/v1/tools/request_token",
+                json={"service_id": SERVICE_UUID, "action": ACTION},
+            )
+
+    assert mock_audit.called, "audit_emit was not called on denial"
+    kwargs = mock_audit.call_args[1] if mock_audit.call_args[1] else {}
+    payload = kwargs.get("payload", {})
+    audit_service_id = payload.get("service_id", "")
+    assert audit_service_id.startswith("svc_"), (
+        f"Audit event service_id should be svc_ wire form, got: {audit_service_id!r}"
     )
