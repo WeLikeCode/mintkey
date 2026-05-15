@@ -22,7 +22,7 @@
  * Source: UX-C6; admin-ui-ux-uplift chunk; ADMIN_UI_SPEC.md §1.3.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   H3,
@@ -32,7 +32,7 @@ import {
   Input,
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AUTH_SCHEMES, getCredentialFields } from "../../lib/auth-scheme.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
@@ -46,6 +46,24 @@ type SuccessState = {
   credentialCreated: boolean;
   credentialWarning?: string;
 };
+
+interface TestResult {
+  ok: boolean;
+  status_code?: number;
+  latency_ms?: number;
+  final_url?: string;
+  response_body_truncated?: string;
+  error?: string;
+}
+
+interface ServiceTemplate {
+  slug: string;
+  name: string;
+  description?: string;
+  base_url?: string;
+  auth_scheme?: string;
+  openapi_url?: string;
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,6 +108,7 @@ const FieldRow = ({ id, label, required, children }: FieldProps): React.ReactEle
 const ServiceCreateForm = (props: Props): React.ReactElement => {
   const { resource } = props as { resource: { id: string } };
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // ── service fields ─────────────────────────────────────────────────────────
   const [name, setName] = useState("");
@@ -97,6 +116,9 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
   const [authScheme, setAuthScheme] = useState("none");
   const [description, setDescription] = useState("");
   const [openapiUrl, setOpenapiUrl] = useState("");
+
+  // ── template pre-fill state ────────────────────────────────────────────────
+  const [templateName, setTemplateName] = useState<string | null>(null);
 
   // ── credential fields (dynamic per scheme) ─────────────────────────────────
   // Map of field name → value for scheme-specific hint fields (non-secret)
@@ -111,11 +133,129 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
+  // ── test-before-save state ─────────────────────────────────────────────────
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+
   // ── derived ────────────────────────────────────────────────────────────────
   const schemeFields = getCredentialFields(authScheme);
   // Separate secret (value) fields from injection-hint fields
   const hintFields = schemeFields.filter((f) => !f.secret);
   const secretFields = schemeFields.filter((f) => f.secret);
+
+  // ── template pre-fill on mount ─────────────────────────────────────────────
+  // Reads ?template=<slug> from URL and fetches template detail to pre-fill form.
+  // HARD RULE: credential value (secret) is NEVER pre-filled from template.
+  useEffect(() => {
+    const slug = searchParams.get("template");
+    if (!slug) return;
+
+    const api = new ApiClient();
+    api
+      .resourceAction({
+        resourceId: resource?.id ?? "services",
+        actionName: "template-detail",
+        method: "get",
+        params: { slug },
+      })
+      .then((resp) => {
+        const data = resp.data as {
+          template?: ServiceTemplate;
+          record?: { params?: { template?: ServiceTemplate } };
+        };
+        const tpl: ServiceTemplate | null | undefined =
+          data?.template ?? data?.record?.params?.template;
+
+        if (!tpl) return;
+
+        // Pre-fill service fields from template
+        if (tpl.name) setName(tpl.name);
+        if (tpl.base_url) setBaseUrl(tpl.base_url);
+        if (tpl.auth_scheme) setAuthScheme(tpl.auth_scheme);
+        if (tpl.description) setDescription(tpl.description);
+        if (tpl.openapi_url) setOpenapiUrl(tpl.openapi_url);
+
+        // DO NOT pre-fill credential value — security boundary (OPS-SUX hard rule)
+        setCredFields({}); // ensure cred fields reset (no leakage)
+
+        setTemplateName(tpl.name ?? slug);
+      })
+      .catch(() => {
+        // Template fetch failed — silently proceed with blank form
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
+  // ── test-before-save handler ───────────────────────────────────────────────
+  // Posts to BFF test-transient action without creating a DB record.
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setTestError(null);
+
+    // Gather the credential value field
+    const secretField = secretFields[0];
+    const credentialValue = secretField ? (credFields[secretField.name] ?? "") : "";
+
+    const payload = {
+      service: {
+        name: name.trim(),
+        base_url: baseUrl.trim(),
+        auth_scheme: authScheme,
+      },
+      credential: {
+        value: credentialValue,
+        header_name: credFields.header_name ?? undefined,
+        query_param: credFields.param_name ?? undefined,
+      },
+      test: {
+        method: "GET",
+        path: "/health",
+        timeout_ms: 5000,
+      },
+    };
+
+    const api = new ApiClient();
+    try {
+      const resp = await api.resourceAction({
+        resourceId: resource?.id ?? "services",
+        actionName: "test-transient",
+        method: "post",
+        data: payload,
+      });
+
+      const data = resp.data as {
+        testResult?: TestResult;
+        record?: { params?: { testResult?: TestResult } };
+      };
+      const result =
+        data?.testResult ??
+        data?.record?.params?.testResult ??
+        null;
+
+      if (result) {
+        setTestResult(result);
+      } else {
+        setTestError("Unexpected response — no test result returned");
+      }
+    } catch (err: unknown) {
+      setTestError(err instanceof Error ? err.message : "Test request failed");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // ── is test button enabled? ─────────────────────────────────────────────────
+  // Enabled when: name + base_url + auth_scheme populated AND a credential value field
+  // exists AND it is populated. For "none" scheme (no cred), allow testing anyway.
+  const secretField = secretFields[0];
+  const credentialValue = secretField ? (credFields[secretField.name] ?? "") : "";
+  const canTest =
+    name.trim() !== "" &&
+    baseUrl.trim() !== "" &&
+    authScheme !== "" &&
+    (secretField == null || credentialValue !== "");
 
   const handleSchemeChange = (newScheme: string) => {
     setAuthScheme(newScheme);
@@ -301,6 +441,49 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
   return (
     <Box variant="white" p="xxl" data-testid="service-create-form">
       <H3 mb="lg">New Service</H3>
+
+      {/* ── Template pre-fill banner ──────────────────────────────────── */}
+      {templateName && (
+        <Box
+          mb="lg"
+          p="lg"
+          style={{
+            background: "#cce5ff",
+            border: "1px solid #b8daff",
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 8,
+          }}
+          data-testid="template-prefill-banner"
+        >
+          <Text style={{ color: "#004085" }}>
+            Pre-filled from template: <strong>{templateName}</strong>.
+          </Text>
+          <Button
+            as="a"
+            href="/admin/resources/services/actions/new"
+            variant="light"
+            size="sm"
+            data-testid="template-prefill-clear"
+            onClick={() => {
+              setName("");
+              setBaseUrl("");
+              setAuthScheme("none");
+              setDescription("");
+              setOpenapiUrl("");
+              setTemplateName(null);
+              setCredFields({});
+              navigate("/admin/resources/services/actions/new");
+            }}
+          >
+            Clear
+          </Button>
+        </Box>
+      )}
+
       <Text mb="xl" style={{ color: "#6c757d" }}>
         Register a backend API that Agents will call through the Mintkey egress proxy.
         Auth-scheme-specific fields are shown automatically below.
@@ -464,6 +647,117 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
                     )}
                   </FieldRow>
                 ))}
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* ── Test-before-save ─────────────────────────────────────────── */}
+        <Box mt="xl" mb="default" data-testid="test-before-save-section">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!canTest || testing}
+            onClick={handleTestConnection}
+            data-testid="test-before-save-btn"
+          >
+            {testing ? "Testing…" : "Test connection"}
+          </Button>
+          {!canTest && (
+            <Text style={{ fontSize: 12, color: "#6c757d", marginTop: 4 }}>
+              Fill in name, base URL, auth scheme and credential value to enable.
+            </Text>
+          )}
+        </Box>
+
+        {/* ── Test error ──────────────────────────────────────────────── */}
+        {testError && (
+          <Box
+            mb="lg"
+            p="lg"
+            style={{
+              background: "#f8d7da",
+              border: "1px solid #f5c6cb",
+              borderRadius: 4,
+            }}
+            data-testid="test-before-save-error"
+          >
+            <Text style={{ color: "#721c24" }}>{testError}</Text>
+          </Box>
+        )}
+
+        {/* ── Inline test result panel ─────────────────────────────────── */}
+        {testResult !== null && (
+          <Box mt="default" mb="lg" data-testid="test-before-save-result">
+            <Box
+              p="lg"
+              style={{
+                background: testResult.ok ? "#d4edda" : "#f8d7da",
+                border: `1px solid ${testResult.ok ? "#c3e6cb" : "#f5c6cb"}`,
+                borderRadius: 4,
+                marginBottom: 8,
+              }}
+              data-testid="test-before-save-status"
+            >
+              <Text
+                style={{
+                  fontWeight: 700,
+                  fontSize: 18,
+                  color: testResult.ok ? "#155724" : "#721c24",
+                }}
+              >
+                {testResult.ok ? "✓" : "✗"}{" "}
+                {testResult.status_code != null
+                  ? String(testResult.status_code)
+                  : (testResult.error ?? "—")}
+                {testResult.latency_ms != null && (
+                  <span style={{ fontWeight: 400, fontSize: 13, marginLeft: 12 }}>
+                    {testResult.latency_ms} ms
+                  </span>
+                )}
+              </Text>
+              {!testResult.ok && (
+                <Text style={{ fontSize: 12, color: "#721c24", marginTop: 4 }}>
+                  A failed test does not block saving. Fix the connection later or save now.
+                </Text>
+              )}
+            </Box>
+
+            {testResult.final_url && (
+              <Box
+                mb="default"
+                p="default"
+                style={{
+                  background: "#f8f9fa",
+                  border: "1px solid #dee2e6",
+                  borderRadius: 4,
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  wordBreak: "break-all",
+                }}
+                data-testid="test-before-save-final-url"
+              >
+                {testResult.final_url}
+              </Box>
+            )}
+
+            {testResult.response_body_truncated != null && (
+              <Box
+                mb="default"
+                p="default"
+                style={{
+                  background: "#f8f9fa",
+                  border: "1px solid #dee2e6",
+                  borderRadius: 4,
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  maxHeight: 160,
+                  overflowY: "auto",
+                  wordBreak: "break-all",
+                }}
+                data-testid="test-before-save-body"
+              >
+                {testResult.response_body_truncated || "(empty response)"}
               </Box>
             )}
           </Box>

@@ -200,6 +200,8 @@ services:
       ADMIN_EMAIL: admin@mintkey.internal
       ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
       ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
+      # (OPS-X) Proxy base URL shown on service show page as proxy_url field
+      MINTKEY_PROXY_URL: "http://localhost:8000"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:

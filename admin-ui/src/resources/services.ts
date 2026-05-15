@@ -4,15 +4,24 @@
  * READ via RestResource (calls admin-api HTTP).
  * WRITE via apiWrite (session + CSRF double-submit, server-to-server).
  *
+ * OPS-SUX additions:
+ *   (S) template-list + template-detail resource actions (BFF passthrough to /v1/service-templates)
+ *   (U) test-transient resource action (BFF passthrough to /v1/tenants/{tenantId}/services/test-transient)
+ *   (X) proxy_url virtual property shown on service show page via CopyableValue
+ *
  * Source: T-1.2.3; Req 3; ADR-0013; ADR-0014.5.
  */
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, getApiSession } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
+
+// (OPS-X) Read the proxy base URL at startup time (server-side only).
+// Falls back to http://localhost:8000 for local dev (Kong proxy default port).
+const MINTKEY_PROXY_URL = process.env.MINTKEY_PROXY_URL ?? "http://localhost:8000";
 
 const _servicesResource = new RestResource({
   id: "services", name: "Services",
@@ -35,7 +44,17 @@ const _servicesResource = new RestResource({
     { path: "updated_at", type: "datetime" },
     // Virtual filter-only: free-text search forwarded to admin-api ?q=
     { path: "q", type: "string" },
+    // (OPS-X) Virtual synthetic property — computed at show time, not stored in DB
+    { path: "proxy_url", type: "string" },
   ],
+  // (OPS-X) Inject proxy_url into each record so CopyableValue can render it
+  recordTransform: (item: Record<string, unknown>): Record<string, unknown> => {
+    const id = item.id as string | undefined;
+    if (id) {
+      item.proxy_url = `${MINTKEY_PROXY_URL}/v1/call/${id}/{path}`;
+    }
+    return item;
+  },
 });
 
 export const ServicesResource: ResourceWithOptions & { adminResource: typeof _servicesResource } = {
@@ -45,7 +64,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
     navigation: { name: "Services", icon: "Network" },
     listProperties: ["id", "name", "slug", "base_url", "auth_scheme", "status", "created_at"],
     editProperties: ["name", "slug", "base_url", "auth_scheme", "description", "openapi_url"],
-    showProperties: ["id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "status", "current_key_version", "created_at", "updated_at"],
+    showProperties: ["id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "proxy_url", "status", "current_key_version", "created_at", "updated_at"],
     filterProperties: ["q", "name", "slug", "auth_scheme", "status"],
     properties: {
       auth_scheme: {
@@ -55,6 +74,15 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (name / slug)",
         description: "Case-insensitive substring match on service name and slug.",
+      },
+      // (OPS-X) Virtual proxy URL — show only, not stored
+      proxy_url: {
+        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        label: "Proxy URL",
+        description: "Agents and clients call this URL to invoke the service through the egress proxy. Replace `{path}` with the upstream API path.",
+        components: {
+          show: Components.CopyableValue,
+        },
       },
     },
     actions: {
@@ -153,6 +181,136 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           };
         },
       },
+      // (OPS-S) Template picker — resource action that renders the template browser
+      templates: {
+        actionType: "resource",
+        label: "Create from template",
+        icon: "Template",
+        isVisible: true,
+        showInDrawer: false,
+        component: Components.ServiceTemplatePicker,
+        handler: async (request, _response, context) => {
+          // GET: return an empty record so the component can mount
+          return { record: await recordJSON(context, {}) };
+        },
+      },
+
+      // (OPS-S) BFF passthrough: GET /v1/service-templates → JSON response
+      "template-list": {
+        actionType: "resource",
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          const session = await getApiSession();
+          const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+
+          const headers: Record<string, string> = {};
+          if (session?.sessionToken) {
+            headers["Cookie"] = `mintkey_session=${session.sessionToken}`;
+          }
+
+          try {
+            const resp = await fetch(`${ADMIN_API_URL}/v1/service-templates`, { headers });
+            if (!resp.ok) {
+              const baseRecord = await recordJSON(context, {});
+              return {
+                record: { ...baseRecord, params: { ...baseRecord.params, templates: [] } },
+              };
+            }
+            const data = await resp.json() as { templates?: unknown[] };
+            const templates = Array.isArray(data.templates) ? data.templates : [];
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, templates } },
+              templates,
+            };
+          } catch {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, templates: [] } },
+            };
+          }
+        },
+      },
+
+      // (OPS-S) BFF passthrough: GET /v1/service-templates/{slug} → template detail
+      "template-detail": {
+        actionType: "resource",
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          const slug = (request.query?.slug as string | undefined) ?? "";
+          const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+
+          const session = await getApiSession();
+          const headers: Record<string, string> = {};
+          if (session?.sessionToken) {
+            headers["Cookie"] = `mintkey_session=${session.sessionToken}`;
+          }
+
+          try {
+            const resp = await fetch(`${ADMIN_API_URL}/v1/service-templates/${encodeURIComponent(slug)}`, { headers });
+            if (!resp.ok) {
+              const baseRecord = await recordJSON(context, {});
+              return {
+                record: { ...baseRecord, params: { ...baseRecord.params, template: null } },
+              };
+            }
+            const template = await resp.json();
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, template } },
+              template,
+            };
+          } catch {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: { ...baseRecord, params: { ...baseRecord.params, template: null } },
+            };
+          }
+        },
+      },
+
+      // (OPS-U) BFF passthrough: POST /v1/tenants/{tenantId}/services/test-transient
+      "test-transient": {
+        actionType: "resource",
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context, {}) };
+          }
+
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+
+          // request.payload contains the TransientTestRequest shaped body
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/services/test-transient`,
+            "POST",
+            request.payload
+          );
+
+          const testResult = await resp.json() as {
+            ok: boolean;
+            status_code?: number;
+            latency_ms?: number;
+            final_url?: string;
+            response_body_truncated?: string;
+            error?: string;
+          };
+
+          const baseRecord = await recordJSON(context, {});
+          return {
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                testResult,
+              },
+            },
+            testResult,
+          };
+        },
+      },
+
       testService: {
         actionType: "record",
         label: "Test Connection",
