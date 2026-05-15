@@ -149,6 +149,12 @@ class _MockDb:
                 row = MagicMock()
                 row.id = AGENT_ID
                 result.fetchone.return_value = row
+        elif "select" in stmt_str and "services" in stmt_str:
+            # R12: api_keys.py verifies service exists before grants check.
+            # Return a mock row so the service-lookup succeeds.
+            row = MagicMock()
+            row.id = _SVC_UUID
+            result.fetchone.return_value = row
         elif "select" in stmt_str and "permission_grants" in stmt_str:
             rows = [MagicMock(action=a) for a in self.grants]
             result.fetchall.return_value = rows

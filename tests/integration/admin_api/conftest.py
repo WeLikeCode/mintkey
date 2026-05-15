@@ -139,8 +139,9 @@ def admin_app(postgres_container: PostgresContainer, apply_migrations):
 
     db_url = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
 
-    # Set env var before importing the app so any lazy references pick it up.
+    # Set env vars before importing the app so any lazy references pick them up.
     os.environ["DATABASE_URL"] = db_url
+    os.environ["VAULT_GRPC_ADDR"] = os.getenv("VAULT_GRPC_ADDR", "localhost:8084")
 
     # Re-create the engine and session factory in-place so all importers of
     # admin_api.db.session get the testcontainer-backed objects.

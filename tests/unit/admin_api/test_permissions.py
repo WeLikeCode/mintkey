@@ -53,35 +53,40 @@ VALID_GRANT_BODY = {
 
 
 def _make_mock_session(agent_exists: bool = True, existing_perm=None):
-    """Return an async-capable mock DB session."""
+    """Return an async-capable mock DB session.
+
+    Uses SQL-pattern matching so call ordering is stable after R12 which
+    inserted _resolve_service_uuid() queries between the agent check and the
+    permission idempotency check.
+    """
     session = MagicMock()
     session._execute_calls = []
-
-    call_count = [0]
 
     async def _execute(*args, **kwargs):
         session._execute_calls.append((args, kwargs))
         result = MagicMock()
-        call_count[0] += 1
+        result.fetchone.return_value = None
+        result.fetchall.return_value = []
 
-        # First call: set_tenant_context (SELECT set_config)
-        # Second call: SELECT agents (agent existence check)
-        # Third call: SELECT permission_grants (idempotency check)
-        # Fourth call: INSERT permission_grants
-        if call_count[0] == 2:
-            # Agent existence check
+        stmt_str = str(args[0]).lower() if args else ""
+
+        if "set_config" in stmt_str:
+            pass  # tenant context — no-op
+        elif "select" in stmt_str and "agents" in stmt_str:
             if agent_exists:
                 mock_row = MagicMock()
                 mock_row.id = AGENT_ID
                 result.fetchone.return_value = mock_row
-            else:
-                result.fetchone.return_value = None
-        elif call_count[0] == 3:
-            # Existing permission check
+        elif "select" in stmt_str and "services" in stmt_str:
+            # R12: _resolve_service_uuid verifies service exists.
+            # Return a non-None row so the primary path succeeds.
+            mock_row = MagicMock()
+            mock_row.id = "svc_abc"
+            result.fetchone.return_value = mock_row
+        elif "select" in stmt_str and "permission_grants" in stmt_str:
             result.fetchone.return_value = existing_perm
-        else:
-            result.fetchone.return_value = None
-        result.fetchall.return_value = []
+        # INSERT and other statements fall through with fetchone=None
+
         return result
 
     session.execute = _execute
