@@ -175,11 +175,21 @@ type VaultService struct {
 }
 
 // NewVaultService creates a VaultService with the given KEK and store.
-func NewVaultService(kek []byte, s *store.Store) *VaultService {
+// If dekCache is nil, a default 5-minute TTL cache is allocated internally.
+// Pass a non-nil cache to share a single DEKCache instance with the
+// changes.Subscriber (so both the subscriber invalidations and the metrics
+// counters reflect the same cache).
+func NewVaultService(kek []byte, s *store.Store, dekCache ...*cache.DEKCache) *VaultService {
+	var c *cache.DEKCache
+	if len(dekCache) > 0 && dekCache[0] != nil {
+		c = dekCache[0]
+	} else {
+		c = cache.New(5 * time.Minute)
+	}
 	return &VaultService{
 		kek:        kek,
 		store:      s,
-		cache:      cache.New(5 * time.Minute),
+		cache:      c,
 		identities: make(map[string]*serviceIdentity),
 	}
 }

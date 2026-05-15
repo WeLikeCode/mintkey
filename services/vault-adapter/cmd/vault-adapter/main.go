@@ -58,15 +58,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	svc := server.NewVaultService(key, st)
-	srv := server.New(key)
+	// NewVaultService shares dekCache so the changes subscriber and the vault
+	// service operate on the same in-process cache instance (metrics and
+	// invalidations reflect the same state).
+	svc := server.NewVaultService(key, st, dekCache)
+	srv := server.New(key, dekCache)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// sub may remain nil when MINTKEY_POSTGRES_DSN is not set; the metrics
+	// handler checks for nil before calling sub.LagSeconds().
+	var sub *changes.Subscriber
+
 	// Start the credential-rotation subscriber if a Postgres DSN is provided.
 	if dsn := os.Getenv("MINTKEY_POSTGRES_DSN"); dsn != "" {
-		sub := changes.NewSubscriber(dsn, dekCache)
+		sub = changes.NewSubscriber(dsn, dekCache)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("vault-adapter: changes subscriber error: %v", err)
@@ -84,11 +91,29 @@ func main() {
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 	httpMux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		hits := dekCache.Hits()
+		misses := dekCache.Misses()
+
+		var lagSeconds float64
+		if sub != nil {
+			lagSeconds = sub.LagSeconds()
+		}
+
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = fmt.Fprint(w,
+		_, _ = fmt.Fprintf(w,
 			"# HELP mintkey_vault_adapter_requests_total Total gRPC requests handled.\n"+
 				"# TYPE mintkey_vault_adapter_requests_total counter\n"+
-				"mintkey_vault_adapter_requests_total 0\n",
+				"mintkey_vault_adapter_requests_total 0\n"+
+				"# HELP mintkey_vault_dek_cache_hit_total DEK cache hits.\n"+
+				"# TYPE mintkey_vault_dek_cache_hit_total counter\n"+
+				"mintkey_vault_dek_cache_hit_total %d\n"+
+				"# HELP mintkey_vault_dek_cache_miss_total DEK cache misses.\n"+
+				"# TYPE mintkey_vault_dek_cache_miss_total counter\n"+
+				"mintkey_vault_dek_cache_miss_total %d\n"+
+				"# HELP mintkey_changes_subscriber_lag_seconds Seconds since last change message.\n"+
+				"# TYPE mintkey_changes_subscriber_lag_seconds gauge\n"+
+				"mintkey_changes_subscriber_lag_seconds %g\n",
+			hits, misses, lagSeconds,
 		)
 	})
 	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.HTTPPort), Handler: httpMux}

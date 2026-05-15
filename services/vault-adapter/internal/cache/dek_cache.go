@@ -163,3 +163,9 @@ func (c *DEKCache) InvalidateByService(tenantID, serviceID string) {
 func (c *DEKCache) Metrics() (hits, misses int64) {
 	return c.hits.Load(), c.misses.Load()
 }
+
+// Hits returns the cumulative cache-hit counter since creation.
+func (c *DEKCache) Hits() int64 { return c.hits.Load() }
+
+// Misses returns the cumulative cache-miss counter since creation.
+func (c *DEKCache) Misses() int64 { return c.misses.Load() }

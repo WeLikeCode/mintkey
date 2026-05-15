@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/lib/pq"
@@ -27,9 +28,12 @@ type dekInvalidator interface {
 
 // Subscriber listens on the mintkey:credential PostgreSQL NOTIFY channel.
 // On a credential.rotated event it calls dekCache.InvalidateByService.
+// lastMessageNanos records the UnixNano timestamp of the most recently
+// processed notification (not keepalive pings); used for lag metrics.
 type Subscriber struct {
-	dsn      string
-	dekCache dekInvalidator
+	dsn              string
+	dekCache         dekInvalidator
+	lastMessageNanos atomic.Int64
 }
 
 // rotationPayload is the JSON shape of a credential.rotated notification.
@@ -86,7 +90,12 @@ func (s *Subscriber) Start(ctx context.Context) error {
 // cache when the event_type is "credential.rotated".
 // Unknown event types are silently ignored (forward-compatible).
 // Malformed JSON returns an error.
+// Every call (including unknown event types) records the receipt time so that
+// LagSeconds reflects the last active message, not the last rotation.
 func (s *Subscriber) handleNotification(payload string) error {
+	// Record receipt time before parsing so that even unknown events count.
+	s.lastMessageNanos.Store(time.Now().UnixNano())
+
 	var p rotationPayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		return fmt.Errorf("changes.Subscriber: malformed JSON: %w", err)
@@ -99,4 +108,15 @@ func (s *Subscriber) handleNotification(payload string) error {
 
 	s.dekCache.InvalidateByService(p.TenantID, p.ServiceID)
 	return nil
+}
+
+// LagSeconds returns the number of seconds elapsed since the last notification
+// was received from the PostgreSQL channel.
+// Returns 0 if no message has ever been received (subscriber idle since startup).
+func (s *Subscriber) LagSeconds() float64 {
+	last := s.lastMessageNanos.Load()
+	if last == 0 {
+		return 0 // never received a message
+	}
+	return float64(time.Now().UnixNano()-last) / 1e9
 }

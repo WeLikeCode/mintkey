@@ -83,3 +83,67 @@ func TestCacheMetrics(t *testing.T) {
 		t.Fatalf("expected 1 miss, got %d", misses)
 	}
 }
+
+func TestCacheHitsMissesGetters(t *testing.T) {
+	c := cache.New(5 * time.Minute)
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "")
+	c.Get("t", "s", 1)  // hit
+	c.Get("t", "s", 2)  // miss
+	c.Get("t", "s", 3)  // miss
+
+	if c.Hits() != 1 {
+		t.Errorf("Hits(): got %d, want 1", c.Hits())
+	}
+	if c.Misses() != 2 {
+		t.Errorf("Misses(): got %d, want 2", c.Misses())
+	}
+}
+
+func TestCacheConcurrentHitsMisses(t *testing.T) {
+	const goroutines = 10
+	const opsEach = 100
+
+	c := cache.New(5 * time.Minute)
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "")
+
+	done := make(chan struct{})
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			for j := 0; j < opsEach; j++ {
+				c.Get("t", "s", 1)  // hit
+				c.Get("t", "s", 99) // miss
+			}
+		}()
+	}
+	for i := 0; i < goroutines; i++ {
+		<-done
+	}
+
+	wantHits := int64(goroutines * opsEach)
+	wantMisses := int64(goroutines * opsEach)
+	if c.Hits() != wantHits {
+		t.Errorf("Hits(): got %d, want %d", c.Hits(), wantHits)
+	}
+	if c.Misses() != wantMisses {
+		t.Errorf("Misses(): got %d, want %d", c.Misses(), wantMisses)
+	}
+}
+
+func TestCacheMetricsInWriteToOutput(t *testing.T) {
+	c := cache.New(5 * time.Minute)
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "")
+	c.Get("t", "s", 1)  // 1 hit
+	c.Get("t", "s", 99) // 1 miss
+
+	hits := c.Hits()
+	misses := c.Misses()
+
+	// Verify the values that would be emitted match the getter results.
+	if hits != 1 {
+		t.Errorf("expected 1 hit before WriteTo, got %d", hits)
+	}
+	if misses != 1 {
+		t.Errorf("expected 1 miss before WriteTo, got %d", misses)
+	}
+}

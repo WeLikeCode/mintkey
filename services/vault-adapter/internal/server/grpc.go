@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -21,15 +22,23 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// VaultServer is the gRPC server. It holds the KEK and VaultService.
+// VaultServer is the gRPC server. It holds the KEK, VaultService, and a
+// reference to the shared DEK cache for metrics emission.
 type VaultServer struct {
-	kek []byte
+	kek      []byte
+	dekCache *cache.DEKCache
 }
 
 // New creates a VaultServer with the loaded KEK in memory.
 // The KEK is held here for the lifetime of the process — never logged, never returned.
-func New(kek []byte) *VaultServer {
-	return &VaultServer{kek: kek}
+// dekCache is the shared cache instance used by VaultService; may be nil (metrics
+// will then emit zeros for the gRPC-port /metrics endpoint).
+func New(kek []byte, dekCache ...*cache.DEKCache) *VaultServer {
+	var c *cache.DEKCache
+	if len(dekCache) > 0 {
+		c = dekCache[0]
+	}
+	return &VaultServer{kek: kek, dekCache: c}
 }
 
 // grpcVaultServer implements vaultv1.VaultAdapterServer by delegating to VaultService.
@@ -149,14 +158,20 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	// HTTP mux for non-gRPC requests (e.g. /metrics).
 	httpMux := http.NewServeMux()
 	httpMux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		var hits, misses int64
+		if s.dekCache != nil {
+			hits = s.dekCache.Hits()
+			misses = s.dekCache.Misses()
+		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprint(w,
+		fmt.Fprintf(w,
 			"# HELP mintkey_vault_dek_cache_hit_total DEK cache hits.\n"+
 				"# TYPE mintkey_vault_dek_cache_hit_total counter\n"+
-				"mintkey_vault_dek_cache_hit_total 0\n"+
+				"mintkey_vault_dek_cache_hit_total %d\n"+
 				"# HELP mintkey_vault_dek_cache_miss_total DEK cache misses.\n"+
 				"# TYPE mintkey_vault_dek_cache_miss_total counter\n"+
-				"mintkey_vault_dek_cache_miss_total 0\n",
+				"mintkey_vault_dek_cache_miss_total %d\n",
+			hits, misses,
 		)
 	})
 
