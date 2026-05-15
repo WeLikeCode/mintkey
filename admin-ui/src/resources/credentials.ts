@@ -118,8 +118,13 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           // record.id is the service wire-form id (svc_…); the record here is a
           // service record (credentials list reuses services endpoint).
           const serviceId = record?.get("id") as string;
-          // rotate_from is the credential being superseded — passed through
-          // so admin-api can mark it superseded; omitting auto-resolves by scheme.
+          // Group F fix: request.params.recordId is ALWAYS the service's svc_<Crockford>
+          // wire form (credentials list is keyed on services). Sending it as rotate_from
+          // would cause admin-api to decode it as a cred_ ID and find no match, breaking
+          // rotation for every operator. Omit rotate_from entirely so the backend applies
+          // its deterministic rule (highest key_version active for the scheme).
+          // If a future UI flow genuinely passes a cred_<Crockford> ID (e.g. a picker),
+          // gate it: only pass rotate_from when recordId starts with "cred_".
           const credentialId = request.params.recordId as string | undefined;
           const authScheme = record?.get("auth_scheme") as string ?? "bearer_token";
 
@@ -128,7 +133,9 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
             "POST",
             {
               auth_scheme: authScheme,
-              ...(credentialId ? { rotate_from: credentialId } : {}),
+              // Only pass rotate_from when a genuine cred_ wire ID is available
+              // (not the svc_ record key from the AdminJS credentials list).
+              ...(credentialId?.startsWith("cred_") ? { rotate_from: credentialId } : {}),
             }
           );
 
