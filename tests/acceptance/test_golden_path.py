@@ -56,12 +56,61 @@ _ROOT = Path(__file__).resolve().parents[2]
 BASE_API = os.getenv("MINTKEY_API_URL", "http://localhost:8080")
 BASE_MCP = os.getenv("MINTKEY_MCP_URL", "http://localhost:8082")
 BASE_KONG = os.getenv("MINTKEY_KONG_URL", "http://localhost:8000")
+KONG_ADMIN = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
 
 _pwd_file = _ROOT / "data" / "bootstrap-secrets" / "admin_password"
 BOOTSTRAP_PASSWORD = os.getenv(
     "MINTKEY_BOOTSTRAP_PASSWORD",
     _pwd_file.read_text().strip() if _pwd_file.exists() else "changeme",
 )
+
+# ---------------------------------------------------------------------------
+# Kong admin helpers — paginated route lookup (mirrors WS-4 pattern)
+# ---------------------------------------------------------------------------
+
+
+def _kong_route_exists(expected_path: str) -> bool:
+    """Return True if expected_path appears in any page of Kong's route table.
+
+    Kong's route table is paginated (max 100/page). Stacks with many routes
+    (e.g., 952 accumulated from prior test runs) require walking all pages.
+    """
+    url = f"{KONG_ADMIN}/routes?size=100"
+    pages_checked = 0
+    while url:
+        r = httpx.get(url, timeout=5)
+        if r.status_code != 200:
+            return False
+        body = r.json()
+        pages_checked += 1
+        if any(
+            expected_path in (route.get("paths") or [])
+            for route in body.get("data", [])
+        ):
+            print(f"[kong] found {expected_path!r} on page {pages_checked}")
+            return True
+        # Follow pagination: next is a relative path like "/routes?offset=...&size=100"
+        next_url = body.get("next")
+        if next_url:
+            url = f"{KONG_ADMIN}{next_url}" if next_url.startswith("/") else next_url
+        else:
+            url = None
+    print(f"[kong] exhausted {pages_checked} page(s), {expected_path!r} not found")
+    return False
+
+
+def _wait_for_kong_route(service_uuid: str, timeout: int = 10) -> bool:
+    """Poll Kong admin until the /v1/call/{service_uuid} route appears (paginated)."""
+    expected_path = f"/v1/call/{service_uuid}"
+    for _ in range(timeout):
+        try:
+            if _kong_route_exists(expected_path):
+                return True
+        except httpx.RequestError:
+            pass
+        time.sleep(1)
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Chain-level structural assertions (always run — no Docker needed)
@@ -441,22 +490,9 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
         # Wait for kong-syncer to push the new service route to Kong.
         # The kong-syncer receives pg_notify on mintkey:service and pushes the
         # updated config within ~1s. We poll for up to 10s to avoid flakiness.
-        kong_admin_url = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
-        kong_route_ready = False
-        for _attempt in range(10):
-            routes_r = httpx.get(
-                f"{kong_admin_url}/routes?size=500", timeout=5
-            )
-            if routes_r.status_code == 200:
-                routes_data = routes_r.json().get("data", [])
-                expected_path = f"/v1/call/{service_uuid}"
-                if any(
-                    expected_path in (r.get("paths") or [])
-                    for r in routes_data
-                ):
-                    kong_route_ready = True
-                    break
-            time.sleep(1)
+        # Kong's route table paginates at 100/page; _wait_for_kong_route walks
+        # all pages so routes beyond page 1 are not silently missed.
+        kong_route_ready = _wait_for_kong_route(service_uuid, timeout=10)
 
         assert kong_route_ready, (
             f"Hop 4: Kong route /v1/call/{service_uuid} not found after 10s. "
@@ -617,18 +653,8 @@ def test_ws9_vault_grpc_end_to_end() -> None:
         assert tok_r.status_code == 200, f"request_token failed: {tok_r.text}"
         jwt = tok_r.json()["token"]
 
-        # Wait for kong-syncer to push route
-        kong_admin_url = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
-        for _attempt in range(10):
-            r_check = httpx.get(f"{kong_admin_url}/routes?size=500", timeout=5)
-            if r_check.status_code == 200:
-                expected_path = f"/v1/call/{service_uuid}"
-                if any(
-                    expected_path in (r.get("paths") or [])
-                    for r in r_check.json().get("data", [])
-                ):
-                    break
-            time.sleep(1)
+        # Wait for kong-syncer to push route (paginated — walks all pages).
+        _wait_for_kong_route(service_uuid, timeout=10)
 
         # WS-9: real gRPC wiring means proxy now succeeds (was 502 in WS-8)
         proxy_r = httpx.get(
