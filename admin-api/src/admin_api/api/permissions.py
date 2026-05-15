@@ -293,6 +293,7 @@ async def list_tenant_permissions(
     tenant_id: UUID,
     service_id: Optional[str] = None,
     agent_id: Optional[str] = None,
+    q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -301,10 +302,11 @@ async def list_tenant_permissions(
     Optional query parameters:
       service_id — filter by service (UUID or svc_ wire-ID).
       agent_id   — filter by agent (UUID or agent_ wire-ID).
+      q          — case-insensitive substring match on action (ILIKE '%q%').
 
     Returns {"permissions": [...]} to match admin-ui RestResource listKey.
 
-    Source: A2 R9 fix; T-1.4.3; ADR-0008.
+    Source: A2 R9 fix; T-1.4.3; ADR-0008; UX-B.
     """
     await set_tenant_context(session, tenant_id)
 
@@ -332,6 +334,11 @@ async def list_tenant_permissions(
         service_id = _decode_wire(service_id, "svc")
         base_sql += " AND service_id = :svc_id"
         params["svc_id"] = service_id
+
+    if q is not None and q.strip() != "":
+        # ILIKE substring match on action — UX-B inline search
+        base_sql += " AND action ILIKE '%' || :q_escaped || '%'"
+        params["q_escaped"] = _escape_like(q.strip())
 
     base_sql += " ORDER BY created_at"
 

@@ -323,6 +323,71 @@ def test_revoke_permission_returns_204(
 
 
 # ---------------------------------------------------------------------------
+# Tests: Flat tenant-level list — q filter (UX-B backend)
+# ---------------------------------------------------------------------------
+
+
+def test_list_tenant_permissions_q_filters_by_action_substring(
+    admin_app: TestClient,
+    perm_tenant: str,
+    perm_agent_id: str,
+    postgres_container,
+) -> None:
+    """
+    GET /v1/tenants/{tid}/permissions?q=<substring> must return only grants
+    whose action matches the substring (ILIKE).
+
+    Setup:
+      - Grant action "read:documents"
+      - Grant action "write:documents"
+      - Grant action "delete:archive"
+
+    Assert:
+      - ?q=read  → 1 result (read:documents)
+      - ?q=documents → 2 results (read:documents + write:documents)
+      - ?q=archive → 1 result (delete:archive)
+      - ?q=zzznomatch → 0 results
+    """
+    svc_id = _insert_service(postgres_container, perm_tenant, "perm-svc-q-filter")
+
+    for action in ("read:documents", "write:documents", "delete:archive"):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{perm_tenant}/agents/{perm_agent_id}/permissions",
+            json={"service_id": svc_id, "action": action, "constraints": {}},
+        )
+        assert resp.status_code in (201, 200), resp.text
+
+    # q=read → only read:documents
+    r = admin_app.get(f"/v1/tenants/{perm_tenant}/permissions?q=read")
+    assert r.status_code == 200, r.text
+    actions_read = [p["action"] for p in r.json()["permissions"]]
+    assert any("read" in a for a in actions_read), f"Expected 'read' match; got {actions_read}"
+    assert not any("write" in a for a in actions_read), f"write:documents should not appear with q=read; got {actions_read}"
+    assert not any("delete" in a for a in actions_read), f"delete:archive should not appear with q=read; got {actions_read}"
+
+    # q=documents → read:documents and write:documents
+    r2 = admin_app.get(f"/v1/tenants/{perm_tenant}/permissions?q=documents")
+    assert r2.status_code == 200, r2.text
+    actions_docs = [p["action"] for p in r2.json()["permissions"]]
+    assert any("read:documents" == a for a in actions_docs), f"read:documents must be present; got {actions_docs}"
+    assert any("write:documents" == a for a in actions_docs), f"write:documents must be present; got {actions_docs}"
+    assert not any("delete:archive" == a for a in actions_docs), f"delete:archive must not appear; got {actions_docs}"
+
+    # q=archive → only delete:archive
+    r3 = admin_app.get(f"/v1/tenants/{perm_tenant}/permissions?q=archive")
+    assert r3.status_code == 200, r3.text
+    actions_archive = [p["action"] for p in r3.json()["permissions"]]
+    assert any("delete:archive" == a for a in actions_archive), f"delete:archive must be present; got {actions_archive}"
+    assert not any("read" in a for a in actions_archive), f"read actions must not appear; got {actions_archive}"
+
+    # q=zzznomatch → 0 results
+    r4 = admin_app.get(f"/v1/tenants/{perm_tenant}/permissions?q=zzznomatch")
+    assert r4.status_code == 200, r4.text
+    assert r4.json()["permissions"] == [], f"Expected empty list; got {r4.json()['permissions']}"
+
+
+# ---------------------------------------------------------------------------
 # Tests: Cross-tenant isolation (ADR-0008)
 # ---------------------------------------------------------------------------
 
