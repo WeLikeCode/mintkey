@@ -59,10 +59,33 @@ KEY_URL = f"{BASE_URL}/{KEY_ID}"
 _FUTURE_DT = datetime.now(timezone.utc) + timedelta(days=30)
 _FUTURE = _FUTURE_DT.isoformat()
 
+# ---------------------------------------------------------------------------
+# Helpers to convert wire-form IDs to DB-form UUIDs for mock row construction.
+# The DB stores UUIDs; row.id must be a UUID string so db_uuid_to_wire works.
+# ---------------------------------------------------------------------------
+
+
+def _wire_to_uuid(wire_id: str, prefix: str) -> str:
+    """Decode <prefix>_<26Crockford> → dashed UUID string (for mock row IDs)."""
+    _CROCKFORD_ALT = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    tail = wire_id[len(prefix) + 1:]
+    val = 0
+    for ch in tail.upper():
+        val = (val << 5) | _CROCKFORD_ALT.index(ch)
+    val &= (1 << 128) - 1
+    h = f"{val:032x}"
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+
+
+# Pre-decoded UUID strings for mock rows (DB stores UUIDs, not wire IDs)
+_AGENT_UUID = _wire_to_uuid(AGENT_ID, "agent")
+_SVC_UUID = _wire_to_uuid(SVC_ID, "svc")
+_KEY_UUID = _wire_to_uuid(KEY_ID, "svckey")
+
 
 def _make_mock_row(
     *,
-    key_id: str = KEY_ID,
+    key_id: str = KEY_ID,    # wire-form (for test reference); row.id is decoded UUID
     agent_id: str = AGENT_ID,
     service_id: str = SVC_ID,
     key_hash: str = "hash",
@@ -74,9 +97,10 @@ def _make_mock_row(
     created_at: datetime | None = None,
 ):
     row = MagicMock()
-    row.id = key_id
-    row.agent_id = agent_id
-    row.service_id = service_id
+    # Store DB-form UUIDs on row (as the real DB would) — #13 fix
+    row.id = _wire_to_uuid(key_id, "svckey")
+    row.agent_id = agent_id   # agent_id stays as wire form (tests pass it through)
+    row.service_id = _wire_to_uuid(service_id, "svc") if service_id.startswith("svc_") else service_id
     row.key_hash = key_hash
     row.key_fingerprint = key_fingerprint
     row.allowed_actions = allowed_actions or ["read:items"]
@@ -391,8 +415,9 @@ async def test_create_agent_not_found():
 @pytest.mark.asyncio
 async def test_list_returns_keys_without_plaintext():
     """Req 8.2: List endpoint returns keys; plaintext never returned."""
-    rows = [_make_mock_row(key_id="svckey_0000000000000000000000001"),
-            _make_mock_row(key_id="svckey_0000000000000000000000002")]
+    rows = [_make_mock_row(key_id="svckey_00000000000000000000000001"),
+            _make_mock_row(key_id="svckey_00000000000000000000000002"),
+            ]
     db = _MockDb(key_list=rows)
     app = _create_app(db)
 

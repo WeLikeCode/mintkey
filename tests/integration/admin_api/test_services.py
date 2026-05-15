@@ -122,7 +122,7 @@ def service_id(admin_app: TestClient, tenant_uuid: str) -> str:
     )
     assert resp.status_code == 201, f"Failed to create service: {resp.text}"
 
-    # Fetch the canonical ID from the list endpoint (svc_{hex_uuid} form)
+    # Fetch the canonical ID from the list endpoint (svc_<Crockford> form per ADR-0017.11 / #13)
     list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
     assert list_resp.status_code == 200
     services = list_resp.json()["services"]

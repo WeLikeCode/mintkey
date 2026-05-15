@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
+from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -74,7 +75,7 @@ def _new_cred_id() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Wire-form decoder — mirrors services.py _wire_id_to_db_uuid (R12/R14a).
+# Wire-form decoder — delegates to utils.wire_ids (R12/R14a/R13 unification).
 # Credentials accept svc_ wire IDs in the rotate endpoint path; admin-ui
 # passes the wire form through without decoding (ADR lesson from R8/R12).
 # ---------------------------------------------------------------------------
@@ -84,27 +85,13 @@ def _svc_wire_to_db_uuid(wire_id: str) -> str:
     """
     Convert a wire svc_ ID back to the UUID string stored in the DB.
 
-    Two wire forms exist (ADR-0017.11):
-      - "svc_" + 32 hex chars  — old serialised form
-      - "svc_" + 26 Crockford base32 chars — ULID form post-R12
-
+    Thin wrapper around utils.wire_ids.wire_to_db_uuid — accepts both the
+    canonical Crockford form and the legacy 32-hex form for backward-compat.
     Returns wire_id unchanged for raw UUIDs (fallback).
+
+    Source: ADR-0017.11; #13.
     """
-    if wire_id.startswith("svc_"):
-        tail = wire_id[4:]
-        if len(tail) == 32:
-            return (
-                f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}"
-                f"-{tail[16:20]}-{tail[20:]}"
-            )
-        if len(tail) == 26:
-            val = 0
-            for ch in tail.upper():
-                val = (val << 5) | _CROCKFORD.index(ch)
-            val &= (1 << 128) - 1
-            h = f"{val:032x}"
-            return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
-    return wire_id
+    return _wire_to_db(wire_id, "svc")
 
 
 # ---------------------------------------------------------------------------

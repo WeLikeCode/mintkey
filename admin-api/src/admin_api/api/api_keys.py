@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -342,7 +343,14 @@ async def create_api_key(
     fp = _fingerprint(plaintext)
     key_hash = _ph.hash(plaintext)
     key_id = _new_svckey_id()
-    internal_id = uuid.uuid4()
+    # Derive internal DB UUID from ULID bits — same pattern as agents/services (#13).
+    # This ensures list/get can emit the Crockford wire ID by re-encoding the stored UUID.
+    _svckey_tail = key_id[len("svckey_"):]
+    _svckey_val = 0
+    for _ch in _svckey_tail.upper():
+        _svckey_val = (_svckey_val << 5) | _CROCKFORD.index(_ch)
+    _svckey_val &= (1 << 128) - 1
+    internal_id = uuid.UUID(int=_svckey_val)
     now = datetime.now(timezone.utc)
 
     # 6. INSERT (bound params only — ADR-0008 / T-1.0.15)
@@ -452,14 +460,9 @@ async def list_api_keys(
         params["pat"] = pattern
 
     if service_id is not None:
-        svc_uuid = service_id
-        if service_id.startswith("svc_"):
-            hex_part = service_id[4:]
-            if len(hex_part) == 32:
-                svc_uuid = (
-                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                    f"-{hex_part[16:20]}-{hex_part[20:]}"
-                )
+        # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
+        from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+        svc_uuid = _decode_wire(service_id, "svc")
         base_sql += " AND service_id = :svc_id"
         params["svc_id"] = svc_uuid
 
@@ -477,9 +480,9 @@ async def list_api_keys(
                 if expires < datetime.now(timezone.utc):
                     status = "expired"
         items.append({
-            "api_key_id": str(r.id),
+            "api_key_id": db_uuid_to_wire(r.id, "svckey"),
             "key_fingerprint": r.key_fingerprint,
-            "service_id": str(r.service_id) if r.service_id else None,
+            "service_id": db_uuid_to_wire(r.service_id, "svc") if r.service_id else None,
             "allowed_actions": r.allowed_actions,
             "constraints": json.loads(r.constraints) if r.constraints else None,
             "expires_at": r.expires_at.isoformat() if r.expires_at else None,
@@ -536,9 +539,9 @@ async def get_api_key(
     return JSONResponse(
         status_code=200,
         content={
-            "api_key_id": str(row.id),
+            "api_key_id": db_uuid_to_wire(row.id, "svckey"),
             "key_fingerprint": row.key_fingerprint,
-            "service_id": str(row.service_id) if row.service_id else None,
+            "service_id": db_uuid_to_wire(row.service_id, "svc") if row.service_id else None,
             "allowed_actions": row.allowed_actions,
             "constraints": json.loads(row.constraints) if row.constraints else None,
             "expires_at": row.expires_at.isoformat() if row.expires_at else None,
@@ -698,7 +701,13 @@ async def rotate_api_key(
     fp = _fingerprint(plaintext)
     key_hash = _ph.hash(plaintext)
     new_key_id = _new_svckey_id()
-    new_internal_id = uuid.uuid4()
+    # Derive internal DB UUID from ULID bits — same pattern as agents/services (#13).
+    _rot_tail = new_key_id[len("svckey_"):]
+    _rot_val = 0
+    for _ch in _rot_tail.upper():
+        _rot_val = (_rot_val << 5) | _CROCKFORD.index(_ch)
+    _rot_val &= (1 << 128) - 1
+    new_internal_id = uuid.UUID(int=_rot_val)
     now = datetime.now(timezone.utc)
 
     await session.execute(

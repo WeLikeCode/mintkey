@@ -82,11 +82,10 @@ export class AgentsPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
 
     // Resolve the canonical record ID from the show-page API response.
-    // admin-api normalises all IDs to agent_<32hex> in list/show responses
-    // (_agent_row_to_dict). Action page URLs must use this same 32-hex form so
-    // AdminJS's frontend can match record.id to the URL segment without confusion.
-    // (crockfordId from create response is the Crockford / ULID form — usable for
-    //  API calls, but AdminJS UI routes consistently use the 32-hex form.)
+    // admin-api now emits Crockford ULID wire-form IDs in all list/show responses
+    // (_agent_row_to_dict unified per ADR-0017.11 / #13). The create response also
+    // returns Crockford, so crockfordId matches what getPath returns — the show-page
+    // lookup is still useful to confirm round-trip consistency.
     let agentId = crockfordId;
     if (crockfordId) {
       try {

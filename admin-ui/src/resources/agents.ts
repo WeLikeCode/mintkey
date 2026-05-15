@@ -114,7 +114,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
-          // agent_<32hex> (list endpoint) and agent_<26Crockford> (create redirect / getPath).
+          // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
 
           const resp = await apiWrite(
@@ -157,7 +157,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
-          // agent_<32hex> (list endpoint) and agent_<26Crockford> (create redirect / getPath).
+          // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
 
           const resp = await apiWrite(

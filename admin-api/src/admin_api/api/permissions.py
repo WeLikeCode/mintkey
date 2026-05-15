@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -251,14 +252,9 @@ async def list_permissions(
     )
 
     if service_id is not None:
-        # Accept svc_ wire-ID or plain UUID
-        if service_id.startswith("svc_"):
-            hex_part = service_id[4:]
-            if len(hex_part) == 32:
-                service_id = (
-                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                    f"-{hex_part[16:20]}-{hex_part[20:]}"
-                )
+        # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
+        from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+        service_id = _decode_wire(service_id, "svc")
         base_sql += " AND service_id = :svc_id"
         params["svc_id"] = service_id
 
@@ -269,10 +265,10 @@ async def list_permissions(
 
     grants = [
         {
-            "id": str(row.id),
+            "id": db_uuid_to_wire(row.id, "perm"),
             "tenant_id": str(row.tenant_id),
-            "agent_id": str(row.agent_id),
-            "service_id": str(row.service_id) if row.service_id else None,
+            "agent_id": db_uuid_to_wire(row.agent_id, "agent"),
+            "service_id": db_uuid_to_wire(row.service_id, "svc") if row.service_id else None,
             "action": row.action,
             "constraints": row.constraints if isinstance(row.constraints, dict) else (
                 json.loads(row.constraints) if row.constraints else None
@@ -331,13 +327,9 @@ async def list_tenant_permissions(
         params["aid"] = agent_uuid_val
 
     if service_id is not None:
-        if service_id.startswith("svc_"):
-            hex_part = service_id[4:]
-            if len(hex_part) == 32:
-                service_id = (
-                    f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-                    f"-{hex_part[16:20]}-{hex_part[20:]}"
-                )
+        # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
+        from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+        service_id = _decode_wire(service_id, "svc")
         base_sql += " AND service_id = :svc_id"
         params["svc_id"] = service_id
 
@@ -348,10 +340,10 @@ async def list_tenant_permissions(
 
     permissions = [
         {
-            "id": str(row.id),
+            "id": db_uuid_to_wire(row.id, "perm"),
             "tenant_id": str(row.tenant_id),
-            "agent_id": str(row.agent_id),
-            "service_id": str(row.service_id) if row.service_id else None,
+            "agent_id": db_uuid_to_wire(row.agent_id, "agent"),
+            "service_id": db_uuid_to_wire(row.service_id, "svc") if row.service_id else None,
             "action": row.action,
             "constraints": row.constraints if isinstance(row.constraints, dict) else (
                 json.loads(row.constraints) if row.constraints else None
@@ -474,8 +466,14 @@ async def grant_permission(
             )
 
     # 7. Generate perm_ ULID ID — ADR-0017.11
+    # Derive internal DB UUID from ULID bits — same pattern as agents/services (#13).
     perm_id = _new_perm_id()
-    internal_id = uuid.uuid4()
+    _perm_tail = perm_id[len("perm_"):]
+    _perm_val = 0
+    for _ch in _perm_tail.upper():
+        _perm_val = (_perm_val << 5) | _CROCKFORD.index(_ch)
+    _perm_val &= (1 << 128) - 1
+    internal_id = uuid.UUID(int=_perm_val)
     now = datetime.now(timezone.utc)
 
     # 8. INSERT permission_grants — bind svc_uuid (decoded UUID), not raw wire-form
@@ -550,13 +548,21 @@ async def revoke_permission(
     # 1. Set tenant context — ADR-0008
     await set_tenant_context(session, tenant_id)
 
+    # Decode wire-form IDs → DB UUIDs — ADR-0017.11; #13
+    from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+    try:
+        perm_db_id = _decode_wire(permission_id, "perm")
+        agent_db_id = _decode_agent_wire_id(agent_id, "agent_") if agent_id.startswith("agent_") else agent_id
+    except ValueError:
+        return Response(status_code=422)
+
     # 2. DELETE (RLS ensures tenant isolation)
     await session.execute(
         text(
             "DELETE FROM permission_grants"
             " WHERE id = :pid AND agent_id = :aid AND tenant_id = :tid"
         ),
-        {"pid": permission_id, "aid": agent_id, "tid": str(tenant_id)},
+        {"pid": perm_db_id, "aid": agent_db_id, "tid": str(tenant_id)},
     )
 
     # 3. Emit audit event — ADR-0014.7

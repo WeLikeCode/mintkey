@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -167,42 +168,22 @@ def _wire_id_to_db_uuid(wire_id: str) -> str:
     """
     Convert a wire svc_ ID back to the UUID string stored in the DB.
 
-    Two wire forms exist (ADR-0017.11):
-      - "svc_" + 32 hex chars  — old serialised form (_service_row_to_dict)
-      - "svc_" + 26 Crockford base32 chars — new ULID form post-R12 (_new_svc_id)
+    Thin wrapper around utils.wire_ids.wire_to_db_uuid — accepts both the
+    canonical Crockford form and the legacy 32-hex form for backward-compat.
+    Returns wire_id unchanged if it does not match a known svc_ prefix.
 
-    The DB form is "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
-    Returns wire_id unchanged if it does not match a known prefix pattern
-    (allowing callers to pass raw UUIDs too).
+    Source: ADR-0017.11; #13.
     """
-    if wire_id.startswith("svc_"):
-        tail = wire_id[4:]
-        if len(tail) == 32:
-            # Hex form: svc_<uuid-without-dashes>
-            return (
-                f"{tail[:8]}-{tail[8:12]}-{tail[12:16]}"
-                f"-{tail[16:20]}-{tail[20:]}"
-            )
-        if len(tail) == 26:
-            # Crockford base32 ULID form (post-R12) — decode to 128-bit UUID
-            val = 0
-            for ch in tail.upper():
-                val = (val << 5) | _CROCKFORD.index(ch)
-            val &= (1 << 128) - 1
-            h = f"{val:032x}"
-            return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
-    return wire_id
+    return _wire_to_db(wire_id, "svc")
 
 
 def _service_row_to_dict(row: Any) -> dict[str, Any]:
-    """Map a DB row (namedtuple-like) to the wire representation."""
-    raw_id = str(row.id)
-    # Wire ID: if the UUID was stored for a svc_ prefixed ID we surface the
-    # original string form. For now we prefix the UUID with "svc_" to conform
-    # to ADR-0017.11 at the API layer (schemas.py comment: translation happens
-    # in the API layer).
+    """Map a DB row (namedtuple-like) to the wire representation.
+
+    Emits Crockford ULID wire-form IDs (canonical per ADR-0017.11 / #13).
+    """
     return {
-        "id": f"svc_{raw_id.replace('-', '')}",
+        "id": db_uuid_to_wire(row.id, "svc"),
         "tenant_id": str(row.tenant_id),
         "name": row.name,
         "slug": row.slug,
