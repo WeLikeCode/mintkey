@@ -219,6 +219,8 @@ async def describe_service(
                 "slug": row.slug,
                 "base_url": row.base_url,
                 "auth_scheme": row.auth_scheme,
+                "description": row.description,  # may be null
+                "openapi_url": row.openapi_url,   # may be null
             }
         }
     )
