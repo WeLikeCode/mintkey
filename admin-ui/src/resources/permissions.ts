@@ -41,7 +41,7 @@ const _permissionsResource = new RestResource({
   listPath: "/v1/tenants/{tenantId}/permissions",
   listKey: "permissions",
   idField: "id",
-  filterKeys: ["service_id"],
+  filterKeys: ["q", "service_id"],
   properties: [
     { path: "id", type: "string", isId: true },
     { path: "agent_id", type: "string" },
@@ -50,6 +50,8 @@ const _permissionsResource = new RestResource({
     { path: "constraints", type: "mixed" },
     { path: "created_at", type: "datetime" },
     { path: "created_by", type: "string" },
+    // Virtual filter-only: free-text search on action
+    { path: "q", type: "string" },
   ],
   // ADR-0017: normalise agent_id from bare UUID to wire-form (agent_<32hex>)
   // at the BFF boundary so all consumers see consistent wire shapes.
@@ -66,8 +68,13 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
     listProperties: ["id", "agent_id", "service_id", "action", "created_at"],
     showProperties: ["id", "agent_id", "service_id", "action", "constraints", "created_at", "created_by"],
     editProperties: ["agent_id", "service_id", "action", "constraints"],
-    filterProperties: ["agent_id", "service_id", "action"],
+    filterProperties: ["q", "agent_id", "service_id", "action"],
     properties: {
+      q: {
+        isVisible: { list: false, show: false, edit: false, filter: true },
+        label: "Search (action)",
+        description: "Search by action (e.g., 'read', 'write').",
+      },
       constraints: {
         type: "mixed",
         isArray: false,

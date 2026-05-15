@@ -24,6 +24,8 @@ export const Components = {
   PermissionsIntro: componentLoader.add("PermissionsIntro", "./sections/PermissionsIntro"),
   ApiKeysIntro: componentLoader.add("ApiKeysIntro", "./sections/ApiKeysIntro"),
   AuditIntro: componentLoader.add("AuditIntro", "./sections/AuditIntro"),
+  // Inline search list — prominent search input above each resource list table (UX-B)
+  InlineSearchList: componentLoader.add("InlineSearchList", "./list/InlineSearchList"),
   // JSON property renderer (fix-show-page-react-31)
   JsonValue: componentLoader.add("JsonValue", "./properties/JsonValue"),
   // Generic "confirm before executing" page for destructive record actions
