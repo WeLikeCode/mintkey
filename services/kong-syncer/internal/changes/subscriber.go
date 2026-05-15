@@ -31,11 +31,21 @@ func WithTenantScope(scope interface{}) Option {
 	}
 }
 
+// WithKongAdminURL sets the Kong Admin API URL for the subscriber so it can
+// push declarative config updates on mintkey:service notifications.
+// Wired but not yet active; LISTEN is implemented in T-1.2.2.
+func WithKongAdminURL(url string) Option {
+	return func(c *Client) {
+		c.kongAdminURL = url
+	}
+}
+
 // Client is a stub LISTEN/NOTIFY subscriber. Real LISTEN wiring is in T-1.2.2.
 type Client struct {
-	db          interface{}
-	tenantScope interface{}
-	scopeSet    bool
+	db           interface{}
+	tenantScope  interface{}
+	scopeSet     bool
+	kongAdminURL string
 }
 
 // NewClient constructs a Client with the given options.

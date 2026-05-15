@@ -269,8 +269,23 @@ async def audit_emit_endpoint(
     delegates to audit_emit() which serialises via the per-tenant advisory lock
     (hash chain safe for concurrent callers).
 
-    Source: #22; ADR-0014.7; S-SEC-1.
+    Cross-tenant scope check (Option Y, #22-redux S-SEC-1):
+    Service tokens identify a trusted system service, not a tenant.  Before
+    inserting, we verify that the event's actor_id actually belongs to the
+    claimed tenant_id — otherwise a compromised service token could forge
+    audit events into any tenant's hash chain.
+    - If actor_id is a UUID, SELECT from agents + operators (platform_admin_view
+      so RLS does not hide cross-tenant mismatches).
+    - If actor_id is null / "system" / empty (system-emitted events), the event
+      is allowed but logged at WARN for auditability.
+    - Mismatch → 403 {"mintkey:code": "aud_mismatch_rejected"}.
+
+    Source: #22; #22-redux; ADR-0014.7; S-SEC-1.
     """
+    import logging as _logging
+
+    _log = _logging.getLogger("admin_api.internal.audit_emit")
+
     # Authenticate: any known service token is accepted.
     svc_token = request.headers.get("X-Mintkey-Service-Token", "")
     allowed = _get_allowed_service_tokens()
@@ -296,14 +311,75 @@ async def audit_emit_endpoint(
             content={"mintkey:code": "invalid_tenant_id"},
         )
 
-    await set_tenant_context(session, tenant_uuid)
-
+    # Parse actor_id.
     actor_uuid: Optional[UUID] = None
-    if body.actor_id:
+    if body.actor_id and body.actor_id.lower() not in ("", "system", "null"):
         try:
             actor_uuid = UUID(body.actor_id)
         except (ValueError, TypeError):
             actor_uuid = None
+
+    # Cross-tenant scope check (Option Y — #22-redux S-SEC-1).
+    # Uses platform_admin_view to bypass RLS so we see all tenants and can
+    # detect cross-tenant mismatches rather than getting a false negative.
+    if actor_uuid is not None:
+        await session.execute(
+            text(
+                "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
+                "       set_config('app.platform_admin_view', 'on', true)"
+            )
+        )
+        # Check agents first, then operators.
+        agent_row = await session.execute(
+            text("SELECT tenant_id FROM agents WHERE id = :actor_id"),
+            {"actor_id": str(actor_uuid)},
+        )
+        actor_row = agent_row.fetchone()
+        if actor_row is None:
+            op_row = await session.execute(
+                text("SELECT tenant_id FROM operators WHERE id = :actor_id"),
+                {"actor_id": str(actor_uuid)},
+            )
+            actor_row = op_row.fetchone()
+
+        if actor_row is None:
+            # actor_id not found in any table — reject to prevent phantom inserts.
+            _log.warning(
+                "audit_emit rejected: actor_id=%s not found in agents or operators "
+                "(event_type=%s tenant_id=%s)",
+                actor_uuid, body.event_type, tenant_uuid,
+            )
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "mintkey:code": "aud_mismatch_rejected",
+                    "title": "actor_id not found",
+                },
+            )
+
+        actor_tenant = UUID(str(actor_row[0]))
+        if actor_tenant != tenant_uuid:
+            _log.warning(
+                "audit_emit cross-tenant forgery attempt rejected: "
+                "actor_id=%s belongs to tenant=%s but event claims tenant=%s "
+                "(event_type=%s)",
+                actor_uuid, actor_tenant, tenant_uuid, body.event_type,
+            )
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "mintkey:code": "aud_mismatch_rejected",
+                    "title": "actor_id does not belong to the claimed tenant_id",
+                },
+            )
+    else:
+        # System / null actor — allowed but logged for auditability.
+        _log.info(
+            "audit_emit system event: event_type=%s tenant_id=%s actor_id=%r",
+            body.event_type, tenant_uuid, body.actor_id,
+        )
+
+    await set_tenant_context(session, tenant_uuid)
 
     target_uuid: Optional[UUID] = None
     if body.target_id:
