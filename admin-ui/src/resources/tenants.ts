@@ -28,6 +28,9 @@ function assertPlatformAdmin(context: ActionContext): void {
 // created_at, updated_at. `isolation_mode` is not in the response but is a field
 // on the create form (CreateTenantRequest in the OpenAPI), so it stays declared
 // here so AdminJS can render it on the `new` form without a "no property" warning.
+//
+// `_services_panel` is a virtual show-only property that renders the
+// TenantServicesPanel component on the show page (UX-E).
 const _tenantsResource = new RestResource({
   id: "tenants", name: "Tenants",
   listPath: "/v1/tenants",
@@ -45,6 +48,8 @@ const _tenantsResource = new RestResource({
     { path: "updated_at", type: "datetime" },
     // Virtual filter-only: free-text search on slug / display_name
     { path: "q", type: "string" },
+    // Virtual show-only: associated services panel (UX-E)
+    { path: "_services_panel", type: "string" },
   ],
 });
 
@@ -54,7 +59,7 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
   options: {
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],
-    showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at"],
+    showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at", "_services_panel"],
     newProperties: ["slug", "display_name", "isolation_mode"],
     editProperties: ["slug", "display_name", "isolation_mode"],
     filterProperties: ["q", "slug", "status"],
@@ -70,6 +75,14 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
       },
       isolation_mode: {
         components: { show: Components.JsonValue },
+      },
+      // Virtual show-only panel: lists services belonging to this tenant (UX-E).
+      // Component fetches services via the AdminJS list action for the "services"
+      // resource, which the RestResource resolves against the session's tenantId.
+      _services_panel: {
+        isVisible: { list: false, show: true, edit: false, filter: false },
+        label: "Services",
+        components: { show: Components.TenantServicesPanel },
       },
     },
 

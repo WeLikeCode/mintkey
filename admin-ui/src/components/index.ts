@@ -30,4 +30,6 @@ export const Components = {
   ConfirmAction: componentLoader.add("ConfirmAction", "./actions/ConfirmAction"),
   // Service API key show-once create flow (ADR-0018; R1 action-grid remediation)
   ApiKeyCreate: componentLoader.add("ApiKeyCreate", "./actions/ApiKeyCreate"),
+  // Tenant show page: associated services panel (UX-E)
+  TenantServicesPanel: componentLoader.add("TenantServicesPanel", "./sections/TenantServicesPanel"),
 };
