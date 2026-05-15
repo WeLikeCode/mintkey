@@ -1,10 +1,11 @@
 """
 Service CRUD endpoints.
 
-POST   /v1/tenants/{tenant_id}/services         — register a service (201)
-GET    /v1/tenants/{tenant_id}/services         — list services (200)
-PATCH  /v1/tenants/{tenant_id}/services/{sid}   — update a service (200)
-DELETE /v1/tenants/{tenant_id}/services/{sid}   — delete a service (204)
+POST   /v1/tenants/{tenant_id}/services              — register a service (201)
+GET    /v1/tenants/{tenant_id}/services              — list services (200)
+PATCH  /v1/tenants/{tenant_id}/services/{sid}        — update a service (200)
+DELETE /v1/tenants/{tenant_id}/services/{sid}        — delete a service (204)
+POST   /v1/tenants/{tenant_id}/services/test-transient — dry-run test without persistence (200)
 
 Architecture constraints:
   - Tenant context via bound parameters — ADR-0008, T-1.0.15.
@@ -14,6 +15,7 @@ Architecture constraints:
   - Global channel "mintkey:service" — ADR-0014.1.
   - RFC1918 / loopback / metadata destinations rejected — S-SEC-1.
   - No plaintext credentials in responses or logs — S-SEC-1, ADR-0014.4.
+  - test-transient: credential value NEVER written to DB, vault, logs, or audit — OPS-T.
 
 Source: design §4 api/services.py; Req 3; ADR-0008; ADR-0014.7; ADR-0017.11.
 """
@@ -150,6 +152,54 @@ class TestRunRequest(BaseModel):
     headers: Optional[dict[str, str]] = None
     body: Optional[str] = None
     timeout_ms: Optional[int] = 5000
+
+
+class TransientServiceCandidate(BaseModel):
+    """Candidate service config for a dry-run test — OPS-T."""
+
+    name: str = "candidate"
+    base_url: str
+    auth_scheme: str
+
+
+class TransientCredentialCandidate(BaseModel):
+    """
+    Candidate credential for a dry-run test — OPS-T.
+
+    The `value` field is used inline for the HTTP call ONLY.
+    It is NEVER written to DB, vault, any log line, or the audit payload.
+    """
+
+    value: str
+    header_name: Optional[str] = None   # api_key_header scheme
+    query_param: Optional[str] = None   # api_key_query scheme
+    token_url: Optional[str] = None     # oauth2_client_credentials (future)
+    client_id: Optional[str] = None     # oauth2_client_credentials (future)
+
+
+class TransientTestParams(BaseModel):
+    """HTTP call parameters for a dry-run test — OPS-T."""
+
+    method: Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] = "GET"
+    path: str = "/"
+    headers: Optional[dict[str, str]] = None
+    body: Optional[str] = None
+    timeout_ms: int = 5000
+
+
+class TransientTestRequest(BaseModel):
+    """
+    Body for POST /test-transient — operationId testServiceTransient.
+
+    Carries the full candidate service config + credential inline.
+    Nothing is persisted to DB or vault.
+
+    Source: openapi.yaml TransientTestRequest; OPS-T.
+    """
+
+    service: TransientServiceCandidate
+    credential: TransientCredentialCandidate
+    test: TransientTestParams = TransientTestParams()
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +442,137 @@ async def get_service(
     return JSONResponse(_service_row_to_dict(row))
 
 
+@router.post("/test-transient")
+async def test_service_transient(
+    tenant_id: UUID,
+    body: TransientTestRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Validate a candidate service config + credential WITHOUT persisting to DB or vault.
+
+    Accepts a full TransientTestRequest (service config + credential + test params),
+    performs the HTTP call in-memory, emits a service.test_executed audit event with
+    transient=True, and returns the result.
+
+    The credential value is NEVER written to DB, vault, any log line, or the audit payload.
+
+    Source: openapi.yaml operationId=testServiceTransient; OPS-T; S-SEC-1; ADR-0014.4.
+    """
+    # SSRF guardrail — S-SEC-1 / ADR-0014.4
+    if _is_forbidden_destination(body.service.base_url):
+        return _forbidden_response()
+
+    await set_tenant_context(session, tenant_id)
+
+    base_url: str = body.service.base_url
+    auth_scheme: str = body.service.auth_scheme
+    test = body.test
+
+    # Build the final URL
+    base_url_stripped = base_url.rstrip("/")
+    path_part = test.path if test.path.startswith("/") else "/" + test.path
+    final_url = base_url_stripped + path_part
+
+    # Build request headers based on auth_scheme using the inline credential
+    # The plaintext value is used here only — it must not appear in any log or audit payload.
+    headers: dict[str, str] = {}
+    plaintext: str = body.credential.value
+    if auth_scheme == "bearer_token":
+        headers["Authorization"] = f"Bearer {plaintext}"
+    elif auth_scheme == "api_key_header":
+        header_name: str = body.credential.header_name or ""
+        if not header_name:
+            logger.warning(
+                "test_service_transient: api_key_header credential missing header_name — "
+                "falling back to 'X-API-Key'. tenant=%s",
+                str(tenant_id),
+            )
+            header_name = "X-API-Key"
+        headers[header_name] = plaintext
+    elif auth_scheme == "api_key_query":
+        query_param: str = body.credential.query_param or ""
+        if not query_param:
+            logger.warning(
+                "test_service_transient: api_key_query credential missing query_param — "
+                "falling back to 'api_key'. tenant=%s",
+                str(tenant_id),
+            )
+            query_param = "api_key"
+        separator = "&" if "?" in final_url else "?"
+        final_url = f"{final_url}{separator}{query_param}={plaintext}"
+
+    # Merge auth headers with optional extra headers from the request body
+    merged_headers = {**headers, **(test.headers or {})}
+    timeout_s = test.timeout_ms / 1000.0
+
+    # Make outbound HTTP call
+    import time as _time  # noqa: PLC0415
+    start = _time.monotonic()
+    ok: bool = False
+    status_code: int = 0
+    latency_ms: int = 0
+    response_body_truncated: str = ""
+    error: Optional[str] = None
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.request(
+                method=test.method,
+                url=final_url,
+                headers=merged_headers,
+                content=test.body,
+            )
+        latency_ms = int((_time.monotonic() - start) * 1000)
+        ok = 200 <= response.status_code < 300
+        status_code = response.status_code
+        response_body_truncated = response.text[:500]
+    except httpx.TimeoutException:
+        latency_ms = int((_time.monotonic() - start) * 1000)
+        error = "timeout"
+    except Exception as exc:  # noqa: BLE001
+        latency_ms = int((_time.monotonic() - start) * 1000)
+        error = str(exc)
+
+    # Emit audit event — ADR-0014.7, Req AUD-3
+    # Wrapped in try/except so a logging failure never breaks the response.
+    # IMPORTANT: credential value and response body bytes are NEVER included.
+    try:
+        await audit_emit(
+            session=session,
+            tenant_id=tenant_id,
+            event_type="service.test_executed",
+            actor_id=None,
+            actor_type="operator",
+            target_id=None,
+            target_type="service",
+            payload={
+                "method": test.method,
+                "path_template": test.path,
+                "base_url": base_url,
+                "auth_scheme": auth_scheme,
+                "status_code": status_code,
+                "latency_ms": latency_ms,
+                "ok": ok,
+                "transient": True,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "test_service_transient: audit_emit failed (non-fatal). tenant=%s",
+            str(tenant_id),
+        )
+
+    result: dict = {"ok": ok, "latency_ms": latency_ms, "final_url": final_url}
+    if status_code:
+        result["status_code"] = status_code
+    if response_body_truncated:
+        result["response_body_truncated"] = response_body_truncated
+    if error is not None:
+        result["error"] = error
+    return JSONResponse(result)
+
+
 @router.post("/{service_id}/test")
 async def test_service(
     tenant_id: UUID,
@@ -404,8 +585,9 @@ async def test_service(
 
     Accepts TestRunRequest body (method, path, headers, body, timeout_ms).
     All fields are optional with defaults (GET, /health, 5000 ms).
+    Emits service.test_executed audit event with transient=False.
 
-    Source: openapi.yaml operationId=testRunService; ADR-0014.4; S-SEC-1; R14b.
+    Source: openapi.yaml operationId=testRunService; ADR-0014.4; S-SEC-1; R14b; OPS-T.
     """
     if req is None:
         req = TestRunRequest()
@@ -483,6 +665,11 @@ async def test_service(
     # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
     start = _time.monotonic()
+    test_ok: bool = False
+    test_status_code: int = 0
+    test_latency_ms: int = 0
+    test_response_body: str = ""
+
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as client:
             response = await client.request(
@@ -491,21 +678,110 @@ async def test_service(
                 headers=merged_headers,
                 content=req.body,
             )
-        latency_ms = int((_time.monotonic() - start) * 1000)
-        ok = 200 <= response.status_code < 300
+        test_latency_ms = int((_time.monotonic() - start) * 1000)
+        test_ok = 200 <= response.status_code < 300
+        test_status_code = response.status_code
+        test_response_body = response.text[:500]
+
+        # Emit audit event — ADR-0014.7, Req AUD-3, OPS-T
+        # Wrapped in try/except so a logging failure never breaks the response.
+        # IMPORTANT: credential value and response body bytes are NEVER included.
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=row.id,
+                target_type="service",
+                payload={
+                    "method": req.method,
+                    "path_template": req.path,
+                    "auth_scheme": auth_scheme,
+                    "status_code": test_status_code,
+                    "latency_ms": test_latency_ms,
+                    "ok": test_ok,
+                    "transient": False,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service: audit_emit failed (non-fatal). service=%s tenant=%s",
+                service_id,
+                str(tenant_id),
+            )
+
         return JSONResponse(
             {
-                "ok": ok,
-                "status_code": response.status_code,
-                "latency_ms": latency_ms,
-                "response_body_truncated": response.text[:500],
+                "ok": test_ok,
+                "status_code": test_status_code,
+                "latency_ms": test_latency_ms,
+                "response_body_truncated": test_response_body,
                 "final_url": final_url,
             }
         )
     except httpx.TimeoutException:
-        latency_ms = int((_time.monotonic() - start) * 1000)
-        return JSONResponse({"ok": False, "latency_ms": latency_ms, "error": "timeout"})
+        test_latency_ms = int((_time.monotonic() - start) * 1000)
+
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=row.id,
+                target_type="service",
+                payload={
+                    "method": req.method,
+                    "path_template": req.path,
+                    "auth_scheme": auth_scheme,
+                    "status_code": 0,
+                    "latency_ms": test_latency_ms,
+                    "ok": False,
+                    "transient": False,
+                    "error": "timeout",
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service: audit_emit failed (non-fatal). service=%s tenant=%s",
+                service_id,
+                str(tenant_id),
+            )
+
+        return JSONResponse({"ok": False, "latency_ms": test_latency_ms, "error": "timeout"})
     except Exception as exc:  # noqa: BLE001
+        test_latency_ms = int((_time.monotonic() - start) * 1000)
+
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=row.id,
+                target_type="service",
+                payload={
+                    "method": req.method,
+                    "path_template": req.path,
+                    "auth_scheme": auth_scheme,
+                    "status_code": 0,
+                    "latency_ms": test_latency_ms,
+                    "ok": False,
+                    "transient": False,
+                    "error": str(exc),
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service: audit_emit failed (non-fatal). service=%s tenant=%s",
+                service_id,
+                str(tenant_id),
+            )
+
         return JSONResponse({"ok": False, "error": str(exc)})
 
 

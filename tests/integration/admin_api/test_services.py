@@ -1,13 +1,14 @@
 """
-Integration tests for service CRUD + single-get + test endpoints.
+Integration tests for service CRUD + single-get + test + test-transient endpoints.
 
 Covers:
-  POST   /v1/tenants/{tenant_id}/services         — create (201)
-  GET    /v1/tenants/{tenant_id}/services         — list (200)
-  GET    /v1/tenants/{tenant_id}/services/{sid}   — get single (200 / 404)
-  PATCH  /v1/tenants/{tenant_id}/services/{sid}   — update (200)
-  DELETE /v1/tenants/{tenant_id}/services/{sid}   — delete (204)
-  POST   /v1/tenants/{tenant_id}/services/{sid}/test — connectivity test (200)
+  POST   /v1/tenants/{tenant_id}/services              — create (201)
+  GET    /v1/tenants/{tenant_id}/services              — list (200)
+  GET    /v1/tenants/{tenant_id}/services/{sid}        — get single (200 / 404)
+  PATCH  /v1/tenants/{tenant_id}/services/{sid}        — update (200)
+  DELETE /v1/tenants/{tenant_id}/services/{sid}        — delete (204)
+  POST   /v1/tenants/{tenant_id}/services/{sid}/test   — connectivity test (200)
+  POST   /v1/tenants/{tenant_id}/services/test-transient — dry-run test (200)
 
 Cross-tenant isolation: tenant A cannot read tenant B's services.
 
@@ -15,11 +16,14 @@ Architecture constraints honoured:
   ADR-0017.11 — ULID svc_ prefix IDs
   S-SEC-1     — SSRF: RFC1918 base_url → 422
   ADR-0014.7  — audit event emitted on every state change
+  OPS-T       — test-transient: no DB/vault writes; audit payload contains no credential
 """
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import psycopg2
 import pytest
 from starlette.testclient import TestClient
 
@@ -459,3 +463,337 @@ def test_post_service_test_api_key_header_fallback_to_default(
         f"Expected fallback 'X-API-Key' header; got: {list(captured_headers.keys())}"
     )
     assert captured_headers["X-API-Key"] == "fallback-key"
+
+
+# ---------------------------------------------------------------------------
+# POST /test-transient — OPS-T
+# ---------------------------------------------------------------------------
+
+
+def _query_db(postgres_container, query: str, params: tuple = ()):
+    """Execute a raw SQL query against the testcontainer DB and return fetchall rows."""
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
+def test_test_transient_happy_path(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    POST /test-transient with a valid bearer_token candidate → 200 + result panel.
+
+    Source: OPS-T happy path.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = '{"url":"https://mock-backend.example.com/get"}'
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{tenant_uuid}/services/test-transient",
+            json={
+                "service": {
+                    "name": "candidate",
+                    "base_url": "https://mock-backend.example.com",
+                    "auth_scheme": "bearer_token",
+                },
+                "credential": {"value": "secret-token-abc"},
+                "test": {
+                    "method": "GET",
+                    "path": "/get",
+                    "timeout_ms": 5000,
+                },
+            },
+        )
+
+    assert resp.status_code == 200, f"Expected 200, got: {resp.text}"
+    body = resp.json()
+    assert body["ok"] is True, f"Expected ok=true, got: {body}"
+    assert body["status_code"] == 200
+    assert "latency_ms" in body
+    assert "final_url" in body
+
+
+def test_test_transient_ssrf_rejected(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    POST /test-transient with RFC1918 base_url → 422 with forbidden_destination code.
+
+    Source: OPS-T SSRF guard; S-SEC-1.
+    """
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services/test-transient",
+        json={
+            "service": {
+                "name": "evil",
+                "base_url": "http://127.0.0.1:8080",
+                "auth_scheme": "bearer_token",
+            },
+            "credential": {"value": "should-be-rejected"},
+            "test": {"method": "GET", "path": "/"},
+        },
+    )
+    assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+    assert resp.json().get("mintkey:code") == "forbidden_destination"
+
+
+def test_test_transient_no_db_write(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    After POST /test-transient, no service row with name='candidate' must exist.
+
+    Source: OPS-T — no DB persistence.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "{}"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{tenant_uuid}/services/test-transient",
+            json={
+                "service": {
+                    "name": "candidate",
+                    "base_url": "https://no-persist.example.com",
+                    "auth_scheme": "bearer_token",
+                },
+                "credential": {"value": "ephemeral-key"},
+                "test": {"method": "GET", "path": "/"},
+            },
+        )
+    assert resp.status_code == 200, f"Unexpected response: {resp.text}"
+
+    rows = _query_db(
+        postgres_container,
+        "SELECT count(*) FROM services WHERE name = %s AND tenant_id = %s",
+        ("candidate", tenant_uuid),
+    )
+    count = rows[0][0]
+    assert count == 0, (
+        f"Expected 0 service rows named 'candidate' after test-transient; found {count}"
+    )
+
+
+def test_test_transient_no_vault_write(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    POST /test-transient must NOT call vault PutCredential.
+
+    Source: OPS-T — no vault persistence.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "{}"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    mock_vault = MagicMock()
+    mock_vault.put_credential = AsyncMock()
+    mock_vault.get_credential = AsyncMock(return_value=None)
+
+    with (
+        patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client),
+        patch(
+            "admin_api.services.vault_client.get_vault_client",
+            AsyncMock(return_value=mock_vault),
+        ),
+    ):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{tenant_uuid}/services/test-transient",
+            json={
+                "service": {
+                    "name": "candidate",
+                    "base_url": "https://no-vault.example.com",
+                    "auth_scheme": "bearer_token",
+                },
+                "credential": {"value": "ephemeral"},
+                "test": {"method": "GET", "path": "/"},
+            },
+        )
+    assert resp.status_code == 200, f"Unexpected response: {resp.text}"
+
+    # Vault put_credential must NOT have been called
+    mock_vault.put_credential.assert_not_called()
+
+
+def test_test_transient_audit_row_written(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    POST /test-transient must write an audit_events row with
+    event_type='service.test_executed' and payload.transient=true.
+
+    Source: OPS-T audit requirement; ADR-0014.7.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "{}"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{tenant_uuid}/services/test-transient",
+            json={
+                "service": {
+                    "name": "candidate",
+                    "base_url": "https://audit-check.example.com",
+                    "auth_scheme": "bearer_token",
+                },
+                "credential": {"value": "audit-test-cred"},
+                "test": {"method": "GET", "path": "/"},
+            },
+        )
+    assert resp.status_code == 200, f"Unexpected response: {resp.text}"
+
+    rows = _query_db(
+        postgres_container,
+        "SELECT payload FROM audit_events"
+        " WHERE event_type = %s AND tenant_id = %s"
+        " ORDER BY at DESC LIMIT 1",
+        ("service.test_executed", tenant_uuid),
+    )
+    assert rows, "No audit_events row found for service.test_executed after test-transient"
+
+    payload = rows[0][0]
+    # payload may be a dict (asyncpg/psycopg2 returning jsonb) or a string
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    assert payload.get("transient") is True, (
+        f"Expected payload.transient=true; got: {payload}"
+    )
+
+
+def test_test_transient_audit_payload_no_credential(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    The audit_events payload for a test-transient call must NOT contain
+    the credential value.
+
+    Source: OPS-T security requirement; ADR-0014.4.
+    """
+    credential_value = "super-secret-credential-xyz987"
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = "{}"
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{tenant_uuid}/services/test-transient",
+            json={
+                "service": {
+                    "name": "candidate",
+                    "base_url": "https://sec-check.example.com",
+                    "auth_scheme": "bearer_token",
+                },
+                "credential": {"value": credential_value},
+                "test": {"method": "GET", "path": "/"},
+            },
+        )
+    assert resp.status_code == 200, f"Unexpected response: {resp.text}"
+
+    # Fetch the most recent service.test_executed audit event
+    rows = _query_db(
+        postgres_container,
+        "SELECT payload FROM audit_events"
+        " WHERE event_type = %s AND tenant_id = %s"
+        " ORDER BY at DESC LIMIT 1",
+        ("service.test_executed", tenant_uuid),
+    )
+    assert rows, "No audit row found after test-transient"
+
+    payload_raw = rows[0][0]
+    payload_str = (
+        json.dumps(payload_raw) if not isinstance(payload_raw, str) else payload_raw
+    )
+    assert credential_value not in payload_str, (
+        f"Credential value found in audit payload — security violation! "
+        f"Payload: {payload_str}"
+    )
+
+
+def test_existing_test_endpoint_emits_audit_event(
+    admin_app: TestClient, tenant_uuid: str, service_id: str, postgres_container
+) -> None:
+    """
+    POST /…/{sid}/test (existing endpoint, OPS-T retrofit) must now emit a
+    service.test_executed audit event with transient=False.
+
+    Source: OPS-T retrofit requirement; ADR-0014.7.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = '{"status":"ok"}'
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.request = AsyncMock(return_value=mock_response)
+
+    with patch("admin_api.api.services.httpx.AsyncClient", return_value=mock_client):
+        resp = _post(admin_app, f"/v1/tenants/{tenant_uuid}/services/{service_id}/test")
+
+    assert resp.status_code == 200, f"Unexpected response: {resp.text}"
+
+    rows = _query_db(
+        postgres_container,
+        "SELECT payload FROM audit_events"
+        " WHERE event_type = %s AND tenant_id = %s"
+        " ORDER BY at DESC LIMIT 1",
+        ("service.test_executed", tenant_uuid),
+    )
+    assert rows, (
+        "No audit_events row found for service.test_executed after /test call — "
+        "retrofit may be missing"
+    )
+
+    payload = rows[0][0]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    assert payload.get("transient") is False, (
+        f"Expected payload.transient=false for existing /test endpoint; got: {payload}"
+    )
