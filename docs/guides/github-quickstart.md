@@ -67,7 +67,7 @@ TENANT_ID=$(curl -s http://localhost:8080/v1/tenants \
   -b cookies.txt \
   -H "X-Mintkey-Csrf: $CSRF" \
   -H "X-Platform-Admin: true" \
-  | jq -r '.tenants[0].id')
+  | jq -r '.data[0].id')
 
 echo "Tenant: $TENANT_ID"
 # Local dev fixture: 9593e3ba-4102-4235-9748-28d35b473214
@@ -83,7 +83,7 @@ echo "Tenant: $TENANT_ID"
 2. Click the **Templates** button (top-right of the services list) to navigate to the **Create from Template** picker page at `/admin/resources/services/actions/templates`
 3. Click the **Use this template** button inside the GitHub card (the card body has `cursor: pointer` but only the button has an `onClick` handler)
 4. The form pre-fills all 5 fields after OPS-DDEE (commit `294dd273`): `name=GitHub`, `base_url=https://api.github.com`, `auth_scheme=bearer_token`, `description`, and `openapi_url` (GitHub OpenAPI spec URL)
-5. Leave the credential value empty for now — that is Step 3. Click **Save**.
+5. Leave the credential value empty for now — that is Step 3. Click **Create Service**.
 6. The form shows an in-place success banner with **Test connection** and **View service** CTAs (the URL doesn't change). Click **View service** to navigate to the show page.
 
 **Via curl (automation):**
@@ -157,7 +157,7 @@ Expected response (success):
 }
 ```
 
-**Via UI:** in the ServiceCreateForm fill all fields including the credential value and click **Test connection** — the button is at the bottom of the form, above **Create Service**. It is disabled until `name`, `base_url`, `auth_scheme`, and the credential `value` are all filled. A result panel shows `status_code`, `latency_ms`, and the response body.
+**Via UI:** in the ServiceCreateForm fill all fields including the credential value and click **Test connection** — the button is at the bottom of the form, above **Create Service**. Check the **Add a credential now?** checkbox to reveal the credential `value` field. The Test connection button is enabled once `name`, `base_url`, `auth_scheme`, and the credential `value` are all populated. A result panel shows `status_code`, `latency_ms`, and the response body.
 
 If the test returns `{"ok": false, "status_code": 401, ...}`, the PAT is invalid or has insufficient scopes — do not proceed to Step 4 until this returns 200.
 
@@ -383,7 +383,7 @@ curl -s "http://localhost:8000/v1/call/$SID/user/repos?per_page=5" \
 | 429 rate-limited | `rate_limit_rps` exceeded on agent | Agent show page → **Rate Limit Rps** field | Raise the limit or wait for the window to reset |
 | 502 from proxy | Credential row missing or vault lookup failed | `docker compose logs mintkey-proxy-plugin-1 --tail 50` (502 surfaces here; `docker compose logs mintkey-vault-adapter-1` may help diagnose root cause) | Verify vault-adapter is up; verify credential was saved in Step 4 |
 | Token request returns 403 | Broker down or `MINTKEY_BROKER_SERVICE_TOKEN` mismatch | `docker compose logs mintkey-broker-1 --tail 50` | Restart broker; verify `MINTKEY_BROKER_SERVICE_TOKEN` env matches across services |
-| Kong 404 on proxy call | Routes not synced after service create | `docker compose logs mintkey-kong-syncer-1 --tail 50` | `docker compose restart kong-syncer`; routes resync on startup |
+| Kong 404 on proxy call | Routes not synced after service create | `docker compose logs mintkey-kong-syncer-1 --tail 50` | Kong-syncer publishes routes after each `mintkey:service` NOTIFY (~300ms). Wait or check `docker compose logs mintkey-kong-syncer-1 \| grep routes_published`. If still 404 with a known-good `svc_` ID, verify the wire-form encoder matches between Python and Go (`services/kong-syncer/internal/wireids/encode_test.go`). |
 | `description`/`openapi_url` missing from describe_service | Service registered without these fields | `docker compose logs mintkey-admin-api-1 --tail 20` | Confirm service was registered with `description` and `openapi_url` fields — re-save if not |
 | Transient test returns `{"ok": false, "status_code": 401}` | PAT is invalid, revoked, or missing required scope | GitHub tokens page at `https://github.com/settings/tokens` | Generate a new PAT with correct scopes; re-run Step 3 |
 
