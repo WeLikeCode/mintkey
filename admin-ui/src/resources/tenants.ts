@@ -74,7 +74,14 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
         components: { show: Components.JsonValue },
       },
       isolation_mode: {
-        components: { show: Components.JsonValue },
+        availableValues: [
+          { value: "row", label: "Row-level (RLS in shared tables)" },
+          { value: "database", label: "Database-level (dedicated DB per tenant)" },
+        ],
+        description: `Determines how tenant data is isolated at the storage layer.
+• \`row\` (default): data lives in shared tables with Postgres row-level security — fast onboarding, lower cost, fine for most tenants.
+• \`database\`: each tenant gets a dedicated database/schema — required for regulatory isolation, slower onboarding, higher cost.
+Cannot be changed after tenant creation.`,
       },
       // Virtual show-only panel: lists services belonging to this tenant (UX-E).
       // Component fetches services via the AdminJS list action for the "services"
