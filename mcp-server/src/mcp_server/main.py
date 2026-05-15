@@ -52,6 +52,14 @@ except ImportError:
 def create_app() -> FastAPI:
     app = FastAPI(title="Mintkey MCP Server", version="0.1.0-experimental")
 
+    # Wire OTel OTLP exporter — gracefully skipped when the SDK/exporter packages
+    # are not installed (e.g. in the host test environment).
+    try:
+        from mcp_server.middleware.otel import configure_otel
+        configure_otel(app)
+    except Exception:  # noqa: BLE001
+        pass
+
     @app.middleware("http")
     async def agent_key_middleware(request: Request, call_next):
         # Health check, metrics, instructions, and bootstrap bypass auth.
