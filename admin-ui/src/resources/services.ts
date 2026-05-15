@@ -273,6 +273,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
               base_url: raw.base_url ?? "",
               auth_scheme: raw.auth_scheme ?? "",
               openapi_url: raw.openapi_url ?? "",
+              test_path: raw.test_path ?? "/health",
             };
             const baseRecord = await recordJSON(context, {});
             // Flat params belt-and-suspenders: React can read either the nested
@@ -289,6 +290,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
                   "template.base_url": template.base_url,
                   "template.auth_scheme": template.auth_scheme,
                   "template.openapi_url": template.openapi_url,
+                  "template.test_path": template.test_path,
                 },
               },
               template,
