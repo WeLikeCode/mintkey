@@ -55,6 +55,8 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		ReturnedKeyVersion: result.ReturnedKeyVersion,
 		CurrentKeyVersion:  result.CurrentKeyVersion,
 		TargetUrl:          result.TargetURL,
+		HeaderName:         result.HeaderName,
+		QueryParam:         result.QueryParam,
 	}, nil
 }
 
@@ -67,6 +69,8 @@ func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCre
 		Plaintext:     req.GetValue(),
 		CallerActorID: req.GetCallerActorId(),
 		TargetURL:     req.GetTargetUrl(),
+		HeaderName:    req.GetHeaderName(),
+		QueryParam:    req.GetQueryParam(),
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "PutCredential: %v", err)

@@ -43,6 +43,8 @@ type PutCredentialArgs struct {
 	Plaintext     []byte
 	CallerActorID string
 	TargetURL     string
+	HeaderName    string // injection hint for api_key_header scheme — UX-C6
+	QueryParam    string // injection hint for api_key_query scheme — UX-C6
 }
 
 // PutCredentialResult is returned by PutCredential.
@@ -66,6 +68,8 @@ type GetCredentialResult struct {
 	ReturnedKeyVersion uint32
 	CurrentKeyVersion  uint32
 	TargetURL          string
+	HeaderName         string // injection hint for api_key_header scheme — UX-C6
+	QueryParam         string // injection hint for api_key_query scheme — UX-C6
 }
 
 // RevokeCredentialArgs holds the input for RevokeCredential.
@@ -212,6 +216,8 @@ func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs
 		EncPayload:   encPayload,
 		CreatedAt:    now.UnixNano(),
 		TargetURL:    args.TargetURL,
+		HeaderName:   args.HeaderName,
+		QueryParam:   args.QueryParam,
 	}
 
 	keyVer, err := v.store.Put(ctx, rec)
@@ -261,6 +267,8 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				ReturnedKeyVersion: args.KeyVersion,
 				CurrentKeyVersion:  currentKeyVer,
 				TargetURL:          e.TargetURL,
+				HeaderName:         e.HeaderName,
+				QueryParam:         e.QueryParam,
 			}, nil
 		}
 	}
@@ -283,7 +291,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -300,6 +308,8 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 		ReturnedKeyVersion: rec.KeyVersion,
 		CurrentKeyVersion:  currentKeyVer,
 		TargetURL:          rec.TargetURL,
+		HeaderName:         rec.HeaderName,
+		QueryParam:         rec.QueryParam,
 	}, nil
 }
 

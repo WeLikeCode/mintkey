@@ -215,6 +215,122 @@ func TestGRPCListVersions_PutAndGetUnaffected(t *testing.T) {
 	}
 }
 
+// TestGRPCPutGetHeaderName verifies that header_name and query_param are
+// persisted by PutCredential and returned by GetCredential (UX-C6).
+func TestGRPCPutGetHeaderName(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	tenantID := "tenant_hdr_test"
+	serviceID := "svc_hdr_test"
+	wantHeader := "X-Custom-Auth"
+	wantQuery := ""
+
+	putResp, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_API_KEY_HEADER,
+		Value:      []byte("supersecret"),
+		HeaderName: wantHeader,
+		QueryParam: wantQuery,
+	})
+	if err != nil {
+		t.Fatalf("PutCredential: %v", err)
+	}
+	if putResp.KeyVersion == 0 {
+		t.Fatalf("expected non-zero key_version, got 0")
+	}
+
+	getResp, err := client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		KeyVersion: 0, // current
+	})
+	if err != nil {
+		t.Fatalf("GetCredential: %v", err)
+	}
+	if getResp.HeaderName != wantHeader {
+		t.Errorf("GetCredential: HeaderName=%q, want %q", getResp.HeaderName, wantHeader)
+	}
+	if getResp.QueryParam != wantQuery {
+		t.Errorf("GetCredential: QueryParam=%q, want %q", getResp.QueryParam, wantQuery)
+	}
+	if string(getResp.Value) != "supersecret" {
+		t.Errorf("GetCredential: Value=%q, want %q", getResp.Value, "supersecret")
+	}
+}
+
+// TestGRPCPutGetQueryParam verifies query_param is persisted and returned (UX-C6).
+func TestGRPCPutGetQueryParam(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	tenantID := "tenant_qp_test"
+	serviceID := "svc_qp_test"
+	wantQuery := "access_token"
+
+	_, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_API_KEY_QUERY,
+		Value:      []byte("mykey"),
+		QueryParam: wantQuery,
+	})
+	if err != nil {
+		t.Fatalf("PutCredential: %v", err)
+	}
+
+	getResp, err := client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		KeyVersion: 0,
+	})
+	if err != nil {
+		t.Fatalf("GetCredential: %v", err)
+	}
+	if getResp.QueryParam != wantQuery {
+		t.Errorf("GetCredential: QueryParam=%q, want %q", getResp.QueryParam, wantQuery)
+	}
+}
+
+// TestGRPCGetCredential_NullHeaderName verifies that credentials stored
+// before UX-C6 (NULL/empty header_name) return empty string, not an error.
+func TestGRPCGetCredential_NullHeaderName(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	tenantID := "tenant_legacy"
+	serviceID := "svc_legacy"
+
+	// Store without header_name (simulates pre-UX-C6 record).
+	_, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_BEARER_TOKEN,
+		Value:      []byte("legacytok"),
+		// HeaderName and QueryParam intentionally omitted (zero-value "").
+	})
+	if err != nil {
+		t.Fatalf("PutCredential: %v", err)
+	}
+
+	getResp, err := client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   tenantID,
+		ServiceId:  serviceID,
+		KeyVersion: 0,
+	})
+	if err != nil {
+		t.Fatalf("GetCredential: unexpected error for legacy credential: %v", err)
+	}
+	// Empty string expected — not an error.
+	if getResp.HeaderName != "" {
+		t.Errorf("expected empty HeaderName for legacy credential, got %q", getResp.HeaderName)
+	}
+}
+
 // contains is a simple substring check (avoids importing strings in test file).
 func contains(haystack, needle string) bool {
 	if needle == "" {
