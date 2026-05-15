@@ -120,8 +120,14 @@ class VaultAdapterClient:
         auth_scheme: str,
         plaintext: str,
         target_url: str = "",
+        header_name: str = "",
+        query_param: str = "",
     ) -> dict:
-        """Seal and store a credential. Returns metadata — no plaintext."""
+        """Seal and store a credential. Returns metadata — no plaintext.
+
+        header_name: HTTP header name for api_key_header scheme (e.g. "X-API-Key") — UX-C6.
+        query_param: query parameter name for api_key_query scheme (e.g. "api_key") — UX-C6.
+        """
         scheme_int = _AUTH_SCHEME_MAP.get(auth_scheme, 0)
         req = vault_pb2.PutCredentialRequest(
             tenant_id=tenant_id,
@@ -129,6 +135,8 @@ class VaultAdapterClient:
             auth_scheme=scheme_int,
             value=plaintext.encode(),
             target_url=target_url,
+            header_name=header_name,
+            query_param=query_param,
         )
         resp = await (await self._stub()).PutCredential(req)
         return {

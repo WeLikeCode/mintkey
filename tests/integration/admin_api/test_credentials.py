@@ -596,6 +596,59 @@ def test_rotate_from_nonexistent_id_returns_404(
     assert rot.json()["mintkey:code"] == "not_found"
 
 
+# ---------------------------------------------------------------------------
+# Tests: UX-C6 — header_name / query_param plumbing
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cred_service_for_header(admin_app: TestClient, postgres_container, cred_tenant: str) -> str:
+    """Separate service for header_name tests."""
+    return _insert_service(postgres_container, cred_tenant, slug="cred-svc-header")
+
+
+def test_create_credential_with_header_name_returns_201(
+    admin_app: TestClient, cred_tenant: str, cred_service_for_header: str
+) -> None:
+    """POST with header_name=X-Custom → 201; header_name accepted without error."""
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{cred_service_for_header}/credentials",
+        json={
+            "auth_scheme": "api_key_header",
+            "value": "secret-api-key",
+            "header_name": "X-Custom",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["id"].startswith("cred_")
+    assert body["auth_scheme"] == "api_key_header"
+    # ADR-0014.4: secret value must never appear in response
+    assert "secret-api-key" not in str(body)
+    assert "X-Custom" not in str(body)  # header_name not echoed back
+
+
+def test_create_credential_with_query_param_returns_201(
+    admin_app: TestClient, cred_tenant: str, postgres_container
+) -> None:
+    """POST with query_param=access_key → 201; query_param accepted without error."""
+    svc = _insert_service(postgres_container, cred_tenant, slug="cred-svc-qp")
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{cred_tenant}/services/{svc}/credentials",
+        json={
+            "auth_scheme": "api_key_query",
+            "value": "qp-secret",
+            "query_param": "access_key",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["auth_scheme"] == "api_key_query"
+    assert "qp-secret" not in str(body)
+
+
 def test_rotate_from_malformed_returns_422(
     admin_app: TestClient, cred_tenant: str, cred_service_for_rotate_from: str
 ) -> None:

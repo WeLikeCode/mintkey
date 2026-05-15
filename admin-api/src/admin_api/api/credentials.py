@@ -101,8 +101,10 @@ def _svc_wire_to_db_uuid(wire_id: str) -> str:
 
 
 class CredentialCreate(BaseModel):
-    auth_scheme: str  # e.g., "bearer_token", "api_key_header"
-    value: str        # SENSITIVE — never echoed back (S-SEC-1, ADR-0014.4)
+    auth_scheme: str               # e.g., "bearer_token", "api_key_header"
+    value: str                     # SENSITIVE — never echoed back (S-SEC-1, ADR-0014.4)
+    header_name: Optional[str] = None  # injection hint for api_key_header (e.g. "X-API-Key") — UX-C6
+    query_param: Optional[str] = None  # injection hint for api_key_query (e.g. "api_key") — UX-C6
 
 
 class CredentialRotateRequest(BaseModel):
@@ -169,6 +171,8 @@ async def create_credential(
         auth_scheme=body.auth_scheme,
         plaintext=body.value,  # plaintext leaves scope here; vault encrypts it
         target_url=service_base_url,
+        header_name=body.header_name or "",
+        query_param=body.query_param or "",
     )
     key_version: int = vault_result["key_version"]
 
