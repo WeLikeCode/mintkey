@@ -388,6 +388,78 @@ def test_list_tenant_permissions_q_filters_by_action_substring(
 
 
 # ---------------------------------------------------------------------------
+# Tests: UX-BL1 — enriched list response (service_name, service_slug, agent_name)
+# ---------------------------------------------------------------------------
+
+
+def test_list_tenant_permissions_includes_service_and_agent_names(
+    admin_app: TestClient,
+    postgres_container,
+) -> None:
+    """
+    GET /v1/tenants/{tid}/permissions must include service_name, service_slug,
+    and agent_name in every permission row — UX-BL1.
+
+    Verifies:
+      - service_name matches the name column of the services table
+      - service_slug matches the slug column of the services table
+      - agent_name matches the name column of the agents table
+      - these fields are returned even when there is only one grant
+    """
+    tenant_id = _insert_tenant(postgres_container, "perm-bl1-tenant")
+
+    svc_name = "BL1 Test Service"
+    svc_slug = "bl1-test-svc"
+    conn = _get_conn(postgres_container)
+    cur = conn.cursor()
+    svc_id = str(uuid.uuid4())
+    cur.execute(
+        "INSERT INTO services"
+        " (id, tenant_id, name, slug, display_name, base_url, auth_scheme, status)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (svc_id, tenant_id, svc_name, svc_slug, svc_name,
+         "https://example.com/bl1", "bearer_token", "active"),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    agent_name = "BL1 Test Agent"
+    agent_id = _insert_agent(postgres_container, tenant_id, agent_name)
+
+    # Grant a permission
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
+        json={"service_id": svc_id, "action": "call", "constraints": {}},
+    )
+    assert resp.status_code == 201, resp.text
+
+    # Fetch flat tenant-level list
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_id}/permissions")
+    assert list_resp.status_code == 200, list_resp.text
+    perms = list_resp.json()["permissions"]
+    assert len(perms) >= 1, "Expected at least one permission row"
+
+    # Find our row
+    row = next(
+        (p for p in perms if p.get("action") == "call"),
+        None,
+    )
+    assert row is not None, f"Did not find 'call' permission in {perms}"
+
+    assert row.get("service_name") == svc_name, (
+        f"service_name mismatch: expected {svc_name!r}, got {row.get('service_name')!r}"
+    )
+    assert row.get("service_slug") == svc_slug, (
+        f"service_slug mismatch: expected {svc_slug!r}, got {row.get('service_slug')!r}"
+    )
+    assert row.get("agent_name") == agent_name, (
+        f"agent_name mismatch: expected {agent_name!r}, got {row.get('agent_name')!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tests: Cross-tenant isolation (ADR-0008)
 # ---------------------------------------------------------------------------
 

@@ -204,9 +204,8 @@ test.describe("38 — Typeahead combobox for agent + service pickers (UX-A)", ()
     expect(svcOptCount, "service dropdown must have at least 1 option").toBeGreaterThan(0);
 
     // Type to filter services locally (no API call — staticOptions mode).
-    // The service option label is "svc_XXXX" (wire id) since permissions list
-    // returns service_id only — no service_name in that endpoint's response.
-    // Search by the "svc_" prefix which all service wire IDs share.
+    // UX-BL1: permissions list now returns service_name, so option labels are
+    // "<name> (svc_XXXX)". Search by "svc_" which appears in all labels.
     await serviceInput.fill("svc_");
     await page.waitForTimeout(200); // local filter — no debounce
 

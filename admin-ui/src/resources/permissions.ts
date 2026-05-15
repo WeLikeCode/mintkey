@@ -50,6 +50,10 @@ const _permissionsResource = new RestResource({
     { path: "constraints", type: "mixed" },
     { path: "created_at", type: "datetime" },
     { path: "created_by", type: "string" },
+    // UX-BL1: denormalised display fields from services/agents JOIN (read-only)
+    { path: "service_name", type: "string" },
+    { path: "service_slug", type: "string" },
+    { path: "agent_name", type: "string" },
     // Virtual filter-only: free-text search on action
     { path: "q", type: "string" },
   ],
@@ -65,8 +69,8 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
   adminResource: _permissionsResource,
   options: {
     navigation: { name: "Permissions", icon: "Shield" },
-    listProperties: ["id", "agent_id", "service_id", "action", "created_at"],
-    showProperties: ["id", "agent_id", "service_id", "action", "constraints", "created_at", "created_by"],
+    listProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "action", "created_at"],
+    showProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "service_slug", "action", "constraints", "created_at", "created_by"],
     editProperties: ["agent_id", "service_id", "action", "constraints"],
     filterProperties: ["q", "agent_id", "service_id", "action"],
     properties: {
@@ -83,6 +87,23 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       service_id: {
         isVisible: { list: true, show: true, edit: true, filter: true },
         components: { edit: Components.ServiceCombobox },
+      },
+      // UX-BL1: denormalised convenience fields — read-only, populated from
+      // a LEFT JOIN on services/agents at list time.
+      service_name: {
+        label: "Service Name",
+        isVisible: { list: true, show: true, edit: false, filter: false },
+        description: "Denormalised convenience field — the human-readable name of the service linked to this grant. Populated at list time via JOIN on services; null if the service has been deleted.",
+      },
+      service_slug: {
+        label: "Service Slug",
+        isVisible: { list: false, show: true, edit: false, filter: false },
+        description: "Denormalised convenience field — the slug of the service linked to this grant. Populated at list time via JOIN on services; null if the service has been deleted.",
+      },
+      agent_name: {
+        label: "Agent Name",
+        isVisible: { list: true, show: true, edit: false, filter: false },
+        description: "Denormalised convenience field — the human-readable name of the agent that holds this grant. Populated at list time via JOIN on agents; null if the agent has been deleted.",
       },
       action: {
         description:

@@ -312,9 +312,14 @@ async def list_tenant_permissions(
 
     params: dict = {"tid": str(tenant_id)}
     base_sql = (
-        "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
-        " FROM permission_grants"
-        " WHERE tenant_id = :tid"
+        "SELECT pg.id, pg.tenant_id, pg.agent_id, pg.service_id, pg.action,"
+        " pg.constraints, pg.created_at, pg.created_by,"
+        " s.name AS service_name, s.slug AS service_slug,"
+        " a.name AS agent_name"
+        " FROM permission_grants pg"
+        " LEFT JOIN services s ON s.id = pg.service_id AND s.tenant_id = pg.tenant_id"
+        " LEFT JOIN agents a ON a.id = pg.agent_id AND a.tenant_id = pg.tenant_id"
+        " WHERE pg.tenant_id = :tid"
     )
 
     if agent_id is not None:
@@ -325,22 +330,22 @@ async def list_tenant_permissions(
                 status_code=422,
                 content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
             )
-        base_sql += " AND agent_id = :aid"
+        base_sql += " AND pg.agent_id = :aid"
         params["aid"] = agent_uuid_val
 
     if service_id is not None:
         # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
         from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
         service_id = _decode_wire(service_id, "svc")
-        base_sql += " AND service_id = :svc_id"
+        base_sql += " AND pg.service_id = :svc_id"
         params["svc_id"] = service_id
 
     if q is not None and q.strip() != "":
         # ILIKE substring match on action — UX-B inline search
-        base_sql += " AND action ILIKE '%' || :q_escaped || '%'"
+        base_sql += " AND pg.action ILIKE '%' || :q_escaped || '%'"
         params["q_escaped"] = _escape_like(q.strip())
 
-    base_sql += " ORDER BY created_at"
+    base_sql += " ORDER BY pg.created_at"
 
     result = await session.execute(text(base_sql), params)
     rows = result.fetchall()
@@ -357,6 +362,10 @@ async def list_tenant_permissions(
             ),
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "created_by": str(row.created_by) if row.created_by else None,
+            # UX-BL1: denormalised display fields from services/agents JOIN
+            "service_name": row.service_name,
+            "service_slug": row.service_slug,
+            "agent_name": row.agent_name,
         }
         for row in rows
     ]
