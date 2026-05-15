@@ -95,7 +95,7 @@ groups:
         annotations:
           summary: "Audit WAL size high on {{ $labels.service }}"
           description: >
-            auditq_wal_size_bytes is {{ $value | humanizeBytes }} (threshold: >100 MiB)
+            auditq_wal_size_bytes is {{ $value | humanize1024 }}B (threshold: >100 MiB)
             for 5 minutes on service {{ $labels.service }}.
             Compaction may be stalled or drain is falling behind.
 

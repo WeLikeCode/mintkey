@@ -27,6 +27,39 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# ---------------------------------------------------------------------------
+# Prometheus audit metrics — OPS-N
+# Idempotent declaration pattern: try/except ValueError handles module reimport
+# and shared-registry scenarios (multiple processes sharing the same registry).
+# ---------------------------------------------------------------------------
+_PROMETHEUS_AVAILABLE = False
+_audit_events_total = None
+_audit_chain_ok = None
+
+try:
+    from prometheus_client import Counter, Gauge, REGISTRY
+
+    try:
+        _audit_events_total = Counter(
+            "mintkey_audit_events_total",
+            "Total audit events emitted",
+            ["event_type"],
+        )
+    except ValueError:
+        _audit_events_total = REGISTRY._names_to_collectors.get("mintkey_audit_events_total")
+
+    try:
+        _audit_chain_ok = Gauge(
+            "mintkey_audit_chain_ok",
+            "1 when the last audit chain insert succeeded, 0 on verify failure",
+        )
+    except ValueError:
+        _audit_chain_ok = REGISTRY._names_to_collectors.get("mintkey_audit_chain_ok")
+
+    _PROMETHEUS_AVAILABLE = True
+except ImportError:
+    pass
+
 
 def compute_hash(event_dict: dict[str, Any], prev_hash: bytes) -> bytes:
     """
@@ -137,3 +170,17 @@ async def audit_emit(
         ),
         {"hash": h, "event_id": str(event_id), "tid": str(tenant_id)},
     )
+
+    # Prometheus metrics — OPS-N
+    # Increment after both INSERT and UPDATE succeed (still inside the caller's
+    # transaction, but the DB work is done and will be committed by the caller).
+    if _PROMETHEUS_AVAILABLE and _audit_events_total is not None:
+        try:
+            _audit_events_total.labels(event_type=event_type).inc()
+        except Exception:
+            pass  # Never let metric export break an audit write
+    if _PROMETHEUS_AVAILABLE and _audit_chain_ok is not None:
+        try:
+            _audit_chain_ok.set(1.0)
+        except Exception:
+            pass
