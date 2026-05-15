@@ -434,3 +434,118 @@ async def test_rotate_credential_audit_emitted(rotate_app, mock_audit_rotate) ->
     # Verify plaintext NOT in audit payload — ADR-0014.4
     payload_str = json.dumps(call_kwargs.get("payload", {}))
     assert _PLAINTEXT_VALUE not in payload_str
+
+
+# ---------------------------------------------------------------------------
+# POST /rotate with rotate_from — C1 unit tests (R14a)
+# ---------------------------------------------------------------------------
+
+_KNOWN_CRED_ID = "aaaa-bbbb-cccc-dddd-eeeeffffffff"  # returned by _make_rotate_mock_session
+
+
+@pytest.mark.asyncio
+async def test_rotate_with_rotate_from_matching_id_returns_200(
+    rotate_app, mock_audit_rotate
+) -> None:
+    """
+    C1: rotate_from set to the ID that the mock session returns → 200.
+    The WHERE clause filters on rotate_from; mock returns the matching row.
+    """
+    async with AsyncClient(transport=ASGITransport(app=rotate_app), base_url="http://test") as client:
+        resp = await client.post(
+            ROTATE_URL_PATH,
+            json={
+                "auth_scheme": "bearer_token",
+                "value": _PLAINTEXT_VALUE,
+                "rotate_from": _KNOWN_CRED_ID,
+            },
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"].startswith("cred_")
+    assert "effective_at" in body
+
+
+def _make_rotate_no_cred_session():
+    """Mock session where the credential lookup returns None (rotate_from not found)."""
+    session = MagicMock()
+    _calls = []
+
+    async def _execute(*args, **kwargs):
+        result = MagicMock()
+        call_n = len(_calls)
+        _calls.append(1)
+        if call_n == 0:
+            # set_tenant_context
+            result.fetchone.return_value = None
+        elif call_n == 1:
+            # service existence check → service found
+            svc_row = MagicMock()
+            svc_row.id = SERVICE_ID
+            result.fetchone.return_value = svc_row
+        else:
+            # credential lookup → no row (rotate_from does not match)
+            result.fetchone.return_value = None
+        result.fetchall.return_value = []
+        return result
+
+    session.execute = _execute
+    return session
+
+
+def create_rotate_no_cred_app():
+    """App whose credential lookup returns None — simulates rotate_from not found."""
+    from fastapi import FastAPI
+    from admin_api.api.credentials import router as credentials_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.services.vault_client import get_vault_client, VaultAdapterClient
+    from admin_api.middleware.csrf import csrf_exempt
+
+    app = FastAPI()
+    app.include_router(credentials_router)
+
+    async def mock_db_session():
+        yield _make_rotate_no_cred_session()
+
+    app.dependency_overrides[get_db_session] = mock_db_session
+
+    class _MockVaultClient(VaultAdapterClient):
+        async def put_credential(self, tenant_id, service_id, auth_scheme, plaintext):
+            return {"credential_id": "cred_mock", "key_version": 2, "created_at": 0.0}
+
+        async def list_versions(self, tenant_id, service_id):
+            return []
+
+    app.dependency_overrides[get_vault_client] = lambda: _MockVaultClient()
+    csrf_exempt(BASE_URL_PATH)
+    csrf_exempt(ROTATE_URL_PATH)
+    return app
+
+
+@pytest.fixture()
+def rotate_no_cred_app():
+    return create_rotate_no_cred_app()
+
+
+@pytest.mark.asyncio
+async def test_rotate_with_rotate_from_nonexistent_returns_404(
+    rotate_no_cred_app,
+) -> None:
+    """
+    C1: rotate_from pointing at a nonexistent credential ID → 404 not_found.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=rotate_no_cred_app), base_url="http://test"
+    ) as client:
+        resp = await client.post(
+            ROTATE_URL_PATH,
+            json={
+                "auth_scheme": "bearer_token",
+                "value": "irrelevant",
+                "rotate_from": "does-not-exist-id",
+            },
+        )
+
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["mintkey:code"] == "not_found"

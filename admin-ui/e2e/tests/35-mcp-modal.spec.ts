@@ -147,6 +147,30 @@ test.describe("35 — MCP config modal", () => {
     void consoleErrors;
   });
 
+  test("ESC key dismisses the MCP config modal", async ({ page, consoleErrors }) => {
+    // Navigate to dashboard
+    await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await page
+      .getByText(/Mintkey — credential broker for AI agents/i)
+      .first()
+      .waitFor({ timeout: 25_000 });
+
+    // Open the modal via step 6 CTA
+    const step6 = page.locator('[data-testid="onboarding-step-6"]');
+    await step6.waitFor({ state: "visible", timeout: 10_000 });
+    const mcpCta = step6.locator('[data-testid="mcp-connect-cta"]');
+    await mcpCta.click();
+
+    const modal = page.locator('[data-testid="mcp-config-modal"]');
+    await modal.waitFor({ state: "visible", timeout: 8_000 });
+
+    // Press ESC — modal must disappear
+    await page.keyboard.press("Escape");
+    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+
+    void consoleErrors;
+  });
+
   test("screenshot capture: MCP modal rendered", async ({ page, consoleErrors }) => {
     await page.goto("/admin", { waitUntil: "domcontentloaded" });
     await page

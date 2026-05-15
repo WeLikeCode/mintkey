@@ -85,10 +85,17 @@ const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   useEffect(() => {
     if (!navigator.clipboard) setCopySupported(false);
     document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [onClose]);
 
   const handleCopy = async () => {
     if (!navigator.clipboard) {

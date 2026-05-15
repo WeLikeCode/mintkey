@@ -32,7 +32,6 @@ AUDIT_EXEMPT = {
     "get_agent",            # GET — read-only
     "validate_agent_key",   # POST — internal validation stub; no state change (read-only Argon2id check)
     "verify_chain_endpoint", # POST — read-only verification; audit emitted via emit_platform_admin_access
-    "grant_permission_shortcut",  # POST — shortcut delegating to grant_permission which calls audit_emit
 }
 
 _WRITE_DECORATORS = {"post", "put", "patch", "delete"}

@@ -79,9 +79,7 @@ _STC_EXEMPT_HANDLERS = {
     "proxy_hit",
     # acknowledge_tamper — platform-admin endpoint
     "acknowledge_tamper",
-    # grant_permission_shortcut — delegates directly to grant_permission, which calls
-    # set_tenant_context; the shortcut itself has no session-level queries of its own
-    "grant_permission_shortcut",
+
 }
 
 _STC_EXEMPT_FILES = {

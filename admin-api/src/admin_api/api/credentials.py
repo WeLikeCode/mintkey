@@ -272,8 +272,13 @@ async def rotate_credential(
     key_version for the given auth_scheme is superseded (deterministic rule:
     highest key_version wins when multiple actives share the same scheme).
 
+    If rotate_from is provided (cred_ wire ID), the SELECT for the credential to
+    supersede is filtered to that exact ID.  Returns 404 if the specified credential
+    does not exist, belongs to another tenant/service, or is not in 'active' status.
+
     Returns 404 if the service does not exist or belongs to another tenant.
-    Returns 404 if rotate_from is specified but no matching credential exists.
+    Returns 404 if rotate_from is specified but no matching active credential exists.
+    Returns 404 if no active credential exists for the scheme (rotate_from omitted).
     Returns 409 if the target credential is already superseded or revoked.
     """
     # Step 1: Set tenant context — bound parameters, ADR-0008
@@ -294,24 +299,49 @@ async def rotate_credential(
         )
 
     # Step 4: Resolve the old credential to supersede.
-    # When rotate_from is provided, the caller intends to supersede the currently-
-    # active credential of that auth_scheme (rotate_from identifies it by cred_ wire
-    # form, but we don't decode cred_ wire IDs here — we match the active row for
-    # the scheme, which is the only semantically valid target).  If the schema ever
-    # prevents multiple actives of the same scheme (via a unique index) this is
-    # equivalent; otherwise the deterministic rule (highest key_version) applies.
-    old_result = await session.execute(
-        text(
-            "SELECT id, key_version, status FROM credentials"
-            " WHERE tenant_id = :tid AND service_id = :sid"
-            "   AND auth_scheme = :scheme AND status = 'active'"
-            " ORDER BY key_version DESC LIMIT 1"
-        ),
-        {"tid": str(tenant_id), "sid": db_svc_uuid, "scheme": body.auth_scheme},
-    )
+    # C1: when rotate_from is provided it identifies a specific credential by its
+    # cred_ wire ID; the SELECT adds an equality filter on the wire ID so only that
+    # exact row is targeted.  If the row is not found (wrong ID, wrong tenant, or
+    # already superseded/revoked) we return 404 per the documented contract.
+    # When rotate_from is omitted, the deterministic rule applies: highest
+    # key_version active row for the given auth_scheme is superseded.
+    if body.rotate_from is not None:
+        old_result = await session.execute(
+            text(
+                "SELECT id, key_version, status FROM credentials"
+                " WHERE tenant_id = :tid AND service_id = :sid"
+                "   AND auth_scheme = :scheme AND status = 'active'"
+                "   AND id = :rotate_from_id"
+                " ORDER BY key_version DESC LIMIT 1"
+            ),
+            {
+                "tid": str(tenant_id),
+                "sid": db_svc_uuid,
+                "scheme": body.auth_scheme,
+                "rotate_from_id": body.rotate_from,
+            },
+        )
+    else:
+        old_result = await session.execute(
+            text(
+                "SELECT id, key_version, status FROM credentials"
+                " WHERE tenant_id = :tid AND service_id = :sid"
+                "   AND auth_scheme = :scheme AND status = 'active'"
+                " ORDER BY key_version DESC LIMIT 1"
+            ),
+            {"tid": str(tenant_id), "sid": db_svc_uuid, "scheme": body.auth_scheme},
+        )
     old_row = old_result.fetchone()
 
     if old_row is None:
+        if body.rotate_from is not None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "mintkey:code": "not_found",
+                    "title": "Credential specified by rotate_from not found or not active",
+                },
+            )
         return JSONResponse(
             status_code=404,
             content={"mintkey:code": "not_found", "title": "No active credential to rotate"},
