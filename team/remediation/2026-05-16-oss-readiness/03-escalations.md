@@ -1,9 +1,19 @@
 # OSS Readiness — Open Escalations
 
 **Session:** 2026-05-16-oss-readiness
-**Status:** Awaiting owner answers; chunk dispatch is paused on these items.
+**Status:** All 7 items RESOLVED 2026-05-16. Chunk dispatch is no longer blocked.
 
-All 7 items below require an architect/owner decision before the corresponding implementer chunks can be dispatched. Each item is marked OPEN. Once answered, update this file and notify the orchestrator so dispatch can proceed.
+| # | Decision | Resolved |
+|---|---|---|
+| E-1 | Apache-2.0 confirmed | 2026-05-16 |
+| E-2 | `https://github.com/WeLikeCode/mintkey` (clone URL: `https://github.com/WeLikeCode/mintkey.git`) | 2026-05-16 |
+| E-3 | `the+security@ciprianiacobescu.com` | 2026-05-16 |
+| E-4 | GHCR (`ghcr.io/welikecode/mintkey-*`) — applied as default | 2026-05-16 |
+| E-5 | Defer release workflow entirely; document path in `docs/RELEASE.md` only | 2026-05-16 |
+| E-6 | "Unsupported but possible" with explicit caveats | 2026-05-16 |
+| E-7 | GitHub Discussions enabled — applied as default | 2026-05-16 |
+
+Per-item details + original recommendations preserved below for the closing report.
 
 ---
 
@@ -17,7 +27,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** Apache-2.0. It matches the existing README claim, is the standard for cloud-native credential-broker tooling (Vault, Cert-Manager, Crossplane are all Apache-2.0), and allows downstream commercial embedding without copyleft constraints. Add the verbatim text from https://www.apache.org/licenses/LICENSE-2.0.txt as `LICENSE` at repo root. No `NOTICE` file is required unless third-party Apache-2.0 components with attribution requirements are vendored.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -31,7 +41,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** Confirm the GitHub org and repo name before dispatch (e.g., `https://github.com/<org>/mintkey`). Once confirmed, OSS-1 can do a single targeted substitution across all four locations.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -45,7 +55,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** Use a dedicated security alias (e.g., `security@<domain>`) rather than a personal address. GitHub's private vulnerability reporting can be the backup, but a public email is the expected minimum for OSS projects. If the domain is not yet set up, use the personal maintainer address temporarily and note it is interim.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -57,7 +67,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** GHCR (`ghcr.io/<org>/mintkey-*`). It is free for public repos, natively integrated with GitHub Actions OIDC (no stored Docker Hub credentials needed), and supports OCI artifact attachments for SBOM/SLSA provenance. Standard for projects hosted on GitHub.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -69,7 +79,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** Dry-run by default (`--push=false`), with a separate protected Environment (`release`) that the owner must approve before images go live. This is one extra workflow job and one GitHub Environment config. Gives a safety net for the first release while keeping the automation in place.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -81,7 +91,7 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** "Unsupported but possible" with a prominent warning. Document the Docker Compose self-host path as the supported evaluation path, describe the gap to production (no HA, no managed secrets, no ingress TLS docs, no backup/restore), and explicitly state that production hardening is out of scope for the pre-alpha. This is honest, protects the project from support burden, and is consistent with the existing `x-mintkey-stability: experimental` API stance.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
 
 ---
 
@@ -93,4 +103,4 @@ All 7 items below require an architect/owner decision before the corresponding i
 
 **Recommendation:** Yes, enable GitHub Discussions with at minimum a "Q&A" and "Ideas" category. Direct `SUPPORT.md` there. This is lower overhead than Slack/Discord for a pre-alpha, keeps discussion searchable and linked to code, and GitHub provides spam filtering. Defer a dedicated Slack/Discord until the project has a community large enough to warrant it.
 
-**Status:** OPEN
+**Status:** RESOLVED (see top table)
