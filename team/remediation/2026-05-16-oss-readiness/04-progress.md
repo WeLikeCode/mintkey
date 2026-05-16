@@ -4,6 +4,66 @@ Append-only. Most recent entry at the top.
 
 ---
 
+## 2026-05-16 — OSS-7 IMPLEMENTER: Marketing package
+
+**Session:** OSS-7
+**Chunk:** Marketing Package
+**Status:** PASS
+
+### Files modified
+
+- `marketing/index.html` — full rewrite: new hero headline ("Self-hosted credential broker for AI agents. / Agents get scoped short-lived access. They never see raw API keys."), sub-headline, top-of-page pre-alpha banner, 4 CTA buttons (Try locally → GitHub quick-start anchor, Read security model → security.html, View architecture → architecture.html, Contribute → GitHub CONTRIBUTING.md), "Why now / Who it is for" section (4 paragraphs), alternatives-comparison table (6-row: env vars / Vault / API gateway / secrets manager / agent runtime / Mintkey), supported auth schemes table (verified against vault.proto + openapi.yaml: 4 shipped, 2 partial, 3 not shipped), footer links upgraded to absolute GitHub URLs for SECURITY.md and CONTRIBUTING.md.
+- `marketing/architecture.html` — added pre-alpha banner at top; footer links for SECURITY.md and CONTRIBUTING.md upgraded to absolute GitHub URLs; footer pre-alpha warning text strengthened.
+- `marketing/security.html` — added pre-alpha banner at top; security disclosure email (`mailto:the+security@ciprianiacobescu.com`) added to Reporting section; SECURITY.md read-source link upgraded to absolute GitHub URL; footer links upgraded to absolute GitHub URLs.
+- `team/remediation/2026-05-16-oss-readiness/02-matrix.md` — F-32 and F-33 flipped ⬜ → ✅ with verification commands.
+
+### Auth scheme verification
+
+Compared `docs/architecture/contracts/vault-adapter/vault.proto` (AuthScheme enum) and `docs/architecture/contracts/rest/openapi.yaml` (AuthScheme enum):
+
+| Scheme | Proto | OpenAPI | Claimed in marketing |
+|---|---|---|---|
+| api_key_header | AUTH_SCHEME_API_KEY_HEADER=1 | present | ✓ Shipped |
+| api_key_query | AUTH_SCHEME_API_KEY_QUERY=2 | present | ✓ Shipped |
+| bearer_token | AUTH_SCHEME_BEARER_TOKEN=3 | present | ✓ Shipped |
+| basic_auth | AUTH_SCHEME_BASIC_AUTH=4 | present | ✓ Shipped |
+| oauth2_client_credentials | AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS=5 | present | Partial |
+| oidc_client_secret | AUTH_SCHEME_OIDC_CLIENT_SECRET=6 | present | Partial (operator IdP only) |
+| mtls | AUTH_SCHEME_MTLS=7 | absent (proto only) | Not shipped |
+| AWS SigV4 / GCP IAM | absent | absent | Not shipped |
+| OAuth 2.0 user-delegated | absent | absent | Not shipped |
+
+No overclaiming: every "Shipped" entry is in both proto and OpenAPI enum. Partial and Not-shipped entries are flagged accurately.
+
+### Verification (run in /Users/alexandruiacobescu/gooseProjects/mintkey)
+
+```
+grep -c -i 'pre-alpha\|not for production' marketing/index.html marketing/architecture.html marketing/security.html
+# → index.html:4, architecture.html:2, security.html:3 (all ≥1)
+
+grep -c -E 'Try locally|Read security|View architecture|Contribute' marketing/index.html
+# → 4
+
+grep -c -E 'env vars|API gateway|secrets manager|agent runtime' marketing/index.html
+# → 4 (≥3 required)
+
+grep -c -E 'API key|Bearer|Basic|OAuth' marketing/index.html
+# → 4 (≥4 required)
+
+rg -n '<repo-url>|TODO|placeholder|TBD|example.invalid' marketing/
+# → empty
+
+grep -i 'Self-hosted\|credential broker\|brokered\|short-lived' marketing/index.html
+# → multiple matches
+
+grep 'mailto:the+security@ciprianiacobescu.com' marketing/security.html
+# → 1 match
+
+python3 HTML parse → all 3 files OK
+```
+
+---
+
 ## 2026-05-16 — Session opened
 
 Session directory created: `team/remediation/2026-05-16-oss-readiness/`

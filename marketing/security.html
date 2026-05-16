@@ -9,6 +9,12 @@
 <body>
 <div class="page-wrap">
 
+  <!-- ── Pre-alpha banner ───────────────────────────────────────── -->
+  <div class="prealpha-banner" role="alert" aria-label="Pre-alpha warning">
+    Mintkey is <strong>pre-alpha</strong>. Not for production use. Self-hosted evaluation only.
+    No formal security audit. No managed offering.
+  </div>
+
   <!-- ── Header ─────────────────────────────────────────────── -->
   <header class="site-header">
     <div class="wordmark">Mintkey</div>
@@ -356,15 +362,16 @@ curl -s "http://localhost:8080/v1/agents/&lt;agent_id&gt;" \
       </p>
       <p>
         Use one of the channels described in
-        <a href="../SECURITY.md">SECURITY.md</a>:
-        a private GitHub Security Advisory (GHSA) or the contact email listed there.
+        <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>:
+        a private GitHub Security Advisory (GHSA) or email
+        <a href="mailto:the+security@ciprianiacobescu.com">the+security@ciprianiacobescu.com</a>.
         Include: reproduction steps, affected commit hash
         (<code>git rev-parse HEAD</code>), impact assessment, and proposed remediation
         if known.
       </p>
     </div>
     <p class="read-source">
-      <a href="../SECURITY.md">Full policy: SECURITY.md</a>
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">Full policy: SECURITY.md</a>
     </p>
   </section>
 
@@ -435,14 +442,15 @@ curl -s "http://localhost:8080/v1/agents/&lt;agent_id&gt;" \
   <footer class="site-footer">
     <div>
       License: Apache-2.0 &middot;
-      <a href="../SECURITY.md">Security policy</a> &middot;
-      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a> &middot;
       <a href="index.html">Overview</a> &middot;
-      <a href="architecture.html">Architecture</a>
+      <a href="architecture.html">Architecture</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey" target="_blank" rel="noopener">GitHub</a>
     </div>
     <div style="margin-top:0.5rem;">
       Stability: <em>experimental</em> &mdash;
-      <strong>pre-alpha</strong> software. No formal audit. No managed offering. Self-host only.
+      <strong>pre-alpha</strong> software. Not for production use. No formal audit. No managed offering. Self-host only.
     </div>
   </footer>
 
