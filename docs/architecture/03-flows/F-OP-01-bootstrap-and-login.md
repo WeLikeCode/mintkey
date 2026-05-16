@@ -22,7 +22,7 @@ A new Mintkey deployment provisions a default tenant, a bootstrap admin operator
 - Bootstrap password printed to compose logs and written to `./data/bootstrap-secrets` (mode 0400).
 - `tenant.bootstrap_completed` audit event emitted.
 - Admin API health endpoint returns 200.
-- Operator successfully logs in via internal auth and the AdminJS UI is reachable.
+- Operator successfully logs in via Keycloak OIDC (ADR-0020); internal-login is the break-glass path only.
 
 ## Sequence diagram — bootstrap
 
@@ -60,7 +60,35 @@ sequenceDiagram
     API-->>Builder: GET /v1/health → 200
 ```
 
-## Sequence diagram — first login (internal auth)
+## Sequence diagram — First login — Keycloak OIDC (primary)
+
+> Full OIDC flow detail and token-validation sequence: [`docs/AUTH.md`](../../AUTH.md).
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant UI as admin-ui
+    participant API as admin-api
+    participant KC as Keycloak
+
+    Browser->>UI: GET /admin (no session)
+    UI->>Browser: 302 /admin/login
+    Browser->>UI: GET /admin/login (Keycloak button)
+    Browser->>UI: GET /auth/start
+    UI->>Browser: 302 admin-api /v1/auth/oidc/login
+    Browser->>API: GET /v1/auth/oidc/login
+    API->>Browser: 302 Keycloak (PKCE)
+    Browser->>KC: login
+    KC->>Browser: 302 admin-api callback (code, state)
+    Browser->>API: GET /v1/auth/oidc/callback
+    API->>KC: token exchange + JWKS verify
+    API->>Browser: 302 /admin (sets mintkey_session)
+    Note over UI,API: requireSession → /v1/auth/whoami
+```
+
+## Sequence diagram — Break-glass login (internal-auth)
+
+> Requires `mintkey admin reset-password` to enable. Use only when Keycloak is unavailable.
 
 ```mermaid
 sequenceDiagram

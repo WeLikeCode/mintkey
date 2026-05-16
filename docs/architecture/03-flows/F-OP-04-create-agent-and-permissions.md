@@ -13,7 +13,7 @@ Operator creates an agent identity (gets the API key plaintext **once**) and gra
 - Operator has `role >= AgentOwner` for the active tenant.
 
 ## Post‑conditions
-- New row in `agents` with Argon2id‑hashed `api_key_hash`, `created_by`, `mcp_endpoint` (computed: `${MCP_BASE_URL}/mcp`), `tenant_id`.
+- New row in `agents` with Argon2id‑hashed `api_key_hash`, `created_by`, `mcp_endpoint` (computed: `${MINTKEY_MCP_PUBLIC_URL}/v1`), `tenant_id`.
 - The plaintext Agent API Key is returned **once** in the create response and never again.
 - `agent.created` audit event with payload containing the API key fingerprint (last 4 chars + truncated SHA‑256 prefix), **not the key itself**.
 - New row in `permission_grants` with `(agent_id, service_id, action, constraints)`.
@@ -93,7 +93,7 @@ sequenceDiagram
 
 ## Contract considerations
 - The Agent create response is the **only** place the plaintext API key appears. The OpenAPI schema marks `api_key` with `x-mintkey-sensitive: true` and explicitly notes "returned once at create time, never again" in the description.
-- The mcp_endpoint URL is computed from `MCP_BASE_URL` env var + tenant slug; not persisted (always the current value).
+- The mcp_endpoint URL is computed from `MINTKEY_MCP_PUBLIC_URL` env var + agent ID (shape: `${MINTKEY_MCP_PUBLIC_URL}/v1/agents/{agent_id}`); not persisted (always the current value).
 
 ## Test plan
 

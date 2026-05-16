@@ -4,6 +4,15 @@ This guide walks through registering CoinGecko as a Mintkey service, creating a 
 
 **Prerequisites:** `docker compose up -d` is healthy (all services green).
 
+> **Prerequisite — break-glass session.** The curl examples below use `POST /v1/auth/internal-login` to obtain a session cookie. Post-SSO, that endpoint returns 404 by default (per ADR-0020). To enable the break-glass path before following this guide:
+>
+> ```bash
+> docker compose exec admin-api python -m admin_api.cli admin reset-password --email admin@mintkey.internal
+> # → prints a temporary password; use it in the internal-login call below.
+> ```
+>
+> When you're done, close the window: `mintkey admin clear-password --email admin@mintkey.internal`.
+
 ---
 
 ## 1. Register CoinGecko as a Mintkey service
@@ -11,10 +20,11 @@ This guide walks through registering CoinGecko as a Mintkey service, creating a 
 CoinGecko's free demo tier requires a key in the `x-cg-demo-api-key` header. Get one at [coingecko.com/en/api](https://www.coingecko.com/en/api) — the free tier covers price queries.
 
 ```bash
-# 1a. Get an operator session token (or log in through http://localhost:3000/admin)
+# 1a. Get an operator session token (or log in through http://localhost:8081/admin)
+# NOTE: internal-login requires the break-glass path to be enabled first — see Prerequisite above.
 OPERATOR_TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/internal-login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@mintkey.local","password":"changeme"}' \
+  -d '{"email":"admin@mintkey.internal","password":"<temp_password_from_reset>"}' \
   | jq -r '.token')
 
 TENANT_ID=$(curl -s http://localhost:8080/v1/tenants \
@@ -140,7 +150,7 @@ You have access to a Mintkey MCP server that manages API credentials on your beh
 Before calling any external service:
   1. Call list_services to see what you have access to.
   2. Call request_token with the service_id and action (e.g. "read:simple_price") to get a JWT.
-  3. Make the real API call through the Mintkey egress proxy at http://localhost:8087
+  3. Make the real API call through the Mintkey egress proxy at http://localhost:8000
      by passing the JWT as: Authorization: Bearer <token>
      The proxy injects the real backend credential — never include raw API keys in your requests.
 ```
@@ -186,7 +196,7 @@ echo "Token: $TOKEN"
 ### 5c. Query Bitcoin price through the egress proxy
 
 ```bash
-curl -s "http://localhost:8087/v1/call/$SERVICE_ID/simple/price?ids=bitcoin&vs_currencies=usd" \
+curl -s "http://localhost:8000/v1/call/$SERVICE_ID/simple/price?ids=bitcoin&vs_currencies=usd" \
   -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
@@ -229,7 +239,7 @@ echo "Classical key: $CLASSICAL_KEY"   # shown once — store it now
 Hermes can now query Bitcoin prices directly without a token exchange:
 
 ```bash
-curl -s "http://localhost:8087/v1/call/$SERVICE_ID/simple/price?ids=bitcoin,ethereum&vs_currencies=usd" \
+curl -s "http://localhost:8000/v1/call/$SERVICE_ID/simple/price?ids=bitcoin,ethereum&vs_currencies=usd" \
   -H "Authorization: Bearer $CLASSICAL_KEY" | jq .
 ```
 
@@ -252,10 +262,10 @@ curl -s -X POST \
 
 | Service | Local port | Purpose |
 |---|---|---|
-| Admin UI | 3000 | Operator dashboard (browser) |
+| Admin UI | 8081 | Operator dashboard (browser) |
 | Admin REST API | 8080 | CRUD + audit (curl / AdminJS) |
 | MCP server | 8082 | Agent tool endpoints |
-| Egress proxy (Kong) | 8087 | Proxy all backend calls through here |
+| Egress proxy (Kong) | 8000 | Proxy all backend calls through here |
 | Credential broker | 8083 | JWT + resolve (internal only) |
 
 ---

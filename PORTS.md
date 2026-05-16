@@ -19,8 +19,9 @@ All values reflect the default `docker compose` dev stack. Do not use these in p
 | 8 | `kong` (admin) | **8001** | Kong admin API |
 | 9 | `mock-backend` | **8999** | Stub backend for smoke tests |
 | 10 | `otel-collector` | **4317** | OTLP gRPC ingest |
-| 11 | `jaeger` | **16686** | Trace UI |
-| 12 | `grafana` | **3000** | Dashboards |
+| 11 | `jaeger` | *(internal)* | Trace backend — no host port; access via `jaeger-auth` |
+| 11a | `jaeger-auth` | **16686** | oauth2-proxy fronting Jaeger UI (host 16686:4180; SSO required) |
+| 12 | `grafana` | **3003** | Dashboards |
 
 **Internal only (no host port):** `postgres` (5432), `prometheus` (9090), `proxy-plugin`, `kong-syncer`.
 Grafana queries Prometheus at `http://prometheus:9090` inside the Docker network.
@@ -55,9 +56,9 @@ docker compose exec postgres psql -U mintkey_migrate -d mintkey
 
 | Setting | Value |
 |---------|-------|
-| URL | <http://localhost:3000> |
-| Username | `admin` |
-| Password | `changeme` |
+| URL | <http://localhost:3003> |
+
+Sign in with Mintkey SSO (Keycloak). See [docs/AUTH.md](docs/AUTH.md) for the OIDC flow.
 
 ### Admin API — bootstrap operator
 
@@ -97,6 +98,6 @@ make dev                              # start the stack
 docker compose logs seed-job          # bootstrap admin password
 open http://localhost:8080/v1/health  # admin-api health
 open http://localhost:8443/admin      # keycloak admin
-open http://localhost:3000            # grafana
-open http://localhost:16686           # jaeger
+open http://localhost:3003            # grafana
+open http://localhost:16686           # jaeger (via jaeger-auth; Keycloak login required)
 ```

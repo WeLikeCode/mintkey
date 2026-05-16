@@ -71,7 +71,7 @@ Mintkey deploys one Keycloak realm: `mintkey`.
 
 | Client ID | Type | Used by | Redirect URI (default) |
 |---|---|---|---|
-| `mintkey-admin-api` | Confidential PKCE | admin-api OIDC flow | `http://localhost:8081/v1/auth/oidc/callback` |
+| `mintkey-admin-api` | Confidential PKCE | admin-api OIDC flow | `http://localhost:8080/v1/auth/oidc/callback` |
 | `mintkey-grafana` | Confidential | Grafana native OIDC | `http://localhost:3000/login/generic_oauth` |
 | `mintkey-jaeger` | Confidential | oauth2-proxy (jaeger-auth sidecar) | `http://localhost:16686/oauth2/callback` |
 
@@ -197,7 +197,7 @@ When operators access Mintkey from a machine other than the one running Docker, 
 ```bash
 MINTKEY_KEYCLOAK_PUBLIC_URL=http://192.168.1.50:8443
 MINTKEY_ADMIN_UI_PUBLIC_URL=http://192.168.1.50:8081
-MINTKEY_ADMIN_API_PUBLIC_URL=http://192.168.1.50:8082
+MINTKEY_ADMIN_API_PUBLIC_URL=http://192.168.1.50:8080
 MINTKEY_GRAFANA_PUBLIC_URL=http://192.168.1.50:3000
 MINTKEY_JAEGER_PUBLIC_URL=http://192.168.1.50:16686
 MINTKEY_KEYCLOAK_INTERNAL_URL=http://keycloak:8443

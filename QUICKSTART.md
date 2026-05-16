@@ -40,7 +40,7 @@ The seed job runs automatically on first start and bootstraps:
 
 ```bash
 # View the bootstrap admin password
-cat data/bootstrap-secrets/admin_password
+docker run --rm -v mintkey_bootstrap_secrets:/secrets alpine cat /secrets/admin_password
 ```
 
 ---
@@ -49,7 +49,7 @@ cat data/bootstrap-secrets/admin_password
 
 | Service | URL | Notes |
 |---|---|---|
-| Admin UI (AdminJS) | http://localhost:3000 | Login with bootstrap password |
+| Admin UI (AdminJS) | http://localhost:8081 | Sign in with Keycloak (see docs/AUTH.md) |
 | Admin API | http://localhost:8080/v1 | REST API |
 | Admin API docs | http://localhost:8080/docs | FastAPI OpenAPI UI |
 | MCP Server | http://localhost:8082 | MCP endpoint for agents |
@@ -249,7 +249,7 @@ pytest tests/architecture/test_rls_coverage.py -v
 
 ## 10. Architecture reference
 
-- `docs/architecture/` — 17 ADRs, contracts, flows, threat model
+- `docs/architecture/` — 20 ADRs (18 Accepted, ADR-0018 Proposed), contracts, flows, threat model
 - `CLAUDE.md` — operating principles and guardrails for Claude Code sessions
 - `AGENTS.md` — verification commands and Mintkey-specific anti-patterns
 - `.kiro/specs/mintkey-mvp/tasks.md` — Phase 1 task list with Exit Criteria Checklist
