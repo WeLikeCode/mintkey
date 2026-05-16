@@ -139,7 +139,7 @@ UX decisions (DECIDED — do not re-litigate):
 <chunk>action-grid-R1-create-api-key</chunk>
 
 <context>
-- Phase-0 audit (commit ac240b89, see ADMIN_UI_ACTION_MATRIX.md): this is the user-screenshot bug.
+- Phase-0 audit (commit ac240b89, see 02-matrix.md): this is the user-screenshot bug.
 - ADR-0018: classical service API keys; the `mk_svckey_<…>` flow is Argon2id-hashed at rest, plaintext shown once.
 - The backing endpoint per the audit's OpenAPI inventory: `POST /v1/tenants/{tid}/agents/{aid}/api-keys`. Curl-probe it first with the bootstrap session to confirm request/response shape — record it in your report.
 - Existing related files to read: admin-ui/src/resources/api_keys.ts, admin-ui/src/lib/api-client.ts (signed-request flow per ADR-0019), admin-ui/src/components/index.ts (ComponentLoader, 9 components currently registered).
@@ -169,7 +169,7 @@ Do NOT touch: any other resources/*.ts, the dashboard/intro components, admin-ap
 7. The previously-failing W0–W8 `06-api-keys` tests 2 + 3 now pass. (`pnpm test:e2e --project chromium tests/06-api-keys.spec.ts 2>&1 | tail -20` → green.)
 8. Full suite still green: `pnpm test:e2e --project chromium 2>&1 | tail -25`.
 9. Container healthy: `docker compose ps | grep admin-ui` → `(healthy)`; logs clean of `TypeError|ReferenceError|SyntaxError|Error rendering`.
-10. Matrix updated: `ADMIN_UI_ACTION_MATRIX.md` Standard `service_api_keys/new` from ❌ → ✅; Custom `service_api_keys/create-and-show-once` from ⬜/❌ → ✅; Phase log entry added.
+10. Matrix updated: `02-matrix.md` Standard `service_api_keys/new` from ❌ → ✅; Custom `service_api_keys/create-and-show-once` from ⬜/❌ → ✅; Phase log entry added.
 11. Single commit, conventional (`feat(admin-ui): service_api_keys createApiKey show-once flow (R1 of action-grid remediation)`), no `--no-verify`.
 </acceptance_criteria>
 
@@ -235,7 +235,7 @@ UX decisions (DECIDED):
 </context>
 
 <scope>
-MAY: admin-ui/src/lib/rest-resource.ts (extend for per-resource URL builder), admin-ui/src/resources/permissions.ts (wire the builder), admin-ui/e2e/tests/33-permissions-routing.spec.ts (new), admin-ui/e2e/tests/05-permissions.spec.ts (may need updates if it was asserting broken state), admin-ui/e2e/pages/permissions.ts (extend POM), ADMIN_UI_ACTION_MATRIX.md.
+MAY: admin-ui/src/lib/rest-resource.ts (extend for per-resource URL builder), admin-ui/src/resources/permissions.ts (wire the builder), admin-ui/e2e/tests/33-permissions-routing.spec.ts (new), admin-ui/e2e/tests/05-permissions.spec.ts (may need updates if it was asserting broken state), admin-ui/e2e/pages/permissions.ts (extend POM), 02-matrix.md.
 
 Do NOT touch: admin-api/**, other resources/*.ts (unless rest-resource.ts changes require ripple), docs/architecture/**.
 </scope>
@@ -309,7 +309,7 @@ UX decisions (DECIDED):
 </context>
 
 <scope>
-MAY: admin-ui/src/resources/credentials.ts (add custom action + handler), admin-ui/src/components/actions/CredentialRevokeConfirm.tsx (new component), admin-ui/src/components/index.ts (register), admin-ui/e2e/tests/34-credentials-revoke.spec.ts (new), admin-ui/e2e/pages/credentials.ts (extend POM), ADMIN_UI_ACTION_MATRIX.md.
+MAY: admin-ui/src/resources/credentials.ts (add custom action + handler), admin-ui/src/components/actions/CredentialRevokeConfirm.tsx (new component), admin-ui/src/components/index.ts (register), admin-ui/e2e/tests/34-credentials-revoke.spec.ts (new), admin-ui/e2e/pages/credentials.ts (extend POM), 02-matrix.md.
 
 Do NOT: admin-api/**, other resources.
 </scope>
@@ -379,7 +379,7 @@ Report the breakdown in the matrix's cross-cutting section and update the Phase 
 </context>
 
 <scope>
-MAY: admin-ui/e2e/tests/04-agent.spec.ts, 06-api-keys.spec.ts (if R1 didn't already), 07-audit.spec.ts, admin-ui/e2e/pages/* (POM extensions), admin-ui/src/resources/* (if a failure points to a real source bug), ADMIN_UI_ACTION_MATRIX.md.
+MAY: admin-ui/e2e/tests/04-agent.spec.ts, 06-api-keys.spec.ts (if R1 didn't already), 07-audit.spec.ts, admin-ui/e2e/pages/* (POM extensions), admin-ui/src/resources/* (if a failure points to a real source bug), 02-matrix.md.
 
 Do NOT: admin-api/**, broaden the suite, add new tests.
 </scope>
@@ -787,7 +787,7 @@ VERDICT: PASS — <one-line> | FAIL — <numbered specifics> | ESCALATE
 Orchestration is complete when:
 
 - All chunks R1–R6 have a REVIEWER `PASS` verdict (R4 is "documented why not implemented" — counts as PASS).
-- `ADMIN_UI_ACTION_MATRIX.md` has zero ⬜, zero ❌; only ✅, 🚫 (justified, escalated), and n/a.
+- `02-matrix.md` has zero ⬜, zero ❌; only ✅, 🚫 (justified, escalated), and n/a.
 - `pnpm test:e2e --project chromium` is green; pre-existing 5 failures from Phase-1a are resolved.
 - `mintkey_bootstrap` MCP tool is callable unauthenticated and returns the skill markdown; `request_token` etc. still require auth.
 - The matrix's Phase log records each chunk's commit hash + date.

@@ -158,12 +158,12 @@ Don't push through ESCALATEs to keep counting commits. Honest STOP is the discip
 
 ## Start sequence (your first 10 minutes)
 
-1. Read PLAYWRIGHT_EXTENSION_PLAN.md, ADMIN_UI_SPEC.md (if present), AGENTS.md, CLAUDE.md.
+1. Read `../_archive/2026-05-13-playwright-extension/00-plan.md`, `../2026-05-12-admin-ui-rework/01-spec.md` (if present), AGENTS.md, CLAUDE.md.
 2. Read ADR-0013, 0014, 0018, 0019.
 3. Read every resource config: `admin-ui/src/resources/*.ts`.
 4. Read `admin-ui/src/components/index.ts`; list every registered component name. Then grep every resource for `component:` references; cross-check for dangling names. (Expect to find the Service API Key one immediately.)
 5. Curl admin-api to confirm each custom-action endpoint exists. (Use the bootstrap session cookie.)
-6. Begin Phase 0: drive every cell of the matrix in a real browser; populate `ADMIN_UI_ACTION_MATRIX.md`; commit with NO source changes.
+6. Begin Phase 0: drive every cell of the matrix in a real browser; populate `02-matrix.md`; commit with NO source changes.
 7. Surface the audit result. Wait for the user to confirm priority (which resource first), OR proceed with the most-broken-first if the audit is clear.
 
 **No source changes until the matrix exists and is populated.** That's the discipline that prevents the next "I don't understand how things are still broken" iteration.
