@@ -6,10 +6,11 @@
   "auth": "/v1/auth",
   "changes": "/v1/changes",
   "credentials": "/v1/tenants/{tenant_id}/services/{service_id}/credentials",
-  "health": "/v1/health",
+  "health": "/metrics",
   "internal": "/v1/internal",
   "permissions": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
   "proxy": "/v1/proxy/call/{service_id}/{path_suffix:path}",
+  "service_templates": "/v1/service-templates",
   "services": "/v1/tenants/{tenant_id}/services",
   "settings": "/v1/admin",
   "tenants": "/v1/tenants"
