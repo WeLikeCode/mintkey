@@ -13,7 +13,9 @@ Architecture constraints:
   - Tenant context via bound parameters — ADR-0008, T-1.0.15.
   - ULID IDs with prefix "agent_" — ADR-0017.11.
   - Global channel "mintkey:agent" — ADR-0014.1.
-  - mcp_endpoint computed from MCP_BASE_URL env var.
+  - mcp_endpoint computed from MINTKEY_MCP_PUBLIC_URL (canonical) or MCP_BASE_URL (legacy fallback).
+    URL is snapshotted at agent creation time; changing the env var later does not
+    retroactively update existing rows. See docs/NETWORK.md.
 
 Source: T-1.4.1; ADR-0008; ADR-0014.7; ADR-0017.11; S-SEC-1.
 """
@@ -36,6 +38,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
+from admin_api.config.public_urls import resolve_mcp_public_url
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
@@ -225,7 +228,7 @@ async def create_agent(
 
     plaintext, api_key_hash, fingerprint = _generate_agent_api_key()
 
-    mcp_base = os.getenv("MCP_BASE_URL", "http://localhost:8082")
+    mcp_base = resolve_mcp_public_url()
     mcp_endpoint = f"{mcp_base}/v1/agents/{agent_id}"
 
     await session.execute(

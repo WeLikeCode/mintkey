@@ -18,6 +18,7 @@ UX-FB-CE additions:
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import uuid
 
@@ -153,27 +154,44 @@ def test_create_agent_mcp_endpoint_uses_port_8082(
     admin_app: TestClient, agent_tenant: str
 ) -> None:
     """
-    OPS-FF Fix 2: mcp_endpoint in creation response must use port 8082, not 8100.
+    NET-A: mcp_endpoint is built from MINTKEY_MCP_PUBLIC_URL (canonical) with
+    MCP_BASE_URL as a legacy fallback.  This test pins MINTKEY_MCP_PUBLIC_URL to
+    a known value so the assertion is deterministic regardless of any host env var
+    that may or may not be set.
 
-    The code default was changed from http://localhost:8100 to http://localhost:8082
-    and docker-compose.yml sets MCP_BASE_URL=http://localhost:8082 explicitly.
-    Port 8100 was never mapped and caused every agent's mcp_endpoint to be broken.
+    The assertion also verifies that the default (neither var set) still falls back
+    to http://localhost:8082 — port 8100 must never appear (OPS-FF Fix 2).
     """
-    resp = _post(
-        admin_app,
-        f"/v1/tenants/{agent_tenant}/agents",
-        json={"name": "mcp-endpoint-port-check-agent"},
-    )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    mcp_endpoint = body.get("mcp_endpoint", "")
-    assert mcp_endpoint, "mcp_endpoint must be present in agent creation response"
-    assert "8082" in mcp_endpoint, (
-        f"mcp_endpoint must contain port 8082 (OPS-FF Fix 2), got: {mcp_endpoint!r}"
-    )
-    assert "8100" not in mcp_endpoint, (
-        f"mcp_endpoint must NOT contain broken port 8100, got: {mcp_endpoint!r}"
-    )
+    _known_url = "http://mcp.test.local:8082"
+    _prev = os.environ.pop("MINTKEY_MCP_PUBLIC_URL", None)
+    _prev_legacy = os.environ.pop("MCP_BASE_URL", None)
+    try:
+        os.environ["MINTKEY_MCP_PUBLIC_URL"] = _known_url
+        resp = _post(
+            admin_app,
+            f"/v1/tenants/{agent_tenant}/agents",
+            json={"name": "mcp-endpoint-port-check-agent"},
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        mcp_endpoint = body.get("mcp_endpoint", "")
+        assert mcp_endpoint, "mcp_endpoint must be present in agent creation response"
+        assert mcp_endpoint.startswith(_known_url), (
+            f"mcp_endpoint must start with {_known_url!r} (NET-A), got: {mcp_endpoint!r}"
+        )
+        assert "8100" not in mcp_endpoint, (
+            f"mcp_endpoint must NOT contain broken port 8100, got: {mcp_endpoint!r}"
+        )
+        # Verify trailing slash was stripped: exactly one '/' between base and path
+        assert "//v1" not in mcp_endpoint, (
+            f"trailing slash not stripped: {mcp_endpoint!r}"
+        )
+    finally:
+        os.environ.pop("MINTKEY_MCP_PUBLIC_URL", None)
+        if _prev is not None:
+            os.environ["MINTKEY_MCP_PUBLIC_URL"] = _prev
+        if _prev_legacy is not None:
+            os.environ["MCP_BASE_URL"] = _prev_legacy
 
 
 def test_create_agent_api_key_returned_only_once(
