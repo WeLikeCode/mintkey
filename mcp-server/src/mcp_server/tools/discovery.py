@@ -73,6 +73,10 @@ Rules:
 
 For complete usage examples, call the bootstrap tool (GET /v1/tools/bootstrap — no auth required) \
 to retrieve the authoritative agent-bootstrap.md skill.
+
+## Vanilla MCP clients
+
+Standard MCP-over-HTTP (JSON-RPC 2.0) is available at `POST /mcp` (and `/`, `/v1/mcp`). Send the JSON-RPC envelope `{"jsonrpc":"2.0","id":1,"method":"initialize",...}` to start. See `GET /` for the full endpoint index.
 """
 
 

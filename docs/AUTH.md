@@ -230,6 +230,21 @@ See [docs/NETWORK.md — Keycloak / SSO public URLs](NETWORK.md#keycloak--sso-pu
 
 ---
 
+## MCP client headers
+
+When a Model Context Protocol client connects to Mintkey's MCP server (`/mcp` endpoint), it must send a Bearer token to authenticate tool calls:
+
+| Header | Status | Note |
+|---|---|---|
+| `Authorization: Bearer mk_agent_<key>` | **Preferred** | Matches MCP spec 2025-06-18 §authorization. New clients should use this. |
+| `X-API-Key: mk_agent_<key>`            | Accepted | Backward-compat with pre-MCP-standard Mintkey clients. |
+
+`initialize` and `notifications/initialized` are unauthenticated (they're discovery-time). `tools/list` and `tools/call` require auth and return JSON-RPC error `-32001` if no valid agent key is presented.
+
+The agent key is the `mk_agent_<crockford>` value generated when an operator creates an Agent in the admin UI. It is shown once at creation; if lost, the operator must rotate it.
+
+---
+
 ## Out of scope
 
 The following auth mechanisms are intentionally separate from Keycloak and do NOT flow through it:

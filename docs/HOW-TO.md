@@ -75,6 +75,42 @@ still go through Liquibase changelogs — add a new changeset, never edit an exi
 
 ---
 
+## Connect a vanilla MCP client to Mintkey
+
+To wire Claude Code (or Cursor, mcp-cli, etc.) at Mintkey:
+
+1. Get an agent API key. In the admin UI (`http://<host>:8081`), create an Agent + grant it permission on one or more Services. The key is shown once — copy `mk_agent_<...>`.
+
+2. Configure your MCP client. Point the server URL at:
+   ```
+   http://<MINTKEY_MCP_PUBLIC_URL>/mcp
+   ```
+   (For local dev: `http://localhost:8082/mcp`. For LAN: `http://10.243.1.200:8082/mcp`.)
+
+3. Set the Authorization header to `Bearer mk_agent_<your-key>`.
+
+4. The client will call `initialize` (unauthenticated), then `tools/list` and `tools/call` (authenticated). The six Mintkey tools (`mintkey_bootstrap`, `mintkey_list_services`, `mintkey_discover`, `mintkey_describe_service`, `mintkey_get_openapi`, `mintkey_request_token`) become available to the LLM.
+
+5. Verify with curl:
+   ```bash
+   # Handshake (no auth needed)
+   curl -X POST http://<host>:8082/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}'
+
+   # List available tools (auth required)
+   curl -X POST http://<host>:8082/mcp \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer mk_agent_<your-key>' \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+   ```
+
+For the full agent onboarding markdown (which the `initialize` response also points at), GET `http://<host>:8082/v1/tools/bootstrap`.
+
+See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md) for the discovery endpoint table.
+
+---
+
 ## 7. Where else to look
 
 | Need | Document |

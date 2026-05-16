@@ -156,6 +156,22 @@ one minor version of overlap.
 | Deprecation log spams every request | Bug — should be once per process. Open an issue. |
 | Cross-machine call succeeds from `curl` but AI client fails | Check the client's MCP config has the public URL, not localhost. Re-copy from the dashboard. |
 
+## MCP server discovery endpoints
+
+A vanilla MCP client can connect to Mintkey at `http://<MINTKEY_MCP_PUBLIC_URL>/mcp` or `/v1/mcp` or `/`. All three paths accept JSON-RPC 2.0 POST requests; all three also serve GET landing JSON for human/operator discovery.
+
+| Path | GET | POST |
+|---|---|---|
+| `/`         | 200 — top-level endpoint index | JSON-RPC (initialize, tools/list, tools/call) |
+| `/v1`       | 200 — versioned index          | (none — POST goes to `/mcp` or `/v1/mcp`) |
+| `/mcp`      | 200 — debug landing            | JSON-RPC |
+| `/v1/mcp`   | 200 — alias                    | JSON-RPC |
+| `/v1/tools` | 200 — REST tool index          | (none) |
+
+This means operators probing the server with curl get useful 200 JSON instead of a 404 wall, and vanilla MCP clients can configure `http://<host>:8082/mcp` without needing source-code inspection.
+
+See [AUTH.md](AUTH.md) for which header to send (Bearer preferred). See [mcp-server/skills/agent-bootstrap.md](../mcp-server/skills/agent-bootstrap.md) for the full agent onboarding flow.
+
 ## See also
 
 - [README.md](../README.md) — project overview

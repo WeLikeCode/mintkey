@@ -32,6 +32,33 @@ Optional / situational:
 This `agent_bootstrap` method (the one you just called to get this text) is **unauthenticated** — every other MCP method requires the brokered JWT in `Authorization: Bearer …`.
 </overview>
 
+## Discovery URLs (for clients)
+
+Mintkey's MCP server speaks both **standard MCP-over-HTTP (JSON-RPC 2.0)** and a REST-style API. A vanilla MCP client (Claude Code, Cursor, `mcp-cli`) can connect at any of:
+
+| Path | Method | Description |
+|---|---|---|
+| `/`         | POST | JSON-RPC entry (initialize, tools/list, tools/call) |
+| `/mcp`      | POST | Same — preferred path |
+| `/v1/mcp`   | POST | Same — versioned alias |
+| `/`         | GET  | Landing JSON: endpoint index + auth guidance |
+| `/v1`       | GET  | Same |
+| `/mcp`      | GET  | Same (operator-friendly debug page) |
+| `/v1/mcp`   | GET  | Same |
+| `/v1/tools` | GET  | Machine-readable tool index |
+
+### Vanilla MCP client setup
+
+In any MCP-aware client, configure the MCP server URL as `http://<host>:8082/mcp` (or `http://<host>:8082/`). The client will:
+1. POST `initialize` (unauthenticated) → receives serverInfo + capabilities + bootstrap instructions
+2. Send `notifications/initialized` (unauthenticated) → 202
+3. POST `tools/list` with `Authorization: Bearer mk_agent_<key>` → receives the 6 Mintkey tools
+4. POST `tools/call` with `Authorization: Bearer mk_agent_<key>` and `{"name":"mintkey_discover","arguments":{}}` → receives the agent's permitted services
+
+### Authentication
+
+MCP-spec-aligned clients should send `Authorization: Bearer mk_agent_<your-key>`. The legacy `X-API-Key: mk_agent_<your-key>` is also accepted for backward compatibility, but new clients should prefer Bearer (matches MCP spec 2025-06-18 §authorization).
+
 <authentication>
 Mintkey issues brokered tokens in **JWS-Ed25519 JWT** format with a default **10-minute TTL** (per ADR-0006). You cannot use Mintkey without one.
 
