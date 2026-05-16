@@ -9,9 +9,9 @@ FROM quay.io/oauth2-proxy/oauth2-proxy:v7.6.0@sha256:dcb6ff8dd21bf3058f6a22c6fa3
 # Pinned 2026-05-16; re-pin every quarter.
 FROM alpine:3.19@sha256:6baf43584bcb78f2e5847d1de515f23499913ac9f12bdf834811a3145eb11ca1
 
-# xxd is in util-linux-misc (or vim) on Alpine; use busybox xxd alternative
-# Actually busybox xxd is available via the xxd package in Alpine 3.16+
-RUN apk add --no-cache xxd wget
+# wget is needed for the HEALTHCHECK; xxd is no longer needed (cookie secret
+# is passed via --cookie-secret-file, not read/decoded in the entrypoint).
+RUN apk add --no-cache wget
 
 COPY --from=proxy /bin/oauth2-proxy /bin/oauth2-proxy
 COPY entrypoint.sh /entrypoint.sh
