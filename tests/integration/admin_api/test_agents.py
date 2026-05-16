@@ -10,9 +10,15 @@ Architecture constraints verified:
   ADR-0017.11 — ULID agent_ prefix IDs
   S-SEC-1     — API key returned exactly once, never repeated
   ADR-0008    — cross-tenant isolation (RLS)
+
+UX-FB-CE additions:
+  Part C — grants_count correlated subquery in list + get
+  Part E — revoke returns active_api_keys_count + audit payload
 """
 from __future__ import annotations
 
+import hashlib
+import secrets
 import uuid
 
 import psycopg2
@@ -293,3 +299,228 @@ def test_cross_tenant_list_agents_empty(
     body = resp.json()
     # Tenant B has no agents inserted — list must be empty
     assert body["agents"] == []
+
+
+# ---------------------------------------------------------------------------
+# Helpers for UX-FB-CE tests
+# ---------------------------------------------------------------------------
+
+
+def _get_pg_conn(postgres_container):
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    return psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+
+
+def _insert_service_for_grants(postgres_container, tenant_id: str, slug: str) -> str:
+    """Insert a minimal service row and return its UUID."""
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    svc_id = str(uuid.uuid4())
+    cur.execute(
+        "INSERT INTO services"
+        " (id, tenant_id, name, slug, base_url, auth_scheme, status)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (svc_id, tenant_id, slug, slug, "https://example.com/api", "bearer_token", "active"),
+    )
+    conn.commit()
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None
+    return str(row[0])
+
+
+def _insert_permission_grant(postgres_container, tenant_id: str, agent_id: str, service_id: str) -> None:
+    """Insert a permission_grants row for the given agent + service."""
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO permission_grants"
+        " (id, tenant_id, agent_id, service_id, action, created_by, constraints)"
+        " VALUES (%s, %s, %s, %s, %s, %s, '{}'::jsonb)",
+        (str(uuid.uuid4()), tenant_id, agent_id, service_id, "read", agent_id),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _insert_service_api_key(
+    postgres_container,
+    tenant_id: str,
+    agent_id: str,
+    service_id: str,
+) -> str:
+    """Insert an active service_api_key row and return its UUID."""
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    key_id = str(uuid.uuid4())
+    raw_key = "mk_svckey_" + secrets.token_hex(20)
+    from argon2 import PasswordHasher
+    ph = PasswordHasher()
+    key_hash = ph.hash(raw_key)
+    fingerprint = hashlib.sha256(raw_key.encode()).digest()[:8].hex()
+    cur.execute(
+        "INSERT INTO service_api_keys"
+        " (id, tenant_id, agent_id, service_id, key_hash, key_fingerprint,"
+        "  allowed_actions, created_by)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s::text[], %s) RETURNING id",
+        (key_id, tenant_id, agent_id, service_id, key_hash, fingerprint,
+         "{read}", agent_id),
+    )
+    conn.commit()
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None
+    return str(row[0])
+
+
+# ---------------------------------------------------------------------------
+# Tests: UX-FB-CE Part C — grants_count in list + get
+# ---------------------------------------------------------------------------
+
+
+def test_list_agents_returns_grants_count_zero_for_agent_without_grants(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    UX-FB-CE Part C: list response includes grants_count = 0 for agent with no grants.
+    Source: UX-FB-CE spec step 2.
+    """
+    # Insert an agent directly (no grants created)
+    internal_id = _insert_agent(postgres_container, agent_tenant, "no-grants-agent-list")
+    resp = admin_app.get(f"/v1/tenants/{agent_tenant}/agents")
+    assert resp.status_code == 200, resp.text
+    agents = resp.json()["agents"]
+    matches = [a for a in agents if a.get("name") == "no-grants-agent-list"]
+    assert matches, f"Agent not found in list: {[a['name'] for a in agents]}"
+    agent = matches[0]
+    assert "grants_count" in agent, "grants_count must be present in list response — UX-FB-CE C"
+    assert agent["grants_count"] == 0, f"Expected 0 grants, got {agent['grants_count']}"
+
+
+def test_get_agent_returns_grants_count_n(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    UX-FB-CE Part C: get-single response includes grants_count = 2 after 2 grants are added.
+    Source: UX-FB-CE spec step 3.
+    """
+    # Insert agent + 2 permission grants on distinct services
+    internal_id = _insert_agent(postgres_container, agent_tenant, "grants-count-2-agent")
+    svc1 = _insert_service_for_grants(postgres_container, agent_tenant, "gcsvc1")
+    svc2 = _insert_service_for_grants(postgres_container, agent_tenant, "gcsvc2")
+    _insert_permission_grant(postgres_container, agent_tenant, internal_id, svc1)
+    _insert_permission_grant(postgres_container, agent_tenant, internal_id, svc2)
+
+    resp = admin_app.get(f"/v1/tenants/{agent_tenant}/agents/{internal_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "grants_count" in body, "grants_count must be present in get-single response — UX-FB-CE C"
+    assert body["grants_count"] == 2, f"Expected 2 grants, got {body['grants_count']}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: UX-FB-CE Part E — revoke_agent returns active_api_keys_count
+# ---------------------------------------------------------------------------
+
+
+def test_revoke_agent_returns_active_api_keys_count_zero_when_none(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    UX-FB-CE Part E: revoking an agent with no service_api_keys returns active_api_keys_count = 0.
+    Source: UX-FB-CE spec step 7–8.
+    """
+    internal_id = _insert_agent(postgres_container, agent_tenant, "revoke-no-keys-agent")
+    resp = _post(admin_app, f"/v1/tenants/{agent_tenant}/agents/{internal_id}/revoke")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert "active_api_keys_count" in body, "active_api_keys_count must be present — UX-FB-CE E"
+    assert body["active_api_keys_count"] == 0, f"Expected 0, got {body['active_api_keys_count']}"
+
+
+def test_revoke_agent_returns_active_api_keys_count_n_when_keys_exist(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    UX-FB-CE Part E: revoking an agent with 1 active service_api_key returns active_api_keys_count = 1.
+    Keys are NOT auto-revoked (hard rule — would break existing clients silently).
+    Source: UX-FB-CE spec step 7–8.
+    """
+    internal_id = _insert_agent(postgres_container, agent_tenant, "revoke-with-keys-agent")
+    svc = _insert_service_for_grants(postgres_container, agent_tenant, "revoke-svc")
+    _insert_permission_grant(postgres_container, agent_tenant, internal_id, svc)
+    _insert_service_api_key(postgres_container, agent_tenant, internal_id, svc)
+
+    resp = _post(admin_app, f"/v1/tenants/{agent_tenant}/agents/{internal_id}/revoke")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert "active_api_keys_count" in body, "active_api_keys_count must be present — UX-FB-CE E"
+    assert body["active_api_keys_count"] == 1, (
+        f"Expected 1 active API key, got {body['active_api_keys_count']}"
+    )
+
+    # Hard rule: the key must NOT be auto-revoked
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT revoked_at FROM service_api_keys WHERE agent_id = %s AND tenant_id = %s",
+        (internal_id, agent_tenant),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    assert rows, "Service API key row must still exist"
+    assert all(r[0] is None for r in rows), (
+        "Keys must NOT be auto-revoked on agent revoke — UX-FB-CE hard rule"
+    )
+
+
+def test_revoke_agent_audit_payload_contains_active_api_keys_count(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    UX-FB-CE Part E: audit_events.payload for agent.revoked must include active_api_keys_count.
+    Source: UX-FB-CE spec step 8.
+    """
+    import json as _json
+    internal_id = _insert_agent(postgres_container, agent_tenant, "revoke-audit-payload-agent")
+    resp = _post(admin_app, f"/v1/tenants/{agent_tenant}/agents/{internal_id}/revoke")
+    assert resp.status_code == 200, resp.text
+
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT payload FROM audit_events"
+        " WHERE event_type = 'agent.revoked' AND tenant_id = %s"
+        " ORDER BY at DESC LIMIT 1",
+        (agent_tenant,),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None, "audit_events must have an agent.revoked row"
+    payload = row[0] if isinstance(row[0], dict) else _json.loads(row[0])
+    assert "active_api_keys_count" in payload, (
+        f"audit payload must include active_api_keys_count — UX-FB-CE E; got: {payload}"
+    )

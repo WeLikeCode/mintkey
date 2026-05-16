@@ -141,6 +141,7 @@ def _agent_row_to_dict(row: Any) -> dict[str, Any]:
         "rate_limit_rps": row.rate_limit_rps,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "grants_count": int(row.grants_count or 0),
     }
 
 
@@ -303,15 +304,20 @@ async def list_agents(
     params: dict = {"tenant_id": str(tenant_id)}
 
     base_sql = (
-        "SELECT id, tenant_id, name, description, api_key_fingerprint,"
-        " mcp_endpoint, status, rate_limit_rps, created_at, updated_at"
-        " FROM agents WHERE tenant_id = :tenant_id"
+        "SELECT"
+        " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+        " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+        " COALESCE(("
+        "   SELECT COUNT(*) FROM permission_grants pg"
+        "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+        " ), 0) AS grants_count"
+        " FROM agents a WHERE a.tenant_id = :tenant_id"
     )
 
     if q is not None:
         escaped = _escape_like(q)
         pattern = f"%{escaped}%"
-        base_sql += " AND (name ILIKE :pat ESCAPE '\\' OR description ILIKE :pat ESCAPE '\\')"
+        base_sql += " AND (a.name ILIKE :pat ESCAPE '\\' OR a.description ILIKE :pat ESCAPE '\\')"
         params["pat"] = pattern
 
     if has_access_to_service_id is not None:
@@ -326,14 +332,14 @@ async def list_agents(
         base_sql += (
             " AND EXISTS ("
             "   SELECT 1 FROM permission_grants pg"
-            "   WHERE pg.agent_id = agents.id"
+            "   WHERE pg.agent_id = a.id"
             "     AND pg.tenant_id = :tenant_id"
             "     AND pg.service_id = :svc_id"
             " )"
         )
         params["svc_id"] = svc_uuid
 
-    base_sql += " ORDER BY created_at"
+    base_sql += " ORDER BY a.created_at"
 
     result = await session.execute(text(base_sql), params)
     rows = result.fetchall()
@@ -364,9 +370,14 @@ async def get_agent(
 
     result = await session.execute(
         text(
-            "SELECT id, tenant_id, name, description, api_key_fingerprint,"
-            " mcp_endpoint, status, rate_limit_rps, created_at, updated_at"
-            " FROM agents WHERE id = :aid AND tenant_id = :tid"
+            "SELECT"
+            " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+            " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+            " COALESCE(("
+            "   SELECT COUNT(*) FROM permission_grants pg"
+            "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+            " ), 0) AS grants_count"
+            " FROM agents a WHERE a.id = :aid AND a.tenant_id = :tid"
         ),
         {"aid": agent_uuid, "tid": str(tenant_id)},
     )
@@ -419,6 +430,19 @@ async def revoke_agent(
         {"aid": agent_uuid, "tid": str(tenant_id)},
     )
 
+    keys_result = await session.execute(
+        text(
+            "SELECT COUNT(*) AS cnt FROM service_api_keys"
+            " WHERE agent_id = :aid AND tenant_id = :tid"
+            "   AND revoked_at IS NULL"
+            "   AND (expires_at IS NULL OR expires_at > now())"
+        ),
+        {"aid": agent_uuid, "tid": str(tenant_id)},
+    )
+    active_api_keys_count = int(keys_result.fetchone().cnt or 0)
+
+    audit_payload = {"agent_id": agent_id, "active_api_keys_count": active_api_keys_count}
+
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
@@ -427,7 +451,7 @@ async def revoke_agent(
         actor_type="operator",
         target_id=None,
         target_type="agent",
-        payload={"agent_id": agent_id},
+        payload=audit_payload,
     )
 
     await notify_change(
@@ -440,7 +464,11 @@ async def revoke_agent(
         },
     )
 
-    return JSONResponse({"status": "ok", "agent_id": agent_id})
+    return JSONResponse({
+        "status": "ok",
+        "agent_id": agent_id,
+        "active_api_keys_count": active_api_keys_count,
+    })
 
 
 @router.delete("/{agent_id}", status_code=204)

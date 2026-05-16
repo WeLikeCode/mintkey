@@ -33,9 +33,12 @@ const _agentsResource = new RestResource({
     { path: "rate_limit_rps", type: "number" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
+    { path: "grants_count", type: "number" },
     // Virtual filter-only properties
     { path: "q", type: "string" },
     { path: "has_access_to_service_id", type: "string" },
+    // Virtual show-page properties
+    { path: "_grants_warning", type: "string" },
   ],
 });
 
@@ -45,11 +48,19 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
   options: {
     navigation: { name: "Agents", icon: "Bot" },
     // api_key_fingerprint in list/show — NEVER api_key (S-SEC-1)
-    listProperties: ["id", "name", "status", "api_key_fingerprint", "rate_limit_rps", "created_at"],
-    showProperties: ["id", "name", "description", "status", "api_key_fingerprint", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
+    listProperties: ["id", "name", "status", "grants_count", "api_key_fingerprint", "rate_limit_rps", "created_at"],
+    showProperties: ["_grants_warning", "id", "name", "description", "status", "api_key_fingerprint", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
     filterProperties: ["q", "has_access_to_service_id", "name", "status"],
     properties: {
+      _grants_warning: {
+        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        components: { show: Components.AgentGrantsWarningPanel },
+      },
+      grants_count: {
+        label: "Grants",
+        description: "Number of permission grants assigned to this agent. Zero means the agent can authenticate but will be denied on every service call.",
+      },
       api_key_fingerprint: {
         label: "API Key Fingerprint (SHA-256 prefix)",
         description: "First 16 hex chars of SHA-256(api_key). Safe to share in logs and audit events; cannot be reversed to the plaintext key. Use this to identify a key in audit events without exposing the secret.",
@@ -209,12 +220,18 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             };
           }
 
+          const respBody = await resp.json().catch(() => ({})) as {
+            active_api_keys_count?: number;
+          };
+          const keys = respBody.active_api_keys_count ?? 0;
+          const apiKeysUrl = `/admin/resources/service_api_keys?filters.agent_id=${agentId}`;
+          const baseMessage = "Agent revoked — propagates to proxy plugin within ≤5s via mintkey:agent channel.";
+          const warningMessage = keys > 0
+            ? `${baseMessage} ⚠ ${keys} classical API key${keys === 1 ? "" : "s"} for this agent remain active and are NOT auto-revoked. Review at ${apiKeysUrl} and revoke each one if no longer needed.`
+            : baseMessage;
           return {
             record: await recordJSON(context),
-            notice: {
-              message: "Agent revoked — propagates to proxy plugin within ≤5s via mintkey:agent channel",
-              type: "success",
-            },
+            notice: { message: warningMessage, type: keys > 0 ? "error" : "success" },
           };
         },
       },
