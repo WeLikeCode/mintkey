@@ -555,6 +555,53 @@ def _assign_platform_admin_role(token: str, user_uuid: str) -> None:
     print("Keycloak: role 'mintkey-platform-admin' assigned to admin user.")
 
 
+def _enforce_pkce_on_clients(token: str) -> None:
+    """Idempotent: ensure pkce.code.challenge.method=S256 on all 3 OIDC clients.
+
+    realm-mintkey.json handles fresh installs; this step covers existing installs
+    where the realm was already imported before the attribute was added (Keycloak
+    skips re-import when the realm already exists).
+
+    Uses GET → merge attributes → PUT (Keycloak client-update uses PUT, not PATCH).
+
+    Source: SSO-REDUX-2 R-02; ADR-0020.
+    """
+    client_ids = list(_CLIENT_SECRET_FILES.keys())  # ["mintkey-admin-api", "mintkey-grafana", "mintkey-jaeger"]
+    for client_id in client_ids:
+        # Step 1: GET current client representation + UUID
+        resp = requests.get(
+            f"{_KC_INTERNAL_URL}/admin/realms/mintkey/clients",
+            params={"clientId": client_id},
+            headers=_kc_headers(token),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        clients = resp.json()
+        if not clients:
+            print(f"Keycloak: WARNING — client '{client_id}' not found; skipping PKCE enforcement.")
+            continue
+        client_rep = clients[0]
+        client_uuid = client_rep["id"]
+
+        # Step 2: check whether already enforced
+        attrs = client_rep.get("attributes") or {}
+        if attrs.get("pkce.code.challenge.method") == "S256":
+            print(f"Keycloak: PKCE S256 enforced on {client_id} (already enforced — skipping)")
+            continue
+
+        # Step 3: merge attribute + PUT full client representation (Keycloak requires PUT)
+        attrs["pkce.code.challenge.method"] = "S256"
+        client_rep["attributes"] = attrs
+        put_resp = requests.put(
+            f"{_KC_INTERNAL_URL}/admin/realms/mintkey/clients/{client_uuid}",
+            headers=_kc_headers(token),
+            json=client_rep,
+            timeout=15,
+        )
+        put_resp.raise_for_status()
+        print(f"Keycloak: PKCE S256 enforced on {client_id}")
+
+
 def _touch_sentinel(secrets_dir: Path) -> None:
     sentinel_file = secrets_dir / ".admin_password_synced"
     sentinel_file.touch()
@@ -634,6 +681,7 @@ def seed_keycloak_realm_and_admin(
     token = _kc_admin_token()
 
     _write_client_secrets(token, secrets_dir)
+    _enforce_pkce_on_clients(token)
     _ensure_jaeger_cookie_secret(secrets_dir)
 
     user_uuid = _ensure_admin_user(token)

@@ -63,7 +63,9 @@
         "${MINTKEY_GRAFANA_PUBLIC_URL}/login/generic_oauth"
       ],
       "webOrigins": ["+"],
-      "attributes": {},
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
       "protocol": "openid-connect"
     },
     {
@@ -81,7 +83,9 @@
         "${MINTKEY_JAEGER_PUBLIC_URL}/oauth2/callback"
       ],
       "webOrigins": ["+"],
-      "attributes": {},
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
       "protocol": "openid-connect"
     }
   ]
