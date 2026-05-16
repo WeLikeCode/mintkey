@@ -4,6 +4,65 @@ Append-only. Most recent entry at the top.
 
 ---
 
+## 2026-05-16 — REL-FINAL: independent verification + closing report
+
+**Role:** Fresh Opus reviewer + report writer. No prior session context.
+
+**Task:** Re-run all 18 verification rows from the 5 landed chunks independently and produce
+`99-report.md` (~200-300 lines).
+
+**Approach:** Read-only verification only. Did not modify code. Did not push. Did not add
+`Co-Authored-By` trailers. Captured command output for every row.
+
+**Result — 18/18 PASS:**
+
+- **F1** workflow YAMLs parse: exit 0, `workflow yaml: ok`
+- **F2** OpenAPI semantic validation: exit 0, `openapi: ok`
+- **F3** OpenAPI internal refs: 355 refs, 0 unresolved
+- **F4** JSON schemas valid: exit 0, `json schemas: ok`
+- **F5** MCP tools YAML valid: exit 0, `ok`
+- **F6** No CI masks: 2 hits, both comment-only (`Makefile:168`, `.github/workflows/ci.yml:172`) — PASS
+- **F7** No placeholders: 4 hits, all forbid-context (CONTRIBUTING.md:168, RELEASE.md:179, PR template, roadmap row) — PASS
+- **F8** 8 target files free of `0.1.0-experimental`: exit 1 (no matches)
+- **F9** Canonical 5 files = `0.1.0-preview.1`: all 5 confirmed
+- **F10** Runtime FastAPI: `curl /openapi.json | … info.version` → `0.1.0-preview.1`
+- **F11** 6 USER directives: 6/6 hits
+- **F12** 5 HEALTHCHECK directives: 5/5 hits (seed-job correctly omitted)
+- **F13** Running containers uid≠0: `uid=65532(nonroot)` ×3, `uid=1000(node)`, `uid=65532(oauth2proxy)` — all non-root
+- **F14** DEPLOYMENT.md audit: 7 USER mentions; REL-3/2026-05-16 annotations at lines 96/116/119/142
+- **F15** Screenshot dirs ignored: status empty; check-ignore matched at `.gitignore:20`
+- **F16** No `Co-Authored-By` trailers: 6 session commits clean
+- **F17** Data preserved: `svc=4 agents=3 pg=2`
+- **F18** Matrix ✅ count: 5 session rows green
+
+**Documented residuals** (out of session scope, do not block push):
+
+1. `test_openapi_parity_snapshot` pre-existing FAIL — router drift, unrelated
+2. mcp-server still on `0.1.0-experimental` in `main.py:55`, `tools/jsonrpc.py:62`,
+   `tools/landing.py:86` — separate refresh chunk
+3. Auto-generated `*.pb.go` carry `0.1.0-experimental` headers — regenerate on next proto change
+4. `otel-collector` restart loop — pre-existing, unrelated
+5. Dockerfile `@sha256` digest pinning still deferred (owner decision)
+6. 4 Go service Dockerfiles use distroless implicit UID 65532 (`broker`,
+   `vault-adapter`, `proxy-plugin`, `kong-syncer`) — explicit `USER` directive recommended
+   but not required for pre-alpha
+
+**Verdict:** READY TO PUSH as `0.1.0-preview.1` pre-alpha technical preview, with the
+explicit "not for production" framing in `99-report.md` §6/§7.
+
+**Matrix:** P1-6 ⬜ → ✅
+
+**Files touched:**
+- `team/remediation/2026-05-16-public-github-release-readiness/99-report.md` (NEW)
+- `team/remediation/2026-05-16-public-github-release-readiness/02-matrix.md` (P1-6 flipped; inherited-state note added)
+- `team/remediation/2026-05-16-public-github-release-readiness/04-progress.md` (this entry)
+
+**Commit:** `docs: close public-github-release-readiness remediation`
+
+**Confirmed:** no `Co-Authored-By: Claude` trailer per global rules and per F16 of this very verification.
+
+---
+
 ## 2026-05-16 — Session opened
 
 Session directory created: `team/remediation/2026-05-16-public-github-release-readiness/`
