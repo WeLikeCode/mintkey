@@ -47,6 +47,16 @@ Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders an
 | **Small business owner** | No | Would benefit from "agents never see my Stripe/QuickBooks credentials" story, but cannot operationalize it. | Too technical: requires Docker Compose, understanding of MCP, manual credential configuration. No setup wizard. No simplified dashboard. No managed offering. | Not usable today without technical staff. Requires either a managed/hosted offering OR a setup wizard with pre-built business app templates. Likely commercial-led path, not pure OSS. |
 | **Enterprise user** | No | The audit chain, tenant isolation, and scoped-credential model are exactly what enterprise compliance needs. | No Helm chart. No HA topology. No SIEM export. No RBAC hardening beyond platform-admin/tenant scope. No compliance attestations. No third-party audit. No SLA. | Not usable in production today. Requires Phase E-1 deliverables: Helm, HA, backup/restore, SIEM, SCIM, RBAC, audit attestation, third-party review. Likely commercial-support model to be decided. |
 
+> **Milestone codes used in the table above:**
+> - **TP-0** — Public OSS hygiene complete (✅ 2026-05-16)
+> - **TP-1** — Technical preview launch (push + announce)
+> - **B-1** — Builder-friendly local demo + SDK snippets
+> - **F-1** — Founder-ready release cadence + GHCR images
+> - **SMB-1** — Simplified or hosted experience
+> - **E-1** — Enterprise pilot readiness
+>
+> Full exit criteria for each: see Section 8.
+
 ---
 
 ## Section 3 — Phase 1.5 — Public Technical Preview Readiness
@@ -90,6 +100,8 @@ Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
 ---
 
 ## Section 4 — Builder Roadmap (Phase B)
+
+> **Note on phase naming:** Sections 4–7 use cohort-named tracks (`Phase B` for Builder, `Phase F` for Founder, `Phase SMB` for Small Business, `Phase E` for Enterprise) that run in parallel with the architecture-iteration plan (Phase 0–5) preserved below. They are different views of the same roadmap, not sequential phases.
 
 **Goal:** Mintkey is great for builders. Evaluating, understanding, and experimenting with Mintkey should take under an hour with zero friction.
 
@@ -192,11 +204,13 @@ None of the Phase E items exist today. All are NEW or DEFERRED.
 
 ## Section 8 — Launch Milestones
 
+> **Target dates:** TBD. Sequencing depends on the open product decisions in Section 9 — especially hosted offering and commercial support. The milestone codes are a sequencing plan, not a delivery plan. Once Section 9 decisions land, this table is updated with target quarters.
+
 | Milestone | Audience | Exit criteria |
 |---|---|---|
 | **TP-0** — Public hygiene complete | All | ✅ DONE 2026-05-16. Apache-2.0 license, governance templates, security contact, CI gates strict, Docker hardening partial, deployment docs, mock demo, MCP client guides, marketing with CTAs and comparison table, no production-readiness overclaims. Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`. |
 | **TP-1** — Technical preview launch | Builder / AI engineer | Push to `https://github.com/WeLikeCode/mintkey`, enable GitHub Discussions, post launch announcement. **Pending operator action.** No code changes required. |
-| **B-1** — Builder-friendly local demo | Builder / AI engineer | `make demo` one command; 5 example integrations (Slack, Stripe, OpenAI-compatible, generic HTTP + GitHub); SDK snippets in Python + TypeScript; "agent never sees the secret" proof doc; troubleshooting guide covers top 5 first-run failures. |
+| **B-1** — Builder-friendly local demo | Builder / AI engineer | 5 example integrations live (4 NEW: Slack, Stripe, OpenAI-compatible, generic HTTP; + 1 EXISTING: GitHub PAT quickstart at `docs/guides/github-quickstart.md`), `make demo` wrapper, SDK snippets (Python + TypeScript + Go), "agent never sees the secret" proof walkthrough, expanded troubleshooting. |
 | **F-1** — Founder-ready packaging | Founder / startup CTO | GHCR images published; release cadence stable and documented; upgrade/migration guide exists; comparison page deepened; hosted/commercial direction decided. |
 | **E-1** — Enterprise pilot readiness | Enterprise | Helm chart; HA topology; backup/restore; SIEM export; RBAC hardening (4 built-in roles); non-root containers; digest-pinned base images; signed images + SBOM; third-party security audit; published SLA. |
 | **SMB-1** — Simplified or hosted experience | Small business | Setup wizard; plain-language dashboard; 3+ pre-built business app templates (Stripe, QuickBooks, HubSpot); alerts + weekly audit summary; managed update path. Likely commercial-led. |
@@ -215,12 +229,12 @@ Each decision is owner-facing. Blocking milestones are called out.
 | **Security contact email** | Required for SECURITY.md, OpenAPI contact, coordinated disclosure | `the+security@ciprianiacobescu.com` — already in SECURITY.md, openapi.yaml, marketing/security.html | ✅ DECIDED |
 | **Apache-2.0 as final license** | Required for all OSS contribution and distribution | Apache-2.0 — LICENSE file in place, README confirmed | ✅ DECIDED |
 | **GHCR as image registry** | Required for F-1 (published images); pattern `ghcr.io/welikecode/mintkey-*` | GHCR — documented in `docs/RELEASE.md`; publish workflow deferred | ✅ DECIDED |
-| **Hosted version planned?** | Determines whether SMB-1 is achievable; affects F-1 positioning | If yes: SMB-1 is on the product roadmap. If no: SMB-1 is out of scope for this project. | Status: OPEN |
-| **Commercial support planned?** | Determines E-1 timeline and SLA feasibility; also affects F-1 | If yes: plan the tier structure alongside E-1. If no: community-only support; document support limits clearly. | Status: OPEN |
+| **OPEN-A** — Hosted version planned? | Determines whether SMB-1 is achievable; affects F-1 positioning | If yes: SMB-1 is on the product roadmap. If no: SMB-1 is out of scope for this project. | Status: OPEN |
+| **OPEN-B** — Commercial support planned? | Determines E-1 timeline and SLA feasibility; also affects F-1 | If yes: plan the tier structure alongside E-1. If no: community-only support; document support limits clearly. | Status: OPEN |
 | **SMB as direct target or partner/channel target?** | Determines SMB-1 product shape (build a hosted offering vs partner with an MSP/integrator) | No recommendation without knowing commercial direction. Strongly affects resourcing. | Status: OPEN |
 | **Enterprise as Phase 2 or later?** | E-1 is large (Helm, HA, audit, compliance). If Phase 2: resource it now. If later: focus on B-1 / F-1 first. | Recommend B-1 first (6–12 weeks), then F-1 (4–8 weeks), then E-1 (12–24 weeks). Enterprise timeline depends on team size. | Status: OPEN |
 | **Release cadence: monthly / on-demand / pinned-by-event?** | Unblocks F-1 (published images). Monthly simplifies Dependabot and user upgrade planning. On-demand is fine for pre-launch but creates expectation problems post-launch. | Monthly cadence once images are published. | Status: OPEN |
-| **Pricing / support tiers** (if hosted/commercial) | Only relevant if hosted or commercial support is decided. Affects SMB-1 and E-1. | Defer until hosted/commercial decision is made. | Status: OPEN — depends on hosted/commercial decision |
+| **Pricing / support tiers** (if hosted/commercial) | Only relevant if hosted or commercial support is decided. Affects SMB-1 and E-1. | Defer until hosted/commercial decision is made. | Status: BLOCKED — depends on OPEN-A (hosted version?) and OPEN-B (commercial support?) |
 
 ---
 
