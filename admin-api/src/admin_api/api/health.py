@@ -26,6 +26,7 @@ try:
         REGISTRY,
     )
 
+    _REQUESTS_TOTAL: Counter | None
     try:
         _REQUESTS_TOTAL = Counter(
             "mintkey_requests_total",
@@ -33,7 +34,8 @@ try:
             ["method", "path", "status"],
         )
     except ValueError:
-        _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")
+        _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")  # type: ignore[assignment]
+    _REQUEST_DURATION: Histogram | None
     try:
         _REQUEST_DURATION = Histogram(
             "mintkey_request_duration_seconds",
@@ -41,12 +43,12 @@ try:
             ["method", "path"],
         )
     except ValueError:
-        _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")
+        _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")  # type: ignore[assignment]
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     _PROMETHEUS_AVAILABLE = False
-    _REQUESTS_TOTAL = None  # type: ignore[assignment]
-    _REQUEST_DURATION = None  # type: ignore[assignment]
+    _REQUESTS_TOTAL = None
+    _REQUEST_DURATION = None
 
 
 async def check_db() -> bool:

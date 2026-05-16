@@ -25,7 +25,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -121,7 +121,7 @@ class CredentialRotateRequest(BaseModel):
     """
     auth_scheme: str
     rotate_from: Optional[str] = None
-    value: Optional[Union[str, dict]] = None  # SENSITIVE — ADR-0014.4
+    value: Optional[Union[str, dict[str, Any]]] = None  # SENSITIVE — ADR-0014.4
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ async def create_credential(
         header_name=body.header_name or "",
         query_param=body.query_param or "",
     )
-    key_version: int = vault_result["key_version"]
+    key_version: int = cast(int, vault_result["key_version"])
 
     # Step 3: Generate wire ID and internal UUID — ADR-0017.11
     # Group E fix: derive internal_id from the wire ID so that decoding the
@@ -223,7 +223,7 @@ async def create_credential(
     # Payload MUST NOT include body.value or any plaintext — ADR-0014.4, S-SEC-1.
     is_rotation = key_version > 1
     event_type = "credential.rotated" if is_rotation else "credential.registered"
-    audit_payload: dict = {
+    audit_payload: dict[str, Any] = {
         "credential_id": cred_wire_id,
         "service_id": str(service_id),
         "key_version": key_version,
@@ -406,7 +406,7 @@ async def rotate_credential(
         plaintext=plaintext,
         target_url=rotate_service_base_url,
     )
-    new_key_version: int = vault_result["key_version"]
+    new_key_version: int = cast(int, vault_result["key_version"])
 
     # Step 6: Generate new cred ID and UUID — ADR-0017.11
     # Group E fix: derive new_internal_id from the wire ID (same as create_credential)
@@ -447,7 +447,7 @@ async def rotate_credential(
     )
 
     # Step 8: Emit audit event — ADR-0014.7; no plaintext in payload (ADR-0014.4)
-    audit_payload: dict = {
+    audit_payload: dict[str, Any] = {
         "credential_id": new_cred_wire_id,
         "service_id": service_id,  # wire form, not decoded UUID
         "key_version": new_key_version,

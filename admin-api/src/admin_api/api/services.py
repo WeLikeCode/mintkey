@@ -26,7 +26,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -580,7 +580,7 @@ async def test_service_transient(
             str(tenant_id),
         )
 
-    result: dict = {"ok": ok, "latency_ms": latency_ms, "final_url": final_url}
+    result: dict[str, Any] = {"ok": ok, "latency_ms": latency_ms, "final_url": final_url}
     if status_code:
         result["status_code"] = status_code
     if response_body_truncated:
@@ -648,11 +648,11 @@ async def test_service(
     # Build request headers based on auth_scheme
     headers: dict[str, str] = {}
     if cred_entry and cred_entry.get("plaintext"):
-        plaintext: str = cred_entry["plaintext"]
+        plaintext: str = cast(str, cred_entry["plaintext"])
         if auth_scheme == "bearer_token":
             headers["Authorization"] = f"Bearer {plaintext}"
         elif auth_scheme == "api_key_header":
-            header_name: str = cred_entry.get("header_name") or ""
+            header_name: str = cast(str, cred_entry.get("header_name") or "")
             if not header_name:
                 logger.warning(
                     "test_service: api_key_header credential missing header_name — "
@@ -663,7 +663,7 @@ async def test_service(
                 header_name = "X-API-Key"
             headers[header_name] = plaintext
         elif auth_scheme == "api_key_query":
-            query_param: str = cred_entry.get("query_param") or ""
+            query_param: str = cast(str, cred_entry.get("query_param") or "")
             if not query_param:
                 logger.warning(
                     "test_service: api_key_query credential missing query_param — "

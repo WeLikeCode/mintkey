@@ -13,6 +13,7 @@ WS-11 polish: logging.basicConfig wired so stdlib loggers (e.g. vault_client)
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 # Wire a stdout handler for the root stdlib logger so all modules that use
@@ -51,7 +52,7 @@ from admin_api.services.vault_client import close_channel
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI):  # noqa: ARG001
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     """FastAPI lifespan: startup → yield → shutdown."""
     # Nothing to do on startup — channel opens lazily on first call.
     yield

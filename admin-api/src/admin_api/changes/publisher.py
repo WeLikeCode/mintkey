@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def notify_change(session: AsyncSession, channel: str, payload: dict) -> None:
+async def notify_change(session: AsyncSession, channel: str, payload: dict[str, object]) -> None:
     """
     Fire pg_notify with bound parameters. Never uses f-strings.
 

@@ -121,7 +121,7 @@ async def _proxy_call(
     if credential is None:
         return JSONResponse(status_code=424, content={"code": "mintkey:credential_unavailable"})
 
-    plaintext: str = credential["plaintext"]
+    plaintext: str = str(credential["plaintext"])
     auth_scheme: str = svc_row.auth_scheme
 
     # --- 8. Build target URL ---

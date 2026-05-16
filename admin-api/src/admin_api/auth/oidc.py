@@ -91,7 +91,7 @@ async def _fetch_jwks(force: bool = False) -> dict[str, Any]:
 # In-memory state store (single-server PKCE state; Redis deferred per open-Q)
 # ---------------------------------------------------------------------------
 
-_state_store: dict[str, dict] = {}
+_state_store: dict[str, dict[str, str]] = {}
 
 
 def generate_authorization_url() -> tuple[str, str, str]:
@@ -192,7 +192,7 @@ async def _verify_id_token(id_token: str, *, force_refresh: bool) -> dict[str, A
 
     try:
         jwt = JsonWebToken(["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"])
-        claims = jwt.decode(
+        claims = jwt.decode(  # type: ignore[call-overload]  # authlib stubs expect JWK/str but runtime accepts JWKS dict
             id_token,
             jwks,
             claims_options={

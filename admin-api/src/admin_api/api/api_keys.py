@@ -28,7 +28,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 import argon2
@@ -116,7 +116,7 @@ class ServiceApiKeyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     service_id: str
     allowed_actions: list[str]
-    constraints: Optional[dict] = None
+    constraints: Optional[dict[str, Any]] = None
     expires_at: Optional[datetime] = None
 
 
@@ -129,7 +129,7 @@ class RevokeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _load_api_key_settings(session: AsyncSession) -> dict:
+async def _load_api_key_settings(session: AsyncSession) -> dict[str, Any]:
     """Load AdminSettings.api_key block; return defaults if not configured."""
     defaults = {
         "proxy_cache_ttl_seconds": 60,
@@ -146,8 +146,9 @@ async def _load_api_key_settings(session: AsyncSession) -> dict:
             row = await session.execute(text("SELECT value FROM admin_settings LIMIT 1"))
             r = row.fetchone()
             if r:
-                data = json.loads(r.value)
-                return data.get("api_key", defaults)
+                data: dict[str, Any] = json.loads(r.value)
+                api_key_block = data.get("api_key", defaults)
+                return dict(api_key_block) if isinstance(api_key_block, dict) else defaults
     except Exception:
         pass
     return defaults
@@ -158,7 +159,7 @@ async def _load_api_key_settings(session: AsyncSession) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _check_policy(settings: dict, body: ServiceApiKeyCreate) -> str | None:
+def _check_policy(settings: dict[str, Any], body: ServiceApiKeyCreate) -> str | None:
     """Return mintkey:code if a policy is violated, else None."""
     require_expiry = settings.get("require_expiry", False)
     allow_no_expiry = settings.get("allow_no_expiry", True)
@@ -189,7 +190,7 @@ def _check_policy(settings: dict, body: ServiceApiKeyCreate) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_api_key_id(api_key_id: str, session: AsyncSession, tenant_id) -> str | None:
+async def _resolve_api_key_id(api_key_id: str, session: AsyncSession, tenant_id: UUID) -> str | None:
     """
     Resolve a svckey_ wire-form ID to the DB UUID stored in service_api_keys.
 

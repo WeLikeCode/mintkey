@@ -65,7 +65,7 @@ async def clear_failed_attempts(email: str) -> None:
 
 async def verify_internal_login(
     email: str, password: str
-) -> tuple[Any | None, str]:
+) -> tuple[Any | None, str | None]:
     """
     Verify email + password via Argon2id.
 
