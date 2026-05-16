@@ -5,22 +5,22 @@
       <stop offset="0" stop-color="#071016"/>
       <stop offset="1" stop-color="#101820"/>
     </linearGradient>
-    <linearGradient id="leaf-fill" x1="13" y1="54" x2="47" y2="10" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#25C98E"/>
-      <stop offset=".65" stop-color="#2EE6A6"/>
+    <linearGradient id="leaf-fill" x1="13" y1="56" x2="47" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20C389"/>
+      <stop offset=".62" stop-color="#2EE6A6"/>
       <stop offset="1" stop-color="#36D69D"/>
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#icon-bg)"/>
-  <path fill="url(#leaf-fill)" d="M32 8c-9 5-16 11-20 19-4 9-3 18 3 26 4 5 10 10 17 14 8-4 15-10 19-16 6-9 7-19 2-28-4-7-11-12-21-15Z"/>
-  <path fill="#101820" d="M33 13c8 4 14 10 18 17 4 8 2 17-4 24-4 3-8 6-14 9V43c7-2 13-7 17-14-4-6-9-12-17-16Z"/>
-  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M34 12c9 5 16 12 19 21 3 10-1 20-12 28"/>
-  <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M18 39c5 2 8 6 14 9"/>
-  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M33 43c7 2 12 1 17-2"/>
+  <path fill="url(#leaf-fill)" d="M32 6c-10 6-17 13-21 21-5 11-3 22 6 31 4 4 9 8 15 11 7-4 13-9 17-15 7-9 8-20 3-30-4-8-11-14-20-18Z"/>
+  <path fill="#101820" d="M34 12c8 5 14 11 17 19 3 8 1 16-6 23-3 3-7 5-11 8V44c7-2 12-7 16-14-3-7-9-13-16-18Z"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8" d="M34 11c9 6 15 13 19 22 3 10-1 20-12 28"/>
+  <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8" d="M18 39c5 1 8 5 13 8"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.8" d="M34 43c6 2 11 1 16-2"/>
   <circle cx="17" cy="39" r="4" fill="#F7FAF8"/>
   <circle cx="17" cy="39" r="1.7" fill="#2EE6A6"/>
-  <circle cx="52" cy="31" r="5" fill="#2EE6A6"/>
-  <circle cx="50" cy="41" r="5" fill="#2EE6A6"/>
-  <path fill="#F7FAF8" fill-rule="evenodd" d="M33 17a11 11 0 0 0-5 21v20l5 3 8-5v-4h-6v-4h8v-6h-8v-4a11 11 0 0 0-2-21Zm0 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/>
+  <circle cx="51" cy="31" r="4.5" fill="#2EE6A6"/>
+  <circle cx="50" cy="41" r="4.5" fill="#2EE6A6"/>
+  <path fill="#F7FAF8" fill-rule="evenodd" d="M33 17a10 10 0 0 0-4 19v22l4 3 7-4v-4h-5v-4h7v-5h-7v-8a10 10 0 0 0-2-19Zm0 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/>
   <circle cx="33" cy="28" r="4" fill="#101820"/>
 </svg>
