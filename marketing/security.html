@@ -105,6 +105,30 @@
     </p>
   </section>
 
+  <!-- ── Credential exposure containment ─────────────────────── -->
+  <section id="credential-exposure" aria-labelledby="credential-exposure-heading">
+    <h2 id="credential-exposure-heading">Credential exposure containment</h2>
+    <div class="prose-wrap">
+      <p>
+        The practical security difference is what a compromised or prompt-injected
+        agent can leak. In a direct-key setup, the agent can leak the underlying
+        long-lived credential. In the Mintkey path, the agent can leak only the
+        short-lived brokered token it was given. The Egress Proxy remains the place
+        where the real credential is retrieved and injected.
+      </p>
+    </div>
+    <div class="diagram-wrap">
+      <img
+        src="assets/credential-exposure-comparison.svg"
+        alt="Side-by-side security comparison showing direct long-lived API key leakage versus Mintkey short-lived scoped token exposure"
+        width="900">
+      <div class="diagram-caption">
+        Direct API key exposure vs Mintkey brokered access &mdash;
+        <a href="../docs/AGENT_CREDENTIAL_RISK.md">Mermaid diagram source</a>
+      </div>
+    </div>
+  </section>
+
   <!-- ── What we claim ───────────────────────────────────────── -->
   <section id="claims" aria-labelledby="claims-heading">
     <h2 id="claims-heading">What we claim</h2>

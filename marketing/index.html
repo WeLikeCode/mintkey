@@ -173,6 +173,35 @@
     </div>
   </section>
 
+  <!-- ── Credential exposure comparison ─────────────────────── -->
+  <section id="credential-exposure" aria-labelledby="credential-exposure-heading">
+    <h2 id="credential-exposure-heading">What changes when the agent never sees the real key</h2>
+    <div class="prose-wrap">
+      <p>
+        Without Mintkey, a prompt-injected agent can expose the same long-lived API
+        key it uses to call the backend. With Mintkey, the agent only receives a
+        short-lived, service-bound token. The Egress Proxy validates that token,
+        retrieves the underlying credential from Mintkey's trusted path, injects it
+        into the outbound request, and keeps the raw credential away from the agent.
+      </p>
+      <p>
+        This is not prompt-injection prevention. It is blast-radius reduction: a
+        leaked temporary token is materially different from a leaked long-term API key.
+      </p>
+    </div>
+
+    <div class="diagram-wrap">
+      <img
+        src="assets/credential-exposure-comparison.svg"
+        alt="Comparison diagram: without Mintkey an agent receives and can leak a long-lived API key; with Mintkey the agent receives a short-lived scoped JWT while the proxy injects the real credential"
+        width="900">
+      <div class="diagram-caption">
+        Credential exposure comparison &mdash;
+        <a href="../docs/AGENT_CREDENTIAL_RISK.md">Mermaid diagram source</a>
+      </div>
+    </div>
+  </section>
+
   <!-- ── What Mintkey does ────────────────────────────────────── -->
   <section id="what-it-does" aria-labelledby="what-heading">
     <h2 id="what-heading">What Mintkey does</h2>
