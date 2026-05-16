@@ -455,19 +455,25 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
 
 
 def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
-    """Write jaeger_oauth2_cookie_secret (32 raw bytes) if missing.
+    """Write jaeger_oauth2_cookie_secret (base64-encoded 32 bytes) if missing.
 
-    oauth2-proxy v7.6+ requires the cookie secret to be exactly 16, 24, or 32
-    bytes so it can construct an AES cipher.  Writing text (hex/base64) produces
-    a file that is 44 or 64 bytes — rejected at startup.  Writing raw bytes
-    gives exactly 32 bytes (AES-256).
+    oauth2-proxy v7.6.0 does not support --cookie-secret-file; the secret must
+    be supplied via --cookie-secret as a string value.  The flag accepts either
+    a plain string or a base64-encoded string — when the value is exactly 44
+    characters (urlsafe-base64 of 32 bytes) oauth2-proxy decodes it to 32 raw
+    bytes (AES-256) automatically.
+
+    Writing urlsafe-base64 (44 ASCII chars, no null bytes) means the entrypoint
+    can safely read the file with `cat` and pass the value via --cookie-secret.
     """
+    import base64
     cookie_secret_file = secrets_dir / "jaeger_oauth2_cookie_secret"
     if cookie_secret_file.exists():
         print("Keycloak: jaeger_oauth2_cookie_secret already exists — skipping.")
         return
-    # 32 raw bytes (AES-256 cookie key for oauth2-proxy)
-    cookie_secret_file.write_bytes(os.urandom(32))
+    # urlsafe-base64 of 32 random bytes → 44 ASCII chars; oauth2-proxy decodes
+    # this to 32 raw bytes (AES-256) at startup.
+    cookie_secret_file.write_text(base64.urlsafe_b64encode(os.urandom(32)).decode())
     # jaeger-auth runs as UID 65532 (non-root); 0o644 lets it read the file.
     # Security boundary is the Docker volume (bootstrap_secrets), not the mode.
     cookie_secret_file.chmod(0o644)
