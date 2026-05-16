@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+  <title id="title">Mintkey banner</title>
+  <desc id="desc">Mintkey brand banner with product promise and infrastructure callouts.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1600" y1="0" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7FAF8"/>
+      <stop offset="1" stop-color="#DDF7EF"/>
+    </linearGradient>
+    <linearGradient id="mintkey-mint" x1="119" x2="362" y1="361" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2EE6A6"/>
+      <stop offset="1" stop-color="#1CCB91"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="500" fill="url(#bg)"/>
+  <rect x="72" y="68" width="1456" height="364" rx="36" fill="#FFFFFF" opacity=".72"/>
+  <path fill="none" stroke="#DDF7EF" stroke-width="2" d="M1110 120h250c64 0 116 52 116 116v144"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-width="8" d="M1140 154h178"/>
+  <path fill="none" stroke="#C7A64A" stroke-linecap="round" stroke-width="8" d="M1140 190h248"/>
+  <circle cx="1390" cy="190" r="11" fill="#C7A64A"/>
+  <circle cx="1324" cy="154" r="11" fill="#2EE6A6"/>
+  <g transform="translate(116 86) scale(1.18)">
+    <path fill="url(#mintkey-mint)" d="M126 230C68 199 42 155 47 110c6-54 50-91 107-121 52 35 78 77 74 123-5 56-44 95-102 118Z"/>
+    <path fill="#F7FAF8" d="M137 26v172c39-21 64-50 68-87 3-31-12-60-43-85h-25Z"/>
+    <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M72 150h28l44 31h45"/>
+    <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M143 149h31l34-34"/>
+    <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M149 176h39"/>
+    <circle cx="72" cy="150" r="18" fill="#2EE6A6"/>
+    <circle cx="72" cy="150" r="8" fill="#F7FAF8"/>
+    <circle cx="207" cy="115" r="18" fill="#2EE6A6"/>
+    <circle cx="188" cy="176" r="18" fill="#2EE6A6"/>
+    <path fill="#101820" d="M121 234l-22-13v-96a39 39 0 1 1 44 0v43h28v22h-28v18h22v22h-22v23l-22 13Zm0-126a17 17 0 1 0 0-34 17 17 0 0 0 0 34Z"/>
+    <circle cx="121" cy="91" r="17" fill="#F7FAF8"/>
+  </g>
+  <text x="418" y="170" fill="#101820" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="84" font-weight="800" letter-spacing="0">Mintkey</text>
+  <text x="422" y="236" fill="#101820" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="32" font-weight="650">Self-hosted credential broker for AI agents</text>
+  <text x="422" y="295" fill="#31413D" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="26" font-weight="450">Agents get scoped short-lived access, never raw API keys.</text>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="700">
+    <rect x="422" y="338" width="160" height="42" rx="21" fill="#DDF7EF"/>
+    <text x="452" y="365" fill="#101820">MCP-native</text>
+    <rect x="598" y="338" width="182" height="42" rx="21" fill="#DDF7EF"/>
+    <text x="626" y="365" fill="#101820">Proxy-injected</text>
+    <rect x="798" y="338" width="142" height="42" rx="21" fill="#DDF7EF"/>
+    <text x="826" y="365" fill="#101820">Auditable</text>
+  </g>
+</svg>

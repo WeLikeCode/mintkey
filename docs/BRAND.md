@@ -28,6 +28,19 @@ This file is a concept board, not a final production vector source. Before using
 the logo in package managers, favicons, or high-resolution marketing material,
 recreate the selected mark as SVG and verify small-size legibility.
 
+## Generated brand assets
+
+| Asset | Path | Purpose |
+|---|---|---|
+| Brand board | `marketing/assets/mintkey-brand-board.png` | Raster concept board and visual reference |
+| Brand mark | `marketing/assets/mintkey-mark.svg` | Standalone logo mark for docs, UI, and diagrams |
+| Wordmark | `marketing/assets/mintkey-wordmark.svg` | Horizontal logo lockup |
+| Favicon | `marketing/assets/mintkey-favicon.svg` | Browser/app icon source |
+| Banner | `marketing/assets/mintkey-banner.svg` | Repository/social preview and docs hero asset |
+
+The SVG assets are production-oriented starting points, but they should still be
+reviewed at small sizes before being treated as final trademark artwork.
+
 ## Palette
 
 | Token | Hex | Use |

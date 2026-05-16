@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Mintkey mark</title>
+  <desc id="desc">A mint leaf, keyway, and routing-node symbol for Mintkey.</desc>
+  <defs>
+    <linearGradient id="mintkey-mint" x1="38" x2="218" y1="216" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2EE6A6"/>
+      <stop offset="1" stop-color="#1CCB91"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#mintkey-mint)" d="M126 230C68 199 42 155 47 110c6-54 50-91 107-121 52 35 78 77 74 123-5 56-44 95-102 118Z"/>
+  <path fill="#F7FAF8" d="M137 26v172c39-21 64-50 68-87 3-31-12-60-43-85h-25Z"/>
+  <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M72 150h28l44 31h45"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M143 149h31l34-34"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="14" d="M149 176h39"/>
+  <circle cx="72" cy="150" r="18" fill="#2EE6A6"/>
+  <circle cx="72" cy="150" r="8" fill="#F7FAF8"/>
+  <circle cx="207" cy="115" r="18" fill="#2EE6A6"/>
+  <circle cx="188" cy="176" r="18" fill="#2EE6A6"/>
+  <path fill="#101820" d="M121 234l-22-13v-96a39 39 0 1 1 44 0v43h28v22h-28v18h22v22h-22v23l-22 13Zm0-126a17 17 0 1 0 0-34 17 17 0 0 0 0 34Z"/>
+  <circle cx="121" cy="91" r="17" fill="#F7FAF8"/>
+</svg>
