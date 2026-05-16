@@ -7,4 +7,4 @@ respx>=0.20
 opentelemetry-sdk>=1.29
 opentelemetry-instrumentation-fastapi>=0.50b0
 opentelemetry-exporter-otlp-proto-grpc>=1.29
-prometheus-client>=0.20
+prometheus-client>=0.25.0
