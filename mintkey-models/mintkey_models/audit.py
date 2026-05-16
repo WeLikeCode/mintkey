@@ -21,7 +21,7 @@ import hashlib
 import json
 import struct
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import text
@@ -46,7 +46,10 @@ try:
             ["event_type"],
         )
     except ValueError:
-        _audit_events_total = REGISTRY._names_to_collectors.get("mintkey_audit_events_total")
+        # Registry lookup returns Collector; cast to Counter for strict-mode compat.
+        _audit_events_total = cast(
+            Counter, REGISTRY._names_to_collectors.get("mintkey_audit_events_total")
+        )
 
     try:
         _audit_chain_ok = Gauge(
@@ -54,7 +57,10 @@ try:
             "1 when the last audit chain insert succeeded, 0 on verify failure",
         )
     except ValueError:
-        _audit_chain_ok = REGISTRY._names_to_collectors.get("mintkey_audit_chain_ok")
+        # Registry lookup returns Collector; cast to Gauge for strict-mode compat.
+        _audit_chain_ok = cast(
+            Gauge, REGISTRY._names_to_collectors.get("mintkey_audit_chain_ok")
+        )
 
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
