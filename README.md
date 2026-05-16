@@ -75,7 +75,7 @@ The agent never touches the underlying credential. Full sequence: [`docs/archite
 ## Run it locally (5 minutes)
 
 ```bash
-git clone <repo-url> mintkey
+git clone https://github.com/WeLikeCode/mintkey.git mintkey
 cd mintkey
 docker compose up -d
 make smoke

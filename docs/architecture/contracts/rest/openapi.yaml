@@ -68,8 +68,8 @@ info:
 
   contact:
     name: Mintkey maintainers
-    url: https://example.invalid/mintkey
-    email: maintainers@example.invalid
+    url: https://github.com/WeLikeCode/mintkey
+    email: the+security@ciprianiacobescu.com
   license:
     name: Apache-2.0
     identifier: Apache-2.0

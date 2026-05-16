@@ -21,7 +21,7 @@ Mintkey is an AI credential broker. Operators register backend services with cre
 
 ```bash
 # Clone and enter the repo
-git clone <repo-url> mintkey && cd mintkey
+git clone https://github.com/WeLikeCode/mintkey.git mintkey && cd mintkey
 
 # Start all services (Postgres, Vault Adapter, Broker, Kong, MCP, Admin API, Admin UI, Jaeger, Prometheus)
 docker compose up -d

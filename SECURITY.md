@@ -18,7 +18,7 @@ This project is pre-alpha and self-hosted. There is no managed offering and ther
 
 Two channels:
 
-1. **Email:** `<TBD-by-architect>` with subject `[security] <short title>`. (The `openapi.yaml` `info.contact.email` is currently `maintainers@example.invalid` — a placeholder. This field will be updated by the architect before any public release.)
+1. **Email:** `the+security@ciprianiacobescu.com` with subject `[security] <short title>`.
 2. **GitHub Security Advisory (GHSA):** open a private advisory via the "Security" tab of the repository.
 
 Your report should include:
