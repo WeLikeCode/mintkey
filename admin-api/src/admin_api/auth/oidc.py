@@ -182,7 +182,12 @@ async def _verify_id_token(id_token: str, *, force_refresh: bool) -> dict[str, A
     """Verify ID token signature against Keycloak JWKS. Force-refreshes on first failure."""
     from authlib.jose import JsonWebToken
 
-    expected_issuer = f"{_keycloak_internal_url()}/realms/{KEYCLOAK_REALM}"
+    # Use the PUBLIC URL here: Keycloak embeds the URL the browser hit (the
+    # public-facing base URL) as the `iss` claim in issued ID tokens.
+    # admin-api's token-exchange POST and JWKS fetch stay on the internal URL
+    # (server-to-server); only iss validation must match the browser-visible URL.
+    # Mirror of SSO-E redux 31270130 that applied the same fix to jaeger-auth.
+    expected_issuer = f"{_keycloak_public_url()}/realms/{KEYCLOAK_REALM}"
 
     jwks = await _fetch_jwks(force=force_refresh)
 
