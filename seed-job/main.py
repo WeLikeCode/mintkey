@@ -331,11 +331,13 @@ _CLIENT_SECRET_FILES: dict[str, str] = {
 }
 
 # Env vars whose values replace ${...} placeholders in realm.json.
-_REALM_JSON_ENV_VARS = [
-    "MINTKEY_ADMIN_API_PUBLIC_URL",
-    "MINTKEY_GRAFANA_PUBLIC_URL",
-    "MINTKEY_JAEGER_PUBLIC_URL",
-]
+# Defaults match the localhost host-port mappings in docker-compose; operators
+# override via .env for cross-machine access (see docs/NETWORK.md).
+_REALM_JSON_ENV_DEFAULTS = {
+    "MINTKEY_ADMIN_API_PUBLIC_URL": "http://localhost:8080",
+    "MINTKEY_GRAFANA_PUBLIC_URL": "http://localhost:3003",
+    "MINTKEY_JAEGER_PUBLIC_URL": "http://localhost:16686",
+}
 
 
 def _kc_wait_ready() -> None:
@@ -378,9 +380,9 @@ def _kc_headers(token: str) -> dict:
 
 
 def _interpolate_realm_json(raw: str) -> dict:
-    """Replace ${MINTKEY_*_PUBLIC_URL} placeholders with env values (or keep as-is if unset)."""
-    for var in _REALM_JSON_ENV_VARS:
-        value = os.getenv(var, f"${{{var}}}")
+    """Replace ${MINTKEY_*_PUBLIC_URL} placeholders with env values or localhost defaults."""
+    for var, default in _REALM_JSON_ENV_DEFAULTS.items():
+        value = os.getenv(var, default)
         raw = raw.replace(f"${{{var}}}", value)
     return json.loads(raw)
 
