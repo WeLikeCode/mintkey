@@ -31,6 +31,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from mcp_server.config.public_urls import resolve_mcp_public_url, resolve_proxy_public_url
+
 # Use structlog if available (production container), otherwise fall back to stdlib logging
 try:
     import structlog as _structlog
@@ -73,8 +75,8 @@ def _load_skill_markdown() -> str:
 # Cache the markdown at module load time (startup). KeyError here → container unhealthy → caught in CI.
 _SKILL_MARKDOWN: str = _load_skill_markdown()
 
-_PROXY_URL: str = os.getenv("MINTKEY_PROXY_URL", "http://mintkey-proxy:8000")
-_MCP_URL: str = os.getenv("MINTKEY_MCP_URL", "http://mintkey-mcp:8082")
+_PROXY_URL: str = resolve_proxy_public_url()
+_MCP_URL: str = resolve_mcp_public_url()
 _VERSION: str = "1.0"
 
 # ---------------------------------------------------------------------------

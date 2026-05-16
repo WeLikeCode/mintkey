@@ -15,8 +15,9 @@ Source: Req 6 AC3, AC4; ADR-0008; ADR-0017.11; OPS-CC.
 """
 from __future__ import annotations
 
-import os
 from typing import Optional
+
+from mcp_server.config.public_urls import resolve_proxy_public_url
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -65,11 +66,8 @@ Rules:
 - If you get 401 from the proxy, your token has expired — repeat from Step 2.
 - If you get 403 from the proxy, your agent lacks permission for this service — contact the operator.
 
-## Example: Twilio SMS logs
-Discover -> note service id for "twilio-sms"
-Request token -> POST /v1/tools/request_token {"service_id": "<id>", "action": "call"}
-Call -> GET http://localhost:8000/proxy/2010-04-01/Accounts/<ACCOUNT_SID>/Messages.json
-        Authorization: Bearer <token>
+For complete usage examples, call the bootstrap tool (GET /v1/tools/bootstrap — no auth required) \
+to retrieve the authoritative agent-bootstrap.md skill.
 """
 
 
@@ -84,7 +82,7 @@ async def get_agent_context(request: Request):
 
 def _make_how_to_call(service_id: str, base_url: str) -> dict:
     """Build the how_to_call usage hint for a service entry."""
-    kong_host = os.getenv("KONG_PROXY_URL", "http://localhost:8000")
+    kong_host = resolve_proxy_public_url()
     return {
         "action": "call",
         "step1_request_token": (
