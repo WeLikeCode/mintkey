@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from mcp_server.auth.agent_key import validate_agent_key
 from mcp_server.tools.bootstrap import router as bootstrap_router
 from mcp_server.tools.discovery import router as discovery_router
+from mcp_server.tools.landing import router as landing_router
 from mcp_server.tools.request_token import router as request_token_router
 
 # ---------------------------------------------------------------------------
@@ -65,7 +66,12 @@ def create_app() -> FastAPI:
         # Health check, metrics, instructions, and bootstrap bypass auth.
         # /v1/tools/bootstrap is intentionally unauthenticated — it is the
         # pre-auth entry point that teaches agents how to authenticate (R6).
-        if request.url.path in ("/health", "/v1/health", "/metrics", "/v1/tools/instructions", "/v1/tools/bootstrap"):
+        if request.url.path in (
+            "/health", "/v1/health", "/metrics",
+            "/v1/tools/instructions", "/v1/tools/bootstrap",
+            # MCP-D-A landing pages — structural metadata only, no tenant data
+            "/", "/v1", "/mcp", "/v1/mcp", "/v1/tools",
+        ):
             return await call_next(request)
 
         # Accept both Authorization: Bearer <key> and X-API-Key: <key>
@@ -96,7 +102,9 @@ def create_app() -> FastAPI:
             return Response("# prometheus-client not installed\n", media_type="text/plain")
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-    # bootstrap router first — it has no auth; registers GET /v1/tools/bootstrap (R6)
+    # landing router first — unauthenticated GET discovery pages (MCP-D-A)
+    app.include_router(landing_router)
+    # bootstrap router next — it has no auth; registers GET /v1/tools/bootstrap (R6)
     app.include_router(bootstrap_router)
     app.include_router(discovery_router)
     app.include_router(request_token_router)
