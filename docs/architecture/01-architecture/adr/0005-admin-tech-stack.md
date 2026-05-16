@@ -3,6 +3,8 @@
 ## Status
 Accepted — 2026-05-10. Promoted from [`docs/proposal/P-006-admin-tech-stack-and-auth.md`](../../proposal/P-006-admin-tech-stack-and-auth.md). The recommended option in P‑006 was 6A‑1 (Go); the accepted decision is 6A‑2 (Python + FastAPI) plus a tighter set of dependent choices.
 
+> **AMENDED by ADR-0020 (2026-05-15):** Internal auth fallback is now OFF by default. Operator identity flows through Keycloak. The `operators.internal_password_hash IS NULL` gate replaces the "toggleable per deployment" model; break-glass is CLI-issued only. See [ADR-0020](0020-sso-keycloak-canonical-idp.md).
+
 ## Context
 [P‑006](../../proposal/P-006-admin-tech-stack-and-auth.md) presented three coupled sub‑decisions for the control‑plane operator surface (Admin REST API, Admin Web UI, operator authentication). Each had multiple options. The accepted option set differs from the proposal's primary recommendation in two ways:
 - **6A** picks Python + FastAPI (option 6A‑2) over Go (the cohesion‑driven recommendation), prioritizing OpenAPI‑first developer experience over single‑language uniformity.

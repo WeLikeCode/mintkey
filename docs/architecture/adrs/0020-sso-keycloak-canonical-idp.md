@@ -1,0 +1,1 @@
+../01-architecture/adr/0020-sso-keycloak-canonical-idp.md

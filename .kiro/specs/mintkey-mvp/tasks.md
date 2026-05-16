@@ -116,10 +116,33 @@ graph LR
     - Write `tests/unit/admin_api/test_csrf.py`
     - _Requirements: Req 2 AC11; Req SEC-6_
   - [x] 2.4 AdminJS login page
-    - Configure AdminJS login page with "Internal auth" and "Login with Keycloak" options
+    - Configure AdminJS login page with "Login with Keycloak" primary button and "Break-glass (local password)" collapsed accordion
     - Login flow does NOT use AdminUiSignedRequest middleware (bootstrap surface)
+    - Break-glass accordion only functional when `operators.internal_password_hash IS NOT NULL` per ADR-0020 D2-b
     - Write `admin-ui/tests/test_login.test.ts`
-    - _Requirements: Req 2 AC1, AC8_
+    - _Requirements: Req 2 AC1, AC8; ADR-0020_
+  - [x] 2.5 OIDC shadow table — operator link via oidc_sub (T-1.1.2)
+    - admin-api resolves operator by `oidc_sub` on OIDC callback; email fallback if `link_by_email=true`; pre-linked at seed time (D1)
+    - JWKS verification with 1h in-memory cache; refresh on unknown `kid`
+    - Write `tests/unit/admin_api/test_oidc_shadow.py`
+    - _Requirements: Req 2 AC6; ADR-0020 D1_
+  - [x] 2.6 Break-glass CLI — reset-password / clear-password (T-1.1.3)
+    - Implement `mintkey admin reset-password --email <e>` (sets `internal_password_hash`, prints temp password once to stdout)
+    - Implement `mintkey admin clear-password --email <e>` (sets `internal_password_hash = NULL`, restores Keycloak-only posture)
+    - `POST /v1/auth/internal-login` returns 404 when `internal_password_hash IS NULL`
+    - Write `tests/unit/admin_api/test_break_glass.py`
+    - _Requirements: Req 2 AC2–AC4; ADR-0020 D2-b_
+  - [x] 2.7 Grafana native OIDC (T-1.1.6)
+    - Configure `GF_AUTH_GENERIC_OAUTH_*` env vars pointing to Keycloak `mintkey-grafana` client
+    - JMESPath role mapping: `realm_access.roles` → Grafana Admin/Viewer
+    - `mintkey-grafana` client secret written to bootstrap_secrets volume by seed job
+    - _Requirements: ADR-0020; SSO-D_
+  - [x] 2.8 Jaeger behind oauth2-proxy (T-1.1.7)
+    - Deploy `jaeger-auth` sidecar (`oauth2-proxy` v7.6.0) in front of Jaeger UI port
+    - Jaeger drops host port; browser access only via oauth2-proxy
+    - `oidc-issuer-url` set to browser-visible `MINTKEY_KEYCLOAK_PUBLIC_URL/realms/mintkey` (with `extra_hosts: host-gateway` for container resolution)
+    - Any authenticated Keycloak user can view traces (D3 — Prometheus stays internal)
+    - _Requirements: ADR-0020; SSO-E_
 
 - [x] 3. Milestone 1.2 — Service Registration
   - [x] 3.1 Service CRUD — Admin API

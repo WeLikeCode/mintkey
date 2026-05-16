@@ -79,18 +79,20 @@ The MVP is complete when the **E2E‑01 builder happy path** runs in CI **after*
 
 **User Story:** As an operator, I want to log in to the Admin Console so that I can manage services, agents, and credentials.
 
+> **ADR-0020 alignment (2026-05-15):** AC6 (Keycloak OIDC) is the mandatory primary login path. AC2–AC4 (internal auth) are break-glass-only paths — active ONLY when `operators.internal_password_hash IS NOT NULL` (set by `mintkey admin reset-password` CLI). The default posture is `internal_password_hash IS NULL`; in that state, `POST /v1/auth/internal-login` returns 404. See [ADR-0020](../../../docs/architecture/01-architecture/adr/0020-sso-keycloak-canonical-idp.md).
+
 ### Acceptance Criteria
 
 1. WHEN an operator navigates to the Admin Console URL without a valid session cookie, THEN they are redirected to `/login`.
-2. WHEN an operator chooses "Internal auth" and submits valid bootstrap credentials, THEN `admin-api` verifies the Argon2id hash, creates a server‑side session row in `sessions`, sets `mintkey_session` cookie with `HttpOnly; Secure; SameSite=Strict`, and redirects to the dashboard.
-3. WHEN an operator submits invalid credentials (unknown user, wrong password, **or** locked account), THEN the response body is **byte‑identical** across the three failure modes (HTTP 401, JSON `{"type": "...", "title": "Invalid credentials", "status": 401, "mintkey:code": "invalid_credentials"}`), and the **time‑to‑respond is statistically indistinguishable** across all three modes (server always runs an Argon2id verify against a fixed dummy hash if the user record is missing). Per ADR‑0017.5.
-4. WHEN an internal‑login attempt fails, THEN the audit chain records ONE of:
+2. *(Break-glass only — requires `internal_password_hash IS NOT NULL`)* WHEN an operator chooses "Internal auth" and submits valid bootstrap credentials, THEN `admin-api` verifies the Argon2id hash, creates a server‑side session row in `sessions`, sets `mintkey_session` cookie with `HttpOnly; Secure; SameSite=Strict`, and redirects to the dashboard.
+3. *(Break-glass only)* WHEN an operator submits invalid credentials (unknown user, wrong password, **or** locked account), THEN the response body is **byte‑identical** across the three failure modes (HTTP 401, JSON `{"type": "...", "title": "Invalid credentials", "status": 401, "mintkey:code": "invalid_credentials"}`), and the **time‑to‑respond is statistically indistinguishable** across all three modes (server always runs an Argon2id verify against a fixed dummy hash if the user record is missing). Per ADR‑0017.5.
+4. *(Break-glass only)* WHEN an internal‑login attempt fails, THEN the audit chain records ONE of:
    - `auth.login.failed.user_unknown`
    - `auth.login.failed.bad_password`
    - `auth.login.failed.account_locked`
    …with `username_attempted` (truncated to 200 chars), `ip`, `user_agent`, `at`, and the appropriate `reason_code`. The API response itself does **not** distinguish between them.
 5. WHEN an operator logs in successfully (internal or OIDC), THEN an audit event `auth.login.success` is emitted with `operator_id`, `tenant_id`, `ip`, `user_agent`, `method` (`internal` or `oidc`), and `at`.
-6. WHEN an operator chooses "Login with Keycloak" and completes the OIDC flow with PKCE, THEN `admin-api` validates the `state`, `nonce`, and ID‑token signature, looks up the operator by `oidc_sub` (or `email` if `link_by_email = true`), creates a session, and redirects to the dashboard. If no matching operator exists and auto‑provisioning is disabled (default), the response is `403` with audit `auth.login.denied.no_local_operator`.
+6. *(Mandatory — primary login path per ADR-0020)* WHEN an operator chooses "Login with Keycloak" and completes the OIDC flow with PKCE, THEN `admin-api` validates the `state`, `nonce`, and ID‑token signature, looks up the operator by `oidc_sub` (or `email` if `link_by_email = true`), creates a session, and redirects to the dashboard. If no matching operator exists and auto‑provisioning is disabled (default), the response is `403` with audit `auth.login.denied.no_local_operator`.
 7. WHEN a session cookie is missing or invalid on a protected Admin REST API endpoint, THEN the response is `401 unauthenticated`.
 8. WHEN an operator logs out, THEN the `sessions` row is invalidated, the cookie is cleared, and an audit event `auth.logout` is emitted. If OIDC was used, the response includes a Keycloak end‑session redirect URL.
 9. WHEN a state‑changing request arrives at AdminJS, THEN AdminJS:

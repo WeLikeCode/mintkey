@@ -174,9 +174,10 @@ These come from the architectural decisions and are not negotiable without an AD
 ### Tech stack
 - **Admin REST API + MCP Server**: Python 3.12 + FastAPI + Pydantic v2 + SQLAlchemy 2.x async + `asyncpg` + `authlib` + Argon2id + `structlog` + `ruff` + `mypy --strict` + `uv` ([ADR-0005](docs/architecture/01-architecture/adr/0005-admin-tech-stack.md), [ADR-0009](docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md), [ADR-0012](docs/architecture/01-architecture/adr/0012-python-stack-pin.md)).
 - **Admin UI**: AdminJS 7.x + Express + `passport-openidconnect` + `pino` + `vitest` + `pnpm`. AdminJS holds NO DB connection (no `@adminjs/sql`, no `pg`, no `connect-pg-simple`); it is a BFF over the admin-api REST API per [ADR-0019](docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md). Reads relay the `mintkey_session` cookie. State-changing calls require BOTH the cookie AND a signed Ed25519 `AdminUiSignedRequest` JWT — they must agree (`jwt.sub == session.operator_id`, `jwt.tnt == session.tenant_id`). The effective identity (tenant-context GUC, audit `actor_id`) comes from the SESSION, not the JWT.
+- **Operator auth (admin-ui, Grafana, Jaeger) flows through Keycloak ([ADR-0020](docs/architecture/adrs/0020-sso-keycloak-canonical-idp.md)).** admin-api owns the OIDC `client_secret`; admin-ui never holds it. Internal-login is OFF by default — gated by `operators.internal_password_hash IS NULL`. Break-glass via `mintkey admin reset-password` CLI.
 - **Egress Proxy plugin, Vault Adapter, Credential Broker, Kong-syncer**: Go 1.22 + workspace + `pgx/v5` + `chi/v5` + `go-jose/v4` + `sqlc` + `slog` + `modernc.org/sqlite` + distroless ([ADR-0011](docs/architecture/01-architecture/adr/0011-shared-go-stack.md)).
 - **Egress proxy data plane**: Kong DB-less + Go plugin via `go-pdk` ([ADR-0004](docs/architecture/01-architecture/adr/0004-egress-proxy-kong.md)).
-- **OIDC default**: Keycloak (in compose by default).
+- **OIDC default**: Keycloak (in compose by default); Keycloak is the ONLY supported operator IdP per [ADR-0020](docs/architecture/adrs/0020-sso-keycloak-canonical-idp.md).
 
 ---
 

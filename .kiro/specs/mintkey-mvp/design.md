@@ -407,9 +407,9 @@ Every call carries the `X-Mintkey-Service-Token` metadata field with `svcid_admi
 
 1. Operator visits `/`. AdminJS Express middleware checks for `mintkey_session` cookie.
 2. No cookie ⇒ redirect to `/login`.
-3. Login page offers two paths:
-   - **Internal auth** (bootstrap): username + password → `POST /v1/auth/internal-login` on `admin-api` (no signed‑request envelope on this route — login is the bootstrap surface).
-   - **OIDC** (Keycloak): `passport-openidconnect` redirects to Keycloak; on callback, posts the ID token to `admin-api POST /v1/auth/oidc/callback`.
+3. Login page offers one primary path (Keycloak OIDC) and one break-glass path:
+   - **OIDC — Keycloak (primary, always available):** `passport-openidconnect` redirects to `admin-api /v1/auth/oidc/login`; admin-api handles PKCE + token exchange; on callback validates state/nonce/ID-token, resolves operator by `oidc_sub` (email fallback), creates session. This is the sole supported IdP per [ADR-0020](../../../docs/architecture/01-architecture/adr/0020-sso-keycloak-canonical-idp.md).
+   - **Internal auth (break-glass only):** username + password → `POST /v1/auth/internal-login` on `admin-api`. Available ONLY when `operators.internal_password_hash IS NOT NULL` — i.e., after `mintkey admin reset-password` CLI has set a hash. Returns 404 when hash is NULL (the default posture). Not a "two paths" model; internal-login is OFF by default per ADR-0020 D2-b.
 4. On success, `admin-api` sets `mintkey_session` (HttpOnly Secure SameSite=Strict). AdminJS holds no DB session store; it relays the cookie on every subsequent request to `admin-api` and validates identity via `GET /v1/auth/whoami` (ADR‑0019).
 
 ### State‑changing operations (CORRECTED — Ed25519 keypair)

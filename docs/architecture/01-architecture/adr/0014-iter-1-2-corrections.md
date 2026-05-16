@@ -3,6 +3,8 @@
 ## Status
 Accepted — 2026-05-10. Amends ADRs 0003, 0004, 0005, 0006, 0010, 0011, 0013 with narrow corrections identified in the iteration‑4‑readiness adversarial review. Amended by [ADR-0019](0019-admin-ui-bff-and-write-auth.md): the AdminUiSignedRequest pattern from §14.5–14.6 is concretized — AdminJS sends BOTH a session cookie AND an Ed25519 JWT on writes; admin-api enforces cookie ↔ JWT agreement and resolves identity from the session.
 
+> **AMENDED by ADR-0020 (2026-05-15):** §14.2 — Keycloak is now the sole IdP for operator-facing UIs, not just the default OIDC provider. The "pluggable via env var" posture remains in code but Keycloak is the only supported deployment. Internal auth is gated by `operators.internal_password_hash IS NULL` per D2-b. See [ADR-0020](0020-sso-keycloak-canonical-idp.md).
+
 ## Context
 The adversarial review surfaced 13 issues across implementability, maintainability, security, and architectural alignment. Four were rated 🔴 critical (would break implementation) and five 🟡 high (significant debt). This ADR captures the agreed corrections in a single bundle before iteration‑4 contract drafting concludes. Each section amends one prior ADR. The amended ADRs remain immutable; their `Related` sections cross‑link to this ADR.
 

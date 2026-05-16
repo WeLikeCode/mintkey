@@ -3,6 +3,8 @@
 ## Status
 Accepted — 2026-05-12. **Amends** [ADR‑0013](0013-adminjs-pin.md) (AdminJS no longer uses a DB adapter), [ADR‑0014](0014-iter-1-2-corrections.md) §14.5 (extends "all AdminJS writes route via FastAPI" to "all AdminJS *data access* routes via FastAPI") and §14.6 (refines the `AdminUiSignedRequest` model — now *additive* to the session cookie, not a substitute for operator identity), and [ADR‑0016](0016-round-2-corrections.md) §16.1 (the `jti` denylist is carried; the JWT now sits on top of the session cookie). Drafted from `team/remediation/ADMIN_UI_SPEC.md` and the adversarial‑review findings F‑SEC‑1/F‑SEC‑2 (unbounded blast radius of the JWT‑only model) and F‑UI‑1/F‑UI‑2 (the `@adminjs/sql` read connection never had a tenant scope).
 
+> **AMENDED by ADR-0020 (2026-05-15):** §3 — admin-api OIDC callback is the single front door for operator login; admin-ui relays the `mintkey_session` cookie to `GET /v1/auth/whoami` on every request (15s LRU cache). The OIDC flow is wired and authoritative; Keycloak is the canonical IdP per ADR-0020. See [ADR-0020](0020-sso-keycloak-canonical-idp.md).
+
 ## Context
 ADR‑0005/ADR‑0013 chose AdminJS as the operator UI, reading via `@adminjs/sql` (a read‑only DB connection) and writing via FastAPI with an `AdminUiSignedRequest` Ed25519 JWT (ADR‑0014.5/0014.6, `jti`‑replay‑protected per ADR‑0016.1). Two problems surfaced in implementation and the adversarial reviews:
 
