@@ -165,6 +165,8 @@ Returns `{ "agent_id": "...", "tenant_id": "...", "expires_at": "..." }`. Useful
 3. **Sensible defaults** — in `docker compose` deployments inside the same network: `http://mintkey-proxy:8000`. From the host: `http://localhost:8000`. In Kubernetes: `http://mintkey-proxy.<namespace>.svc.cluster.local:8000`.
 4. **Ask the operator** — last resort.
 
+On a multi-host deployment, the operator sets `MINTKEY_MCP_PUBLIC_URL` / `MINTKEY_PROXY_PUBLIC_URL` and the bootstrap response returns those values. Agents do not configure URLs themselves. See [docs/NETWORK.md](../../docs/NETWORK.md) for operator setup details.
+
 **Proxy URL patterns** (per ADR-0007):
 
 *Forward-proxy form* — explicit `service_id`, preferred:

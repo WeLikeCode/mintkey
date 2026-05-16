@@ -261,6 +261,8 @@ Use the **Show MCP config** button on the dashboard onboarding checklist (the mo
 
 Replace `<PASTE_AGENT_API_KEY>` with the `mk_agent_…` value from step 5a. For remote deployments replace `localhost:8082` with the actual hostname.
 
+If the AI client runs on a different machine, replace `localhost` with the LAN-reachable URL configured via `MINTKEY_MCP_PUBLIC_URL`. See [docs/NETWORK.md](../NETWORK.md) for the full setup.
+
 > **Note:** `bootstrap` is the only MCP tool that does not require the `Authorization` header — all other tools require `Authorization: Bearer <AGENT_KEY>`.
 
 ---

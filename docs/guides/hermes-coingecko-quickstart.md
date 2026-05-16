@@ -129,6 +129,8 @@ All requests must carry `Authorization: Bearer <AGENT_API_KEY>`.
 
 Replace `<AGENT_API_KEY>` with the value from step 2. For remote deployments replace `localhost:8082` with the actual hostname.
 
+If the AI client runs on a different machine, replace `localhost` with the LAN-reachable URL configured via `MINTKEY_MCP_PUBLIC_URL`. See [docs/NETWORK.md](../NETWORK.md) for the full setup.
+
 ### System prompt addition for Hermes
 
 Add this to Hermes's system prompt so it knows how to discover and call services:

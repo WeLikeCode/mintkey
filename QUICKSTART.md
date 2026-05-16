@@ -57,6 +57,8 @@ cat data/bootstrap-secrets/admin_password
 | Jaeger | http://localhost:16686 | Distributed traces |
 | Prometheus | http://localhost:9090 | Metrics |
 
+Deploying Mintkey on a LAN or behind a reverse proxy? See [docs/NETWORK.md](docs/NETWORK.md) for the env-var setup (`MINTKEY_MCP_PUBLIC_URL` / `MINTKEY_PROXY_PUBLIC_URL`).
+
 ---
 
 ## 3. Run the test suite

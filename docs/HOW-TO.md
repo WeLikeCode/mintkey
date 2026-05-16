@@ -40,6 +40,9 @@ per [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) lines 358�
 reference at lines 414–428). Do not use port `8087` — that is the vault-adapter HTTP port, not the
 proxy.
 
+If clients on other machines need to reach this Mintkey instance, set `MINTKEY_MCP_PUBLIC_URL` and
+`MINTKEY_PROXY_PUBLIC_URL` — see [NETWORK.md](NETWORK.md).
+
 | Task | Where to look |
 |---|---|
 | Rotate a credential | [`QUICKSTART.md`](../QUICKSTART.md) §8 and [`docs/architecture/03-flows/F-OP-03-register-credential-and-test.md`](architecture/03-flows/F-OP-03-register-credential-and-test.md) |

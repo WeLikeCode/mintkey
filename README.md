@@ -104,6 +104,7 @@ Full walkthrough: [`docs/guides/github-quickstart.md`](docs/guides/github-quicks
 |---|---|
 | Run the demo | [`docs/guides/github-quickstart.md`](docs/guides/github-quickstart.md) |
 | Understand the architecture | [`docs/architecture/README.md`](docs/architecture/README.md) |
+| Deploy on a LAN or behind a reverse proxy | [`docs/NETWORK.md`](docs/NETWORK.md) — env-var setup for `MINTKEY_MCP_PUBLIC_URL` / `MINTKEY_PROXY_PUBLIC_URL` |
 | Contribute code | [`CONTRIBUTING.md`](CONTRIBUTING.md), then [`docs/SDD.md`](docs/SDD.md) |
 | Debug a running stack | [`docs/DEBUG.md`](docs/DEBUG.md) |
 | Report a bug or security issue | [`docs/REPORTING.md`](docs/REPORTING.md) / [`SECURITY.md`](SECURITY.md) |
