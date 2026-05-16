@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mintkey — Agentic Credential Broker</title>
+  <title>Mintkey — Self-hosted credential broker for AI agents</title>
+  <link rel="icon" href="assets/mintkey-favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <div class="page-wrap">
 
+  <!-- ── Pre-alpha banner ───────────────────────────────────────── -->
+  <div class="prealpha-banner" role="alert" aria-label="Pre-alpha warning">
+    Mintkey is <strong>pre-alpha</strong>. Not for production use. Self-hosted evaluation only.
+  </div>
+
   <!-- ── Header ─────────────────────────────────────────────── -->
   <header class="site-header">
     <div class="wordmark">Mintkey</div>
     <div class="tagline">
-      A self-hostable broker that lets autonomous agents discover services,
-      acquire scoped short-lived credentials for them, and call them through
-      a proxy that the real credentials never leave through — with
-      operator-grade observability and per-request audit.
+      Self-hosted credential broker for AI agents.
     </div>
     <nav class="site-nav" aria-label="Site navigation">
       <a href="index.html">Overview</a>
@@ -35,6 +38,107 @@
     Phase 1 complete: 244 unit tests, 17 architecture tests, 23 Go package tests passing
     (source: <a href="../PROGRESS.md">PROGRESS.md</a>)
   </div>
+
+  <!-- ── Hero ────────────────────────────────────────────────── -->
+  <section id="hero" aria-labelledby="hero-heading">
+    <h1 id="hero-heading">Self-hosted credential broker for AI agents.</h1>
+    <p class="hero-sub">
+      Agents get scoped short-lived access. They never see raw API keys.
+    </p>
+    <p class="hero-detail">
+      Agents call backend services through Mintkey. Mintkey holds the real
+      credential, hands out short-lived brokered tokens scoped to a single
+      service and action, and logs every call to a tamper-evident, hash-linked
+      audit chain. The raw API key never leaves the broker.
+    </p>
+
+    <!-- ── CTAs ──────────────────────────────────────────────── -->
+    <div class="cta-row">
+      <a class="cta-btn cta-primary"
+         href="https://github.com/WeLikeCode/mintkey#quick-start"
+         target="_blank" rel="noopener">Try locally</a>
+      <a class="cta-btn"
+         href="security.html">Read security model</a>
+      <a class="cta-btn"
+         href="architecture.html">View architecture</a>
+      <a class="cta-btn"
+         href="https://github.com/WeLikeCode/mintkey/blob/main/CONTRIBUTING.md"
+         target="_blank" rel="noopener">Contribute</a>
+    </div>
+    <p class="cta-note">
+      10-minute local walkthrough (no external credentials required):
+      <a href="../docs/guides/10min-mock-demo.md">docs/guides/10min-mock-demo.md</a>
+      <em>(added in OSS-6)</em>
+    </p>
+  </section>
+
+  <!-- ── Why now / Who it is for ────────────────────────────── -->
+  <section id="why-now" aria-labelledby="whynow-heading">
+    <h2 id="whynow-heading">Why now</h2>
+    <div class="prose-wrap">
+      <p>
+        AI agents are calling real APIs. Every major agent framework makes it
+        trivially easy to hand an agent a raw API key — as an environment
+        variable, a system-prompt constant, or a tool argument — and watch it
+        go. What happens when the agent is prompt-injected and tries to exfiltrate
+        that key? What happens when the same key is shared across ten agents and
+        one of them is compromised? Secrets in environment variables do not survive
+        contact with autonomous agents at scale.
+      </p>
+      <p>
+        Existing secret managers (Vault, Doppler, Infisical, AWS Secrets Manager)
+        are excellent at storing secrets and injecting them into processes. They are
+        not built around the concept of <em>agent identity</em>. They do not know
+        which specific agent called which service at 14:37 UTC, or that the
+        agent's token should have expired 60 seconds ago. When a secret is pulled
+        from a secrets manager into an agent process, the secret is now in the
+        agent's process memory — and may end up in a log, a trace span, or an LLM
+        context window.
+      </p>
+      <p>
+        Existing API gateways (Kong, Tyk, AWS API Gateway) are built for
+        <em>inbound</em> traffic: rate-limiting, authentication, and routing of
+        requests coming into your service. Mintkey is an <em>egress</em> broker:
+        it sits on the outbound path of agent calls, holds the upstream credential,
+        injects it on the wire per-request, and never hands it to the agent. That
+        is a fundamentally different trust model that existing gateways were not
+        designed for.
+      </p>
+      <p>
+        Mintkey exists because the combination — agent identity, operator-owned
+        credentials, short-lived brokered access, and per-request audit — is not
+        available as a coherent, self-hostable, open-source component today. It is
+        pre-alpha software. It is not ready for production. But it is ready for
+        platform teams who want to evaluate what this model looks like before
+        building a proprietary version of it themselves.
+      </p>
+    </div>
+
+    <h2 id="whofor-heading">Who it is for</h2>
+    <div class="prose-wrap">
+      <p>
+        <strong>Platform teams</strong> who want their AI agents to call real APIs
+        without leaking secrets. If you are building an agent platform and you want
+        a clear answer to "which agent called which API, when, with what scope,
+        and can I revoke that access in under five seconds" — Mintkey is the
+        component you are likely building yourself today.
+      </p>
+      <p>
+        <strong>Security-conscious operators</strong> who want auditable,
+        tamper-evident records of agent activity. Every credential issuance and
+        every proxied request is appended to a hash-chained audit log per tenant.
+        Breaking the chain requires rewriting history — which surfaces immediately
+        on chain verification.
+      </p>
+      <p>
+        <strong>Operators who want to rotate or revoke without touching agents.</strong>
+        Rotate the underlying API key in Mintkey; the agents never knew the
+        real key, so they require no reconfiguration. Revoke an agent's
+        permission; the propagation reaches the proxy within five seconds via
+        Postgres LISTEN/NOTIFY — no redeploy, no waiting for JWT expiry.
+      </p>
+    </div>
+  </section>
 
   <!-- ── The problem ─────────────────────────────────────────── -->
   <section id="problem" aria-labelledby="problem-heading">
@@ -69,6 +173,28 @@
     </div>
   </section>
 
+  <!-- ── Credential exposure comparison ─────────────────────── -->
+  <section id="credential-exposure" aria-labelledby="credential-exposure-heading">
+    <h2 id="credential-exposure-heading">What changes when the agent never sees the real key</h2>
+    <div class="prose-wrap">
+      <p>
+        Without Mintkey, a prompt-injected agent can expose the same long-lived API
+        key it uses to call the backend. With Mintkey, the agent only receives a
+        short-lived, service-bound token. The Egress Proxy validates that token,
+        retrieves the underlying credential from Mintkey's trusted path, injects it
+        into the outbound request, and keeps the raw credential away from the agent.
+      </p>
+      <p>
+        This is not prompt-injection prevention. It is blast-radius reduction: a
+        leaked temporary token is materially different from a leaked long-term API key.
+      </p>
+    </div>
+
+    <p class="read-source">
+      <a href="../docs/AGENT_CREDENTIAL_RISK.md">Read the Mermaid diagram source: AGENT_CREDENTIAL_RISK.md</a>
+    </p>
+  </section>
+
   <!-- ── What Mintkey does ────────────────────────────────────── -->
   <section id="what-it-does" aria-labelledby="what-heading">
     <h2 id="what-heading">What Mintkey does</h2>
@@ -92,6 +218,156 @@
         Builder happy path (E2E-01). Agent never touches the underlying credential. &mdash;
         <a href="../docs/architecture/03-flows/E2E-01-builder-happy-path.md">source: E2E-01-builder-happy-path.md</a>
       </div>
+    </div>
+  </section>
+
+  <!-- ── Comparison vs alternatives ─────────────────────────── -->
+  <section id="comparison" aria-labelledby="comparison-heading">
+    <h2 id="comparison-heading">How Mintkey compares to existing approaches</h2>
+    <div class="prose-wrap">
+      <p>
+        None of these alternatives are wrong — they are widely used for good
+        reason. Mintkey is not a replacement for a general-purpose secrets manager
+        or an API gateway. It fills the gap that none of them address: an agent
+        never holding a raw credential while still being able to call authenticated
+        APIs, with per-call audit and sub-10-second revocation.
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Agent ever sees raw secret?</th>
+            <th>Per-agent identity?</th>
+            <th>Per-call audit?</th>
+            <th>Token TTL?</th>
+            <th>OSS / self-host?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Env vars / dotenv</td>
+            <td>YES</td>
+            <td>No</td>
+            <td>No</td>
+            <td>No</td>
+            <td>n/a</td>
+          </tr>
+          <tr>
+            <td>Direct Vault access</td>
+            <td>Sometimes</td>
+            <td>Yes (KV roles)</td>
+            <td>Vault audit log</td>
+            <td>Vault leases</td>
+            <td>OSS / yes</td>
+          </tr>
+          <tr>
+            <td>API gateway (Kong/Tyk)</td>
+            <td>Token only</td>
+            <td>API key per agent</td>
+            <td>Gateway log</td>
+            <td>Static API key</td>
+            <td>OSS / yes</td>
+          </tr>
+          <tr>
+            <td>Secrets manager (Doppler/Infisical)</td>
+            <td>YES (env injection)</td>
+            <td>No</td>
+            <td>Limited</td>
+            <td>No</td>
+            <td>SaaS / on-prem options</td>
+          </tr>
+          <tr>
+            <td>Agent runtime (LangChain etc.)</td>
+            <td>YES</td>
+            <td>App-level</td>
+            <td>App-level</td>
+            <td>None</td>
+            <td>OSS / yes</td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>Mintkey</strong></td>
+            <td><strong>No (brokered JWT)</strong></td>
+            <td><strong>Yes (<code>agent_id</code>)</strong></td>
+            <td><strong>Tamper-evident chain</strong></td>
+            <td><strong>10 min default</strong></td>
+            <td><strong>OSS / self-host</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Supported auth schemes ──────────────────────────────── -->
+  <section id="auth-schemes" aria-labelledby="authschemes-heading">
+    <h2 id="authschemes-heading">Supported backend auth schemes</h2>
+    <div class="prose-wrap">
+      <p>
+        These are the auth schemes Mintkey can broker when forwarding agent
+        requests to backend APIs. The scheme is registered once per service by
+        the operator; the agent never configures credentials.
+        Verified against <a href="../docs/architecture/contracts/vault-adapter/vault.proto">vault.proto</a>
+        and <a href="../docs/architecture/contracts/rest/openapi.yaml">openapi.yaml</a>.
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Scheme</th>
+            <th>Status</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>API key (header)</td>
+            <td>&#x2713; Shipped</td>
+            <td>e.g. <code>X-API-Key: &lt;secret&gt;</code> injected by proxy. Header name is operator-configurable.</td>
+          </tr>
+          <tr>
+            <td>API key (query parameter)</td>
+            <td>&#x2713; Shipped</td>
+            <td>e.g. <code>?api_key=&lt;secret&gt;</code> injected by proxy. Query param name is operator-configurable.</td>
+          </tr>
+          <tr>
+            <td>Bearer token</td>
+            <td>&#x2713; Shipped</td>
+            <td><code>Authorization: Bearer &lt;static-token&gt;</code> injected by proxy.</td>
+          </tr>
+          <tr>
+            <td>Basic auth</td>
+            <td>&#x2713; Shipped</td>
+            <td><code>Authorization: Basic &lt;b64(user:pass)&gt;</code> injected by proxy.</td>
+          </tr>
+          <tr>
+            <td>OAuth 2.0 client_credentials</td>
+            <td>Partial</td>
+            <td>Mintkey stores the client_id/client_secret and caches the resulting access token; token refresh on expiry is in schema and proto but integration coverage is limited. Verify against current OpenAPI before relying on this scheme.</td>
+          </tr>
+          <tr>
+            <td>OIDC client secret</td>
+            <td>Partial (operator IdP only)</td>
+            <td>Present in the AuthScheme enum and vault.proto; used internally for the operator identity provider integration. Not a general-purpose agent-to-backend scheme at this stage.</td>
+          </tr>
+          <tr>
+            <td>OAuth 2.0 user-delegated</td>
+            <td>Not shipped</td>
+            <td>Tracked in roadmap. Requires user-consent flows not yet designed.</td>
+          </tr>
+          <tr>
+            <td>mTLS</td>
+            <td>Not shipped</td>
+            <td>Present in vault.proto enum (<code>AUTH_SCHEME_MTLS = 7</code>) as a placeholder. Not in OpenAPI enum. Tracked in roadmap.</td>
+          </tr>
+          <tr>
+            <td>AWS SigV4 / GCP IAM</td>
+            <td>Not shipped</td>
+            <td>Tracked in roadmap. Requires per-provider signing logic in the proxy plugin.</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -239,7 +515,7 @@
         <a href="../docs/guides/github-quickstart.md">docs/guides/github-quickstart.md</a>.
       </p>
     </div>
-    <pre><code>git clone &lt;repo-url&gt;
+    <pre><code>git clone https://github.com/WeLikeCode/mintkey.git
 cd mintkey
 docker compose up -d
 make smoke
@@ -303,16 +579,18 @@ open http://localhost:8081   # Admin UI (AdminJS)</code></pre>
   <footer class="site-footer">
     <div>
       License: Apache-2.0 &middot;
-      <a href="../SECURITY.md">Security policy</a> &middot;
-      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a> &middot;
       <a href="architecture.html">Architecture</a> &middot;
-      <a href="security.html">Security posture</a>
+      <a href="security.html">Security posture</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey" target="_blank" rel="noopener">GitHub</a>
     </div>
     <div style="margin-top:0.5rem;">
       Stability: <em>experimental</em> &mdash;
       <code>openapi.yaml</code> declares <code>x-mintkey-stability: experimental</code>,
-      version <code>0.1.0-experimental</code>. Breaking changes bump the major
+      version <code>0.1.0-preview.1</code>. Breaking changes bump the major
       version. This is <span style="font-weight:600;">pre-alpha</span> software.
+      Not for production use.
     </div>
   </footer>
 

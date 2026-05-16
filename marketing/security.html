@@ -4,10 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mintkey — Security posture</title>
+  <link rel="icon" href="assets/mintkey-favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <div class="page-wrap">
+
+  <!-- ── Pre-alpha banner ───────────────────────────────────────── -->
+  <div class="prealpha-banner" role="alert" aria-label="Pre-alpha warning">
+    Mintkey is <strong>pre-alpha</strong>. Not for production use. Self-hosted evaluation only.
+    No formal security audit. No managed offering.
+  </div>
 
   <!-- ── Header ─────────────────────────────────────────────── -->
   <header class="site-header">
@@ -95,6 +102,23 @@
     </div>
     <p class="read-source">
       <a href="../docs/architecture/01-architecture/05-threat-model.md">Read the full threat model: 05-threat-model.md</a>
+    </p>
+  </section>
+
+  <!-- ── Credential exposure containment ─────────────────────── -->
+  <section id="credential-exposure" aria-labelledby="credential-exposure-heading">
+    <h2 id="credential-exposure-heading">Credential exposure containment</h2>
+    <div class="prose-wrap">
+      <p>
+        The practical security difference is what a compromised or prompt-injected
+        agent can leak. In a direct-key setup, the agent can leak the underlying
+        long-lived credential. In the Mintkey path, the agent can leak only the
+        short-lived brokered token it was given. The Egress Proxy remains the place
+        where the real credential is retrieved and injected.
+      </p>
+    </div>
+    <p class="read-source">
+      <a href="../docs/AGENT_CREDENTIAL_RISK.md">Read the Mermaid diagram source: AGENT_CREDENTIAL_RISK.md</a>
     </p>
   </section>
 
@@ -356,15 +380,16 @@ curl -s "http://localhost:8080/v1/agents/&lt;agent_id&gt;" \
       </p>
       <p>
         Use one of the channels described in
-        <a href="../SECURITY.md">SECURITY.md</a>:
-        a private GitHub Security Advisory (GHSA) or the contact email listed there.
+        <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>:
+        a private GitHub Security Advisory (GHSA) or email
+        <a href="mailto:the+security@ciprianiacobescu.com">the+security@ciprianiacobescu.com</a>.
         Include: reproduction steps, affected commit hash
         (<code>git rev-parse HEAD</code>), impact assessment, and proposed remediation
         if known.
       </p>
     </div>
     <p class="read-source">
-      <a href="../SECURITY.md">Full policy: SECURITY.md</a>
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">Full policy: SECURITY.md</a>
     </p>
   </section>
 
@@ -435,14 +460,15 @@ curl -s "http://localhost:8080/v1/agents/&lt;agent_id&gt;" \
   <footer class="site-footer">
     <div>
       License: Apache-2.0 &middot;
-      <a href="../SECURITY.md">Security policy</a> &middot;
-      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a> &middot;
       <a href="index.html">Overview</a> &middot;
-      <a href="architecture.html">Architecture</a>
+      <a href="architecture.html">Architecture</a> &middot;
+      <a href="https://github.com/WeLikeCode/mintkey" target="_blank" rel="noopener">GitHub</a>
     </div>
     <div style="margin-top:0.5rem;">
       Stability: <em>experimental</em> &mdash;
-      <strong>pre-alpha</strong> software. No formal audit. No managed offering. Self-host only.
+      <strong>pre-alpha</strong> software. Not for production use. No formal audit. No managed offering. Self-host only.
     </div>
   </footer>
 
