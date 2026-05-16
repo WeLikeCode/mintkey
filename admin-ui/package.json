@@ -1,6 +1,6 @@
 {
   "name": "@mintkey/admin-ui",
-  "version": "1.0.0",
+  "version": "0.1.0-preview.1",
   "description": "Mintkey AdminJS UI — operator dashboard",
   "private": true,
   "type": "module",

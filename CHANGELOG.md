@@ -1,81 +1,39 @@
-# Changelog
+# Mintkey Changelog
 
-All notable changes to this template are recorded here. Engagements track which template version they bootstrapped from in `.kiro/setup-state.json` (`template_version` field).
+This changelog tracks **Mintkey product changes only**. Versions follow semver
+pre-release (`0.1.0-preview.N`) during pre-alpha.
 
-## [0.2.0] — 2026-05-16
-
-### Added
-
-- **Grafana Request Monitoring dashboard** — pre-baked dashboard at `grafana/provisioning/dashboards/request-monitoring.json` with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix) and agent/service template variables
-- **OTel Collector spanmetrics connector** — derives `mintkey_proxy_calls_total` and `mintkey_proxy_duration_milliseconds_*` from `mintkey.proxy.handle_request` spans with actor, service, and outcome dimensions
-- **Explicit Prometheus datasource UID** — `uid: prometheus` added to provisioning for stable dashboard references
-- **Validation tests** — unit tests for OTel config structure and dashboard JSON correctness
-
-## [0.1.0] — 2026-05-08
-
-Initial release. Template skeleton generalized for cross-engagement reuse.
-
-### Includes
-
-- **Bootstrap wizard** with 16 mandatory + 9 optional questions and explicit refusal conditions ([bootstrap/questionnaire.md](bootstrap/questionnaire.md))
-- **Steering loading protocol** with the three real Kiro inclusion modes (default-load / `fileMatch` / `manual`), frontmatter spec, anti-pollution rules, and audit tool ([.kiro/steering/STEERING-PROTOCOL.md](.kiro/steering/STEERING-PROTOCOL.md))
-- **8-skill catalog** including `architecture-advisor`, `think-tiger`, `adversarial-review`, `spec-first-check`, `adr-from-decision`, `risk-register-update`, `assumption-validate`, `decision-log-append` ([.kiro/steering/skills-catalog.md](.kiro/steering/skills-catalog.md))
-- **5 default-loaded protocol rules** (steering files, no frontmatter): architect-doc-ownership, real-risks-not-padding, role-ownership-architect-vs-developer, smallest-first-cut, steering-load-discipline ([.kiro/steering/](.kiro/steering/))
-- **Reference templates** bundled with the skills that consume them: ADR template (`.kiro/skills/adr-from-decision/references/`), risk register template (`.kiro/skills/risk-register-update/references/`), assumption register template (`.kiro/skills/assumption-validate/references/`)
-- **5 onboarding tracks** for architect / backend / frontend / data-ml / lead ([docs/onboarding/](docs/onboarding/))
-- **Contracts directory** with SDD authoring guide ([contracts/README.md](contracts/README.md))
-- **Architect-owned `docs/architecture/`** with banner enforcement ([docs/architecture/README.md](docs/architecture/README.md))
-- **4 archetype layouts** (single-app, polyglot-monorepo, microservices, modular-monolith) ([archetypes/README.md](archetypes/README.md))
-- **Tooling spec** for audit, vibe-check, spec-trace, contract-lint, doctor, template-diff ([tools/README.md](tools/README.md))
-
-### Designed against (anti-patterns this version actively prevents)
-
-- Loading all steering files into every agent context
-- Padding risk registers with speculative entries
-- Editing `docs/architecture/` directly (architect-owned)
-- Vibe coding (no spec, no code)
-- Treating prototype / PoC code as production-architecture truth
-- Architect work being assigned to TLs / developers
-- ADRs that are decoration (zero referencing tests / code)
-
-## [0.2.0] — 2026-05-08
-
-### Added
-
-- **Wizard script** ([bootstrap/setup-wizard.sh](bootstrap/setup-wizard.sh) + [bootstrap/lib/wizard-helpers.sh](bootstrap/lib/wizard-helpers.sh)) — interactive bash that asks the 25 questions, validates with refusal conditions (kebab-case codename, ≥120-char business goal with platitude denylist, architect email required, three-real-risks structured input), detects conflicts, and renders all engagement files including ADR-0001-bootstrap recording the choices.
-- **Generic steering templates** ([bootstrap/templates/](bootstrap/templates/)) for `product`, `structure`, `architecture-principles`, `tech`, `repo-governance` — all with `[REQUIRES-UPDATE]` markers the architect fills in. Architecture-principles ships 8 generic baseline principles (P-1 through P-8) plus slots for engagement-specific additions.
-- **Archetype recommendation** ([archetypes/RECOMMENDATIONS.md](archetypes/RECOMMENDATIONS.md)) — pragmatic guidance on which 2 of the 4 archetypes to scaffold first (polyglot-monorepo + single-app), with concrete proposals for each.
-
-### Roadmap
-
-- 0.3: Build the polyglot-monorepo + single-app archetype scaffolds per RECOMMENDATIONS.md
-- 0.4: Tooling scripts (kiro-steering-audit, vibe-check, spec-trace, contract-lint, doctor)
-- 0.5: CI templates for major providers (GitLab, GitHub Actions, Azure DevOps)
-- 0.6: 2-3 worked example engagements (clinical-trials, iot-predictive, fintech-kyc) so engagements have anonymized references to draw on
-
-### Known limitations
-
-- Wizard is interactive bash — no GUI. Adequate for a CLI-first architect; might want a minimal web UI later.
-- Archetype skeletons still not populated (only RECOMMENDATIONS.md describes what to build).
-- Tooling (audit, spec-trace, vibe-check, doctor) specified in `tools/README.md` but scripts not implemented.
-- Generic steering templates use `[REQUIRES-UPDATE]` markers — the architect must fill in engagement-specific content. The wizard does NOT auto-write rich content; it scaffolds, the architect refines.
-
-### Anti-patterns explicitly NOT addressed (out of scope)
-
-- Specific cloud provider patterns (AWS / GCP / Azure / on-prem) — engagement-specific
-- Specific frameworks (NestJS / FastAPI / Spring) — wizard records the choice; template doesn't prescribe
-- CI/CD pipeline implementations beyond skeletons — engagement-specific
-- Customer-facing public docs — out of scope, this is internal scaffolding
+> **Note on prior internal versions:** entries tagged `1.0.0-mvp`, `1.0.1`,
+> `1.1.0`, and `0.3.0-impl` below are preserved for historical context and
+> correspond to **internal development milestones only**. They DO NOT correspond
+> to any released artifact or published tag. The first versioned public release
+> will be `v0.1.0-preview.1`.
 
 ---
 
-*Template ownership: Enterprise Business Architect Practice. Maintained by {{architect handle}}.*
+## [0.1.0-preview.1] — UNRELEASED — 2026-05-16
+
+Pending public release. See [`docs/RELEASE.md`](docs/RELEASE.md) for the
+manual release procedure.
+
+### Changed (OSS readiness pass)
+
+- Canonical version `0.1.0-preview.1` applied across `admin-ui/package.json`,
+  `mintkey-models/pyproject.toml`, `docs/architecture/contracts/rest/openapi.yaml`,
+  and README status table — replacing the inconsistent mix of `1.0.0`,
+  `0.1.0-experimental`, and `0.1.0`.
+- `docs/RELEASE.md` added: manual release procedure, versioning policy, GHCR
+  image target names, and deferred items (release workflow E-5, SBOM/provenance).
+- CHANGELOG header rewritten to separate template scaffold history from Mintkey
+  product history.
 
 ---
 
-# Mintkey Implementation Changelog
+## Pre-alpha historical entries (internal)
 
-All notable implementation changes to the Mintkey credential broker MVP.
+> The following entries record **internal Mintkey development milestones**.
+> Version numbers used here (`1.x.x`, `0.3.0-impl`) were informal and do not
+> correspond to any public release, tagged commit, or artifact.
 
 ## [1.1.0] — 2026-05-15
 
@@ -209,7 +167,7 @@ First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks
 ### CI Gates
 - OpenAPI parity gate (FastAPI runtime vs. checked-in YAML)
 - SQLAlchemy mirror diff (Liquibase vs. `mintkey_models/db.py`)
-- Mermaid render gate (all `\`\`\`mermaid` blocks)
+- Mermaid render gate (all ` ```mermaid` blocks)
 - No-SQL-injection architecture test (no f-string SQL, no dynamic `text()`)
 - Audit chokepoint architecture test (every write handler calls `audit_emit`)
 
@@ -222,3 +180,80 @@ First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks
 - Initial implementation sessions: Milestone 1.0 (Foundation), 1.1 (Login), 1.2 (Services), 1.3 (Credentials), 1.4 (Agents), 1.5 (MCP + Token), 1.6 (Brokered Call), 1.7 (Audit), 1.8 (Rotation), 1.9 (Revocation), 1.10 (Observability), 1.11 (Smoke), 1.12 (Multi-tenant), 1.13 (Admin Settings)
 - All 47 original Phase 1 Exit Criteria checklist items marked complete
 - 37 additional checklist items added (24 `[x]` for implemented tasks, 13 `[ ]` for remaining AdminJS UI + Prometheus + Grafana + CI pipeline work)
+
+---
+
+## Template scaffold history (informational)
+
+> The following section records the history of the **Kiro project template**
+> that Mintkey was bootstrapped from. It is preserved for traceability but has
+> no bearing on Mintkey product versions or releases.
+
+## [0.2.0] — 2026-05-16
+
+### Added
+
+- **Grafana Request Monitoring dashboard** — pre-baked dashboard at `grafana/provisioning/dashboards/request-monitoring.json` with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix) and agent/service template variables
+- **OTel Collector spanmetrics connector** — derives `mintkey_proxy_calls_total` and `mintkey_proxy_duration_milliseconds_*` from `mintkey.proxy.handle_request` spans with actor, service, and outcome dimensions
+- **Explicit Prometheus datasource UID** — `uid: prometheus` added to provisioning for stable dashboard references
+- **Validation tests** — unit tests for OTel config structure and dashboard JSON correctness
+
+## [0.1.0] — 2026-05-08
+
+Initial release. Template skeleton generalized for cross-engagement reuse.
+
+### Includes
+
+- **Bootstrap wizard** with 16 mandatory + 9 optional questions and explicit refusal conditions ([bootstrap/questionnaire.md](bootstrap/questionnaire.md))
+- **Steering loading protocol** with the three real Kiro inclusion modes (default-load / `fileMatch` / `manual`), frontmatter spec, anti-pollution rules, and audit tool ([.kiro/steering/STEERING-PROTOCOL.md](.kiro/steering/STEERING-PROTOCOL.md))
+- **8-skill catalog** including `architecture-advisor`, `think-tiger`, `adversarial-review`, `spec-first-check`, `adr-from-decision`, `risk-register-update`, `assumption-validate`, `decision-log-append` ([.kiro/steering/skills-catalog.md](.kiro/steering/skills-catalog.md))
+- **5 default-loaded protocol rules** (steering files, no frontmatter): architect-doc-ownership, real-risks-not-padding, role-ownership-architect-vs-developer, smallest-first-cut, steering-load-discipline ([.kiro/steering/](.kiro/steering/))
+- **Reference templates** bundled with the skills that consume them: ADR template (`.kiro/skills/adr-from-decision/references/`), risk register template (`.kiro/skills/risk-register-update/references/`), assumption register template (`.kiro/skills/assumption-validate/references/`)
+- **5 onboarding tracks** for architect / backend / frontend / data-ml / lead ([docs/onboarding/](docs/onboarding/))
+- **Contracts directory** with SDD authoring guide ([contracts/README.md](contracts/README.md))
+- **Architect-owned `docs/architecture/`** with banner enforcement ([docs/architecture/README.md](docs/architecture/README.md))
+- **4 archetype layouts** (single-app, polyglot-monorepo, microservices, modular-monolith) ([archetypes/README.md](archetypes/README.md))
+- **Tooling spec** for audit, vibe-check, spec-trace, contract-lint, doctor, template-diff ([tools/README.md](tools/README.md))
+
+### Designed against (anti-patterns this version actively prevents)
+
+- Loading all steering files into every agent context
+- Padding risk registers with speculative entries
+- Editing `docs/architecture/` directly (architect-owned)
+- Vibe coding (no spec, no code)
+- Treating prototype / PoC code as production-architecture truth
+- Architect work being assigned to TLs / developers
+- ADRs that are decoration (zero referencing tests / code)
+
+## [0.2.0] — 2026-05-08
+
+### Added
+
+- **Wizard script** ([bootstrap/setup-wizard.sh](bootstrap/setup-wizard.sh) + [bootstrap/lib/wizard-helpers.sh](bootstrap/lib/wizard-helpers.sh)) — interactive bash that asks the 25 questions, validates with refusal conditions (kebab-case codename, ≥120-char business goal with platitude denylist, architect email required, three-real-risks structured input), detects conflicts, and renders all engagement files including ADR-0001-bootstrap recording the choices.
+- **Generic steering templates** ([bootstrap/templates/](bootstrap/templates/)) for `product`, `structure`, `architecture-principles`, `tech`, `repo-governance` — all with `[REQUIRES-UPDATE]` markers the architect fills in. Architecture-principles ships 8 generic baseline principles (P-1 through P-8) plus slots for engagement-specific additions.
+- **Archetype recommendation** ([archetypes/RECOMMENDATIONS.md](archetypes/RECOMMENDATIONS.md)) — pragmatic guidance on which 2 of the 4 archetypes to scaffold first (polyglot-monorepo + single-app), with concrete proposals for each.
+
+### Roadmap
+
+- 0.3: Build the polyglot-monorepo + single-app archetype scaffolds per RECOMMENDATIONS.md
+- 0.4: Tooling scripts (kiro-steering-audit, vibe-check, spec-trace, contract-lint, doctor)
+- 0.5: CI templates for major providers (GitLab, GitHub Actions, Azure DevOps)
+- 0.6: 2-3 worked example engagements (clinical-trials, iot-predictive, fintech-kyc) so engagements have anonymized references to draw on
+
+### Known limitations
+
+- Wizard is interactive bash — no GUI. Adequate for a CLI-first architect; might want a minimal web UI later.
+- Archetype skeletons still not populated (only RECOMMENDATIONS.md describes what to build).
+- Tooling (audit, spec-trace, vibe-check, doctor) specified in `tools/README.md` but scripts not implemented.
+- Generic steering templates use `[REQUIRES-UPDATE]` markers — the architect must fill in engagement-specific content. The wizard does NOT auto-write rich content; it scaffolds, the architect refines.
+
+### Anti-patterns explicitly NOT addressed (out of scope)
+
+- Specific cloud provider patterns (AWS / GCP / Azure / on-prem) — engagement-specific
+- Specific frameworks (NestJS / FastAPI / Spring) — wizard records the choice; template doesn't prescribe
+- CI/CD pipeline implementations beyond skeletons — engagement-specific
+- Customer-facing public docs — out of scope, this is internal scaffolding
+
+---
+
+*Template ownership: Enterprise Business Architect Practice. Maintained by {{architect handle}}.*

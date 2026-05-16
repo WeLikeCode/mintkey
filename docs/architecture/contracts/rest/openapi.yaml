@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Mintkey Admin REST API
-  version: "0.1.0-experimental"
+  version: "0.1.0-preview.1"
   summary: Operator-facing control-plane HTTP surface for Mintkey.
   description: |
     Mintkey is a credential broker for AI agents. This API is consumed by:
@@ -1857,7 +1857,7 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
               example:
                 status: "ok"
-                version: "0.1.0-experimental"
+                version: "0.1.0-preview.1"
                 build_sha: "abc1234"
 
   /v1/ready:
@@ -1886,7 +1886,7 @@ paths:
                   vault_backend: "file"
                   vault_backend_warning: |
                     The 'file' vault backend is for development and self-host MVP only.
-                version: "0.1.0-experimental"
+                version: "0.1.0-preview.1"
                 build_sha: "abc1234"
         "503":
           description: Not ready.

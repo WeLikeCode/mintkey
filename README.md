@@ -16,7 +16,7 @@
 | Unit tests | 244 passing |
 | Architecture tests | 17 passing |
 | Go package tests | 23 packages green |
-| Wire surface stability | `experimental` (`openapi.yaml` v0.1.0-experimental) |
+| Wire surface stability | `experimental` (`openapi.yaml` v0.1.0-preview.1) |
 | License | Apache-2.0 |
 
 See [`PROGRESS.md`](PROGRESS.md) for the full milestone checklist.
@@ -169,7 +169,7 @@ Full guardrails: [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) (kept in 
 
 ## Stability and versioning
 
-Mintkey is pre-alpha. The wire surface is declared `experimental` in [`docs/architecture/contracts/rest/openapi.yaml`](docs/architecture/contracts/rest/openapi.yaml) (`x-mintkey-stability: experimental`, version `0.1.0-experimental`). Breaking changes will bump the major version; resource-level stability is called out per operation in the OpenAPI `description` where it differs from the document tier.
+Mintkey is pre-alpha. The wire surface is declared `experimental` in [`docs/architecture/contracts/rest/openapi.yaml`](docs/architecture/contracts/rest/openapi.yaml) (`x-mintkey-stability: experimental`, version `0.1.0-preview.1`). Breaking changes will bump the major version; resource-level stability is called out per operation in the OpenAPI `description` where it differs from the document tier.
 
 There is no managed offering. Self-host only.
 

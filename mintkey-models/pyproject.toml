@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "mintkey-models"
-version = "0.1.0"
+version = "0.1.0-preview.1"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
