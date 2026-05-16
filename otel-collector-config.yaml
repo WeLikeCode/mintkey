@@ -11,6 +11,14 @@ processors:
     timeout: 5s
     send_batch_size: 1000
 
+  # Filter traces to only the spans that feed spanmetrics.
+  # Replaces the invalid `include:` key that was removed from the spanmetrics connector schema in v0.104.
+  filter/spanmetrics_input:
+    error_mode: ignore
+    traces:
+      span:
+        - 'name != "mintkey.proxy.handle_request"'
+
   # Defense-in-depth redaction. Primary redaction is at the SDK (T-1.0.14 / ADR-0017.6).
   attributes/redact:
     actions:
@@ -61,10 +69,6 @@ connectors:
     dimensions_cache_size: 1000
     aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
     metrics_expiration: 5m
-    include:
-      match_type: strict
-      span_names:
-        - "mintkey.proxy.handle_request"
 
 extensions:
   health_check:
@@ -76,7 +80,11 @@ service:
     traces:
       receivers:  [otlp]
       processors: [batch, attributes/redact, redaction]
-      exporters:  [otlphttp/jaeger, debug, spanmetrics]
+      exporters:  [otlphttp/jaeger, debug]
+    traces/spanmetrics_input:
+      receivers:  [otlp]
+      processors: [batch, filter/spanmetrics_input]
+      exporters:  [spanmetrics]
     metrics:
       receivers:  [otlp, spanmetrics]
       processors: [batch]
