@@ -143,11 +143,20 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
             };
           }
 
+          // admin-api grant endpoint: POST /v1/tenants/{tid}/agents/{aid}/permissions
+          // (tenant-wide POST /v1/tenants/{tid}/permissions does not exist — 405 if called)
+          const agentId = request.payload?.agent_id as string | undefined;
+          if (!agentId) {
+            return {
+              record: await recordJSON(context, request.payload ?? {}),
+              notice: { message: "agent_id is required", type: "error" },
+            };
+          }
+
           const resp = await apiWrite(
-            `/v1/tenants/${tenantId}/permissions`,
+            `/v1/tenants/${tenantId}/agents/${agentId}/permissions`,
             "POST",
             {
-              agent_id: request.payload?.agent_id,
               service_id: request.payload?.service_id,
               action: request.payload?.action,
               constraints,
@@ -173,19 +182,34 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       delete: {
         isVisible: true,
         handler: async (request, response, context) => {
-          const { currentAdmin } = context;
+          const { currentAdmin, record } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const permissionId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
+          // admin-api DELETE: /v1/tenants/{tid}/agents/{aid}/permissions/{pid}
+          // agent_id comes from the permission record (set by normalisePermissionRecord
+          // in wire-form: agent_<32hex>). Plain UUIDs also work via _wire_id_to_uuid.
+          const agentId = record?.get("agent_id") as string | undefined;
+          if (!agentId) {
+            return {
+              record: await recordJSON(context),
+              notice: { message: "Cannot delete: agent_id not found in record", type: "error" },
+            };
+          }
+
           await apiWrite(
-            `/v1/tenants/${tenantId}/permissions/${permissionId}`,
+            `/v1/tenants/${tenantId}/agents/${agentId}/permissions/${permissionId}`,
             "DELETE",
             undefined,
             operatorOpts
           );
 
-          return { record: await recordJSON(context) };
+          return {
+            record: await recordJSON(context),
+            notice: { message: "Permission revoked", type: "success" },
+            redirectUrl: "/admin/resources/permission_grants",
+          };
         },
       },
       edit: { isVisible: false },
