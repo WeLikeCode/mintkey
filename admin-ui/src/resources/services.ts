@@ -46,6 +46,8 @@ const _servicesResource = new RestResource({
     { path: "q", type: "string" },
     // (OPS-X) Virtual synthetic property — computed at show time, not stored in DB
     { path: "proxy_url", type: "string" },
+    // (UX-FB-B) Virtual warning — red callout rendered when no credential is configured
+    { path: "_credential_warning", type: "string" },
   ],
   // (OPS-X) Inject proxy_url into each record so CopyableValue can render it
   recordTransform: (item: Record<string, unknown>): Record<string, unknown> => {
@@ -64,7 +66,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
     navigation: { name: "Services", icon: "Network" },
     listProperties: ["id", "name", "slug", "base_url", "auth_scheme", "status", "created_at"],
     editProperties: ["name", "slug", "base_url", "auth_scheme", "description", "openapi_url"],
-    showProperties: ["id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "proxy_url", "status", "current_key_version", "created_at", "updated_at"],
+    showProperties: ["_credential_warning", "id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "proxy_url", "status", "current_key_version", "created_at", "updated_at"],
     filterProperties: ["q", "name", "slug", "auth_scheme", "status"],
     properties: {
       auth_scheme: {
@@ -82,6 +84,16 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         description: "Agents and clients call this URL to invoke the service through the egress proxy. Replace `{path}` with the upstream API path.",
         components: {
           show: Components.CopyableValue,
+        },
+      },
+      // (UX-FB-B) Virtual credential warning — renders red callout when no active credential
+      _credential_warning: {
+        type: "string",
+        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        label: "",
+        description: "Inline warning when no credential is configured",
+        components: {
+          show: Components.CredentialMissingWarning,
         },
       },
     },

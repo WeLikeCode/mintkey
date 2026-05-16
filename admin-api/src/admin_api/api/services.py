@@ -234,6 +234,7 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
     """Map a DB row (namedtuple-like) to the wire representation.
 
     Emits Crockford ULID wire-form IDs (canonical per ADR-0017.11 / #13).
+    Includes current_key_version — MAX key_version of active credentials (UX-FB-B).
     """
     return {
         "id": db_uuid_to_wire(row.id, "svc"),
@@ -246,6 +247,7 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
         "auth_scheme": row.auth_scheme,
         "openapi_url": row.openapi_url,
         "status": row.status,
+        "current_key_version": int(row.current_key_version or 0),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -386,23 +388,33 @@ async def list_services(
         pattern = f"%{escaped}%"
         result = await session.execute(
             text(
-                "SELECT id, tenant_id, name, slug, display_name, description,"
-                " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
-                " FROM services WHERE tenant_id = :tenant_id"
-                " AND (name ILIKE :pat ESCAPE '\\'"
-                "   OR slug ILIKE :pat ESCAPE '\\'"
-                "   OR description ILIKE :pat ESCAPE '\\'"
-                "   OR base_url ILIKE :pat ESCAPE '\\')"
-                " ORDER BY created_at"
+                "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+                " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+                " COALESCE(("
+                "   SELECT MAX(c.key_version)"
+                "   FROM credentials c"
+                "   WHERE c.service_id = s.id AND c.tenant_id = s.tenant_id AND c.status = 'active'"
+                " ), 0) AS current_key_version"
+                " FROM services s WHERE s.tenant_id = :tenant_id"
+                " AND (s.name ILIKE :pat ESCAPE '\\'"
+                "   OR s.slug ILIKE :pat ESCAPE '\\'"
+                "   OR s.description ILIKE :pat ESCAPE '\\'"
+                "   OR s.base_url ILIKE :pat ESCAPE '\\')"
+                " ORDER BY s.created_at"
             ),
             {"tenant_id": str(tenant_id), "pat": pattern},
         )
     else:
         result = await session.execute(
             text(
-                "SELECT id, tenant_id, name, slug, display_name, description,"
-                " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
-                " FROM services WHERE tenant_id = :tenant_id ORDER BY created_at"
+                "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+                " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+                " COALESCE(("
+                "   SELECT MAX(c.key_version)"
+                "   FROM credentials c"
+                "   WHERE c.service_id = s.id AND c.tenant_id = s.tenant_id AND c.status = 'active'"
+                " ), 0) AS current_key_version"
+                " FROM services s WHERE s.tenant_id = :tenant_id ORDER BY s.created_at"
             ),
             {"tenant_id": str(tenant_id)},
         )
@@ -427,9 +439,14 @@ async def get_service(
     db_uuid = _wire_id_to_db_uuid(service_id)
     result = await session.execute(
         text(
-            "SELECT id, tenant_id, name, slug, display_name, description,"
-            " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
-            " FROM services WHERE id = :sid AND tenant_id = :tid"
+            "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+            " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " COALESCE(("
+            "   SELECT MAX(c.key_version)"
+            "   FROM credentials c"
+            "   WHERE c.service_id = s.id AND c.tenant_id = s.tenant_id AND c.status = 'active'"
+            " ), 0) AS current_key_version"
+            " FROM services s WHERE s.id = :sid AND s.tenant_id = :tid"
         ),
         {"sid": db_uuid, "tid": str(tenant_id)},
     )
@@ -859,9 +876,14 @@ async def update_service(
 
     result = await session.execute(
         text(
-            "SELECT id, tenant_id, name, slug, display_name, description,"
-            " base_url, auth_scheme, openapi_url, status, created_at, updated_at"
-            " FROM services WHERE id = :sid AND tenant_id = :tid"
+            "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+            " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " COALESCE(("
+            "   SELECT MAX(c.key_version)"
+            "   FROM credentials c"
+            "   WHERE c.service_id = s.id AND c.tenant_id = s.tenant_id AND c.status = 'active'"
+            " ), 0) AS current_key_version"
+            " FROM services s WHERE s.id = :sid AND s.tenant_id = :tid"
         ),
         {"sid": db_uuid, "tid": str(tenant_id)},
     )

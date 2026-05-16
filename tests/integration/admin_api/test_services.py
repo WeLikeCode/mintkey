@@ -797,3 +797,222 @@ def test_existing_test_endpoint_emits_audit_event(
     assert payload.get("transient") is False, (
         f"Expected payload.transient=false for existing /test endpoint; got: {payload}"
     )
+
+
+# ---------------------------------------------------------------------------
+# current_key_version plumbing — UX-FB-B
+# ---------------------------------------------------------------------------
+
+
+def _insert_credential(
+    postgres_container,
+    tenant_id: str,
+    service_db_uuid: str,
+    key_version: int,
+    status: str = "active",
+) -> None:
+    """Insert a credential row directly via psycopg2 for test setup."""
+    import uuid as _uuid
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO credentials"
+        " (id, tenant_id, service_id, key_version, ciphertext, nonce, wrapped_dek,"
+        "  auth_scheme, status, created_at)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())",
+        (
+            str(_uuid.uuid4()),
+            tenant_id,
+            service_db_uuid,
+            key_version,
+            b"\x00",  # placeholder ciphertext
+            b"\x00",  # placeholder nonce
+            b"\x00",  # placeholder wrapped_dek
+            "bearer_token",
+            status,
+        ),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def _get_service_db_uuid(postgres_container, tenant_id: str, name: str) -> str:
+    """Look up the DB UUID for a service by name."""
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id FROM services WHERE name = %s AND tenant_id = %s",
+        (name, tenant_id),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None, f"Service '{name}' not found for tenant {tenant_id}"
+    return str(row[0])
+
+
+def test_list_services_returns_current_key_version_zero_for_service_without_credential(
+    admin_app: TestClient, tenant_uuid: str
+) -> None:
+    """
+    List endpoint returns current_key_version: 0 for a service with no credentials.
+
+    Source: UX-FB-B plumbing requirement.
+    """
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-no-cred",
+            "base_url": "https://nocred.example.com/api",
+            "auth_scheme": "bearer_token",
+        },
+    )
+    assert resp.status_code == 201, f"create failed: {resp.text}"
+
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    assert list_resp.status_code == 200
+    services = list_resp.json()["services"]
+    match = next((s for s in services if s["name"] == "svc-no-cred"), None)
+    assert match is not None, "svc-no-cred not found in list response"
+    assert "current_key_version" in match, "current_key_version missing from list response"
+    assert match["current_key_version"] == 0, (
+        f"Expected current_key_version=0 for service without credential; got {match['current_key_version']}"
+    )
+
+
+def test_list_services_returns_current_key_version_n_for_service_with_credential(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    List endpoint returns current_key_version: 2 for a service that has an active
+    credential at key_version=2.
+
+    Source: UX-FB-B plumbing requirement.
+    """
+    # Create the service
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-with-cred-kv2",
+            "base_url": "https://withcred.example.com/api",
+            "auth_scheme": "bearer_token",
+        },
+    )
+    assert resp.status_code == 201, f"create failed: {resp.text}"
+
+    # Insert an active credential at key_version=2
+    db_uuid = _get_service_db_uuid(postgres_container, tenant_uuid, "svc-with-cred-kv2")
+    _insert_credential(postgres_container, tenant_uuid, db_uuid, key_version=2, status="active")
+
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    assert list_resp.status_code == 200
+    services = list_resp.json()["services"]
+    match = next((s for s in services if s["name"] == "svc-with-cred-kv2"), None)
+    assert match is not None, "svc-with-cred-kv2 not found in list response"
+    assert match["current_key_version"] == 2, (
+        f"Expected current_key_version=2; got {match['current_key_version']}"
+    )
+
+
+def test_get_service_returns_current_key_version(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    GET /services/{id} returns current_key_version with the correct value.
+
+    Source: UX-FB-B plumbing requirement.
+    """
+    # Create the service
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-get-kv",
+            "base_url": "https://getkv.example.com/api",
+            "auth_scheme": "api_key_header",
+        },
+    )
+    assert resp.status_code == 201, f"create failed: {resp.text}"
+
+    # Get the wire ID from the list endpoint
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    services = list_resp.json()["services"]
+    match = next((s for s in services if s["name"] == "svc-get-kv"), None)
+    assert match is not None
+    wire_id = match["id"]
+
+    # Initially: no credential → current_key_version = 0
+    get_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services/{wire_id}")
+    assert get_resp.status_code == 200
+    body = get_resp.json()
+    assert "current_key_version" in body, "current_key_version missing from GET response"
+    assert body["current_key_version"] == 0, (
+        f"Expected current_key_version=0 before any credential; got {body['current_key_version']}"
+    )
+
+    # Insert a credential at key_version=3 and re-check
+    db_uuid = _get_service_db_uuid(postgres_container, tenant_uuid, "svc-get-kv")
+    _insert_credential(postgres_container, tenant_uuid, db_uuid, key_version=3, status="active")
+
+    get_resp2 = admin_app.get(f"/v1/tenants/{tenant_uuid}/services/{wire_id}")
+    assert get_resp2.status_code == 200
+    body2 = get_resp2.json()
+    assert body2["current_key_version"] == 3, (
+        f"Expected current_key_version=3 after credential insert; got {body2['current_key_version']}"
+    )
+
+
+def test_list_services_filters_only_active_credentials(
+    admin_app: TestClient, tenant_uuid: str, postgres_container
+) -> None:
+    """
+    current_key_version uses only active credentials (status='active').
+    A revoked credential at a higher key_version must not inflate the result.
+
+    Source: UX-FB-B hard rule — status filter MUST be status = 'active'.
+    """
+    # Create the service
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{tenant_uuid}/services",
+        json={
+            "name": "svc-active-filter",
+            "base_url": "https://activefilter.example.com/api",
+            "auth_scheme": "bearer_token",
+        },
+    )
+    assert resp.status_code == 201, f"create failed: {resp.text}"
+
+    db_uuid = _get_service_db_uuid(postgres_container, tenant_uuid, "svc-active-filter")
+
+    # Active credential at key_version=1
+    _insert_credential(postgres_container, tenant_uuid, db_uuid, key_version=1, status="active")
+    # Revoked credential at key_version=5 — must NOT count
+    _insert_credential(postgres_container, tenant_uuid, db_uuid, key_version=5, status="revoked")
+
+    list_resp = admin_app.get(f"/v1/tenants/{tenant_uuid}/services")
+    assert list_resp.status_code == 200
+    services = list_resp.json()["services"]
+    match = next((s for s in services if s["name"] == "svc-active-filter"), None)
+    assert match is not None, "svc-active-filter not found in list response"
+    assert match["current_key_version"] == 1, (
+        f"Expected current_key_version=1 (active only); got {match['current_key_version']} "
+        f"(revoked cred at kv=5 must not inflate the result)"
+    )
