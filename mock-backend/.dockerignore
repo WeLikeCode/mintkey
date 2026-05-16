@@ -1,0 +1,22 @@
+# mock-backend build context is ./mock-backend — only src/ and pyproject.toml are needed.
+
+# ─── Test artifacts ───────────────────────────────────────────────────────────
+tests/
+.pytest_cache
+__pycache__
+*.pyc
+htmlcov
+coverage/
+
+# ─── Stray config not consumed by the Dockerfile ─────────────────────────────
+nginx.conf
+
+# ─── Secrets / environment ───────────────────────────────────────────────────
+.env
+.env.local
+
+# ─── Editor / OS ─────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+.DS_Store

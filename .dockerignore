@@ -1,0 +1,51 @@
+# ─── VCS metadata ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ─── Editor / IDE ────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# ─── CI / project meta ───────────────────────────────────────────────────────
+.github
+team/
+docs/
+marketing/
+.kiro/
+.agents/
+.codex/
+
+# ─── Dependency / build caches ───────────────────────────────────────────────
+node_modules
+__pycache__
+*.pyc
+dist/
+build/
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv/
+htmlcov
+*.egg-info/
+
+# ─── Test artifacts ──────────────────────────────────────────────────────────
+*.log
+*.tmp
+screenshots-*/
+e2e/test-results
+coverage/
+
+# ─── Secrets / local data ────────────────────────────────────────────────────
+.env
+.env.local
+data/
+*.pem
+*.key
+
+# ─── Compiled binaries ───────────────────────────────────────────────────────
+services/vault-adapter/vault-adapter
+*.exe

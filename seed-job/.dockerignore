@@ -1,0 +1,16 @@
+# seed-job build context is ./seed-job — only main.py, requirements.txt, realm-mintkey.json are needed.
+
+# ─── Python caches ────────────────────────────────────────────────────────────
+__pycache__
+*.pyc
+.pytest_cache
+
+# ─── Secrets / environment ───────────────────────────────────────────────────
+.env
+.env.local
+
+# ─── Editor / OS ─────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+.DS_Store

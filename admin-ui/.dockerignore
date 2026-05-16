@@ -1,0 +1,26 @@
+# admin-ui build context is ./admin-ui — only src/, package files, and tsconfig are needed.
+# Extend root patterns with admin-ui-specific test / screenshot artifacts.
+
+# ─── Dependencies (reinstalled by pnpm install --frozen-lockfile in Docker) ──
+node_modules
+
+# ─── Build output (not present at build time; generated inside the container) ─
+dist/
+
+# ─── Test / E2E artifacts ────────────────────────────────────────────────────
+e2e/test-results
+screenshots-*/
+test-results
+tests/
+vitest.config.ts
+.pytest_cache
+
+# ─── Editor / OS ─────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# ─── Secrets / environment ───────────────────────────────────────────────────
+.env
+.env.local
