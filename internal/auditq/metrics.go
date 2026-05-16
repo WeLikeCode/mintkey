@@ -58,7 +58,7 @@ func writeMetrics(w io.Writer, m *Metrics) {
 	svc := m.serviceLabel
 
 	// auditq_dead_letter_events_total
-	fmt.Fprintf(w,
+	_, _ = fmt.Fprintf(w,
 		"# HELP auditq_dead_letter_events_total Total number of audit events moved to the dead-letter file.\n"+
 			"# TYPE auditq_dead_letter_events_total counter\n"+
 			"auditq_dead_letter_events_total{service=%q} %d\n",
@@ -66,7 +66,7 @@ func writeMetrics(w io.Writer, m *Metrics) {
 	)
 
 	// auditq_dead_letter_file_size_bytes
-	fmt.Fprintf(w,
+	_, _ = fmt.Fprintf(w,
 		"# HELP auditq_dead_letter_file_size_bytes Current byte size of the dead-letter file.\n"+
 			"# TYPE auditq_dead_letter_file_size_bytes gauge\n"+
 			"auditq_dead_letter_file_size_bytes{service=%q} %d\n",
@@ -74,7 +74,7 @@ func writeMetrics(w io.Writer, m *Metrics) {
 	)
 
 	// auditq_wal_size_bytes
-	fmt.Fprintf(w,
+	_, _ = fmt.Fprintf(w,
 		"# HELP auditq_wal_size_bytes Current byte size of the WAL file.\n"+
 			"# TYPE auditq_wal_size_bytes gauge\n"+
 			"auditq_wal_size_bytes{service=%q} %d\n",
@@ -82,7 +82,7 @@ func writeMetrics(w io.Writer, m *Metrics) {
 	)
 
 	// auditq_wal_pending_events
-	fmt.Fprintf(w,
+	_, _ = fmt.Fprintf(w,
 		"# HELP auditq_wal_pending_events Number of undelivered events in the WAL after last compaction.\n"+
 			"# TYPE auditq_wal_pending_events gauge\n"+
 			"auditq_wal_pending_events{service=%q} %d\n",
