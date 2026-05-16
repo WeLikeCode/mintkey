@@ -14,3 +14,4 @@ data/
 /pnpm-lock.yaml
 # Build artifact — never commit; rebuilt by `go build` in CI
 services/vault-adapter/vault-adapter
+install-*.log

@@ -1,0 +1,25 @@
+[mcp_servers.context7]
+args = [
+    "-y",
+    "@upstash/context7-mcp",
+]
+command = "npx"
+
+[mcp_servers.serena]
+args = [
+    "--from",
+    "git+https://github.com/oraios/serena",
+    "serena",
+    "start-mcp-server",
+    "--context",
+    "ide-assistant",
+    "--project",
+    ".",
+]
+command = "uvx"
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+MAX_THINKING_TOKENS = "32000"
