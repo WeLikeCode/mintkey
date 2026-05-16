@@ -6,5 +6,5 @@ structlog>=24.1
 respx>=0.20
 opentelemetry-sdk>=1.29
 opentelemetry-instrumentation-fastapi>=0.50b0
-opentelemetry-exporter-otlp-proto-grpc>=1.29
+opentelemetry-exporter-otlp-proto-grpc>=1.41.1
 prometheus-client>=0.20
