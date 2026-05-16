@@ -10,7 +10,6 @@ Source: Req 2 AC2, AC3, AC4; Req SEC-9; ADR-0017.5; design §4.
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 import argon2
 from argon2.exceptions import VerifyMismatchError

@@ -12,21 +12,18 @@ Source: design §4 api/auth.py; Req 2; ADR-0017.5; ADR-0009; ADR-0019 §3.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import secrets
 import time
-from functools import lru_cache
 from typing import Any
 
-from fastapi import APIRouter, Cookie, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from admin_api.auth.internal import INVALID_CREDENTIALS_RESPONSE, verify_internal_login
 from admin_api.auth.oidc import (
     generate_authorization_url,
-    is_platform_admin_from_claims,
     lookup_operator_by_oidc_sub,
     oidc_token_exchange,
 )

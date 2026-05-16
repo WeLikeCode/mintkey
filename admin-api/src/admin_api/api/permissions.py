@@ -25,7 +25,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, text

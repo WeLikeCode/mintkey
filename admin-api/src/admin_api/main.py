@@ -7,6 +7,9 @@ WS-11 polish: logging.basicConfig wired so stdlib loggers (e.g. vault_client)
   emit to stdout inside the container without needing a separate handler
   on each module logger.
 """
+# ruff: noqa: E402  — logging.basicConfig() must run before submodule imports so
+# that any logging calls during module-level init of the imported routers and
+# middleware are captured by the stdout handler wired here.
 from __future__ import annotations
 
 import logging

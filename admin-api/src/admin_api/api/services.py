@@ -27,10 +27,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 from uuid import UUID
-
-logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, Response
@@ -44,6 +42,8 @@ from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/services")
 

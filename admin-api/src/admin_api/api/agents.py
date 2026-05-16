@@ -22,7 +22,6 @@ Source: T-1.4.1; ADR-0008; ADR-0014.7; ADR-0017.11; S-SEC-1.
 from __future__ import annotations
 
 import hashlib
-import os
 import secrets
 import time
 import uuid

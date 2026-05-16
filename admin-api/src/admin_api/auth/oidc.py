@@ -14,7 +14,7 @@ import secrets
 import time
 from typing import Any
 
-from authlib.jose import JsonWebToken, OctKey
+from authlib.jose import JsonWebToken
 from authlib.jose.errors import JoseError
 import httpx
 
@@ -180,7 +180,6 @@ async def oidc_token_exchange(code: str, state: str) -> dict[str, Any]:
 
 async def _verify_id_token(id_token: str, *, force_refresh: bool) -> dict[str, Any]:
     """Verify ID token signature against Keycloak JWKS. Force-refreshes on first failure."""
-    from authlib.jose import JsonWebToken
 
     # Use the PUBLIC URL here: Keycloak embeds the URL the browser hit (the
     # public-facing base URL) as the `iss` claim in issued ID tokens.

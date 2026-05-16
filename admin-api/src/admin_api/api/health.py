@@ -9,7 +9,7 @@ Source: Req 1 AC7, AC8; design §4.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 router = APIRouter()

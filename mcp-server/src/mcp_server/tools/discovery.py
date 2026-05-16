@@ -98,7 +98,7 @@ def _make_how_to_call(service_id: str, base_url: str) -> dict:
             f'POST /v1/tools/request_token {{"service_id": "{service_id}", "action": "call"}}'
         ),
         "step2_proxy_call": (
-            f"Send request to proxy with Authorization: Bearer <token>"
+            "Send request to proxy with Authorization: Bearer <token>"
         ),
         "proxy_url_pattern": f"{proxy_url}/v1/call/{service_id}/<path_on_target_api>",
         "notes": (
