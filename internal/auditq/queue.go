@@ -160,7 +160,7 @@ func (q *Queue) Replay() {
 		slog.Warn("auditq: replay: open WAL", "path", q.walPath, "err", err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	var replayed int
@@ -254,7 +254,7 @@ func (q *Queue) appendWAL(e Event) error {
 	if err != nil {
 		return fmt.Errorf("auditq: open WAL: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.Write(append(b, '\n')); err != nil {
 		return fmt.Errorf("auditq: write WAL: %w", err)
@@ -313,7 +313,7 @@ func (q *Queue) deadLetterWAL(e Event, lastErr error) {
 		slog.Error("auditq: dead-letter open", "err", err)
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, _ = f.Write(append(b, '\n'))
 
 	// Increment dead-letter counter (count only — no payload content in metrics).
@@ -439,7 +439,7 @@ func (q *Queue) emit(e Event) error {
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
