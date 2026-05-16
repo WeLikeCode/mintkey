@@ -455,13 +455,19 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
 
 
 def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
-    """Write jaeger_oauth2_cookie_secret (random 32-byte hex) if missing."""
+    """Write jaeger_oauth2_cookie_secret (32 raw bytes) if missing.
+
+    oauth2-proxy v7.6+ requires the cookie secret to be exactly 16, 24, or 32
+    bytes so it can construct an AES cipher.  Writing text (hex/base64) produces
+    a file that is 44 or 64 bytes — rejected at startup.  Writing raw bytes
+    gives exactly 32 bytes (AES-256).
+    """
     cookie_secret_file = secrets_dir / "jaeger_oauth2_cookie_secret"
     if cookie_secret_file.exists():
         print("Keycloak: jaeger_oauth2_cookie_secret already exists — skipping.")
         return
-    cookie_secret = secrets.token_hex(32)
-    cookie_secret_file.write_text(cookie_secret)
+    # 32 raw bytes (AES-256 cookie key for oauth2-proxy)
+    cookie_secret_file.write_bytes(os.urandom(32))
     # jaeger-auth runs as UID 65532 (non-root); 0o644 lets it read the file.
     # Security boundary is the Docker volume (bootstrap_secrets), not the mode.
     cookie_secret_file.chmod(0o644)
