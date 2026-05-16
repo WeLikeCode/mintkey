@@ -1,5 +1,5 @@
 fastapi[standard]>=0.115
-sqlalchemy[asyncio]>=2.0
+sqlalchemy[asyncio]>=2.0.49
 asyncpg>=0.30
 httpx>=0.27
 structlog>=24.1
