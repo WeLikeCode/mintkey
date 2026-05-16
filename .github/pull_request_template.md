@@ -1,60 +1,64 @@
 # Pull Request
 
-## Summary
+<!-- Mintkey PR template — every PR must complete every section below.
+     Per F4 decision (2026-05-16-pattern-enforcement): even doc typos
+     and dep bumps fill the Issue Definition (briefer is fine; empty is not).
+     See team/remediation/README.md and CONTRIBUTING.md for the routing table. -->
 
-<!-- What does this PR do, and why? One or two sentences. -->
+## Change Type
 
-## Linked issue / ADR
+- [ ] Remediation session
+- [ ] Kiro/spec-driven feature
+- [ ] Documentation-only
+- [ ] Dependency-only
+- [ ] Other
 
-<!-- Link the GitHub issue and/or ADR(s) this PR satisfies.
-     Example: Closes #42 | Satisfies ADR-0020, .kiro/specs/mintkey-mvp/requirements.md AC-12-3 -->
+## Required Provenance
 
-- Issue:
-- ADR(s) touched:
-- Spec AC(s) satisfied:
+**For remediation:**
 
-## Test plan
+- Session folder: <!-- e.g. team/remediation/2026-05-16-oss-readiness/ -->
+- Issue intake file: <!-- e.g. team/remediation/<session>/ISSUE_INTAKE.md -->
+- Matrix row(s): <!-- e.g. R-4, R-5 -->
+- Reviewer result: <!-- e.g. PASS_ALL 18/18 from REL-FINAL Opus review -->
 
-<!--
-List the exact commands you ran and their expected output.
-Verification-as-evidence is required — paste the actual output below in the
-"Verification output" section.
+**For Kiro/spec-driven work:**
 
-Example:
-  pytest tests/unit/admin_api/test_rotation.py -v    → N passed, exit 0
-  pytest tests/architecture/ -q                      → 17 passed, exit 0
-  make smoke                                         → E2E-01 passed, exit 0
--->
+- Requirement: <!-- e.g. .kiro/specs/mintkey-mvp/requirements.md AC-12-3 -->
+- Design section: <!-- e.g. .kiro/specs/mintkey-mvp/design.md §3.4 -->
+- Task: <!-- e.g. T-1.5.7 -->
+- ADR/proposal, if applicable: <!-- e.g. ADR-0020 -->
 
-| Command | Expected result |
-|---|---|
-| | |
+## Issue Definition
 
-## Pre-submission checklist
+**Required for every PR — even doc typos / dep bumps fill these (briefer is fine).**
 
-- [ ] All hard rules from `CONTRIBUTING.md` followed (spec AC cited, ADR present if architectural, failing test before implementation, verification output included)
-- [ ] `--no-verify` was NOT used on any commit in this branch
-- [ ] No `Co-Authored-By: Claude` or other LLM-noreply trailers in any commit message
-- [ ] Pre-alpha status has NOT been weakened (no new production-readiness claims)
-- [ ] If touching architecture: an ADR has been created or referenced above
-- [ ] Verification output is pasted below with commands and exit codes
+- **Problem:** <!-- What is broken or risky? -->
+- **Expected behavior:** <!-- What should happen instead? -->
+- **Evidence:** <!-- Logs, screenshots, failing tests, commands, file:line refs -->
+- **Scope:** <!-- Which areas were changed? -->
+- **Out of scope:** <!-- Which areas were NOT touched? -->
 
-## Verification output
+## Verification
 
-<!--
-Paste the actual stdout/stderr from the commands in your test plan.
-Commands + exit codes are required. "Tests pass" without output is rejected.
+Paste command output and exit codes below. "Tests pass" without output is rejected.
 
-Example:
-  $ pytest tests/unit/admin_api/test_rotation.py -v
-  ========== 14 passed in 0.43s ==========
-  (exit 0)
-
-  $ pytest tests/architecture/ -q
-  ........17 passed in 1.2s
-  (exit 0)
--->
+- [ ] Tests run
+- [ ] Linters/validators run
+- [ ] Smoke/integration run if relevant
+- [ ] Security/plaintext checks run if relevant
 
 ```
-# paste here
+# paste actual command + stdout/stderr + exit codes here
+
 ```
+
+## Agent/Automation Rules
+
+If an LLM or automation helped on this PR, confirm:
+
+- [ ] No `--no-verify` was used on any commit
+- [ ] No unverified "tests pass" claim
+- [ ] No unrelated refactor bundled with the fix
+- [ ] No accepted ADR was edited (only corrigenda allowed on accepted ADRs)
+- [ ] No `Co-Authored-By` trailer (LLM or otherwise) was added or required
