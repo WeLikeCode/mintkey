@@ -19,7 +19,13 @@ The decoder accepts BOTH wire forms for backward-compatibility:
 DO NOT remove the dual-form decoder — older clients and stored audit_event references
 may still carry the 32-hex form.  Only the encoder output has been standardised.
 
-Source: ADR-0017.11; #13 (wire-form unification); OPS-CC.
+resolve_service_id(input_str, tenant_id, session) accepts three forms:
+  1. Raw UUID (36 chars with dashes) — used as-is.
+  2. svc_ wire form (Crockford or legacy hex) — decoded to UUID.
+  3. Slug (anything else) — looked up in services WHERE tenant_id = :tid AND status = 'active'.
+     Case-sensitive, exact match. Raises ServiceNotFound if 0 or >1 match.
+
+Source: ADR-0017.11; #13 (wire-form unification); OPS-CC; OPS-LL.
 """
 from __future__ import annotations
 
@@ -28,6 +34,31 @@ from typing import Union
 
 # Crockford base32 alphabet (uppercase, no I/L/O/U) — ADR-0017.11
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+# ---------------------------------------------------------------------------
+# Slug-resolution exception — OPS-LL
+# ---------------------------------------------------------------------------
+
+
+class ServiceNotFound(Exception):
+    """
+    Raised by resolve_service_id when the slug lookup returns 0 matches.
+
+    Callers should translate this to a 404 response with the canonical error
+    shape (see OPS-LL spec).
+
+    Attributes
+    ----------
+    service_id_input : str
+        The raw value the caller passed (wire form, UUID, or slug).
+    """
+
+    def __init__(self, service_id_input: str, reason: str = "service_not_found") -> None:
+        self.service_id_input = service_id_input
+        self.reason = reason
+        super().__init__(
+            f"Service not found for input {service_id_input!r} ({reason})"
+        )
 
 
 def db_uuid_to_wire(uuid_value: Union[str, _uuid_mod.UUID], prefix: str) -> str:
@@ -106,3 +137,84 @@ def wire_to_db_uuid(wire_id: str, prefix: str) -> str:
                 raise ValueError(f"Invalid wire ID (hex form): {wire_id}")
     # Not a prefixed ID — return as-is (plain UUID string, raw UUID, etc.)
     return wire_id
+
+
+async def resolve_service_id(
+    input_str: str,
+    tenant_id: str,
+    session,
+) -> _uuid_mod.UUID:
+    """
+    Resolve a service identifier in any of three accepted forms to the DB UUID.
+
+    Resolution order (OPS-LL):
+      1. Raw UUID (36 chars with dashes, e.g. "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd") — used as-is.
+      2. svc_ wire form (Crockford 26-char or legacy 32-hex) — decoded via wire_to_db_uuid.
+      3. Slug (anything else) — looked up in services WHERE
+         tenant_id = :tid AND status = 'active' AND slug = :slug (case-sensitive, exact).
+
+    Parameters
+    ----------
+    input_str : str
+        The raw service identifier provided by the caller.
+    tenant_id : str
+        The calling agent's tenant UUID string (used to scope the slug lookup —
+        prevents cross-tenant slug resolution).
+    session : AsyncSession
+        An active SQLAlchemy async session with tenant RLS context already set.
+
+    Returns
+    -------
+    uuid.UUID
+        The resolved service UUID.
+
+    Raises
+    ------
+    ServiceNotFound
+        If the slug lookup returns 0 matches (form 3 only).
+
+    Notes
+    -----
+    For forms 1 and 2 the UUID is returned without a DB round-trip; validity is
+    confirmed by the caller's own DB SELECT.  This keeps the hot path lean and
+    preserves backward-compatible behaviour for existing wire-form + raw-UUID
+    clients.
+
+    Source: OPS-LL.
+    """
+    from sqlalchemy import text as _text  # local import to avoid circular deps
+
+    # Form 1 — raw UUID (36 chars with 4 hyphens)
+    if len(input_str) == 36 and input_str.count("-") == 4:
+        try:
+            return _uuid_mod.UUID(input_str)
+        except ValueError:
+            pass  # fall through to slug lookup if UUID parse fails for some reason
+
+    # Form 2 — svc_ wire form (Crockford or legacy hex)
+    if input_str.startswith("svc_"):
+        try:
+            decoded = wire_to_db_uuid(input_str, "svc")
+            return _uuid_mod.UUID(decoded)
+        except (ValueError, AttributeError):
+            raise ServiceNotFound(input_str)
+
+    # Form 3 — slug lookup (case-sensitive, exact, tenant-scoped, active only)
+    result = await session.execute(
+        _text(
+            "SELECT id FROM services"
+            " WHERE tenant_id = :tid AND status = 'active' AND slug = :slug"
+        ),
+        {"tid": str(tenant_id), "slug": input_str},
+    )
+    rows = result.fetchall()
+
+    if len(rows) == 0:
+        raise ServiceNotFound(input_str)
+
+    # >1 match is theoretically impossible with a unique constraint, but guard
+    # defensively: treat ambiguity as not-found so we never silently pick one.
+    if len(rows) > 1:
+        raise ServiceNotFound(input_str, reason="ambiguous_slug")
+
+    return _uuid_mod.UUID(str(rows[0].id))

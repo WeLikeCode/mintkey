@@ -34,7 +34,7 @@ from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.policy.constraints import RateLimiter, evaluate_rate_limit, evaluate_time_window
 from mcp_server.tools.discovery import get_agent_context
-from mcp_server.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
+from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -75,27 +75,35 @@ async def request_token(
     agent_id: str = agent_ctx["agent_id"]
     tenant_id: str = agent_ctx["tenant_id"]
 
-    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged.
-    # We keep wire_service_id (the operator-facing form) for audit events and the
-    # response body — ADR-0017.11; OPS-CC.
+    # Set tenant RLS context before any DB query (including slug lookup).
+    await set_tenant_context(session, tenant_id)
+
+    # Resolve service_id from any of three accepted forms:
+    #   1. Raw UUID, 2. svc_ wire form, 3. slug — OPS-LL.
+    # We canonicalise to the svc_ wire form for audit events and the response
+    # body regardless of what the caller passed — ADR-0017.11; OPS-CC.
     try:
-        db_service_id = wire_to_db_uuid(body.service_id, "svc")
-    except ValueError:
+        db_service_uuid = await resolve_service_id(body.service_id, tenant_id, session)
+    except ServiceNotFound as exc:
         return JSONResponse(
-            status_code=403,
+            status_code=404,
             content={
-                "code": "mintkey:not_authorized",
-                "reason_code": "permission_not_found",
+                "code": "mintkey:not_found",
+                "reason_code": "service_not_found",
+                "service_id_input": exc.service_id_input,
+                "hint": (
+                    "Use the 'id' field from list_services (e.g., 'svc_…') "
+                    "or the service slug ('github'). Slugs are case-sensitive."
+                ),
             },
         )
-    # Canonicalise to wire form for audit log (operator-readable); if the caller
-    # passed a raw UUID we encode it, if they passed wire form it round-trips.
+
+    db_service_id = str(db_service_uuid)
+    # Canonicalise to wire form for audit log (operator-readable).
     try:
         wire_service_id = db_uuid_to_wire(db_service_id, "svc")
     except Exception:
         wire_service_id = body.service_id  # fallback — should not happen
-
-    await set_tenant_context(session, tenant_id)
 
     # 1. Look up permission grant
     result = await session.execute(
@@ -188,9 +196,10 @@ async def _emit_denial(
 ) -> None:
     """Emit token.denied audit event for any denial path. ADR-0014.7."""
     from uuid import UUID
+    _tid = tenant_id if isinstance(tenant_id, UUID) else UUID(str(tenant_id))
     await audit_emit(
         session=session,
-        tenant_id=UUID(tenant_id),
+        tenant_id=_tid,
         event_type="token.denied",
         actor_id=None,
         actor_type="agent",

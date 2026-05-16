@@ -76,7 +76,7 @@ Response shape:
 </authentication>
 
 <service_discovery>
-After §authentication you can enumerate and inspect services.
+After §authentication you can enumerate and inspect services. All tools accept `service_id` in three forms: `svc_<wire>` (preferred — returned by list_services), raw UUID, or `slug` (e.g., `github`). Slugs are tenant-scoped and case-sensitive.
 
 **`list_services` — services your Agent has permission grants on.**
 

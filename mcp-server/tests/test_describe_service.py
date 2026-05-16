@@ -122,10 +122,18 @@ def _build_app_with_mocked_db(fake_row):
     app.dependency_overrides[get_agent_context] = _fake_agent_context
 
     # Override get_db_session to return a session whose execute() returns our row.
+    # The session must support both:
+    #   - fetchone()  — service SELECT (any query with 'sid' param or similar)
+    #   - fetchall()  — slug lookup (OPS-LL; params contain 'slug')
+    # When the service_id passed is a raw UUID or svc_ wire form, resolve_service_id
+    # does NOT hit the DB (short-circuits at form 1 or 2), so only fetchone is called.
     async def _fake_db_session() -> AsyncGenerator:
         session = AsyncMock()
         result_mock = MagicMock()
         result_mock.fetchone.return_value = fake_row
+        # fetchall is used by the slug lookup; return empty list so it's a no-op
+        # when service_id is already a UUID/wire-form (slug path not exercised here).
+        result_mock.fetchall.return_value = []
         session.execute = AsyncMock(return_value=result_mock)
         yield session
 
@@ -134,7 +142,7 @@ def _build_app_with_mocked_db(fake_row):
     return app, _orig_validate, _main_mod
 
 
-def _run_describe(fake_row, service_id: str = "test-uuid-1234"):
+def _run_describe(fake_row, service_id: str = _TEST_SERVICE_UUID):
     """Run GET /v1/tools/describe_service/<service_id> and return the JSON body."""
     from httpx import AsyncClient, ASGITransport
 
@@ -326,6 +334,175 @@ def test_describe_service_accepts_raw_uuid_backward_compat() -> None:
     # Response id is always wire form regardless of input form
     assert svc["id"].startswith("svc_"), (
         f"Response id should always be svc_ wire form, got: {svc['id']!r}"
+    )
+
+
+# ===========================================================================
+# OPS-LL slug-form tests
+# ===========================================================================
+
+
+def _build_app_with_slug_lookup(
+    *,
+    slug_row=None,
+    service_row=None,
+    tenant_id=None,
+):
+    """
+    Build a FastAPI test app where:
+    - The slug lookup (execute with 'slug' param) returns slug_row (or [] if None).
+    - The service SELECT (execute with 'sid' param) returns service_row (or None).
+    """
+    import mcp_server.main as _main_mod
+    from mcp_server.db.session import get_db_session
+    from mcp_server.tools.discovery import get_agent_context
+    from mcp_server.main import create_app
+
+    _tenant_id = tenant_id or uuid.uuid4()
+    _agent_id = str(uuid.uuid4())
+    fake_ctx = {"tenant_id": _tenant_id, "agent_id": _agent_id}
+
+    _orig_validate = _main_mod.validate_agent_key
+
+    async def _fake_validate(key):
+        return fake_ctx, None
+
+    _main_mod.validate_agent_key = _fake_validate
+    app = create_app()
+
+    async def _fake_agent_ctx():
+        return fake_ctx
+
+    app.dependency_overrides[get_agent_context] = _fake_agent_ctx
+
+    async def _fake_db_session() -> AsyncGenerator:
+        session = AsyncMock()
+
+        async def _execute(stmt, params=None, **kw):
+            result_mock = MagicMock()
+            if params and "slug" in params:
+                result_mock.fetchall.return_value = [slug_row] if slug_row is not None else []
+            else:
+                result_mock.fetchone.return_value = service_row
+            return result_mock
+
+        session.execute = _execute
+        yield session
+
+    app.dependency_overrides[get_db_session] = _fake_db_session
+    return app, _orig_validate, _main_mod
+
+
+def _run_describe_with_slug(
+    service_id_input: str,
+    *,
+    slug_row=None,
+    service_row=None,
+    tenant_id=None,
+):
+    from httpx import AsyncClient, ASGITransport
+
+    app, _orig, _main_mod = _build_app_with_slug_lookup(
+        slug_row=slug_row,
+        service_row=service_row,
+        tenant_id=tenant_id,
+    )
+    try:
+        async def _inner():
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                return await client.get(
+                    f"/v1/tools/describe_service/{service_id_input}",
+                    headers={"X-API-Key": "mk_agent_testkey"},
+                )
+
+        resp = asyncio.run(_inner())
+    finally:
+        _main_mod.validate_agent_key = _orig
+    return resp
+
+
+def test_describe_service_accepts_slug_input() -> None:
+    """
+    (OPS-LL) describe_service called with a slug in the URL path → 200 with
+    full metadata.  The slug is looked up in DB and resolved to the service UUID.
+
+    Source: OPS-LL; Req 6 AC4.
+    """
+    slug_row = MagicMock()
+    slug_row.id = _TEST_SERVICE_UUID
+
+    service_row = _make_fake_row(service_id=_TEST_SERVICE_UUID)
+
+    resp = _run_describe_with_slug(
+        "github",
+        slug_row=slug_row,
+        service_row=service_row,
+    )
+
+    assert resp.status_code == 200, (
+        f"Expected 200 when describe_service called with slug, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    svc = resp.json()["service"]
+    assert svc["id"].startswith("svc_"), (
+        f"Response id should be svc_ wire form even for slug input, got: {svc['id']!r}"
+    )
+
+
+def test_describe_service_unknown_slug_returns_404_with_error_shape() -> None:
+    """
+    (OPS-LL) describe_service called with an unknown slug → 404 with the
+    canonical OPS-LL error shape: code, reason_code, service_id_input, hint.
+
+    Source: OPS-LL error message spec.
+    """
+    resp = _run_describe_with_slug(
+        "nonexistent-slug",
+        slug_row=None,   # 0 rows from DB
+        service_row=None,
+    )
+
+    assert resp.status_code == 404, (
+        f"Expected 404 for unknown slug, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("code") == "mintkey:not_found", (
+        f"Expected code='mintkey:not_found', got: {body}"
+    )
+    assert body.get("reason_code") == "service_not_found", (
+        f"Expected reason_code='service_not_found', got: {body}"
+    )
+    assert body.get("service_id_input") == "nonexistent-slug", (
+        f"Expected service_id_input='nonexistent-slug', got: {body}"
+    )
+    assert "hint" in body and body["hint"], (
+        f"Expected non-empty 'hint' in error body: {body}"
+    )
+
+
+def test_describe_service_cross_tenant_slug_returns_404() -> None:
+    """
+    (OPS-LL) Cross-tenant security: slug from tenant A is not resolvable
+    from tenant B's agent (DB returns 0 rows for the scoped lookup).
+
+    Source: OPS-LL hard rule — slug lookup is tenant-scoped.
+    """
+    tenant_b = uuid.uuid4()
+    resp = _run_describe_with_slug(
+        "github",
+        slug_row=None,  # tenant B has no 'github' service
+        service_row=None,
+        tenant_id=tenant_b,
+    )
+
+    assert resp.status_code == 404, (
+        f"Expected 404 for cross-tenant slug, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("reason_code") == "service_not_found", (
+        f"Cross-tenant slug should be service_not_found: {body}"
     )
 
 

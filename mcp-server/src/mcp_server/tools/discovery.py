@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
-from mcp_server.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
+from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -205,14 +205,29 @@ async def describe_service(
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
-    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged
+    tenant_id = agent_ctx["tenant_id"]
+    await set_tenant_context(session, tenant_id)
+
+    # Resolve service_id from any of three accepted forms:
+    #   1. Raw UUID, 2. svc_ wire form, 3. slug — OPS-LL.
     # (ADR-0017.11; OPS-CC backward-compat).
     try:
-        db_service_id = wire_to_db_uuid(service_id, "svc")
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
+        db_service_uuid = await resolve_service_id(service_id, tenant_id, session)
+    except ServiceNotFound as exc:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "mintkey:not_found",
+                "reason_code": "service_not_found",
+                "service_id_input": exc.service_id_input,
+                "hint": (
+                    "Use the 'id' field from list_services (e.g., 'svc_…') "
+                    "or the service slug ('github'). Slugs are case-sensitive."
+                ),
+            },
+        )
 
-    await set_tenant_context(session, agent_ctx["tenant_id"])
+    db_service_id = str(db_service_uuid)
 
     result = await session.execute(
         text("SELECT * FROM services WHERE id = :sid"),
@@ -251,14 +266,29 @@ async def get_openapi(
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
-    # Decode wire form → DB UUID for SQL lookup; raw UUIDs pass through unchanged
+    tenant_id = agent_ctx["tenant_id"]
+    await set_tenant_context(session, tenant_id)
+
+    # Resolve service_id from any of three accepted forms:
+    #   1. Raw UUID, 2. svc_ wire form, 3. slug — OPS-LL.
     # (ADR-0017.11; OPS-CC backward-compat).
     try:
-        db_service_id = wire_to_db_uuid(service_id, "svc")
-    except ValueError:
-        return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
+        db_service_uuid = await resolve_service_id(service_id, tenant_id, session)
+    except ServiceNotFound as exc:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "mintkey:not_found",
+                "reason_code": "service_not_found",
+                "service_id_input": exc.service_id_input,
+                "hint": (
+                    "Use the 'id' field from list_services (e.g., 'svc_…') "
+                    "or the service slug ('github'). Slugs are case-sensitive."
+                ),
+            },
+        )
 
-    await set_tenant_context(session, agent_ctx["tenant_id"])
+    db_service_id = str(db_service_uuid)
 
     result = await session.execute(
         text("SELECT openapi_url FROM services WHERE id = :sid"),
