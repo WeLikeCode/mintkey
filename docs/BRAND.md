@@ -37,7 +37,6 @@ recreate the selected mark as SVG and verify small-size legibility.
 | Wordmark | `marketing/assets/mintkey-wordmark.svg` | Horizontal logo lockup |
 | Favicon | `marketing/assets/mintkey-favicon.svg` | Browser/app icon source |
 | Banner | `marketing/assets/mintkey-banner.svg` | Repository/social preview and docs hero asset |
-| Credential exposure comparison | `marketing/assets/credential-exposure-comparison.svg` | Side-by-side marketing explainer for direct API keys vs Mintkey brokered access |
 
 The SVG assets are production-oriented starting points, but they should still be
 reviewed at small sizes before being treated as final trademark artwork.
