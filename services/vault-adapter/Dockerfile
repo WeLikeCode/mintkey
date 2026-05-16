@@ -1,6 +1,7 @@
 # Vault Adapter — Go 1.26, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared internal/ packages).
-FROM golang:1.26-alpine AS builder
+# Pinned 2026-05-16; re-pin every quarter.
+FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
 
 WORKDIR /workspace
 
@@ -27,7 +28,8 @@ RUN GOARCH=$(go env GOARCH) && \
       "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.28/grpc_health_probe-linux-${GOARCH}" && \
     chmod +x /grpc_health_probe
 
-FROM gcr.io/distroless/static-debian12
+# Pinned 2026-05-16; re-pin every quarter.
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
 COPY --from=builder /vault-adapter /vault-adapter
 COPY --from=builder /grpc_health_probe /grpc_health_probe
 ENTRYPOINT ["/vault-adapter"]
