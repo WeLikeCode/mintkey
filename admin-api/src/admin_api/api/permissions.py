@@ -28,12 +28,17 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.db.tables import (
+    agents as agents_table,
+    permission_grants as pg_table,
+    services as services_table,
+)
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
@@ -244,23 +249,36 @@ async def list_permissions(
         )
     await set_tenant_context(session, tenant_id)
 
-    params: dict = {"aid": agent_uuid, "tid": str(tenant_id)}
-    base_sql = (
-        "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
-        " FROM permission_grants"
-        " WHERE agent_id = :aid AND tenant_id = :tid"
-    )
-
+    # Defense-in-depth: pass only full string literals to text() so the
+    # SQL is statically verifiable with no dynamic concatenation.
+    # Option B: explicit branches — each text() call has a constant argument.
+    svc_uuid_val: str | None = None
     if service_id is not None:
         # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
         from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
-        service_id = _decode_wire(service_id, "svc")
-        base_sql += " AND service_id = :svc_id"
-        params["svc_id"] = service_id
+        svc_uuid_val = _decode_wire(service_id, "svc")
 
-    base_sql += " ORDER BY created_at"
-
-    result = await session.execute(text(base_sql), params)
+    if svc_uuid_val is not None:
+        result = await session.execute(
+            text(
+                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+                " FROM permission_grants"
+                " WHERE agent_id = :aid AND tenant_id = :tid"
+                " AND service_id = :svc_id"
+                " ORDER BY created_at"
+            ),
+            {"aid": agent_uuid, "tid": str(tenant_id), "svc_id": svc_uuid_val},
+        )
+    else:
+        result = await session.execute(
+            text(
+                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+                " FROM permission_grants"
+                " WHERE agent_id = :aid AND tenant_id = :tid"
+                " ORDER BY created_at"
+            ),
+            {"aid": agent_uuid, "tid": str(tenant_id)},
+        )
     rows = result.fetchall()
 
     grants = [
@@ -310,16 +328,39 @@ async def list_tenant_permissions(
     """
     await set_tenant_context(session, tenant_id)
 
-    params: dict = {"tid": str(tenant_id)}
-    base_sql = (
-        "SELECT pg.id, pg.tenant_id, pg.agent_id, pg.service_id, pg.action,"
-        " pg.constraints, pg.created_at, pg.created_by,"
-        " s.name AS service_name, s.slug AS service_slug,"
-        " a.name AS agent_name"
-        " FROM permission_grants pg"
-        " LEFT JOIN services s ON s.id = pg.service_id AND s.tenant_id = pg.tenant_id"
-        " LEFT JOIN agents a ON a.id = pg.agent_id AND a.tenant_id = pg.tenant_id"
-        " WHERE pg.tenant_id = :tid"
+    # Defense-in-depth: SQLAlchemy Core select() with chained .where() calls.
+    # Option A: Table API — no text()/string-concat SQL; all WHERE clauses are
+    # bound by SQLAlchemy's parameterisation engine.
+    # Columns aliased to preserve the existing response shape.
+    stmt = (
+        select(
+            pg_table.c.id,
+            pg_table.c.tenant_id,
+            pg_table.c.agent_id,
+            pg_table.c.service_id,
+            pg_table.c.action,
+            pg_table.c.constraints,
+            pg_table.c.created_at,
+            pg_table.c.created_by,
+            services_table.c.name.label("service_name"),
+            services_table.c.slug.label("service_slug"),
+            agents_table.c.name.label("agent_name"),
+        )
+        .select_from(
+            pg_table
+            .outerjoin(
+                services_table,
+                (services_table.c.id == pg_table.c.service_id)
+                & (services_table.c.tenant_id == pg_table.c.tenant_id),
+            )
+            .outerjoin(
+                agents_table,
+                (agents_table.c.id == pg_table.c.agent_id)
+                & (agents_table.c.tenant_id == pg_table.c.tenant_id),
+            )
+        )
+        .where(pg_table.c.tenant_id == tenant_id)
+        .order_by(pg_table.c.created_at)
     )
 
     if agent_id is not None:
@@ -330,24 +371,21 @@ async def list_tenant_permissions(
                 status_code=422,
                 content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
             )
-        base_sql += " AND pg.agent_id = :aid"
-        params["aid"] = agent_uuid_val
+        stmt = stmt.where(pg_table.c.agent_id == agent_uuid_val)
 
     if service_id is not None:
         # Accept svc_ wire-ID (Crockford or legacy 32-hex) or plain UUID
         from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
-        service_id = _decode_wire(service_id, "svc")
-        base_sql += " AND pg.service_id = :svc_id"
-        params["svc_id"] = service_id
+        svc_uuid_val = _decode_wire(service_id, "svc")
+        stmt = stmt.where(pg_table.c.service_id == svc_uuid_val)
 
     if q is not None and q.strip() != "":
-        # ILIKE substring match on action — UX-B inline search
-        base_sql += " AND pg.action ILIKE '%' || :q_escaped || '%'"
-        params["q_escaped"] = _escape_like(q.strip())
+        # ILIKE substring match on action — UX-B inline search.
+        # .ilike(f"%{...}%") passes a *value* bound at execution time;
+        # SQLAlchemy parameterises it — this is the safe idiom.
+        stmt = stmt.where(pg_table.c.action.ilike(f"%{_escape_like(q.strip())}%"))
 
-    base_sql += " ORDER BY pg.created_at"
-
-    result = await session.execute(text(base_sql), params)
+    result = await session.execute(stmt)
     rows = result.fetchall()
 
     permissions = [

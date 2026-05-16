@@ -60,20 +60,14 @@ async def list_tenant_api_keys(
     """
     await set_tenant_context(session, tenant_id)
 
-    params: dict = {"tid": str(tenant_id)}
-    base_sql = (
-        "SELECT id, agent_id, key_fingerprint, service_id, allowed_actions,"
-        "       constraints, expires_at, last_used_at, created_at, created_by, revoked_at"
-        " FROM service_api_keys"
-        " WHERE tenant_id = :tid"
-    )
-
+    # Defense-in-depth: pass only full string literals to text() so the
+    # SQL is statically verifiable with no dynamic concatenation.
+    # Option B: explicit branches — each text() call has a constant argument.
+    q_pattern: str | None = None
     if q is not None:
-        escaped = _escape_like(q)
-        pattern = f"%{escaped}%"
-        base_sql += " AND key_fingerprint ILIKE :pat ESCAPE '\\'"
-        params["pat"] = pattern
+        q_pattern = f"%{_escape_like(q)}%"
 
+    svc_uuid: str | None = None
     if service_id is not None:
         svc_uuid = service_id
         if service_id.startswith("svc_"):
@@ -83,12 +77,55 @@ async def list_tenant_api_keys(
                     f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
                     f"-{hex_part[16:20]}-{hex_part[20:]}"
                 )
-        base_sql += " AND service_id = :svc_id"
-        params["svc_id"] = svc_uuid
 
-    base_sql += " ORDER BY created_at DESC"
-
-    rows_result = await session.execute(text(base_sql), params)
+    if q_pattern is not None and svc_uuid is not None:
+        rows_result = await session.execute(
+            text(
+                "SELECT id, agent_id, key_fingerprint, service_id, allowed_actions,"
+                "       constraints, expires_at, last_used_at, created_at, created_by, revoked_at"
+                " FROM service_api_keys"
+                " WHERE tenant_id = :tid"
+                " AND key_fingerprint ILIKE :pat ESCAPE '\\'"
+                " AND service_id = :svc_id"
+                " ORDER BY created_at DESC"
+            ),
+            {"tid": str(tenant_id), "pat": q_pattern, "svc_id": svc_uuid},
+        )
+    elif q_pattern is not None:
+        rows_result = await session.execute(
+            text(
+                "SELECT id, agent_id, key_fingerprint, service_id, allowed_actions,"
+                "       constraints, expires_at, last_used_at, created_at, created_by, revoked_at"
+                " FROM service_api_keys"
+                " WHERE tenant_id = :tid"
+                " AND key_fingerprint ILIKE :pat ESCAPE '\\'"
+                " ORDER BY created_at DESC"
+            ),
+            {"tid": str(tenant_id), "pat": q_pattern},
+        )
+    elif svc_uuid is not None:
+        rows_result = await session.execute(
+            text(
+                "SELECT id, agent_id, key_fingerprint, service_id, allowed_actions,"
+                "       constraints, expires_at, last_used_at, created_at, created_by, revoked_at"
+                " FROM service_api_keys"
+                " WHERE tenant_id = :tid"
+                " AND service_id = :svc_id"
+                " ORDER BY created_at DESC"
+            ),
+            {"tid": str(tenant_id), "svc_id": svc_uuid},
+        )
+    else:
+        rows_result = await session.execute(
+            text(
+                "SELECT id, agent_id, key_fingerprint, service_id, allowed_actions,"
+                "       constraints, expires_at, last_used_at, created_at, created_by, revoked_at"
+                " FROM service_api_keys"
+                " WHERE tenant_id = :tid"
+                " ORDER BY created_at DESC"
+            ),
+            {"tid": str(tenant_id)},
+        )
     rows = rows_result.fetchall()
 
     items = []

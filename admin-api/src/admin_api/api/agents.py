@@ -358,26 +358,14 @@ async def list_agents(
     """
     await set_tenant_context(session, tenant_id)
 
-    params: dict = {"tenant_id": str(tenant_id)}
-
-    base_sql = (
-        "SELECT"
-        " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-        " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
-        " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
-        " COALESCE(("
-        "   SELECT COUNT(*) FROM permission_grants pg"
-        "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
-        " ), 0) AS grants_count"
-        " FROM agents a WHERE a.tenant_id = :tenant_id"
-    )
-
+    # Defense-in-depth: pass only full string literals to text() so the
+    # SQL is statically verifiable with no dynamic concatenation.
+    # Option B: explicit branches — each text() call has a constant argument.
+    q_pattern: str | None = None
     if q is not None:
-        escaped = _escape_like(q)
-        pattern = f"%{escaped}%"
-        base_sql += " AND (a.name ILIKE :pat ESCAPE '\\' OR a.description ILIKE :pat ESCAPE '\\')"
-        params["pat"] = pattern
+        q_pattern = f"%{_escape_like(q)}%"
 
+    svc_uuid: str | None = None
     if has_access_to_service_id is not None:
         try:
             svc_uuid = _wire_id_to_uuid(has_access_to_service_id, "svc_")
@@ -387,19 +375,89 @@ async def list_agents(
                 status_code=422,
                 content={"mintkey:code": "invalid_id", "title": "Invalid has_access_to_service_id"},
             )
-        base_sql += (
-            " AND EXISTS ("
-            "   SELECT 1 FROM permission_grants pg"
-            "   WHERE pg.agent_id = a.id"
-            "     AND pg.tenant_id = :tenant_id"
-            "     AND pg.service_id = :svc_id"
-            " )"
+
+    if q_pattern is not None and svc_uuid is not None:
+        result = await session.execute(
+            text(
+                "SELECT"
+                " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+                " COALESCE(("
+                "   SELECT COUNT(*) FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+                " ), 0) AS grants_count"
+                " FROM agents a"
+                " WHERE a.tenant_id = :tenant_id"
+                " AND (a.name ILIKE :pat ESCAPE '\\' OR a.description ILIKE :pat ESCAPE '\\')"
+                " AND EXISTS ("
+                "   SELECT 1 FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id"
+                "     AND pg.tenant_id = :tenant_id"
+                "     AND pg.service_id = :svc_id"
+                " )"
+                " ORDER BY a.created_at"
+            ),
+            {"tenant_id": str(tenant_id), "pat": q_pattern, "svc_id": svc_uuid},
         )
-        params["svc_id"] = svc_uuid
-
-    base_sql += " ORDER BY a.created_at"
-
-    result = await session.execute(text(base_sql), params)
+    elif q_pattern is not None:
+        result = await session.execute(
+            text(
+                "SELECT"
+                " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+                " COALESCE(("
+                "   SELECT COUNT(*) FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+                " ), 0) AS grants_count"
+                " FROM agents a"
+                " WHERE a.tenant_id = :tenant_id"
+                " AND (a.name ILIKE :pat ESCAPE '\\' OR a.description ILIKE :pat ESCAPE '\\')"
+                " ORDER BY a.created_at"
+            ),
+            {"tenant_id": str(tenant_id), "pat": q_pattern},
+        )
+    elif svc_uuid is not None:
+        result = await session.execute(
+            text(
+                "SELECT"
+                " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+                " COALESCE(("
+                "   SELECT COUNT(*) FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+                " ), 0) AS grants_count"
+                " FROM agents a"
+                " WHERE a.tenant_id = :tenant_id"
+                " AND EXISTS ("
+                "   SELECT 1 FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id"
+                "     AND pg.tenant_id = :tenant_id"
+                "     AND pg.service_id = :svc_id"
+                " )"
+                " ORDER BY a.created_at"
+            ),
+            {"tenant_id": str(tenant_id), "svc_id": svc_uuid},
+        )
+    else:
+        result = await session.execute(
+            text(
+                "SELECT"
+                " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+                " COALESCE(("
+                "   SELECT COUNT(*) FROM permission_grants pg"
+                "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+                " ), 0) AS grants_count"
+                " FROM agents a"
+                " WHERE a.tenant_id = :tenant_id"
+                " ORDER BY a.created_at"
+            ),
+            {"tenant_id": str(tenant_id)},
+        )
     rows = result.fetchall()
     agents = [_agent_row_to_dict(r) for r in rows]
     return JSONResponse({"agents": agents})
