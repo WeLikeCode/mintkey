@@ -1,0 +1,94 @@
+name: Container Scan (Trivy)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      # Trigger on any Dockerfile or compose file change
+      - "**/Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose*.yml"
+      # Also trigger on dependency file changes that feed images
+      - "**/requirements.txt"
+      - "**/pyproject.toml"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/package.json"
+      - "**/pnpm-lock.yaml"
+  schedule:
+    # Weekly on Sundays at 06:00 UTC
+    - cron: "0 6 * * 0"
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  build-and-scan:
+    name: Build + Trivy scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: admin-api
+            context: admin-api
+            image: mintkey-admin-api
+          - service: mcp-server
+            context: mcp-server
+            image: mintkey-mcp-server
+          - service: admin-ui
+            context: admin-ui
+            image: mintkey-admin-ui
+          - service: broker
+            context: services/broker
+            image: mintkey-broker
+          - service: vault-adapter
+            context: services/vault-adapter
+            image: mintkey-vault-adapter
+          - service: proxy-plugin
+            context: services/proxy-plugin
+            image: mintkey-proxy-plugin
+          - service: kong-syncer
+            context: services/kong-syncer
+            image: mintkey-kong-syncer
+          - service: seed-job
+            context: seed-job
+            image: mintkey-seed-job
+          - service: mock-backend
+            context: mock-backend
+            image: mintkey-mock-backend
+          - service: jaeger-auth
+            context: jaeger-auth
+            image: mintkey-jaeger-auth
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build image — ${{ matrix.service }}
+        run: |
+          docker build \
+            --tag "${{ matrix.image }}:scan" \
+            "${{ matrix.context }}"
+
+      - name: Trivy scan — ${{ matrix.service }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ matrix.image }}:scan"
+          format: sarif
+          output: "trivy-${{ matrix.service }}.sarif"
+          # Fail CI on HIGH or CRITICAL vulnerabilities
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
+      - name: Upload Trivy SARIF — ${{ matrix.service }}
+        # Upload results even when Trivy exits non-zero so findings appear in
+        # the Security tab. always() ensures the upload runs even after a failure.
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-${{ matrix.service }}.sarif"
+          category: "trivy-${{ matrix.service }}"

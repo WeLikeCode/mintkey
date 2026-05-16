@@ -165,12 +165,14 @@ lint: lint-python lint-go lint-contracts
 
 lint-python:
 	@echo "── Python: ruff ──"
-	cd admin-api && $(UV) run ruff check src/ || true
-	cd mcp-server && $(UV) run ruff check src/ || true
-	cd mintkey-models && $(UV) run ruff check mintkey_models/ || true
+	# Blocking linters: || true masks removed (OSS-3 remediation) so Python lint
+	# failures now exit non-zero and are visible to contributors.
+	cd admin-api && $(UV) run ruff check src/
+	cd mcp-server && $(UV) run ruff check src/
+	cd mintkey-models && $(UV) run ruff check mintkey_models/
 	@echo "── Python: mypy ──"
-	cd admin-api && $(UV) run mypy --strict src/admin_api/ || true
-	cd mintkey-models && $(UV) run mypy --strict mintkey_models/ || true
+	cd admin-api && $(UV) run mypy --strict src/admin_api/
+	cd mintkey-models && $(UV) run mypy --strict mintkey_models/
 
 lint-go:
 	@echo "── Go: vet ──"

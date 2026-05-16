@@ -167,8 +167,11 @@ jobs:
         working-directory: admin-api
         run: uv run pytest ../tests/acceptance/test_openapi_parity.py -v
       - name: Mermaid render gate (T-1.11.7)
+        # Blocking gate: Mermaid render failures surface real diagram-sync bugs.
+        # The || true mask was removed (OSS-3 remediation) so CI now fails on
+        # broken diagrams rather than silently ignoring them.
         working-directory: admin-api
-        run: uv run pytest ../tests/acceptance/test_mermaid_renders.py -v || true
+        run: uv run pytest ../tests/acceptance/test_mermaid_renders.py -v
 
   # ────────────────────────────────────────────────────────────────────────────
   # Acceptance tests (no Docker required)

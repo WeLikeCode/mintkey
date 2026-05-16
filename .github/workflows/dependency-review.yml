@@ -1,0 +1,52 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on moderate or higher severity vulnerabilities
+          fail-on-severity: moderate
+
+          # License policy — Apache-2.0 project (OSS-1 decision E-1)
+          # Allow common permissive licenses compatible with Apache-2.0
+          allow-licenses: >-
+            Apache-2.0,
+            MIT,
+            BSD-2-Clause,
+            BSD-3-Clause,
+            ISC,
+            Unlicense,
+            CC0-1.0,
+            Python-2.0
+
+          # Deny copyleft licenses that would impose reciprocal obligations
+          deny-licenses: >-
+            GPL-2.0,
+            GPL-3.0,
+            LGPL-2.0,
+            LGPL-2.1,
+            LGPL-3.0,
+            AGPL-1.0,
+            AGPL-3.0,
+            EUPL-1.0,
+            EUPL-1.1,
+            EUPL-1.2
+
+          # Post a comment on the PR with the review summary
+          comment-summary-in-pr: always

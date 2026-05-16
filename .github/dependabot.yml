@@ -1,0 +1,200 @@
+version: 2
+
+updates:
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # ── Docker ────────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /admin-api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-admin-api-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /mcp-server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-mcp-server-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /admin-ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-admin-ui-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/broker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-broker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/vault-adapter
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-vault-adapter-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/proxy-plugin
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-proxy-plugin-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/kong-syncer
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-kong-syncer-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /seed-job
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-seed-job-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /mock-backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-mock-backend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /jaeger-auth
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-jaeger-auth-minor-patch:
+        update-types: [minor, patch]
+
+  # ── pip (Python) ──────────────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /admin-api
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      pip-admin-api-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /mcp-server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      pip-mcp-server-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /mintkey-models
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      pip-mintkey-models-minor-patch:
+        update-types: [minor, patch]
+
+  # ── npm (Node / TypeScript) ───────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /admin-ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-admin-ui-minor-patch:
+        update-types: [minor, patch]
+
+  # ── Go modules ────────────────────────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /services/broker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      gomod-broker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /services/vault-adapter
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      gomod-vault-adapter-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /services/proxy-plugin
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      gomod-proxy-plugin-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /services/kong-syncer
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      gomod-kong-syncer-minor-patch:
+        update-types: [minor, patch]
