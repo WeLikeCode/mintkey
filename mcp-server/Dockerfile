@@ -1,6 +1,6 @@
 # MCP Server — Python 3.12 + FastAPI (ADR-0009, ADR-0012)
 # Build context must be repo root so mintkey-models/ is accessible.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
