@@ -1,0 +1,18 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: "016-sessions-auth-method"
+      author: "ui-redux-1"
+      changes:
+        - addColumn:
+            tableName: sessions
+            columns:
+              - column:
+                  name: auth_method
+                  type: TEXT
+                  constraints:
+                    nullable: true
+      rollback:
+        - dropColumn:
+            tableName: sessions
+            columnName: auth_method

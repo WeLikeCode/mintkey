@@ -119,6 +119,7 @@ async function requireSession(
       isPlatformAdmin: body.operator.is_platform_admin,
       sessionToken: sessionTokenMatch?.[1] ?? "",
       csrfToken: csrfTokenMatch?.[1] ?? "",
+      authMethod: body.operator.auth_method,
     };
 
     next();

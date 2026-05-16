@@ -36,6 +36,8 @@ declare module "express-session" {
       isPlatformAdmin: boolean;
       sessionToken: string;
       csrfToken: string;
+      /** UI-REDUX-1 R2.3: forwarded from whoami — "oidc" | "internal". */
+      authMethod?: "keycloak" | "internal";
     };
   }
 }

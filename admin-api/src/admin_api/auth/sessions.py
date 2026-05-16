@@ -11,10 +11,14 @@ from typing import Any
 from uuid import UUID
 
 
-async def create_session(operator_id: UUID, tenant_id: UUID) -> str:
+async def create_session(
+    operator_id: UUID, tenant_id: UUID, auth_method: str = "oidc"
+) -> str:
     """
     Insert a row into the sessions table and return the session UUID as the token.
     The UUID is the opaque token stored in the mintkey_session cookie.
+
+    auth_method: "oidc" (default, Keycloak login) or "internal" (break-glass login).
     """
     from admin_api.db.session import AsyncSessionLocal
     from mintkey_models.tenant_ctx import set_tenant_context
@@ -30,10 +34,16 @@ async def create_session(operator_id: UUID, tenant_id: UUID) -> str:
             await db.execute(
                 text(
                     "INSERT INTO sessions"
-                    " (id, tenant_id, operator_id, expires_at, last_used_at, created_at)"
-                    " VALUES (:id, :tid, :oid, :exp, now(), now())"
+                    " (id, tenant_id, operator_id, expires_at, last_used_at, created_at, auth_method)"
+                    " VALUES (:id, :tid, :oid, :exp, now(), now(), :auth_method)"
                 ),
-                {"id": session_id, "tid": tenant_id, "oid": operator_id, "exp": expires_at},
+                {
+                    "id": session_id,
+                    "tid": tenant_id,
+                    "oid": operator_id,
+                    "exp": expires_at,
+                    "auth_method": auth_method,
+                },
             )
     return str(session_id)
 

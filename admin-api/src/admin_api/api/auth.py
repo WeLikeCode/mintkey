@@ -82,7 +82,9 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
         # All failures return byte-identical body (ADR-0017.5).
         return JSONResponse(status_code=401, content=INVALID_CREDENTIALS_RESPONSE)
 
-    session_token = await create_session(operator_out.id, operator_out.tenant_id)
+    session_token = await create_session(
+        operator_out.id, operator_out.tenant_id, auth_method="internal"
+    )
     csrf_token = secrets.token_urlsafe(32)
 
     resp = JSONResponse({
@@ -156,21 +158,36 @@ async def _whoami_lookup(session_token: str) -> dict | None:
             )
             result = await db.execute(
                 text(
-                    "SELECT id, tenant_id, email, is_platform_admin FROM operators"
-                    " WHERE id = CAST(:oid AS uuid)"
+                    "SELECT o.id, o.tenant_id, o.email, o.is_platform_admin,"
+                    " s.auth_method"
+                    " FROM operators o"
+                    " JOIN sessions s ON s.id = CAST(:token AS uuid)"
+                    " WHERE o.id = CAST(:oid AS uuid)"
+                    " AND s.expires_at > now()"
                 ),
-                {"oid": str(ctx.operator_id)},
+                {"oid": str(ctx.operator_id), "token": session_token},
             )
             row = result.fetchone()
 
     if row is None:
         return None
 
+    # Normalise auth_method for the UI: DB stores "oidc" (protocol name),
+    # but the frontend badge differentiates only "internal" (break-glass)
+    # vs anything else (Keycloak / OIDC). Map "oidc" → "keycloak" so the
+    # AdminSession type contract is satisfied; NULL legacy rows stay NULL.
+    raw_auth_method = row[4]
+    auth_method = (
+        "keycloak" if raw_auth_method == "oidc"
+        else raw_auth_method  # "internal" or None
+    )
+
     data = {
         "operator_id": str(row[0]),
         "tenant_id": str(row[1]),
         "email": row[2],
         "is_platform_admin": bool(row[3]),
+        "auth_method": auth_method,
     }
     _WHOAMI_CACHE[session_token] = (data, now)
     # Prune cache: evict entries older than TTL to avoid unbounded growth
@@ -284,7 +301,9 @@ async def oidc_callback(code: str, state: str, request: Request) -> Response:
             content={"mintkey:code": "no_local_operator"},
         )
 
-    session_token = await create_session(operator.id, operator.tenant_id)
+    session_token = await create_session(
+        operator.id, operator.tenant_id, auth_method="oidc"
+    )
     csrf_token = secrets.token_urlsafe(32)
 
     # Emit audit event: operator.session.created
