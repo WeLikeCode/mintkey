@@ -5,7 +5,7 @@
 | P0-1 | Legal | Missing root LICENSE | P0 | ⬜ | README claims Apache-2.0 | LICENSE exists and matches docs | |
 | P0-2 | Security | Placeholder disclosure contact | P0 | ⬜ | SECURITY.md | Real contact or explicit owner escalation | |
 | P0-3 | Contracts | OpenAPI validation fails | P0 | ⬜ | missing UnprocessableEntity response | OpenAPI validator exits 0 | |
-| P0-4 | CI | Workflow YAML parse fails | P0 | ⬜ | ci.yml run scalar | Workflow YAML parser exits 0 | |
+| P0-4 | CI | Workflow YAML parse fails | P0 | ✅ | ci.yml run scalar | Workflow YAML parser exits 0 | `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('ci.yml: ok')"` → exit 0; iteration check across all workflows/*.yml → exit 0 (REL-1) |
 | P0-5 | CI | Release-critical checks masked | P0 | ⬜ | || true in CI/Makefile | No masking for critical gates | |
 | P0-6 | Governance | CONTRIBUTING conflicts with no co-author rule | P0 | ⬜ | Co-Authored-By required | Removed from docs/examples | |
 | P0-7 | Docs | Public placeholders remain | P0 | ⬜ | README/QUICKSTART/OpenAPI | No release-blocking placeholders | |

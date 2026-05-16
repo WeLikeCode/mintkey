@@ -87,7 +87,8 @@ jobs:
             print(f'{p}: OK')
           "
       - name: Validate MCP tools YAML
-        run: python3 -c "import yaml; yaml.safe_load(open('docs/architecture/contracts/mcp/tools.yaml')); print('MCP YAML: OK')"
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('docs/architecture/contracts/mcp/tools.yaml')); print('MCP YAML: OK')"
 
   # ────────────────────────────────────────────────────────────────────────────
   # Unit tests

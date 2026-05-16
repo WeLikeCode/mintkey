@@ -59,3 +59,24 @@ The prior OSS-readiness `99-report.md:104` claimed "openapi.yaml YAML parse: OK"
 
 ### Next
 Surfacing YELLOW forks to user for the 3 owner-discretion items; will dispatch Wave 1 (REL-1 + REL-2) regardless since they're RED blockers.
+
+---
+
+## 2026-05-16 — REL-1 IMPLEMENTER: fix ci.yml:90 bare-scalar YAML parse error
+
+**Task:** R-5 / REL-1 — `.github/workflows/ci.yml:90` bare-scalar `run:` value contained unquoted `: ` inside a YAML plain scalar, causing all strict YAML parsers (PyYAML, ruamel.yaml, go-yaml.v3) to reject the file.
+
+**Approach:** Option A — converted bare `run:` scalar to `run: |` literal block, matching the existing pattern used by the OpenAPI and JSON Schema validators in the same job.
+
+**Change:** `.github/workflows/ci.yml` line 90 — 1 line changed (bare scalar → `run: |` + indented command on next line).
+
+**Verification:**
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml')); print('ci.yml: ok')"` → exit 0, output `ci.yml: ok`
+- `python3 -c "import yaml, pathlib; [yaml.safe_load(p.read_text()) for p in pathlib.Path('.github/workflows').glob('*.yml')]; print('workflow yaml: ok')"` → exit 0, output `workflow yaml: ok`
+- `yamllint .github/workflows/ci.yml`: no parse errors; only pre-existing warnings (missing `---`, truthy value) and line-length lint on the python3 command (pre-existing, not introduced by this change).
+
+**Matrix:** P0-4 (R-5 / REL-1) ⬜ → ✅
+
+**Commit:** `fix(ci): convert ci.yml:90 to literal-block run: scalar (REL-1)`
+
+**Files touched:** `.github/workflows/ci.yml`, `02-matrix.md`, `04-progress.md`
