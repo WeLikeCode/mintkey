@@ -165,7 +165,7 @@ A PR that bypasses verification with `--no-verify` is rejected.
 
 - Reference the ADR / proposal / `S-*-*` / `OQ-NNN` in the commit body.
 - PR description must include: "Spec it satisfies", "ADRs touched", "Verification output (paste exit codes)".
-- Co-author attribution is required for LLM-assisted commits: add a `Co-Authored-By:` trailer.
+- Do NOT add `Co-Authored-By` trailers naming LLM assistants (Claude, GPT-x, Gemini, etc.). End the commit message at the last meaningful line.
 
 Commit message format example:
 
@@ -179,8 +179,6 @@ Verification:
   pytest tests/architecture/ -q          → 17 passed, exit 0
   openapi-spec-validator                  → exit 0
   protoc --descriptor_set_out=/dev/null  → exit 0
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
 
 ---

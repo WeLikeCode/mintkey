@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Questions and Discussion
+    url: https://github.com/WeLikeCode/mintkey/discussions
+    about: Ask questions, share ideas, and discuss Mintkey usage in GitHub Discussions.
+  - name: Security Vulnerabilities
+    url: mailto:the+security@ciprianiacobescu.com
+    about: Report security vulnerabilities privately. Do NOT open a public issue for security problems.

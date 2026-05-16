@@ -1,0 +1,82 @@
+name: Feature Request
+description: Propose a new feature or enhancement for Mintkey.
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you file
+
+        Mintkey is **pre-alpha software**. The architecture is settled and governed by ADRs.
+        Proposals that require architectural changes should follow the proposal → ADR path
+        described in [`CONTRIBUTING.md`](../CONTRIBUTING.md) before a PR is raised.
+
+        **Do not include credentials, tokens, secrets, or PII in any field below.**
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: |
+        What are you trying to do that you currently cannot?
+        Frame this as a user or operator goal, not a solution.
+        Example: "As an operator, I want to rotate credentials on a schedule without
+        manual intervention so that stale credentials are never long-lived."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed approach (optional)
+      description: |
+        If you have a concrete idea of how this could be implemented, describe it here.
+        Not required — a clear problem statement is sufficient to open discussion.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What other approaches did you consider or try? Why are they insufficient?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity / priority for you
+      description: How much does the absence of this feature affect your evaluation?
+      options:
+        - "nice-to-have — would improve experience but not blocking anything"
+        - "blocking-eval — prevents me from evaluating Mintkey meaningfully"
+        - "critical — required for any use case I have"
+    validations:
+      required: true
+
+  - type: input
+    id: adr
+    attributes:
+      label: Related ADR (if architectural)
+      description: |
+        If this proposal would change an architectural decision (wire contracts, auth scheme,
+        audit model, tenancy model, etc.), reference the relevant ADR number(s) here.
+        Leave blank if this is a non-architectural improvement.
+      placeholder: "e.g., ADR-0011, ADR-0020"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I understand Mintkey is pre-alpha and not for production use.
+          required: true
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have not included credentials, tokens, or PII in this report.
+          required: true

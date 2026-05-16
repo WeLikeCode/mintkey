@@ -1,0 +1,110 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Mintkey.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Before you file
+
+        Mintkey is **pre-alpha software** — not intended for production use.
+        Please search existing issues before opening a new one.
+
+        **Do not include credentials, tokens, secrets, or PII in any field below.**
+
+  - type: input
+    id: summary
+    attributes:
+      label: Short summary
+      description: One sentence describing what went wrong.
+      placeholder: "e.g., Credential rotation endpoint returns 500 when service has no active credentials"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include any error messages (with secrets redacted).
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: |
+        Minimal steps to reproduce. Command-by-command is ideal.
+        Example:
+          1. `docker compose up -d`
+          2. `curl -X POST http://localhost:8000/v1/tenants/...`
+          3. Observe 500 response
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste an excerpt from `docker compose logs <service>`.
+        **Remove any credentials, tokens, or secrets before pasting.**
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: docker_compose_version
+    attributes:
+      label: Docker Compose version
+      description: Output of `docker compose version`
+      placeholder: "Docker Compose version v2.x.x"
+    validations:
+      required: true
+
+  - type: input
+    id: host_os
+    attributes:
+      label: Host OS
+      description: e.g., macOS 15.4, Ubuntu 24.04, Windows 11 + WSL2
+    validations:
+      required: true
+
+  - type: input
+    id: commit_sha
+    attributes:
+      label: Mintkey commit SHA
+      description: Output of `git rev-parse HEAD` in the Mintkey repo
+      placeholder: "abc1234..."
+    validations:
+      required: true
+
+  - type: input
+    id: screenshots
+    attributes:
+      label: Screenshots (optional)
+      description: Add a URL or describe where to find screenshots if applicable.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I understand Mintkey is pre-alpha and not for production use.
+          required: true
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I have removed all credentials, tokens, and PII from this report.
+          required: true
