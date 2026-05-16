@@ -8,7 +8,7 @@
 
 **Mintkey** is a credential broker for AI agents. Operators register backend services with credentials. Agents discover services over MCP, request short‑lived JWTs, and call services through Kong (which injects credentials in‑flight). Multi‑tenant by architecture, single‑tenant by default UX.
 
-The **architecture is settled**. It lives in [`docs/architecture/`](docs/architecture/) and is the source of truth. 17 ADRs and 9 proposals define every wire surface and behavioral guarantee. Implementation must conform.
+The **architecture is settled**. It lives in [`docs/architecture/`](docs/architecture/) and is the source of truth. 20 ADRs (18 Accepted, ADR-0018 Proposed, ADR-0020 Accepted 2026-05-15) define every wire surface and behavioral guarantee. Implementation must conform.
 
 This repo is the **implementation phase**. Code is generated from the architectural specs (Kiro‑driven, spec‑driven, test‑driven).
 
@@ -171,7 +171,7 @@ These come from the architectural decisions and are not negotiable without an AD
 
 ### Tech stack
 - **Admin REST API + MCP Server**: Python 3.12 + FastAPI + Pydantic v2 + SQLAlchemy 2.x async + `asyncpg` + `authlib` + Argon2id + `structlog` + `ruff` + `mypy --strict` + `uv` ([ADR‑0005](docs/architecture/01-architecture/adr/0005-admin-tech-stack.md), [ADR‑0009](docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md), [ADR‑0012](docs/architecture/01-architecture/adr/0012-python-stack-pin.md)).
-- **Admin UI**: AdminJS 7.x + Express + `passport-openidconnect` + `pino` + `vitest` + `pnpm`. AdminJS holds NO DB connection (no `@adminjs/sql`, no `pg`, no `connect-pg-simple`); it is a BFF over the admin-api REST API per [ADR‑0019](docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md). Reads relay the `mintkey_session` cookie. State-changing calls require BOTH the cookie AND a signed Ed25519 `AdminUiSignedRequest` JWT — they must agree (`jwt.sub == session.operator_id`, `jwt.tnt == session.tenant_id`). The effective identity (tenant-context GUC, audit `actor_id`) comes from the SESSION, not the JWT.
+- **Admin UI**: AdminJS 7.x + Express + `express-session` + `pino` + `vitest` + `pnpm`. AdminJS holds NO DB connection (no `@adminjs/sql`, no `pg`, no `connect-pg-simple`); it is a BFF over the admin-api REST API per [ADR-0019](docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md). Reads relay the `mintkey_session` cookie. State-changing calls require BOTH the cookie AND a signed Ed25519 `AdminUiSignedRequest` JWT — they must agree (`jwt.sub == session.operator_id`, `jwt.tnt == session.tenant_id`). The effective identity (tenant-context GUC, audit `actor_id`) comes from the SESSION, not the JWT.
 - **Operator auth (admin-ui, Grafana, Jaeger) flows through Keycloak ([ADR-0020](docs/architecture/adrs/0020-sso-keycloak-canonical-idp.md)).** admin-api owns the OIDC `client_secret`; admin-ui never holds it. Internal-login is OFF by default — gated by `operators.internal_password_hash IS NULL`. Break-glass via `mintkey admin reset-password` CLI.
 - **Egress Proxy plugin, Vault Adapter, Credential Broker, Kong‑syncer**: Go 1.22 + workspace + `pgx/v5` + `chi/v5` + `go-jose/v4` + `sqlc` + `slog` + `modernc.org/sqlite` + distroless ([ADR‑0011](docs/architecture/01-architecture/adr/0011-shared-go-stack.md)).
 - **Egress proxy data plane**: Kong DB‑less + Go plugin via `go-pdk` ([ADR‑0004](docs/architecture/01-architecture/adr/0004-egress-proxy-kong.md)).
@@ -246,7 +246,7 @@ docs/
     00-vision/                  # problem, vision, personas, glossary, iteration plan, roadmap, kiro readiness
     01-architecture/
       01..05-*.md               # system context, container view, quality attrs, V&B, threat model
-      adr/                      # 17 accepted ADRs (canonical path)
+      adr/                      # 20 ADRs (18 accepted, ADR-0018 proposed)
       open-questions.md         # 22 OQ-* tracked items
     02-tech-stack/              # iteration-2 dashboard
     03-flows/                   # E2E-01 + 6 component flows
@@ -320,4 +320,4 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 
 ---
 
-*Last updated: 2026-05-10. Update this file when an architectural decision changes a guardrail.*
+*Last updated: 2026-05-15. Update this file when an architectural decision changes a guardrail.*

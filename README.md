@@ -94,6 +94,8 @@ docker run --rm -v mintkey_bootstrap_secrets:/secrets alpine \
 
 Admin UI: `http://localhost:8081` — full port map in [`PORTS.md`](PORTS.md).
 
+> Log in at `http://localhost:8081` — click **Sign in with Keycloak** and paste the password above. Full auth reference: [docs/AUTH.md](docs/AUTH.md).
+
 Full walkthrough: [`docs/guides/github-quickstart.md`](docs/guides/github-quickstart.md).
 
 ---
@@ -105,6 +107,7 @@ Full walkthrough: [`docs/guides/github-quickstart.md`](docs/guides/github-quicks
 | Run the demo | [`docs/guides/github-quickstart.md`](docs/guides/github-quickstart.md) |
 | Understand the architecture | [`docs/architecture/README.md`](docs/architecture/README.md) |
 | Deploy on a LAN or behind a reverse proxy | [`docs/NETWORK.md`](docs/NETWORK.md) — env-var setup for `MINTKEY_MCP_PUBLIC_URL` / `MINTKEY_PROXY_PUBLIC_URL` |
+| Operator auth, SSO, break-glass | [docs/AUTH.md](docs/AUTH.md) |
 | Contribute code | [`CONTRIBUTING.md`](CONTRIBUTING.md), then [`docs/SDD.md`](docs/SDD.md) |
 | Debug a running stack | [`docs/DEBUG.md`](docs/DEBUG.md) |
 | Report a bug or security issue | [`docs/REPORTING.md`](docs/REPORTING.md) / [`SECURITY.md`](SECURITY.md) |
@@ -129,7 +132,7 @@ docs/
     README.md                      reading order
     00-vision/                     problem, vision, personas, roadmap
     01-architecture/
-      adr/                         19 accepted ADRs (canonical path)
+      adr/                         20 ADRs (18 accepted, ADR-0018 proposed)
       open-questions.md            22 OQ-* tracked items
     03-flows/                      E2E-01 + 6 component flows
     contracts/                     REST OpenAPI, MCP tools, event schemas, proto

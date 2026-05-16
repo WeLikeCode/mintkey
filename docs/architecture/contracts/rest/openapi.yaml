@@ -235,10 +235,23 @@ paths:
       operationId: authInternalLogin
       summary: Internal username + password login (bootstrap and break-glass).
       description: |
-        Per ADR-0005, an internal Argon2id-hashed credential is provisioned
-        for the bootstrap admin and remains available as a break-glass when
-        the configured OIDC IdP is unreachable. Disabled when the operator
-        toggles `internal_auth.enabled = false`.
+        Per ADR-0020 D2-b, the internal username+password path is governed by
+        the presence of `operators.internal_password_hash` in the database,
+        not a feature-flag toggle:
+
+        - **404** — returned when `internal_password_hash IS NULL` (the default
+          state after SSO bootstrap). This is the normal production posture;
+          the endpoint effectively does not exist until a hash is set.
+        - **200 + `mintkey_session` cookie** — returned when a hash exists
+          *and* the submitted credentials match.
+        - **401** — returned when a hash exists but credentials do not match.
+
+        The hash is managed exclusively via the CLI:
+        - `mintkey admin reset-password --email <e>` — set or rotate the hash.
+        - `mintkey admin clear-password --email <e>` — clear the hash (restores
+          the 404 posture, effectively disabling break-glass for that operator).
+
+        Argon2id KDF parameters follow ADR-0020 §4.
       security: []
       requestBody:
         required: true
@@ -267,6 +280,7 @@ paths:
                   username: "admin@local"
                   email: "admin@local"
                   platform_admin: true
+                  auth_method: "internal"
                   created_at: "2026-05-10T10:15:00Z"
                   updated_at: "2026-05-10T10:15:00Z"
                 active_tenant:
@@ -279,6 +293,20 @@ paths:
                     role: "Admin"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Break-glass disabled — no internal password hash is set for this operator.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: "about:blank"
+                title: "Not Found"
+                status: 404
+                detail: "Internal password authentication is not configured for this operator (operators.internal_password_hash IS NULL)."
+                instance: "/v1/auth/internal-login"
+                "mintkey:code": "break_glass_disabled"
+                "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
         "429":
           $ref: "#/components/responses/RateLimited"
 
@@ -321,6 +349,7 @@ paths:
                   username: "alice@example.com"
                   email: "alice@example.com"
                   platform_admin: false
+                  auth_method: "oidc"
                   created_at: "2026-04-20T09:00:00Z"
                   updated_at: "2026-05-09T14:11:02Z"
                 active_tenant:
@@ -3138,6 +3167,15 @@ components:
           format: email
         platform_admin:
           type: boolean
+        auth_method:
+          type: ["string", "null"]
+          enum: ["oidc", "keycloak", "internal", null]
+          description: |
+            How this operator authenticated in the current session (UI-REDUX-1).
+            `"oidc"` — authenticated via the configured OIDC provider.
+            `"keycloak"` — authenticated via Keycloak directly.
+            `"internal"` — authenticated via the break-glass internal password (ADR-0020 D2-b).
+            `null` — legacy session pre-dating the `auth_method` column; treat as unknown.
         created_at:
           $ref: "#/components/schemas/Timestamp"
         updated_at:

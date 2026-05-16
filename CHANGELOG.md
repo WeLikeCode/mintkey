@@ -68,6 +68,54 @@ Initial release. Template skeleton generalized for cross-engagement reuse.
 
 All notable implementation changes to the Mintkey credential broker MVP.
 
+## [1.1.0] — 2026-05-15
+
+### Added
+- **Keycloak SSO end-to-end** for admin-ui, Grafana, and Jaeger (ADR-0020).
+  Operators sign in once via the Keycloak `mintkey` realm; admin-api owns the
+  OIDC `client_secret`; admin-ui delegates auth via `/v1/auth/whoami`.
+- **CLI break-glass**: `mintkey admin reset-password --email <e>` / `clear-password`
+  for emergency access when Keycloak is unreachable (D2-b).
+- **LAN-friendly canonical public-URL env vars**: `MINTKEY_MCP_PUBLIC_URL`,
+  `MINTKEY_PROXY_PUBLIC_URL`, `MINTKEY_KEYCLOAK_PUBLIC_URL`,
+  `MINTKEY_KEYCLOAK_INTERNAL_URL`, `MINTKEY_ADMIN_API_PUBLIC_URL`,
+  `MINTKEY_ADMIN_UI_PUBLIC_URL`, `MINTKEY_GRAFANA_PUBLIC_URL`,
+  `MINTKEY_JAEGER_PUBLIC_URL`. Legacy aliases (`MCP_BASE_URL`,
+  `MINTKEY_MCP_URL`, `MINTKEY_PROXY_URL`, `KONG_PROXY_URL`) accepted with
+  one-time WARN log.
+- **`docs/NETWORK.md`** (operator-facing) and **`docs/AUTH.md`** (Keycloak flow,
+  break-glass, troubleshooting).
+- **DB migrations**: `014-operators-keycloak` (oidc_sub UNIQUE),
+  `015-app-role-passwords` (deterministic mintkey_app + _subscriber
+  passwords, fixing first-boot connection failure), `016-sessions-auth-method`
+  (tracks auth_method per session so the UI can display the right badge).
+
+### Changed
+- **admin-ui**: replaced `buildAuthenticatedRouter` + `passport-openidconnect`
+  with `buildRouter` + custom `requireSession` middleware + `express-session`
+  (SSO-G).
+- **discovery.py** step-3 instruction prefix corrected from `/proxy/<path>` to
+  `/v1/call/<svc>/<path>` (NET-REDUX-1).
+- **agent-bootstrap skill** scrubbed of Docker-internal hostnames (NET-REDUX-1).
+- **Kong admin port** bound to `127.0.0.1:8001` (was 0.0.0.0); data plane on 8000
+  unchanged (D4).
+- **Jaeger UI** moved behind `jaeger-auth` oauth2-proxy sidecar; direct Jaeger
+  port is internal-only (SSO-E).
+
+### Fixed
+- **admin-api** expected `iss` claim now uses `MINTKEY_KEYCLOAK_PUBLIC_URL` (was
+  the internal URL, which broke browser-side login) (SSO-REDUX-2).
+- **PKCE S256** now realm-enforced on all three Keycloak clients (admin-api,
+  Grafana, Jaeger) (SSO-REDUX-2).
+- **admin-ui** no longer hangs on action POSTs: removed global `express.json()`
+  which was draining the request body before formidable could read it
+  (SSO-REDUX-3).
+- **admin-ui action handlers** now thread the operator's session into admin-api
+  via `operatorOptsFromAdmin()` — fixes test-connection and several other
+  actions that were returning 403/500 (UI-E2E `fcac7053`).
+- **Permissions endpoint URL**: `POST /v1/tenants/{tid}/agents/{aid}/permissions`
+  (was `/v1/tenants/{tid}/permissions` which 405'd) (UI-E2E `e21ba22e`).
+
 ## [1.0.1] — 2026-05-11
 
 ### Added
