@@ -1,14 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Mintkey favicon</title>
-  <rect width="64" height="64" rx="14" fill="#101820"/>
-  <path fill="#2EE6A6" d="M32 55C18 48 11 37 13 26c1-13 12-22 26-29 13 9 20 19 19 30-2 14-11 23-26 28Z"/>
-  <path fill="#F7FAF8" d="M35 9v40c9-5 15-12 16-21 1-7-3-14-10-19h-6Z"/>
-  <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M20 37h7l10 7h10"/>
-  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M36 36h7l8-8"/>
-  <circle cx="20" cy="37" r="5" fill="#2EE6A6"/>
-  <circle cx="20" cy="37" r="2.4" fill="#F7FAF8"/>
-  <circle cx="51" cy="28" r="5" fill="#2EE6A6"/>
-  <circle cx="47" cy="44" r="5" fill="#2EE6A6"/>
-  <path fill="#F7FAF8" d="M33 57l-6-4V30a10 10 0 1 1 12 0v11h7v6h-7v4h5v6h-5v6l-6 4Zm0-31a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/>
-  <circle cx="33" cy="22" r="4" fill="#101820"/>
+  <defs>
+    <linearGradient id="icon-bg" x1="8" y1="6" x2="58" y2="61" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#071016"/>
+      <stop offset="1" stop-color="#101820"/>
+    </linearGradient>
+    <linearGradient id="leaf-fill" x1="13" y1="54" x2="47" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#25C98E"/>
+      <stop offset=".65" stop-color="#2EE6A6"/>
+      <stop offset="1" stop-color="#36D69D"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#icon-bg)"/>
+  <path fill="url(#leaf-fill)" d="M32 8c-9 5-16 11-20 19-4 9-3 18 3 26 4 5 10 10 17 14 8-4 15-10 19-16 6-9 7-19 2-28-4-7-11-12-21-15Z"/>
+  <path fill="#101820" d="M33 13c8 4 14 10 18 17 4 8 2 17-4 24-4 3-8 6-14 9V43c7-2 13-7 17-14-4-6-9-12-17-16Z"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M34 12c9 5 16 12 19 21 3 10-1 20-12 28"/>
+  <path fill="none" stroke="#F7FAF8" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M18 39c5 2 8 6 14 9"/>
+  <path fill="none" stroke="#2EE6A6" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M33 43c7 2 12 1 17-2"/>
+  <circle cx="17" cy="39" r="4" fill="#F7FAF8"/>
+  <circle cx="17" cy="39" r="1.7" fill="#2EE6A6"/>
+  <circle cx="52" cy="31" r="5" fill="#2EE6A6"/>
+  <circle cx="50" cy="41" r="5" fill="#2EE6A6"/>
+  <path fill="#F7FAF8" fill-rule="evenodd" d="M33 17a11 11 0 0 0-5 21v20l5 3 8-5v-4h-6v-4h8v-6h-8v-4a11 11 0 0 0-2-21Zm0 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"/>
+  <circle cx="33" cy="28" r="4" fill="#101820"/>
 </svg>
