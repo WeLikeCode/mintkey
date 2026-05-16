@@ -93,20 +93,19 @@ checklist before sharing access with others:
 
 ## Container hardening status (pre-alpha gaps)
 
-The table below is an audit snapshot. These items are DEFERRED to a future session and are not
-fixed in the current codebase. Operators should be aware of the gaps.
+The table below is an audit snapshot reflecting the state after REL-3 (2026-05-16).
 
 **Audit date:** 2026-05-16  
 **Dockerfiles surveyed:** 10
 
 | Service | Dockerfile | Base image | USER directive | HEALTHCHECK | Base pinned by digest |
 |---|---|---|---|---|---|
-| admin-api | `admin-api/Dockerfile` | `python:3.12-slim` | None — runs as root | None | No (tag only) |
-| admin-ui | `admin-ui/Dockerfile` | `node:22-slim` | None — runs as root | None | No (tag only) |
-| jaeger-auth | `jaeger-auth/Dockerfile` | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` (build) + `alpine:3.19` (runtime) | None — runs as root | None | No (tag only) |
-| mcp-server | `mcp-server/Dockerfile` | `python:3.12-slim` | None — runs as root | None | No (tag only) |
-| mock-backend | `mock-backend/Dockerfile` | `python:3.12-slim` | None — runs as root | None | No (tag only) |
-| seed-job | `seed-job/Dockerfile` | `python:3.12-slim` | None — runs as root | None (one-shot job) | No (tag only) |
+| admin-api | `admin-api/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8080/v1/health` | No (tag only) |
+| admin-ui | `admin-ui/Dockerfile` | `node:22-slim` | `node` user (UID 1000, pre-created by base image) | `node` http.get on `:8081/health` | No (tag only) |
+| jaeger-auth | `jaeger-auth/Dockerfile` | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` (build) + `alpine:3.19` (runtime) | UID 65532 (`oauth2proxy`) | `wget -qO- http://localhost:4180/ping` | No (tag only) |
+| mcp-server | `mcp-server/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8082/health` | No (tag only) |
+| mock-backend | `mock-backend/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8999/health` | No (tag only) |
+| seed-job | `seed-job/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | None (one-shot job — HEALTHCHECK deferred) | No (tag only) |
 | broker | `services/broker/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
 | kong-syncer | `services/kong-syncer/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
 | proxy-plugin | `services/proxy-plugin/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
@@ -114,23 +113,35 @@ fixed in the current codebase. Operators should be aware of the gaps.
 
 ### Summary
 
-- **USER directive:** 0 of 10 Dockerfiles have an explicit `USER` directive. The four Go services
-  use `gcr.io/distroless/static-debian12` which defaults to UID 65534 (`nonroot`) implicitly,
-  but this is not explicit and has not been verified against file-permission assumptions. The six
-  Python/Node/Alpine services run as root.
-- **HEALTHCHECK directive:** 0 of 10 Dockerfiles have a `HEALTHCHECK` instruction. The `vault-adapter`
-  bundles `grpc_health_probe` for liveness but does not wire it as a `HEALTHCHECK`. Docker Compose
-  healthchecks are defined in `docker-compose.yml` for some services, which is acceptable for
-  compose-based deployments but does not protect standalone `docker run` invocations.
+- **USER directive:** 6 of 10 Dockerfiles now have an explicit `USER` directive (REL-3, 2026-05-16).
+  The four Go services use `gcr.io/distroless/static-debian12` which defaults to UID 65534
+  (`nonroot`) implicitly; explicit USER addition for distroless services is deferred.
+- **HEALTHCHECK directive:** 5 of 10 Dockerfiles now have a `HEALTHCHECK` instruction (REL-3,
+  2026-05-16). `seed-job` is a one-shot init container — HEALTHCHECK not applicable. The four Go
+  distroless services have no Dockerfile HEALTHCHECK; compose-level healthchecks cover them for
+  compose deployments. The `vault-adapter` bundles `grpc_health_probe` for liveness but does not
+  wire it as a Dockerfile `HEALTHCHECK`. Dockerfile HEALTHCHECK for distroless services is deferred.
 - **Digest pinning:** 0 of 10 Dockerfiles pin base images by `@sha256` digest. All use mutable
   tags. A compromised tag redeploy would silently change the base image. Digest pinning is
   deferred to a future session alongside the release workflow (OSS-4).
 
-**Planned remediation:** Dockerfile `USER` and `HEALTHCHECK` additions are deferred to a
-dedicated future session. The change is non-trivial — adding `USER` often requires adjusting
-file ownership, log-path permissions, and healthcheck commands per service. Each service must be
-browser-tested after the change. See `team/remediation/2026-05-16-oss-readiness/02-matrix.md`
-rows F-21, F-22, F-23 for tracking status.
+### Operator note — bootstrap_secrets volume on existing installs
+
+When upgrading from a pre-REL-3 installation, the `bootstrap_secrets` Docker volume may contain
+files owned by root (UID 0). The six non-distroless services now run as UID 65532 (or UID 1000
+for admin-ui). To fix permissions after a stack upgrade:
+
+```bash
+# One-time migration — safe to run with stack up:
+docker run --rm -v mintkey_bootstrap_secrets:/secrets alpine:3.19 chown -R 65532:65532 /secrets
+```
+
+Fresh installs are unaffected — Docker creates the volume directory owned by the first writer
+(UID 65532 from seed-job).
+
+**REL-3 verification (2026-05-16):** All 5 long-running services (admin-api, mcp-server, admin-ui,
+mock-backend, jaeger-auth) rebuilt and confirmed healthy; `id` check confirms uid != 0 for each;
+HEALTHCHECK registered on all 5 containers; data preserved (svc=4, agents=3, grants=2).
 
 ---
 

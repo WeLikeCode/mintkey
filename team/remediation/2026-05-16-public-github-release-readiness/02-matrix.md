@@ -12,7 +12,7 @@
 | P1-1 | Governance | Missing OSS templates | P1 | ⬜ | .github only workflows | Templates added | |
 | P1-2 | Supply Chain | Missing dependency/security automation | P1 | ⬜ | no Dependabot/CodeQL/etc | Automation added or deferred | |
 | P1-3 | Packaging | Missing .dockerignore | P1 | ⬜ | none found | Dockerignore coverage exists | |
-| P1-4 | Containers | Runtime hardening unclear | P1 | ⬜ | Dockerfiles | Non-root or documented deferral | |
-| P1-5 | Release | Version/release policy inconsistent | P1 | ⬜ | 0.1.0-experimental vs 1.0.0 | Policy coherent | |
+| P1-4 | Containers | Runtime hardening unclear | P1 | ✅ | Dockerfiles | Non-root or documented deferral | USER 65532 + HEALTHCHECK added to 6 non-distroless Dockerfiles; admin-ui USER node (UID 1000); seed-job USER 65532 (no HEALTHCHECK, one-shot); all 5 long-running services rebuilt, healthy, uid≠0 confirmed; data preserved (svc=4 agents=3 grants=2); DEPLOYMENT.md operator upgrade note added; digest pinning deferred per owner (REL-3) |
+| P1-5 | Release | Version/release policy inconsistent | P1 | ✅ | 0.1.0-experimental vs 1.0.0 | Policy coherent | 8 secondary surfaces aligned to `0.1.0-preview.1`; `rg '0.1.0-experimental'` → 0 hits in runtime/contract files; `curl /openapi.json info.version` → `0.1.0-preview.1`; JSON/YAML/proto parse ok (REL-4) |
 | P1-6 | Final | Full readiness verification | P1 | ⬜ | final gates | 99-report complete | |
 | R-15 / REL-5 | Gitignore | Screenshot dirs untracked (admin-ui/screenshots-chunk-g/, admin-ui/screenshots-verify/) | P1 | ✅ | 2 untracked dirs exposed to `git add -A` | `admin-ui/screenshots-*/` glob in .gitignore; `git status --short \| grep screenshots` empty | `git check-ignore -v` → both dirs matched at .gitignore:20 (REL-5) |

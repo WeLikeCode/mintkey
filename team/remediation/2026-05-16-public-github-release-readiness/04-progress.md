@@ -121,3 +121,76 @@ Surfacing YELLOW forks to user for the 3 owner-discretion items; will dispatch W
 **Commit:** `chore(gitignore): hide admin-ui playwright screenshot dirs (REL-5)`
 
 **Files touched:** `.gitignore`, `02-matrix.md`, `04-progress.md`
+
+---
+
+## 2026-05-16 — REL-4 IMPLEMENTER: align 8 secondary 0.1.0-experimental surfaces to 0.1.0-preview.1
+
+**Task:** R-13 / REL-4 — 8 secondary surfaces still carried `0.1.0-experimental` against the canonical `0.1.0-preview.1` set by OSS-4. Critical surface: `admin-api/src/admin_api/main.py:60` (FastAPI runtime `version=` field, directly reflected in `/openapi.json`).
+
+**Approach:** Read-then-edit each file to verify exact location before patching. Single target string `0.1.0-experimental` → `0.1.0-preview.1` per file; formatting preserved (quotes, YAML alignment, proto comment spacing).
+
+**Changes:**
+1. `SECURITY.md:11` — version reference in supported-versions section
+2. `admin-api/src/admin_api/main.py:60` — FastAPI `version="0.1.0-preview.1"` (CRITICAL)
+3. `docs/architecture/contracts/events/audit-event.schema.json:7` — `x-mintkey-version`
+4. `docs/architecture/contracts/events/change-event.schema.json:7` — `x-mintkey-version`
+5. `docs/architecture/contracts/mcp/tools.yaml:53` — `server.version`
+6. `docs/architecture/contracts/vault-adapter/vault.proto:4` — `// Version :` comment
+7. `docs/architecture/contracts/README.md:9` — version reference in stability description
+8. `docs/architecture/contracts/events/span-attributes.md:3,125` — header + resource attribute example (2 occurrences replaced)
+
+**Verification:**
+- `rg '0.1.0-experimental'` tree-wide (excl. `_archive/`, `.git/`, `*.lock`): 0 hits in runtime/contract files; remaining hits are team/remediation session docs (historical context), auto-generated `*.pb.go` files, `mcp-server/` (separate surface, out of scope for this chunk), and `CHANGELOG.md` prose — all confirmed non-target.
+- `rg -nc '0.1.0-preview.1'` on all 8 target files: ≥1 per file ✓
+- `json.load(audit-event.schema.json)` → ok; `json.load(change-event.schema.json)` → ok
+- `yaml.safe_load(tools.yaml)` → ok
+- `protoc --proto_path=... vault.proto --descriptor_set_out=/dev/null` → exit 0 ok
+- `docker compose build admin-api` → built; `docker compose up -d --force-recreate admin-api` → started
+- `curl -s http://localhost:8080/openapi.json | python3 -c "... d['info']['version']"` → `0.1.0-preview.1` ✓
+- `pytest tests/ -k "openapi_parity" -v`: 4 tests PASS; `test_openapi_parity_snapshot` FAIL — pre-existing snapshot mismatch on router structure (`health` prefix `/v1/health`→`/metrics`, new `service_templates` router not in stored snapshot); this failure predates REL-4 and is unrelated to the version string change.
+
+**Matrix:** P1-5 (R-13 / REL-4) ⬜ → ✅
+
+**Commit:** (pending — no commit issued; no push)
+
+**Files touched:** `SECURITY.md`, `admin-api/src/admin_api/main.py`, `docs/architecture/contracts/events/audit-event.schema.json`, `docs/architecture/contracts/events/change-event.schema.json`, `docs/architecture/contracts/mcp/tools.yaml`, `docs/architecture/contracts/vault-adapter/vault.proto`, `docs/architecture/contracts/README.md`, `docs/architecture/contracts/events/span-attributes.md`, `01-orchestrator-chunks.md`, `02-matrix.md`, `04-progress.md`
+
+---
+
+## 2026-05-16 — REL-3 IMPLEMENTER: USER + HEALTHCHECK on 6 non-distroless Dockerfiles
+
+**Task:** R-11 / REL-3 — The 6 non-distroless Dockerfiles (admin-api, mcp-server, admin-ui, mock-backend, seed-job, jaeger-auth) had no `USER` directive (all ran as root) and no Dockerfile `HEALTHCHECK` instruction. Digest pinning was explicitly deferred by owner.
+
+**Approach:**
+- Python services (admin-api, mcp-server, mock-backend, seed-job): `RUN useradd -u 65532 -M -s /sbin/nologin nonroot && chown -R 65532:65532 /app` then `USER 65532:65532`. UID 65532 matches distroless `nonroot` convention for consistency across the fleet.
+- admin-ui (node:22-slim): node:22-slim ships with pre-created `node` user (UID 1000); used `RUN chown -R node:node /app && USER node`.
+- jaeger-auth (alpine): `RUN adduser -D -u 65532 -s /sbin/nologin oauth2proxy && USER 65532:65532`. Also added `wget` to `apk add` so the Dockerfile HEALTHCHECK can use `wget -qO- http://localhost:4180/ping`.
+- HEALTHCHECK: python3 urllib inline one-liner for python services (no curl in slim); `node -e require('http').get(...)` for admin-ui; `wget -qO-` for jaeger-auth. Intervals match docker-compose.yml healthchecks (compose overrides Dockerfile at runtime; Dockerfile provides fallback for `docker run`).
+- seed-job: USER 65532 added; HEALTHCHECK omitted (one-shot init container).
+
+**Volume permission issue (blocked, resolved before reporting):** The existing `bootstrap_secrets` Docker volume had files owned by root (written by the prior root seed-job). After applying USER 65532, both seed-job and jaeger-auth failed with `PermissionError` on volume reads/writes. Per hard rule 6, this was documented rather than silently reverted. Fix: one-time `chown -R 65532:65532` on the mounted volume via a temporary alpine container. Documented in DEPLOYMENT.md as an operator upgrade note. Fresh installs are unaffected (Docker creates the volume directory owned by the first writer, now UID 65532).
+
+**Changes (8 files):**
+1. `admin-api/Dockerfile` — `useradd 65532`, `USER 65532:65532`, `HEALTHCHECK python3 :8080/v1/health`
+2. `mcp-server/Dockerfile` — `useradd 65532`, `USER 65532:65532`, `HEALTHCHECK python3 :8082/health`
+3. `admin-ui/Dockerfile` — `chown node:node /app`, `USER node`, `HEALTHCHECK node http.get :8081/health`; also added `wget` to alpine layer for jaeger-auth
+4. `mock-backend/Dockerfile` — `useradd 65532`, `USER 65532:65532`, `HEALTHCHECK python3 :8999/health`
+5. `seed-job/Dockerfile` — `useradd 65532`, `USER 65532:65532`, no HEALTHCHECK (one-shot)
+6. `jaeger-auth/Dockerfile` — `adduser 65532 oauth2proxy`, `USER 65532:65532`, `HEALTHCHECK wget :4180/ping`; added `wget` to `apk add`
+7. `docs/DEPLOYMENT.md` — audit table updated (0→6 USER, 0→5 HEALTHCHECK); operator upgrade note added
+8. `01-orchestrator-chunks.md` — REL-3 ⬜ → ✅
+
+**Verification:**
+- `docker compose build admin-api mcp-server admin-ui mock-backend seed-job jaeger-auth` → all 6 Built (no errors)
+- Pre-snapshot: svc=4 agents=3 grants=2
+- `docker compose up -d --force-recreate admin-api mcp-server admin-ui mock-backend jaeger-auth` → all started
+- `docker compose run --rm seed-job` → exit 0; all Keycloak steps idempotent; secrets refreshed
+- `docker compose ps` → admin-api, mcp-server, admin-ui, mock-backend, jaeger-auth all `Up (healthy)`
+- `id` check per service: `uid=65532(nonroot)` for admin-api, mcp-server, mock-backend; `uid=1000(node)` for admin-ui; `uid=65532(oauth2proxy)` for jaeger-auth — all uid≠0
+- `docker inspect .Config.Healthcheck` — non-null JSON with Test/Interval on all 5 long-running services
+- Post-snapshot: svc=4 agents=3 grants=2 → `DATA PRESERVED`
+
+**Matrix:** P1-4 (R-11 / REL-3) ⬜ → ✅
+
+**Files touched:** `admin-api/Dockerfile`, `mcp-server/Dockerfile`, `admin-ui/Dockerfile`, `mock-backend/Dockerfile`, `seed-job/Dockerfile`, `jaeger-auth/Dockerfile`, `docs/DEPLOYMENT.md`, `01-orchestrator-chunks.md`, `02-matrix.md`, `04-progress.md`

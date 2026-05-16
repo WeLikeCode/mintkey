@@ -26,8 +26,8 @@
 
 | # | Chunk | Owner files | Status |
 |---|---|---|---|
-| REL-3 | Container hardening (USER + HEALTHCHECK + optional digest pin) | 6 non-distroless Dockerfiles | ⬜ pending — owner decision |
-| REL-4 | Align secondary `0.1.0-experimental` surfaces to canonical | 8 files incl. `admin-api/src/admin_api/main.py:60` | ⬜ pending — owner decision |
+| REL-3 | Container hardening (USER + HEALTHCHECK + optional digest pin) | 6 non-distroless Dockerfiles | ✅ done |
+| REL-4 | Align secondary `0.1.0-experimental` surfaces to canonical | 8 files incl. `admin-api/src/admin_api/main.py:60` | ✅ done |
 | REL-5 | Gitignore screenshot dirs | `.gitignore` | ⬜ pending — owner decision |
 
 ### Wave 3 (after Wave 1+2)
