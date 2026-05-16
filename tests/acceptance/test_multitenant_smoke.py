@@ -238,6 +238,7 @@ def test_two_tenants_cant_see_each_others_services():
             self.auth_scheme = "bearer"
             self.openapi_url = None
             self.status = "active"
+            self.current_key_version = 1  # DB default (004-services.yaml: INTEGER DEFAULT 1 NOT NULL)
             self.created_at = None
             self.updated_at = None
 
