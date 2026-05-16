@@ -213,6 +213,9 @@ async def test_get_agent_does_not_return_api_key(app, mock_audit, mock_notify) -
     mock_row.rate_limit_rps = None
     mock_row.created_at = None
     mock_row.updated_at = None
+    mock_row.api_key_expires_at = None
+    mock_row.api_key_version = 1
+    mock_row.api_key_last_rotated_at = None
 
     async def mock_db_session():
         session = MagicMock()
@@ -291,3 +294,330 @@ async def test_list_agents_returns_200(app) -> None:
     body = resp.json()
     assert "agents" in body
     assert isinstance(body["agents"], list)
+
+
+# ---------------------------------------------------------------------------
+# UX-FB-AK-1 — expires_in on create
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_agent_default_expiry_is_null(app, mock_audit, mock_notify) -> None:
+    """
+    POST without expires_in → api_key_expires_at is None (back-compat).
+    Source: UX-FB-AK-1.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            BASE_URL_PATH,
+            json={"name": "no-expiry-agent"},
+        )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body.get("api_key_expires_at") is None, (
+        f"Expected null api_key_expires_at for default create, got: {body.get('api_key_expires_at')}"
+    )
+    assert body.get("api_key_version") == 1
+    assert body.get("api_key_last_rotated_at") is None
+
+
+@pytest.mark.asyncio
+async def test_create_agent_with_90d_expiry(app, mock_audit, mock_notify) -> None:
+    """
+    POST with expires_in='90d' → api_key_expires_at ≈ now+90d (within ±5s).
+    Source: UX-FB-AK-1.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        before = datetime.now(timezone.utc)
+        resp = await client.post(
+            BASE_URL_PATH,
+            json={"name": "expiry-90d-agent", "expires_in": "90d"},
+        )
+        after = datetime.now(timezone.utc)
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body.get("api_key_expires_at") is not None, "api_key_expires_at must be set for 90d expiry"
+
+    expires_at = datetime.fromisoformat(body["api_key_expires_at"])
+    expected_min = before + timedelta(days=90) - timedelta(seconds=5)
+    expected_max = after + timedelta(days=90) + timedelta(seconds=5)
+    assert expected_min <= expires_at <= expected_max, (
+        f"api_key_expires_at {expires_at} not within ±5s of now+90d"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_agent_invalid_expires_in_returns_422(app, mock_audit, mock_notify) -> None:
+    """
+    POST with expires_in='garbage' → 422 with mintkey:code: invalid_expires_in.
+    Source: UX-FB-AK-1.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            BASE_URL_PATH,
+            json={"name": "bad-expiry-agent", "expires_in": "garbage"},
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body.get("mintkey:code") == "invalid_expires_in", f"Expected invalid_expires_in, got: {body}"
+
+
+# ---------------------------------------------------------------------------
+# UX-FB-AK-1 — rotate-key unit tests
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_session_with_agent_row(agent_uuid_str: str, tenant_id: str, version: int = 1, expires_at=None):
+    """Return a mock session that yields a known agent row on SELECT agents query."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    session = MagicMock()
+    session._execute_calls = []
+
+    mock_row = MagicMock()
+    mock_row.id = agent_uuid_str
+    mock_row.tenant_id = tenant_id
+    mock_row.api_key_fingerprint = "oldfp0000deadbeef"
+    mock_row.api_key_version = version
+    mock_row.api_key_expires_at = expires_at
+    mock_row.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    async def _execute(*args, **kwargs):
+        session._execute_calls.append((args, kwargs))
+        result = MagicMock()
+        # Detect agent SELECT by checking if the SQL touches the agents table
+        sql_str = str(args[0]) if args else ""
+        if "FROM agents" in sql_str and "WHERE" in sql_str and "api_key_expires_at" in sql_str:
+            result.fetchone.return_value = mock_row
+        else:
+            result.fetchone.return_value = None
+        result.fetchall.return_value = []
+        return result
+
+    session.execute = _execute
+    return session
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_hard_cutover(mock_audit, mock_notify) -> None:
+    """
+    POST rotate-key returns 200 with new plaintext key; new key differs from any existing.
+    Source: UX-FB-AK-1.
+    """
+    import sys, os
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    # Derive a wire-form agent_id and its UUID for the mock session
+    from admin_api.api.agents import _new_agent_id, _wire_id_to_uuid, _CROCKFORD
+    import uuid
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+
+    mock_session = _make_mock_session_with_agent_row(agent_uuid_str, TENANT_ID, version=1)
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+        resp = await client.post(rotate_path, json={})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "api_key" in body, "api_key must be returned on rotate"
+    assert body["api_key"].startswith("mk_agent_"), "New key must have mk_agent_ prefix"
+    assert body["api_key_version"] == 2, f"Expected version 2, got {body['api_key_version']}"
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_bumps_version(mock_audit, mock_notify) -> None:
+    """
+    POST rotate-key increments version: 1→2.
+    Source: UX-FB-AK-1.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router, _new_agent_id, _wire_id_to_uuid
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+
+    # Start at version 2 to verify the bump goes to 3
+    mock_session = _make_mock_session_with_agent_row(agent_uuid_str, TENANT_ID, version=2)
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+        resp = await client.post(rotate_path, json={})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["api_key_version"] == 3, f"Expected version 3 (bump from 2), got {body['api_key_version']}"
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_preserves_expiry_policy_when_omitted(mock_audit, mock_notify) -> None:
+    """
+    POST rotate-key without expires_in, when agent had 30d expiry, sets new ≈now+30d.
+    Source: UX-FB-AK-1.
+    """
+    from datetime import datetime, timezone, timedelta
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router, _new_agent_id, _wire_id_to_uuid
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+
+    # Agent was created on 2026-01-01 with expiry 30d later = 2026-01-31
+    created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    original_expiry = created_at + timedelta(days=30)
+
+    mock_session = _make_mock_session_with_agent_row(
+        agent_uuid_str, TENANT_ID, version=1, expires_at=original_expiry
+    )
+    # Override created_at on the mock row (already set in helper)
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    before = datetime.now(timezone.utc)
+    async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+        resp = await client.post(rotate_path, json={})
+    after = datetime.now(timezone.utc)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("api_key_expires_at") is not None, "Expiry must be preserved (re-anchored)"
+
+    new_exp = datetime.fromisoformat(body["api_key_expires_at"])
+    expected_min = before + timedelta(days=30) - timedelta(seconds=5)
+    expected_max = after + timedelta(days=30) + timedelta(seconds=5)
+    assert expected_min <= new_exp <= expected_max, (
+        f"Re-anchored expiry {new_exp} not within ±5s of now+30d"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_explicit_empty_string_removes_expiry(mock_audit, mock_notify) -> None:
+    """
+    POST rotate-key with expires_in='' removes expiry (api_key_expires_at → null).
+    Source: UX-FB-AK-1.
+    """
+    from datetime import datetime, timezone, timedelta
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router, _new_agent_id, _wire_id_to_uuid
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+
+    existing_expiry = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    mock_session = _make_mock_session_with_agent_row(
+        agent_uuid_str, TENANT_ID, version=1, expires_at=existing_expiry
+    )
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+        resp = await client.post(rotate_path, json={"expires_in": ""})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("api_key_expires_at") is None, (
+        f"Expected null api_key_expires_at after explicit '' removal, got: {body.get('api_key_expires_at')}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_audit_emitted_with_no_plaintext(mock_notify) -> None:
+    """
+    POST rotate-key emits audit with new_fingerprint but must NOT contain 'mk_agent_' plaintext.
+    Source: UX-FB-AK-1; S-SEC-1; ADR-0014.7.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router, _new_agent_id, _wire_id_to_uuid
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+    from unittest.mock import AsyncMock, patch
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+
+    mock_session = _make_mock_session_with_agent_row(agent_uuid_str, TENANT_ID, version=1)
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    with patch("admin_api.api.agents.audit_emit", new=AsyncMock()) as mock_audit_fn:
+        async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+            resp = await client.post(rotate_path, json={})
+
+    assert resp.status_code == 200, resp.text
+    api_key = resp.json()["api_key"]
+    assert api_key.startswith("mk_agent_")
+
+    # Verify audit was called and payload does NOT contain plaintext
+    mock_audit_fn.assert_called_once()
+    call_kwargs = mock_audit_fn.call_args.kwargs
+    assert call_kwargs.get("event_type") == "agent.api_key_rotated"
+
+    payload = call_kwargs.get("payload", {})
+    payload_str = str(payload)
+    assert "mk_agent_" not in payload_str, (
+        f"Plaintext api_key must NOT appear in audit payload, got: {payload_str}"
+    )

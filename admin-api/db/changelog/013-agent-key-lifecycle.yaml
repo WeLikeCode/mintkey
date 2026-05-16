@@ -1,0 +1,62 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: "013-agent-key-lifecycle-columns"
+      author: mintkey
+      changes:
+        - addColumn:
+            tableName: agents
+            columns:
+              - column:
+                  name: api_key_expires_at
+                  type: TIMESTAMPTZ
+              - column:
+                  name: api_key_version
+                  type: INTEGER
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: api_key_last_rotated_at
+                  type: TIMESTAMPTZ
+      rollback:
+        - dropColumn:
+            tableName: agents
+            columnName: api_key_expires_at
+        - dropColumn:
+            tableName: agents
+            columnName: api_key_version
+        - dropColumn:
+            tableName: agents
+            columnName: api_key_last_rotated_at
+
+  - changeSet:
+      id: "013-agent-key-lifecycle-constraints"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE agents
+                ADD CONSTRAINT chk_agents_api_key_expiry
+                  CHECK (api_key_expires_at IS NULL OR api_key_expires_at > created_at),
+                ADD CONSTRAINT chk_agents_api_key_version_positive
+                  CHECK (api_key_version >= 1);
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE agents
+                DROP CONSTRAINT IF EXISTS chk_agents_api_key_expiry,
+                DROP CONSTRAINT IF EXISTS chk_agents_api_key_version_positive;
+
+  - changeSet:
+      id: "013-agent-key-lifecycle-idx-expires-at"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              CREATE INDEX idx_agents_api_key_expires_at
+                ON agents (api_key_expires_at)
+                WHERE api_key_expires_at IS NOT NULL;
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS idx_agents_api_key_expires_at;

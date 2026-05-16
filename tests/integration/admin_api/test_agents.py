@@ -494,6 +494,48 @@ def test_revoke_agent_returns_active_api_keys_count_n_when_keys_exist(
     )
 
 
+def _insert_agent_with_expired_key(postgres_container, tenant_id: str, name: str, expired: bool = True) -> tuple[str, str]:
+    """Insert an agent with a key that is either expired or valid. Returns (internal_id, raw_key)."""
+    from datetime import datetime, timezone, timedelta
+    agent_internal_id = str(uuid.uuid4())
+    from argon2 import PasswordHasher
+    ph = PasswordHasher()
+    raw_key = "mk_agent_" + secrets.token_hex(20)
+    api_key_hash = ph.hash(raw_key)
+    fingerprint = hashlib.sha256(raw_key.encode()).digest()[:8].hex()
+
+    now = datetime.now(timezone.utc)
+    if expired:
+        expires_at = now - timedelta(minutes=1)
+    else:
+        expires_at = now + timedelta(hours=1)
+
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO agents"
+        " (id, tenant_id, name, description, api_key_hash, api_key_fingerprint,"
+        "  mcp_endpoint, status, rate_limit_rps, api_key_expires_at, api_key_version)"
+        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (agent_internal_id, tenant_id, name, None, api_key_hash, fingerprint,
+         f"http://localhost:8100/v1/agents/{agent_internal_id}", "active", None,
+         expires_at, 1),
+    )
+    conn.commit()
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    assert row is not None
+    return str(row[0]), raw_key
+
+
 def test_revoke_agent_audit_payload_contains_active_api_keys_count(
     admin_app: TestClient,
     agent_tenant: str,
@@ -523,4 +565,139 @@ def test_revoke_agent_audit_payload_contains_active_api_keys_count(
     payload = row[0] if isinstance(row[0], dict) else _json.loads(row[0])
     assert "active_api_keys_count" in payload, (
         f"audit payload must include active_api_keys_count — UX-FB-CE E; got: {payload}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# UX-FB-AK-1 — validate-agent-key expiry integration tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_expired_key_returns_401_with_expired_code(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    Validate a key whose api_key_expires_at is now-1m → 401 with mintkey:code: agent_api_key_expired.
+    Source: UX-FB-AK-1.
+    """
+    internal_id, raw_key = _insert_agent_with_expired_key(
+        postgres_container, agent_tenant, "expired-key-agent", expired=True
+    )
+
+    resp = _post(
+        admin_app,
+        "/v1/internal/validate-agent-key",
+        json={"api_key": raw_key},
+    )
+    assert resp.status_code == 401, resp.text
+    body = resp.json()
+    assert body.get("mintkey:code") == "agent_api_key_expired", (
+        f"Expected agent_api_key_expired code, got: {body}"
+    )
+    assert body.get("status") == 401
+
+
+def test_validate_expired_key_emits_agent_api_key_expired_audit_throttled(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    First validate of expired key emits audit event; second call within 60s must NOT emit again.
+    Source: UX-FB-AK-1; throttle: 1 per agent per 60s.
+    """
+    import json as _json
+
+    internal_id, raw_key = _insert_agent_with_expired_key(
+        postgres_container, agent_tenant, "expired-throttle-agent", expired=True
+    )
+
+    # Reset throttle state for this agent by directly patching — call once first
+    # First call: should emit audit event
+    resp1 = _post(admin_app, "/v1/internal/validate-agent-key", json={"api_key": raw_key})
+    assert resp1.status_code == 401
+
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM audit_events"
+        " WHERE event_type = 'agent.api_key_expired' AND tenant_id = %s",
+        (agent_tenant,),
+    )
+    count_after_first = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    assert count_after_first >= 1, "First expired validation must emit audit event"
+
+    # Second call within 60s: must NOT emit another audit event
+    resp2 = _post(admin_app, "/v1/internal/validate-agent-key", json={"api_key": raw_key})
+    assert resp2.status_code == 401
+
+    conn = _get_pg_conn(postgres_container)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COUNT(*) FROM audit_events"
+        " WHERE event_type = 'agent.api_key_expired' AND tenant_id = %s",
+        (agent_tenant,),
+    )
+    count_after_second = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    assert count_after_second == count_after_first, (
+        f"Second call within 60s must NOT emit another audit event (throttle). "
+        f"Count before={count_after_first}, after={count_after_second}"
+    )
+
+
+def test_validate_valid_key_unaffected_by_expiry_check(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    Validate a key with null expiry → 200 (back-compat — expiry check must not fire).
+    Source: UX-FB-AK-1.
+    """
+    # Use _insert_agent which sets api_key_expires_at = NULL (no new columns explicitly)
+    # Insert a fresh agent via the API so we get the plaintext key
+    resp = _post(
+        admin_app,
+        f"/v1/tenants/{agent_tenant}/agents",
+        json={"name": "null-expiry-validate-agent"},
+    )
+    assert resp.status_code == 201, resp.text
+    raw_key = resp.json()["api_key"]
+
+    validate_resp = _post(
+        admin_app,
+        "/v1/internal/validate-agent-key",
+        json={"api_key": raw_key},
+    )
+    assert validate_resp.status_code == 200, (
+        f"Key with null expiry must pass validation, got {validate_resp.status_code}: {validate_resp.text}"
+    )
+
+
+def test_validate_future_expiry_passes(
+    admin_app: TestClient,
+    agent_tenant: str,
+    postgres_container,
+) -> None:
+    """
+    Validate a key with expiry = now+1h → 200.
+    Source: UX-FB-AK-1.
+    """
+    internal_id, raw_key = _insert_agent_with_expired_key(
+        postgres_container, agent_tenant, "future-expiry-agent", expired=False
+    )
+
+    resp = _post(
+        admin_app,
+        "/v1/internal/validate-agent-key",
+        json={"api_key": raw_key},
+    )
+    assert resp.status_code == 200, (
+        f"Key with future expiry must pass validation, got {resp.status_code}: {resp.text}"
     )

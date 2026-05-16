@@ -30,5 +30,11 @@ databaseChangeLog:
       file: 010-indexes.yaml
       relativeToChangelogFile: true
   - include:
+      file: 011-schema-fixes.yaml
+      relativeToChangelogFile: true
+  - include:
       file: 012-service-api-keys.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 013-agent-key-lifecycle.yaml
       relativeToChangelogFile: true

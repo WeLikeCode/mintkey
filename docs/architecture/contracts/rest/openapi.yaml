@@ -1210,6 +1210,70 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /v1/tenants/{tenant_id}/agents/{agent_id}/rotate-key:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      tags: [Agents]
+      operationId: rotateAgentKey
+      summary: Hard-cutover rotate the agent API key.
+      description: |
+        Generates a fresh Agent API Key and atomically replaces the stored hash.
+        The old key is invalidated immediately (no grace period). The new plaintext
+        key is returned **exactly once** in this response.
+
+        Optional `expires_in` controls the new key's expiry:
+        - Omit (or `null`): preserve the existing expiry policy (re-anchored from
+          now if the key had an expiry; `null` if it did not).
+        - `""` (empty string): explicitly remove expiry.
+        - `"30d"` / `"90d"` / `"180d"` / `"365d"`: set an absolute expiry from now.
+
+        Emits an `agent.api_key_rotated` audit event containing old and new
+        fingerprints plus version numbers. Plaintext NEVER appears in the audit row.
+
+        Source: UX-FB-AK-1; ADR-0014.7; S-SEC-1; ADR-0017.5.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRotateKeyRequest"
+            examples:
+              preserve-expiry:
+                summary: Preserve existing expiry policy
+                value: {}
+              set-90d:
+                summary: Set explicit 90-day expiry
+                value:
+                  expires_in: "90d"
+              remove-expiry:
+                summary: Remove expiry entirely
+                value:
+                  expires_in: ""
+      responses:
+        "200":
+          description: Key rotated. New plaintext key returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateAgentKeyResponse"
+              example:
+                agent_id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                api_key: "mk_agent_NEWKEYVALUE0000000000000000000000000000000000000000000"
+                api_key_fingerprint: "a1b2c3d4e5f60011"
+                api_key_version: 2
+                api_key_last_rotated_at: "2026-05-15T10:00:00Z"
+                api_key_expires_at: "2026-08-13T10:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   ###########################################################################
   # Permissions
   ###########################################################################
@@ -3519,6 +3583,24 @@ components:
           $ref: "#/components/schemas/Timestamp"
         updated_at:
           $ref: "#/components/schemas/Timestamp"
+        api_key_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            ISO-8601 UTC timestamp when the agent API key expires, or `null`
+            if the key never expires. Set at create or rotate time.
+        api_key_version:
+          type: integer
+          minimum: 1
+          description: |
+            Monotonically increasing counter incremented on every key rotation.
+            Starts at 1 on creation.
+        api_key_last_rotated_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            ISO-8601 UTC timestamp of the last key rotation, or `null` if the
+            key has never been rotated (still on the original key from creation).
       required:
         - id
         - tenant_id
@@ -3536,6 +3618,13 @@ components:
           maxLength: 200
         description:
           type: string
+        expires_in:
+          type: [string, "null"]
+          enum: ["30d", "90d", "180d", "365d", null]
+          description: |
+            Optional expiry duration for the agent API key. Omit or pass `null`
+            for a key that never expires. Accepted values: `30d`, `90d`, `180d`,
+            `365d`.
       required: [name]
 
     RevokeAgentRequest:
@@ -3545,6 +3634,54 @@ components:
           type: string
           maxLength: 1000
           description: Free-form reason recorded in the audit event.
+
+    AgentRotateKeyRequest:
+      type: object
+      properties:
+        expires_in:
+          type: [string, "null"]
+          enum: ["30d", "90d", "180d", "365d", "", null]
+          description: |
+            Controls the new key's expiry after rotation.
+            - Omit or `null`: preserve the existing expiry policy (re-anchored
+              from now if the key had an expiry; `null` if it did not).
+            - `""` (empty string): explicitly remove expiry (key never expires).
+            - `"30d"` / `"90d"` / `"180d"` / `"365d"`: absolute expiry from now.
+
+    RotateAgentKeyResponse:
+      type: object
+      properties:
+        agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+        api_key:
+          type: string
+          x-mintkey-sensitive: true
+          description: |
+            New plaintext Agent API Key. Returned **exactly once** in this
+            response. Store it securely — it cannot be retrieved again.
+        api_key_fingerprint:
+          type: string
+          description: SHA-256 fingerprint of the new key.
+        api_key_version:
+          type: integer
+          minimum: 1
+          description: Incremented version counter (e.g. 1→2 after first rotation).
+        api_key_last_rotated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp of this rotation.
+        api_key_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: ISO-8601 UTC expiry timestamp, or `null` if the key never expires.
+      required:
+        - agent_id
+        - api_key
+        - api_key_fingerprint
+        - api_key_version
+        - api_key_last_rotated_at
+        - api_key_expires_at
 
     AgentPage:
       type: object
@@ -3625,6 +3762,8 @@ components:
         - credential.registered
         - credential.rotated
         - credential.revoked
+        - agent.api_key_expired
+        - agent.api_key_rotated
         - agent.created
         - agent.revoked
         - agent.permission.granted

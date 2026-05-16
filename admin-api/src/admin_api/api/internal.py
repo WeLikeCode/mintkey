@@ -24,6 +24,8 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import datetime
+from threading import Lock
+from time import monotonic
 from typing import Optional
 from uuid import UUID
 
@@ -55,6 +57,39 @@ INVALID_KEY_RESPONSE: dict = {
     "status": 401,
     "mintkey:code": "mintkey:invalid_agent_key",
 }
+
+
+# ---------------------------------------------------------------------------
+# Expiry-audit throttle — at most one audit event per agent per 60 s
+# ---------------------------------------------------------------------------
+
+
+class _ExpiredAuditThrottle:
+    _WINDOW_SEC = 60.0
+
+    def __init__(self) -> None:
+        self._last: dict[str, float] = {}
+        self._lock = Lock()
+
+    def should_emit(self, agent_id: str) -> bool:
+        with self._lock:
+            t = monotonic()
+            last = self._last.get(agent_id, 0.0)
+            if t - last < self._WINDOW_SEC:
+                return False
+            self._last[agent_id] = t
+            if len(self._last) > 10000:
+                cutoff = t - self._WINDOW_SEC
+                self._last = {k: v for k, v in self._last.items() if v >= cutoff}
+            return True
+
+
+_expired_throttle = _ExpiredAuditThrottle()
+
+
+def now_utc() -> datetime:
+    from datetime import datetime as _dt, timezone as _tz
+    return _dt.now(_tz.utc)
 
 
 class ValidateAgentKeyRequest(BaseModel):
@@ -97,7 +132,7 @@ async def validate_agent_key(
 
     result = await session.execute(
         text(
-            "SELECT id, tenant_id, api_key_hash, status"
+            "SELECT id, tenant_id, api_key_hash, status, api_key_expires_at, api_key_fingerprint"
             " FROM agents WHERE api_key_fingerprint = :fp"
         ),
         {"fp": fingerprint},
@@ -112,6 +147,7 @@ async def validate_agent_key(
             pass
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
 
+    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5
     try:
         _ph.verify(row.api_key_hash, api_key)
     except VerifyMismatchError:
@@ -122,6 +158,34 @@ async def validate_agent_key(
     if row.status != "active":
         # Revoked/suspended — same body as any other failure (Req 6 AC2)
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
+
+    # Expiry check AFTER argon2 verify — preserves timing equalisation (ADR-0017.5)
+    if row.api_key_expires_at is not None and now_utc() > row.api_key_expires_at:
+        if _expired_throttle.should_emit(str(row.id)):
+            await audit_emit(
+                session=session,
+                tenant_id=UUID(str(row.tenant_id)),
+                event_type="agent.api_key_expired",
+                actor_id=None,
+                actor_type="system",
+                target_id=row.id,
+                target_type="agent",
+                payload={
+                    "agent_id": str(row.id),
+                    "api_key_fingerprint": row.api_key_fingerprint,
+                    "expired_at": row.api_key_expires_at.isoformat(),
+                },
+            )
+        return JSONResponse(status_code=401, content={
+            "type": "https://mintkey.internal/errors/agent-key-expired",
+            "title": "API key expired",
+            "status": 401,
+            "mintkey:code": "agent_api_key_expired",
+            "hint": (
+                f"This agent's API key expired on {row.api_key_expires_at.isoformat()}. "
+                "Operator must rotate the key via the admin UI Rotate Key action."
+            ),
+        })
 
     return JSONResponse(
         status_code=200,
