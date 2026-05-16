@@ -15,7 +15,6 @@ Logged once at startup if a legacy alias is in effect:
 """
 import os
 import logging
-from typing import Optional
 
 _logger = logging.getLogger(__name__)
 _warned: set[str] = set()

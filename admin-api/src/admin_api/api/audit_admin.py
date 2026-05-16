@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -62,7 +62,7 @@ def _genesis_hash(tenant_id: str) -> bytes:
 
 
 def _compute_event_hash(
-    event_type: str, tenant_id: str, payload: dict, prev_hash: bytes
+    event_type: str, tenant_id: str, payload: dict[str, Any], prev_hash: bytes
 ) -> bytes:
     canonical = json.dumps(
         {"event_type": event_type, "tenant_id": tenant_id, "payload": payload},
@@ -133,7 +133,7 @@ async def verify_chain_endpoint(
     for i, row in enumerate(rows):
         stored_prev: bytes = row.prev_hash
         stored_hash: bytes = row.hash
-        payload: dict = row.payload if isinstance(row.payload, dict) else {}
+        payload: dict[str, Any] = row.payload if isinstance(row.payload, dict) else {}
 
         if stored_prev != expected_prev:
             computed = _compute_event_hash(row.event_type, str(row.tenant_id), payload, expected_prev)

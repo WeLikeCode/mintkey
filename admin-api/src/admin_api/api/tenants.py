@@ -25,7 +25,7 @@ import hashlib
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -101,7 +101,7 @@ class CreateTenantRequest(BaseModel):
 class UpdateTenantRequest(BaseModel):
     display_name: Optional[str] = None
     status: Optional[str] = None
-    settings: Optional[dict] = None
+    settings: Optional[dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ async def update_tenant(
         )
 
     now = datetime.now(timezone.utc)
-    updates = {}
+    updates: dict[str, Any] = {}
     if body.display_name is not None:
         updates["display_name"] = body.display_name
     if body.status is not None:

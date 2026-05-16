@@ -9,7 +9,7 @@ Source: Req 1 AC7, AC8; design §4.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 router = APIRouter()
@@ -26,6 +26,7 @@ try:
         REGISTRY,
     )
 
+    _REQUESTS_TOTAL: Counter | None
     try:
         _REQUESTS_TOTAL = Counter(
             "mintkey_requests_total",
@@ -33,7 +34,9 @@ try:
             ["method", "path", "status"],
         )
     except ValueError:
-        _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")
+        # Double-registration fallback (pytest reload): registry returns Collector | None, narrower than Counter | None.
+        _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")  # type: ignore[assignment]
+    _REQUEST_DURATION: Histogram | None
     try:
         _REQUEST_DURATION = Histogram(
             "mintkey_request_duration_seconds",
@@ -41,12 +44,13 @@ try:
             ["method", "path"],
         )
     except ValueError:
-        _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")
+        # Double-registration fallback (pytest reload): registry returns Collector | None, narrower than Histogram | None.
+        _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")  # type: ignore[assignment]
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     _PROMETHEUS_AVAILABLE = False
-    _REQUESTS_TOTAL = None  # type: ignore[assignment]
-    _REQUEST_DURATION = None  # type: ignore[assignment]
+    _REQUESTS_TOTAL = None
+    _REQUEST_DURATION = None
 
 
 async def check_db() -> bool:

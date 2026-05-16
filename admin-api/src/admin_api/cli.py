@@ -18,10 +18,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import secrets
 import sys
 import uuid
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_operator_by_email(email: str):
+async def _fetch_operator_by_email(email: str) -> Any | None:
     """Return operator row or None using platform_admin_view bypass."""
     from admin_api.db.session import AsyncSessionLocal
     from sqlalchemy import text

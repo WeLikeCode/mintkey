@@ -12,21 +12,18 @@ Source: design §4 api/auth.py; Req 2; ADR-0017.5; ADR-0009; ADR-0019 §3.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import secrets
 import time
-from functools import lru_cache
 from typing import Any
 
-from fastapi import APIRouter, Cookie, Request, Response
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from admin_api.auth.internal import INVALID_CREDENTIALS_RESPONSE, verify_internal_login
 from admin_api.auth.oidc import (
     generate_authorization_url,
-    is_platform_admin_from_claims,
     lookup_operator_by_oidc_sub,
     oidc_token_exchange,
 )
@@ -78,7 +75,7 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
 
     operator_out, failure_reason = await verify_internal_login(body.email, body.password)
 
-    if failure_reason is not None:
+    if failure_reason is not None or operator_out is None:
         # All failures return byte-identical body (ADR-0017.5).
         return JSONResponse(status_code=401, content=INVALID_CREDENTIALS_RESPONSE)
 
@@ -129,11 +126,11 @@ async def logout(response: Response) -> Response:
 # ---------------------------------------------------------------------------
 
 # (session_token → (result_dict, fetched_at)) simple TTL cache
-_WHOAMI_CACHE: dict[str, tuple[dict, float]] = {}
+_WHOAMI_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _WHOAMI_TTL = 15.0
 
 
-async def _whoami_lookup(session_token: str) -> dict | None:
+async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
     """Validate session, look up operator, return dict or None."""
     now = time.monotonic()
     cached = _WHOAMI_CACHE.get(session_token)
@@ -293,6 +290,11 @@ async def oidc_callback(code: str, state: str, request: Request) -> Response:
 
     sub = claims.get("sub")
     email = claims.get("email")
+    if not isinstance(sub, str):
+        return JSONResponse(
+            status_code=401,
+            content={"code": "mintkey:auth_failed", "reason": "id_token_invalid"},
+        )
     operator = await lookup_operator_by_oidc_sub(sub, email=email)
 
     if operator is None:

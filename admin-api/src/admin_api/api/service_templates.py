@@ -10,6 +10,7 @@ Read-only, non-sensitive — no audit emission required.
 """
 from pathlib import Path
 import json
+from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -18,12 +19,12 @@ router = APIRouter(prefix="/v1/service-templates")
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "service_templates"
 
 
-def _load_all() -> dict[str, dict]:
+def _load_all() -> dict[str, dict[str, Any]]:
     return {p.stem: json.loads(p.read_text()) for p in _TEMPLATES_DIR.glob("*.json")}
 
 
 @router.get("")
-async def list_templates():
+async def list_templates() -> JSONResponse:
     tmpls = _load_all()
     summaries = [
         {
@@ -41,7 +42,7 @@ async def list_templates():
 
 
 @router.get("/{slug}")
-async def get_template(slug: str):
+async def get_template(slug: str) -> JSONResponse:
     tmpls = _load_all()
     if slug not in tmpls:
         return JSONResponse(

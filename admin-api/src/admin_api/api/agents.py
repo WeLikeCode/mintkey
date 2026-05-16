@@ -22,7 +22,6 @@ Source: T-1.4.1; ADR-0008; ADR-0014.7; ADR-0017.11; S-SEC-1.
 from __future__ import annotations
 
 import hashlib
-import os
 import secrets
 import time
 import uuid
@@ -556,7 +555,8 @@ async def revoke_agent(
         ),
         {"aid": agent_uuid, "tid": str(tenant_id)},
     )
-    active_api_keys_count = int(keys_result.fetchone().cnt or 0)
+    _keys_row = keys_result.fetchone()
+    active_api_keys_count = int(_keys_row.cnt or 0) if _keys_row is not None else 0
 
     audit_payload = {"agent_id": agent_id, "active_api_keys_count": active_api_keys_count}
 

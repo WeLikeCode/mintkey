@@ -16,12 +16,11 @@ import base64
 import json
 import time
 import threading
-from typing import Callable
-
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.types import ASGIApp
 
 SIGNED_REQUEST_HEADER = "x-mintkey-signed-request"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -51,7 +50,7 @@ class JtiStore:
 class InMemoryJtiStore(JtiStore):
     """In-memory jti denylist for testing."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._store: dict[str, float] = {}
         self._lock = threading.Lock()
 
@@ -124,15 +123,15 @@ class AdminUiSignedRequestMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         public_key: Ed25519PublicKey | None = None,
         jti_store: JtiStore | None = None,
-    ):
+    ) -> None:
         super().__init__(app)
         self._public_key = public_key
-        self._jti_store = jti_store or InMemoryJtiStore()
+        self._jti_store: JtiStore = jti_store if jti_store is not None else InMemoryJtiStore()
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.method in SAFE_METHODS:
             return await call_next(request)
 

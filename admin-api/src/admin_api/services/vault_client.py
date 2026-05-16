@@ -98,7 +98,7 @@ async def close_channel() -> None:
     """Close the singleton channel.  Call from FastAPI lifespan shutdown."""
     global _channel
     if _channel is not None:
-        await _channel.close()
+        await _channel.close()  # type: ignore[call-arg]  # grpc-stubs require positional `grace`; runtime default=None so no-arg call is valid
         _channel = None
         logger.info("vault_client: grpc.aio channel closed")
 
@@ -111,7 +111,7 @@ class VaultAdapterClient:
     """
 
     async def _stub(self) -> vault_pb2_grpc.VaultAdapterStub:
-        return vault_pb2_grpc.VaultAdapterStub(await _get_channel())
+        return vault_pb2_grpc.VaultAdapterStub(await _get_channel())  # type: ignore[no-untyped-call]  # vault_pb2_grpc is auto-generated; excluded from mypy by config
 
     async def put_credential(
         self,
@@ -122,14 +122,14 @@ class VaultAdapterClient:
         target_url: str = "",
         header_name: str = "",
         query_param: str = "",
-    ) -> dict:
+    ) -> dict[str, object]:
         """Seal and store a credential. Returns metadata — no plaintext.
 
         header_name: HTTP header name for api_key_header scheme (e.g. "X-API-Key") — UX-C6.
         query_param: query parameter name for api_key_query scheme (e.g. "api_key") — UX-C6.
         """
         scheme_int = _AUTH_SCHEME_MAP.get(auth_scheme, 0)
-        req = vault_pb2.PutCredentialRequest(
+        req = vault_pb2.PutCredentialRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
             tenant_id=tenant_id,
             service_id=service_id,
             auth_scheme=scheme_int,
@@ -145,7 +145,7 @@ class VaultAdapterClient:
             "created_at": time.time(),
         }
 
-    async def get_credential(self, tenant_id: str, service_id: str) -> dict | None:
+    async def get_credential(self, tenant_id: str, service_id: str) -> dict[str, object] | None:
         """
         Fetch current credential. Returns dict with 'plaintext' (decoded bytes)
         plus metadata fields, or None if not found.
@@ -154,7 +154,7 @@ class VaultAdapterClient:
         that call cred_entry.get("plaintext") work without modification.
         Plaintext stays in request scope — ADR-0014.4.
         """
-        req = vault_pb2.GetCredentialRequest(
+        req = vault_pb2.GetCredentialRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
             tenant_id=tenant_id,
             service_id=service_id,
             key_version=0,
@@ -171,7 +171,7 @@ class VaultAdapterClient:
         except grpc.aio.AioRpcError:
             return None
 
-    async def list_versions(self, tenant_id: str, service_id: str) -> list:
+    async def list_versions(self, tenant_id: str, service_id: str) -> list[dict[str, object]]:
         """List credential version descriptors (no plaintext).
 
         Returns a list of dicts with metadata fields per VersionDescriptor:
@@ -181,7 +181,7 @@ class VaultAdapterClient:
         Returns [] only when the vault-adapter reports Unimplemented
         (backward-compat for pre-WS-10 deployments during rolling upgrade).
         """
-        req = vault_pb2.ListVersionsRequest(
+        req = vault_pb2.ListVersionsRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
             tenant_id=tenant_id,
             service_id=service_id,
         )

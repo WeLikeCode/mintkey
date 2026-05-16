@@ -9,10 +9,13 @@ Source: design §4; ADR-0013; ADR-0017.3 (CsrfHeader security scheme).
 from __future__ import annotations
 
 import hmac
-from typing import Callable
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+_F = TypeVar("_F", bound=Callable[..., Any])
 
 NO_CSRF_ATTR = "_no_csrf"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
@@ -23,7 +26,7 @@ CSRF_HEADER = "x-mintkey-csrf"
 _CSRF_EXEMPT_PATHS: set[str] = set()
 
 
-def no_csrf(func: Callable) -> Callable:
+def no_csrf(func: _F) -> _F:
     """
     Decorator: mark a route handler to skip CSRF validation.
     Also registers the route path in _CSRF_EXEMPT_PATHS so middleware can check it.
@@ -40,7 +43,7 @@ def csrf_exempt(path: str) -> None:
 
 
 class CsrfMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.method in SAFE_METHODS:
             return await call_next(request)
 

@@ -26,7 +26,7 @@ import uuid
 from datetime import datetime
 from threading import Lock
 from time import monotonic
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 import argon2
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/v1/internal")
 
 _ph = argon2.PasswordHasher()
 
-INVALID_KEY_RESPONSE: dict = {
+INVALID_KEY_RESPONSE: dict[str, object] = {
     "type": "https://mintkey.internal/errors/invalid-agent-key",
     "title": "Invalid agent key",
     "status": 401,
@@ -238,7 +238,7 @@ async def proxy_hit(
     if tenant_uuid:
         await set_tenant_context(session, tenant_uuid)
 
-    payload: dict = {
+    payload: dict[str, Any] = {
         "service_id": body.service_id,
         "status_code": body.status_code,
         "method": body.method,
@@ -324,7 +324,7 @@ class AuditEmitRequest(BaseModel):
     actor_type: str = "system"
     target_id: Optional[str] = None
     target_type: Optional[str] = None
-    payload: dict = {}
+    payload: dict[str, Any] = {}
 
 
 @router.post("/audit/emit")
