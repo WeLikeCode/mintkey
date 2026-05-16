@@ -4,6 +4,118 @@ Append-only. Most recent entry at the top.
 
 ---
 
+## 2026-05-16 — OSS-6 IMPLEMENTER: How-to documentation
+
+**Session:** OSS-6
+**Chunk:** How-To-Use Documentation
+**Status:** PASS
+
+### Files created
+
+- `docs/guides/10min-mock-demo.md` — 10-minute PAT-free local demo using the built-in
+  `mock-backend` container; covers clone, start, service registration, agent creation,
+  permission grant, token request, proxy call, audit trail, Jaeger trace, cleanup;
+  includes architecture-in-one-paragraph summary and troubleshooting table.
+- `docs/guides/mcp-clients/claude-desktop.md` — Claude Desktop MCP setup; config file
+  path on macOS/Windows; exact JSON snippet; curl verification; 6 tools listed;
+  troubleshooting table; link to cookbook.
+- `docs/guides/mcp-clients/claude-code.md` — Claude Code MCP setup via `claude mcp add`
+  and `~/.claude/mcp.json`; project-level `.claude/mcp.json` option; agentic task flow;
+  troubleshooting table; link to cookbook.
+- `docs/guides/mcp-clients/cursor.md` — Cursor MCP setup via `.cursor/mcp.json`; global
+  Cursor settings UI path; safe-commit pattern for agent keys; troubleshooting table;
+  link to cookbook.
+- `docs/guides/mcp-clients/mcp-cli.md` — mcp-cli install + config (`~/.mcp-cli/servers.json`);
+  command-line invocation without config file; scripting example (list → token → call);
+  troubleshooting table; link to cookbook.
+
+### Files modified
+
+- `docs/HOW-TO.md` — expanded service playbooks table (links to 10min demo + 4 MCP
+  client guides); added §8 Operator cookbook with 12 self-contained recipes:
+  Recipe 0 (operator session), 1 (add service), 2 (add credential), 3 (test credential),
+  4 (create agent), 5 (grant permission), 6 (request token), 7 (call through proxy),
+  8 (rotate credential), 9 (revoke agent), 10 (inspect audit), 11 (inspect trace).
+  Each recipe has Admin UI + curl path, expected output, and "What could go wrong" note.
+- `team/remediation/2026-05-16-oss-readiness/02-matrix.md` — F-28, F-29, F-30 flipped
+  ⬜ → ✅.
+
+### Verification commands and outputs
+
+```
+# 1. New files exist
+ls docs/guides/10min-mock-demo.md \
+   docs/guides/mcp-clients/claude-desktop.md \
+   docs/guides/mcp-clients/claude-code.md \
+   docs/guides/mcp-clients/cursor.md \
+   docs/guides/mcp-clients/mcp-cli.md
+→ all 5 files present (exit 0)
+
+# 2. Stack status
+docker compose ps --format "table {{.Service}}\t{{.Status}}"
+→ 17 services; all Up (healthy) except otel-collector (Restarting — pre-existing issue)
+   mock-backend: Up (healthy)
+
+# 3. Data preservation (PRE snapshot)
+svc=4, agents=3, grants=2
+
+# 4. Mock-backend health
+curl http://localhost:8999/health
+→ {"status":"ok"}  (exit 0)
+
+# 5. Demo flow executed
+# a. Got operator session via internal-login (break-glass enabled then cleared)
+# b. Created mock-backend service: svc_01KRR2EF7G27CT840XW10FXFRX
+# c. Stored credential (auth_scheme=api_key_header, header_name=X-Api-Key)
+# d. Created Demo-Agent: agent_01KRR2ESKZ9B8CMHCCYS2SDC7F
+# e. Created permission grant: perm_01KRR2EYG9CPVGKCTP8N5ND4T6 (action=call)
+# f. Requested token → 508-char Ed25519 JWT (expires_at set, exit 0)
+# g. Proxy call: curl http://localhost:8000/v1/call/svc_01KRR2EF7G27CT840XW10FXFRX/health
+#    → {"status":"ok"} (exit 0)
+# h. Confirmed injected credential via /echo endpoint: x-api-key=canary-demo-api-key
+
+# 6. MCP tools/list
+curl -s -X POST http://localhost:8082/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer mk_agent_1R6BDHFWKQY1JC976XBSF1G3G3Z8FFGG92C13AE285DAFF9QA4NJ" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
+→ 6
+
+Tools: mintkey_bootstrap, mintkey_list_services, mintkey_discover,
+       mintkey_describe_service, mintkey_get_openapi, mintkey_request_token
+
+# 7. Demo cleanup
+# Grant deleted via DELETE /v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions/$PERM_ID (exit 0)
+# Agent revoked via DELETE /v1/tenants/$TENANT_ID/agents/$AGENT_ID (exit 0)
+# Service: DELETE endpoint returned InternalServerError; cleaned via SQL:
+#   DELETE FROM credentials WHERE service_id = '019e3027-3cf0-11d9-a410-1de040febf1d'::uuid → 1
+#   DELETE FROM services WHERE id = '019e3027-3cf0-11d9-a410-1de040febf1d'::uuid → 1
+# Agent row (revoked status): already excluded from counts; confirmed counts:
+
+# 8. Data preservation (POST snapshot)
+svc=4, agents=3, grants=2 → PRESERVED
+
+# 9. Break-glass cleared
+docker compose exec admin-api python -m admin_api.cli admin clear-password \
+  --email admin@mintkey.internal
+→ Cleared internal password hash for admin@mintkey.internal.
+
+# 10. Matrix check
+grep -c '✅' team/remediation/2026-05-16-oss-readiness/02-matrix.md
+→ ≥33 (F-28, F-29, F-30 all now ✅)
+```
+
+### Known residuals
+
+- F-26 (Python dep ranges) — policy documentation; deferred to OSS-4.
+- F-21, F-22, F-23 (Dockerfile hardening) — in-progress per OSS-5; audit table in
+  `docs/DEPLOYMENT.md`.
+- Service DELETE via REST API returned InternalServerError (likely a cascade issue with
+  credentials table foreign key); workaround: SQL deletion. Not blocking for docs quality;
+  recorded for OSS-8 final verification.
+
+---
+
 ## 2026-05-16 — OSS-7 IMPLEMENTER: Marketing package
 
 **Session:** OSS-7
