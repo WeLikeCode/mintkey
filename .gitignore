@@ -12,3 +12,5 @@ data/
 # Stray root-level Node artefacts (Playwright config lives in admin-ui/)
 /package.json
 /pnpm-lock.yaml
+# Build artifact — never commit; rebuilt by `go build` in CI
+services/vault-adapter/vault-adapter
