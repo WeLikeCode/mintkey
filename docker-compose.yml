@@ -324,7 +324,7 @@ services:
       - ./services/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
     ports:
       - "8000:8000"
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     networks:
       - mintkey
     depends_on:
@@ -440,14 +440,16 @@ services:
     # Healthcheck disabled; services tolerate transient OTel unavailability.
 
   # ─── 13. Jaeger ───────────────────────────────────────────────────────────
+  # Host port mapping removed (SSO-E): Jaeger UI is now reachable only from
+  # inside the docker network. External access goes through jaeger-auth (oauth2-proxy).
   jaeger:
     image: jaegertracing/all-in-one:1.56
     restart: unless-stopped
     mem_limit: 128m
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-    ports:
-      - "16686:16686"
+    expose:
+      - "16686"
     networks:
       - mintkey
     depends_on:
@@ -458,6 +460,52 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+
+  # ─── 13b. Jaeger Auth (oauth2-proxy) ──────────────────────────────────────
+  # SSO-E: oauth2-proxy sits in front of Jaeger and requires a Keycloak session.
+  # Operators visit http://localhost:16686 — they are redirected through Keycloak
+  # (auth-code + PKCE flow) and returned here with a session cookie.
+  # Refs: ADR-0014 §14.2; docs/AUTH.md (added in SSO-G).
+  jaeger-auth:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    restart: unless-stopped
+    mem_limit: 96m
+    command:
+      - --provider=keycloak-oidc
+      - --client-id=mintkey-jaeger
+      - --client-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oidc_client_secret
+      - --cookie-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oauth2_cookie_secret
+      - --redirect-url=${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback
+      - --oidc-issuer-url=${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey
+      - --upstream=http://jaeger:16686/
+      - --http-address=0.0.0.0:4180
+      - --email-domain=*
+      - --cookie-secure=false           # dev: http; flip in prod via env
+      - --cookie-samesite=lax
+      - --pass-access-token=false
+      - --pass-authorization-header=false
+      - --skip-provider-button=true
+      - --reverse-proxy=false
+      - --skip-jwt-bearer-tokens=false
+      - --insecure-oidc-allow-unverified-email=true   # pre-alpha; Keycloak doesn't verify by default
+    environment:
+      OAUTH2_PROXY_REDIRECT_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback"
+    ports:
+      - "16686:4180"
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    networks:
+      - mintkey
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4180/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   # ─── 14. Prometheus ───────────────────────────────────────────────────────
   prometheus:
@@ -503,12 +551,35 @@ services:
     restart: unless-stopped
     mem_limit: 256m
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Server config
       GF_SERVER_HTTP_PORT: "3000"
+      GF_SERVER_ROOT_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}"
+      # Login form: kept as break-glass; SSO is the recommended path.
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      # Generic OAuth (Keycloak) — see docs/AUTH.md.
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: "Mintkey SSO"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "mintkey-grafana"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE: /run/secrets/mintkey/bootstrap-secrets/grafana_oidc_client_secret
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid email profile roles"
+      GF_AUTH_GENERIC_OAUTH_EMPTY_SCOPES: "false"
+      # Browser-facing URL (the user's browser hits this for the auth code redirect).
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/auth"
+      # Server-side URLs (Grafana → Keycloak inside the docker network).
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/token"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/userinfo"
+      GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/logout?redirect_uri=${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}/login"
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      # Role mapping via JMESPath on the parsed JWT claims.
+      # mintkey-platform-admin → Admin; mintkey-grafana-editor → Editor; else Viewer.
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(realm_access.roles[*], 'mintkey-platform-admin') && 'Admin' || contains(realm_access.roles[*], 'mintkey-grafana-editor') && 'Editor' || 'Viewer'"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "false"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro   # NEW
     ports:
       - "3003:3000"
     networks:

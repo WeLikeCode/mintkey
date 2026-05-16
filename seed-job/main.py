@@ -441,7 +441,11 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
 
         secret_file = secrets_dir / secret_filename
         secret_file.write_text(secret_value)
-        secret_file.chmod(0o600)
+        # 0o640: root owns, root-group can read.
+        # Grafana (uid=472, gid=0) and other non-root services that mount
+        # bootstrap_secrets:ro belong to GID 0, so this is the minimal
+        # permission that allows __FILE secret loading without world-read.
+        secret_file.chmod(0o640)
         print(f"Keycloak: wrote {secret_file}")
 
 
