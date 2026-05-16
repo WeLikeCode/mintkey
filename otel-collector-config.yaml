@@ -44,6 +44,28 @@ exporters:
   debug:
     verbosity: detailed
 
+connectors:
+  spanmetrics:
+    namespace: mintkey_proxy
+    metrics_flush_interval: 15s
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 75ms, 100ms, 250ms, 500ms, 750ms, 1000ms, 2500ms, 5000ms, 10000ms]
+    dimensions:
+      - name: mintkey.actor_id
+        default: "unknown"
+      - name: mintkey.service_id
+        default: "unknown"
+      - name: mintkey.outcome
+        default: "unknown"
+    dimensions_cache_size: 1000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    metrics_expiration: 5m
+    include:
+      match_type: strict
+      span_names:
+        - "mintkey.proxy.handle_request"
+
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
@@ -54,8 +76,8 @@ service:
     traces:
       receivers:  [otlp]
       processors: [batch, attributes/redact, redaction]
-      exporters:  [otlphttp/jaeger, debug]
+      exporters:  [otlphttp/jaeger, debug, spanmetrics]
     metrics:
-      receivers:  [otlp]
+      receivers:  [otlp, spanmetrics]
       processors: [batch]
       exporters:  [prometheus]

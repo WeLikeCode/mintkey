@@ -2,6 +2,15 @@
 
 All notable changes to this template are recorded here. Engagements track which template version they bootstrapped from in `.kiro/setup-state.json` (`template_version` field).
 
+## [0.2.0] — 2026-05-16
+
+### Added
+
+- **Grafana Request Monitoring dashboard** — pre-baked dashboard at `grafana/provisioning/dashboards/request-monitoring.json` with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix) and agent/service template variables
+- **OTel Collector spanmetrics connector** — derives `mintkey_proxy_calls_total` and `mintkey_proxy_duration_milliseconds_*` from `mintkey.proxy.handle_request` spans with actor, service, and outcome dimensions
+- **Explicit Prometheus datasource UID** — `uid: prometheus` added to provisioning for stable dashboard references
+- **Validation tests** — unit tests for OTel config structure and dashboard JSON correctness
+
 ## [0.1.0] — 2026-05-08
 
 Initial release. Template skeleton generalized for cross-engagement reuse.
