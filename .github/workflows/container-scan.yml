@@ -32,35 +32,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # context: . (repo root) — Dockerfiles that COPY sibling directories
+          # (mintkey-models/, go.work, internal/, other service go.mod files).
           - service: admin-api
-            context: admin-api
+            context: .
+            dockerfile: admin-api/Dockerfile
             image: mintkey-admin-api
           - service: mcp-server
-            context: mcp-server
+            context: .
+            dockerfile: mcp-server/Dockerfile
             image: mintkey-mcp-server
-          - service: admin-ui
-            context: admin-ui
-            image: mintkey-admin-ui
           - service: broker
-            context: services/broker
+            context: .
+            dockerfile: services/broker/Dockerfile
             image: mintkey-broker
           - service: vault-adapter
-            context: services/vault-adapter
+            context: .
+            dockerfile: services/vault-adapter/Dockerfile
             image: mintkey-vault-adapter
           - service: proxy-plugin
-            context: services/proxy-plugin
+            context: .
+            dockerfile: services/proxy-plugin/Dockerfile
             image: mintkey-proxy-plugin
           - service: kong-syncer
-            context: services/kong-syncer
+            context: .
+            dockerfile: services/kong-syncer/Dockerfile
             image: mintkey-kong-syncer
+          # context: subdirectory — self-contained Dockerfiles with no sibling COPYs.
+          - service: admin-ui
+            context: admin-ui
+            dockerfile: admin-ui/Dockerfile
+            image: mintkey-admin-ui
           - service: seed-job
             context: seed-job
+            dockerfile: seed-job/Dockerfile
             image: mintkey-seed-job
           - service: mock-backend
             context: mock-backend
+            dockerfile: mock-backend/Dockerfile
             image: mintkey-mock-backend
           - service: jaeger-auth
             context: jaeger-auth
+            dockerfile: jaeger-auth/Dockerfile
             image: mintkey-jaeger-auth
 
     steps:
@@ -70,6 +83,7 @@ jobs:
       - name: Build image — ${{ matrix.service }}
         run: |
           docker build \
+            --file "${{ matrix.dockerfile }}" \
             --tag "${{ matrix.image }}:scan" \
             "${{ matrix.context }}"
 
@@ -83,6 +97,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: false
+          trivyignores: .trivyignore
 
       - name: Upload Trivy SARIF — ${{ matrix.service }}
         # Upload results even when Trivy exits non-zero so findings appear in
