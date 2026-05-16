@@ -54,6 +54,8 @@ When a tool is missing or unfamiliar, **install or learn it**, then run it. Do n
 - When the task crosses a boundary not covered by an existing ADR or contract, **stop and surface the question** rather than improvise. Add it to [`docs/architecture/01-architecture/open-questions.md`](docs/architecture/01-architecture/open-questions.md) as `OQ-NNN`.
 - Do not invent contract surfaces. If the OpenAPI doesn't have an endpoint and you think it should, propose it (write a small proposal under `docs/architecture/proposal/` or, for tiny additions, a TODO in the relevant ADR's open follow-ups).
 
+Before any concrete-fix work begins: confirm the 9 intake fields are filled (`team/remediation/ISSUE_INTAKE_TEMPLATE.md`). If they aren't, ask the user — do NOT start.
+
 ### Principle 3 — When working autonomously, follow the loop
 
 For any non-trivial change:
@@ -291,6 +293,58 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 
 ---
 
+## Routing — remediation vs Kiro/spec-driven flow
+
+For agents without skills (Codex, opencode, etc.), this section is the entire routing — there is no separate skill file to read.
+
+When a user asks you to make a code change, route the work using this table. **Same table appears in `team/remediation/README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `CLAUDE.md` — they must stay in lock-step.**
+
+| Request Type | Required Path | Issue Intake | Reviewer |
+|---|---|---|---|
+| "Fix this bug" with clear evidence | `team/remediation/YYYY-MM-DD-<topic>/` | Full intake file (`ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
+| "Fix this bug" without clear evidence | Ask for issue intake first; **do not start** | Required BEFORE any chunk dispatch | After intake lands |
+| Multi-file remediation | Orchestrator pattern required (`remediation-orchestrator` skill) | Full intake file | Independent REVIEWER per chunk |
+| Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
+| New feature | Kiro spec-driven flow (`.kiro/specs/`) | Use Kiro requirements + ADR/proposal | Per Kiro process |
+| Wire contract change | Proposal/ADR + contract-first flow | Full intake + ADR/proposal link | ADR review + contract review |
+| Database schema change | Liquibase-first flow (`admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
+| Documentation typo | Direct small PR allowed | Brief intake stub (Problem + Evidence) in PR body | Standard PR review |
+| Dependency bump | Direct PR allowed if tests/verification included | Brief intake stub (Problem + Evidence + Verification) | Standard PR review |
+
+### Issue intake is mandatory
+
+For any remediation (rows 1-4 in the table), the 9 intake fields are required BEFORE chunk dispatch:
+
+1. Problem statement
+2. User-visible symptom
+3. Expected behavior
+4. Evidence
+5. Scope
+6. Out of scope
+7. Risk level
+8. Verification target
+9. Owner decisions needed (if any)
+
+If the user has not provided these, **ask before starting**. Do NOT guess. If already inside a session, write the gap to `03-escalations.md` and pause dispatch.
+
+For doc-typo / dep-bump direct PRs (rows 8-9), a brief intake stub (Problem + Evidence + Verification) goes in the PR body's `## Issue Definition` section.
+
+For Kiro/spec-driven work (row 5), use `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md` and the ADR flow at `docs/architecture/01-architecture/adr/`.
+
+### Orchestrator pattern
+
+For rows 3-4 (multi-file / security / release / auth / audit / credential / tenant isolation), the orchestrator pattern is **required**:
+
+- ORCHESTRATOR (you) owns state and does not edit code.
+- BASELINE-REVIEWER runs read-only verification first.
+- IMPLEMENTER agents make surgical, test-first changes.
+- Fresh REVIEWER agents independently verify each chunk.
+- PASS / FAIL / ESCALATE — 3-strike hard-stop per chunk.
+
+Full protocol in `~/.claude/skills/remediation-orchestrator/SKILL.md` (Claude Code) and `team/remediation/README.md` (project-level).
+
+---
+
 ## Anti-patterns (do NOT)
 
 - ❌ Add a column in SQLAlchemy. Liquibase only.
@@ -307,6 +361,8 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 - ❌ Pick `default` as the tenant slug — it's `t_default` ([ADR-0017.9](docs/architecture/01-architecture/adr/0017-round-3-corrections.md)).
 - ❌ Add UUIDs to wire surfaces. ULIDs with prefix only ([ADR-0017.11](docs/architecture/01-architecture/adr/0017-round-3-corrections.md)).
 - ❌ Create README.md / SUMMARY.md / NOTES.md unless explicitly requested.
+- ❌ **Starting implementation without a clear issue definition.** If the user hasn't provided Problem + Expected + Evidence + Scope + Out-of-scope + Risk + Verification, ASK. Don't guess and start coding.
+- ❌ **Bypassing the orchestrator pattern on multi-file fixes.** Multi-file remediations need ORCHESTRATOR + IMPLEMENTER + REVIEWER per chunk. Doing it solo skips the independent-review gate that catches bugs.
 
 ---
 
