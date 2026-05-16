@@ -117,7 +117,7 @@ Each brief is **ready to dispatch verbatim** as the `prompt` argument to a Sonne
 ### R1 — `service_api_keys.createApiKey` show-once flow
 
 ```xml
-<role>You are a Sonnet IMPLEMENTER in $PROJECT_ROOT/. The Mintkey stack runs via docker compose (admin-ui :8081, admin-api :8080). A fresh REVIEWER will verify in a real browser; do NOT report DONE without your own browser screenshot READ with the Read tool.</role>
+<role>You are a Sonnet IMPLEMENTER in `$PROJECT_ROOT` (Mintkey repo root). The Mintkey stack runs via docker compose (admin-ui :8081, admin-api :8080). A fresh REVIEWER will verify in a real browser; do NOT report DONE without your own browser screenshot READ with the Read tool.</role>
 
 <objective>Implement the `service_api_keys.createApiKey` custom action end-to-end so the user-reported "You have to implement action component for your ActionSee: the documentation" error is replaced with a working show-once flow per ADR-0018.
 
@@ -214,7 +214,7 @@ STATUS: DONE | BLOCKED <specific> | ESCALATE <specific>
 ### R2 — `permission_grants` endpoint routing (new + delete)
 
 ```xml
-<role>You are a Sonnet IMPLEMENTER in $PROJECT_ROOT/. Stack live; bootstrap operator at admin@mintkey.internal. REVIEWER will verify; require browser-screenshot evidence.</role>
+<role>You are a Sonnet IMPLEMENTER in `$PROJECT_ROOT` (Mintkey repo root). Stack live; bootstrap operator at admin@mintkey.internal. REVIEWER will verify; require browser-screenshot evidence.</role>
 
 <objective>Fix `permission_grants.new` and `permission_grants.delete` to route through the correct nested admin-api endpoints. Currently both call tenant-wide URLs (`/v1/tenants/{tid}/permissions[/{pid}]`) which are 404 — the real endpoints are nested under the agent: `/v1/tenants/{tid}/agents/{aid}/permissions[/{pid}]`.
 
@@ -288,7 +288,7 @@ STATUS: DONE | BLOCKED | ESCALATE
 ### R3 — `credentials.revokeCredential` custom action
 
 ```xml
-<role>Sonnet IMPLEMENTER in mintkey/. Live stack; REVIEWER verifies browser-side.</role>
+<role>Sonnet IMPLEMENTER in the Mintkey repo root. Live stack; REVIEWER verifies browser-side.</role>
 
 <objective>Implement the `credentials.revokeCredential` custom action per ADR-0013 §3.1. The action wires `DELETE /v1/tenants/{tid}/services/{sid}/credentials/{key_version}` to a "Revoke" button on the credential show page, with a confirmation dialog.
 
@@ -355,7 +355,7 @@ If the user overrides this recommendation → re-spec as R4-implement with expli
 ### R5 — Diagnose + fix W0–W8 5 failing tests
 
 ```xml
-<role>Sonnet IMPLEMENTER in mintkey/. Diagnostic work — 5 pre-existing failing tests in the W0–W8 Playwright suite that the solo-Sonnet variant left as "green" mid-flight.</role>
+<role>Sonnet IMPLEMENTER in the Mintkey repo root. Diagnostic work — 5 pre-existing failing tests in the W0–W8 Playwright suite that the solo-Sonnet variant left as "green" mid-flight.</role>
 
 <objective>Diagnose and fix the 5 failing tests Phase-1a uncovered:
 - `04-agent.spec.ts` tests 1 + 2.
@@ -408,7 +408,7 @@ Do NOT: admin-api/**, broaden the suite, add new tests.
 ### R6 — MCP unauthenticated bootstrap method
 
 ```xml
-<role>Sonnet IMPLEMENTER in $PROJECT_ROOT/. Scope: mcp-server only. The Mintkey stack runs via docker compose (mcp-server at :8001 — verify). REVIEWER will validate via direct MCP protocol call.</role>
+<role>Sonnet IMPLEMENTER in `$PROJECT_ROOT` (Mintkey repo root). Scope: mcp-server only. The Mintkey stack runs via docker compose (mcp-server at :8001 — verify). REVIEWER will validate via direct MCP protocol call.</role>
 
 <objective>Expose an **unauthenticated MCP tool** that returns the contents of `mcp-server/skills/agent-bootstrap.md` (already authored — read it first). The tool teaches any agent (Claude/GPT/Gemini/custom — vendor-agnostic) how to: (a) authenticate to Mintkey, (b) discover services, (c) call the proxy. Without it agents need a pre-installed Mintkey skill; with it they self-onboard.
 
@@ -513,7 +513,7 @@ STATUS: DONE | BLOCKED | ESCALATE
 **Scope exception**: this chunk MAY modify `admin-api/src/admin_api/**` and `admin-api/tests/**` (or repo-root `tests/integration/admin_api/**`). Other §3 hard rules still apply (TDD, conventional commit, no `--no-verify`).
 
 ```xml
-<role>You are a Sonnet IMPLEMENTER in $PROJECT_ROOT/. Scope spans admin-api source + optional mcp-server tests (this chunk is authorized to modify admin-api/ source — exception to §3 of this prompt). Stack live; mcp-server at the port docker-compose.yml says (8082 was reported; verify), admin-api at :8080. REVIEWER will validate the chain end-to-end with direct curl + MCP probes.</role>
+<role>You are a Sonnet IMPLEMENTER in `$PROJECT_ROOT` (Mintkey repo root). Scope spans admin-api source + optional mcp-server tests (this chunk is authorized to modify admin-api/ source — exception to §3 of this prompt). Stack live; mcp-server at the port docker-compose.yml says (8082 was reported; verify), admin-api at :8080. REVIEWER will validate the chain end-to-end with direct curl + MCP probes.</role>
 
 <objective>Fix the MCP agent-authentication chain. A user-reported smoke-test found: every X-API-Key presented to MCP gets a 401. The trace:
 
@@ -627,7 +627,7 @@ STATUS: DONE | BLOCKED | ESCALATE
 **Scope exception** (same as R7): MAY modify `admin-api/src/admin_api/**` and a regression test under `tests/`. All other §3 hard rules still apply.
 
 ```xml
-<role>You are a Sonnet IMPLEMENTER in $PROJECT_ROOT/. Scope: admin-api source + one regression test (scope exception like R7). Stack live; admin-api at :8080. REVIEWER will verify via direct curl probes.</role>
+<role>You are a Sonnet IMPLEMENTER in `$PROJECT_ROOT` (Mintkey repo root). Scope: admin-api source + one regression test (scope exception like R7). Stack live; admin-api at :8080. REVIEWER will verify via direct curl probes.</role>
 
 <objective>Fix the `get_agent` (and likely `get_permissions`) 500s in admin-api. Surfaced by R7's reviewer: 27 admin-api 500s in 5 minutes from `GET /v1/tenants/<tid>/agents/agent_<32hex>` and the per-agent permissions endpoint. Root cause cited in the R7 review: a wire-ID / UUID mismatch at `admin-api/src/admin_api/api/agents.py:338` — the handler tries to bind the wire-prefixed ID (`agent_<32hex>` per ADR-0017) as a bare UUID parameter.
 
@@ -733,7 +733,7 @@ STATUS: DONE | BLOCKED <specific> | ESCALATE <specific>
 ## §7 — REVIEWER template (every chunk uses this; fill the AC slot from the chunk's brief)
 
 ```xml
-<role>You are a fresh, independent REVIEWER subagent in $PROJECT_ROOT/. You did NOT do this work. Re-run; drive the browser (or MCP protocol for R6) yourself. Deliver PASS / FAIL / ESCALATE with evidence.</role>
+<role>You are a fresh, independent REVIEWER subagent in `$PROJECT_ROOT` (Mintkey repo root). You did NOT do this work. Re-run; drive the browser (or MCP protocol for R6) yourself. Deliver PASS / FAIL / ESCALATE with evidence.</role>
 
 <objective>Verify the most-recent commit (HEAD) for chunk {{R<n> title}} meets its acceptance criteria. The implementer claimed: {{2-4 lines summary of their report}}. Don't trust it — re-run.</objective>
 

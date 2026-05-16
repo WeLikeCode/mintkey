@@ -1,6 +1,6 @@
 # MEGA PROMPT — Drive Mintkey to a working, fully-tested implementation
 
-> Run this in Claude Code (Sonnet) from `$PROJECT_ROOT/`.
+> Run this in Claude Code (Sonnet) from the Mintkey repo root (`$PROJECT_ROOT`).
 > Read it once, top to bottom, before doing anything.
 > **Companion:** `team/remediation/ORCHESTRATOR_PROMPT.md` runs this same job as an orchestrator + worker + reviewer loop. This file is the solo-agent version *and* the source of truth for the Definition of Done (§1), the hard rules (§2), the phases (§5), the endpoint-coverage requirement (§6), the verification suite (§9), and the subagent-brief format (§10) — the orchestrator prompt references all of those.
 
@@ -153,12 +153,12 @@ You will spawn subagents — for parallelizable independent work (Phase 0 harnes
 ### The XML-tagged brief template (fill the `<…>`; drop tags that don't apply)
 
 ```
-<role>You are a {implementer | reviewer | researcher} subagent working in $PROJECT_ROOT/. You have none of the orchestrating agent's context — everything you need is in this brief.</role>
+<role>You are a {implementer | reviewer | researcher} subagent working in `$PROJECT_ROOT` (the Mintkey repo root). You have none of the orchestrating agent's context — everything you need is in this brief.</role>
 
 <objective>{one sentence — the single thing this subagent must accomplish}</objective>
 
 <context>
-- Repo: $PROJECT_ROOT/
+- Repo: `$PROJECT_ROOT` (Mintkey)
 - Read first (exact paths): {AGENTS.md; CLAUDE.md; the specific spec/ADR/contract sections}
 - What is already established: {the relevant findings/decisions/prior state — concrete, with file:symbol:line}
 - {On a re-attempt:} <prior_review_findings>{verbatim from the failed verdict — fix ALL of these}</prior_review_findings>

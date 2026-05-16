@@ -1,6 +1,6 @@
 # ORCHESTRATOR PROMPT — Multi-agent loop to finish Mintkey
 
-> Run this in Claude Code (Sonnet or stronger) from `$PROJECT_ROOT/`.
+> Run this in Claude Code (Sonnet or stronger) from the Mintkey repo root (`$PROJECT_ROOT`).
 > It assumes the **MEGA PROMPT** ("Drive Mintkey to a working, fully-tested implementation") is available — you reuse its **Definition of Done (§1)**, **Hard rules (§2)**, **Phase order (§5)**, **Endpoint-coverage requirement (§6)**, **Verification suite (§9)**, and **Subagent-brief format (§10)** verbatim. If it isn't in the session, read `team/remediation/MEGA_PROMPT.md` (saved alongside this file). The IMPLEMENTER and REVIEWER templates in §8/§9 below are fully-instantiated, XML-tagged versions of MEGA PROMPT §10's brief format.
 
 ## 1. Your role
@@ -105,13 +105,13 @@ When working with code (`.py`, `.go`, `.ts`, `.tsx`):
 ## 8. IMPLEMENTER brief template (XML-tagged — a fully-instantiated form of MEGA PROMPT §10; fill the `<…>`, drop tags that don't apply)
 
 ```
-<role>You are an IMPLEMENTER subagent working in $PROJECT_ROOT/. You have none of the orchestrating agent's context — everything you need is in this brief. An independent reviewer will verify your work afterward by re-running your commands, navigating the code with Serena, and inspecting your diff — do NOT report DONE unless it actually is.</role>
+<role>You are an IMPLEMENTER subagent working in `$PROJECT_ROOT` (the Mintkey repo root). You have none of the orchestrating agent's context — everything you need is in this brief. An independent reviewer will verify your work afterward by re-running your commands, navigating the code with Serena, and inspecting your diff — do NOT report DONE unless it actually is.</role>
 
 <objective>{one sentence — the single thing to accomplish for this chunk}</objective>
 <chunk>{id — e.g. "P1/schema-drift"}</chunk>
 
 <context>
-- Repo: $PROJECT_ROOT/
+- Repo: `$PROJECT_ROOT` (Mintkey)
 - Read first (exact paths): AGENTS.md; CLAUDE.md; {the specific spec/ADR/contract sections relevant to this chunk}. For the CODE, NAVIGATE with Serena (see <discipline>) — don't dump files.
 - Already established: {relevant prior state — concrete, with file:symbol:line}
 <prior_review_findings>{verbatim from the failed verdict if this is a re-attempt — fix ALL of these; else "none — first attempt"}</prior_review_findings>
@@ -161,12 +161,12 @@ Report back in EXACTLY this shape (so the orchestrator can parse it):
 ## 9. REVIEWER brief template (XML-tagged — a fully-instantiated form of MEGA PROMPT §10; fill the `<…>`)
 
 ```
-<role>You are an INDEPENDENT REVIEWER subagent working in $PROJECT_ROOT/. You did NOT do this work and you have none of the orchestrating agent's context. Your job is to confirm or refute the claim that the chunk below is genuinely done — verified, tested, clean. Do NOT trust the implementer's summary; re-run the checks yourself and navigate the code yourself. You edit NOTHING — you read, navigate, run commands, and report.</role>
+<role>You are an INDEPENDENT REVIEWER subagent working in `$PROJECT_ROOT` (the Mintkey repo root). You did NOT do this work and you have none of the orchestrating agent's context. Your job is to confirm or refute the claim that the chunk below is genuinely done — verified, tested, clean. Do NOT trust the implementer's summary; re-run the checks yourself and navigate the code yourself. You edit NOTHING — you read, navigate, run commands, and report.</role>
 
 <objective>Verify or refute that chunk {id} meets its acceptance criteria, with no anti-patterns, test-first, surgical, and a clean tree.</objective>
 
 <context>
-- Repo: $PROJECT_ROOT/
+- Repo: `$PROJECT_ROOT` (Mintkey)
 - Read first (exact paths): {the spec/ADR/contract sections the acceptance criteria reference}.
 - Implementer's reported status: {DONE | …}
 - The implementer changed these files: <diff_stat>{git diff --stat output the orchestrator pasted in}</diff_stat>. Inspect `git diff <since>` for them — and NAVIGATE the changed symbols with Serena, don't just skim the textual diff.

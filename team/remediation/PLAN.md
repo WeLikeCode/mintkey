@@ -4,7 +4,7 @@
 >
 > **Execution discipline:** `team/remediation/MEGA_PROMPT.md` — §1 (Definition of Done — the bar for "done"), §2 (hard rules), §9 (verification suite), §10 (XML‑tagged subagent briefs). **Multi‑agent loop:** `team/remediation/ORCHESTRATOR_PROMPT.md`. **Admin‑UI detail:** `team/remediation/ADMIN_UI_SPEC.md` + `team/remediation/PROMPT_ADMIN_UI.md`. **Classical API keys:** `.kiro/specs/long-lived-api-keys/{requirements,design}.md` + `docs/architecture/01-architecture/adr/0018-classical-service-api-keys.md`. **Admin BFF + write‑auth:** `docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md`. **Project guardrails:** `AGENTS.md` / `CLAUDE.md`.
 
-## Copy‑paste command (paste into Claude Code / Sonnet, running in `$PROJECT_ROOT/`)
+## Copy‑paste command (paste into Claude Code / Sonnet, running in the Mintkey repo root)
 
 > Read `team/remediation/PLAN.md`, `team/remediation/MEGA_PROMPT.md`, and the docs PLAN.md references, then execute the workstreams in dependency order — starting with WS‑7's memory/limits chunk (cheap; it protects the host while you do the rest), then WS‑0 → WS‑1 → … Test‑first; validate via tools (run the tests/commands, paste the output); navigate code with Serena MCP, never dump whole files; never `--no-verify`; never edit `docs/architecture/**` to make a gate pass (document a new decision as an ADR + propagate). Don't stop, hand back, or summarize‑and‑quit until every workstream's exit gate is green and the MEGA_PROMPT §1 Definition of Done is met, with the proof pasted. (For the multi‑agent variant, hand each chunk to an IMPLEMENTER per MEGA_PROMPT §10 / ORCHESTRATOR_PROMPT §8 and verify with a fresh REVIEWER per ORCHESTRATOR_PROMPT §9.)
 

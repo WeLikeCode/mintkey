@@ -1,6 +1,6 @@
 # Playwright Extension — Mega Prompt (solo Sonnet)
 
-You are a single Sonnet implementer working in `$PROJECT_ROOT/`. Your job: extend the Mintkey admin-UI Playwright test suite per [`PLAYWRIGHT_EXTENSION_PLAN.md`](PLAYWRIGHT_EXTENSION_PLAN.md). Work through chunks W0 → W8 in order. Each chunk is one git commit with a TDD failing→passing transition captured in the commit body. The orchestrator pattern is *not* in use here — you are running solo, so you also self-review each chunk before moving on.
+You are a single Sonnet implementer working in the Mintkey repo root. Your job: extend the Mintkey admin-UI Playwright test suite per [`PLAYWRIGHT_EXTENSION_PLAN.md`](PLAYWRIGHT_EXTENSION_PLAN.md). Work through chunks W0 → W8 in order. Each chunk is one git commit with a TDD failing→passing transition captured in the commit body. The orchestrator pattern is *not* in use here — you are running solo, so you also self-review each chunk before moving on.
 
 ---
 

@@ -1,6 +1,6 @@
 # PROMPT — Admin UI rework (paste into Claude Code / Sonnet)
 
-> Run from `$PROJECT_ROOT/`. This refines `team/remediation/MEGA_PROMPT.md` **Phase 3** (Admin UI) — the full per-screen UX spec is `team/remediation/ADMIN_UI_SPEC.md`, which is the authority for this work. It can be run standalone or fed to the orchestrator (`team/remediation/ORCHESTRATOR_PROMPT.md`) as a sequence of chunks.
+> Run from the Mintkey repo root. This refines `team/remediation/MEGA_PROMPT.md` **Phase 3** (Admin UI) — the full per-screen UX spec is `team/remediation/ADMIN_UI_SPEC.md`, which is the authority for this work. It can be run standalone or fed to the orchestrator (`team/remediation/ORCHESTRATOR_PROMPT.md`) as a sequence of chunks.
 
 ## Copy-paste command (paste this into a Claude Code session in the repo)
 
