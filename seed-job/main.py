@@ -442,11 +442,17 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
 
         secret_file = secrets_dir / secret_filename
         secret_file.write_text(secret_value)
-        # 0o640: root owns, root-group can read.
-        # Grafana (uid=472, gid=0) and other non-root services that mount
-        # bootstrap_secrets:ro belong to GID 0, so this is the minimal
-        # permission that allows __FILE secret loading without world-read.
-        secret_file.chmod(0o640)
+        # Permission policy (post-REL-3 USER-65532 hardening):
+        #   * Mintkey-internal services (admin-api, jaeger-auth) run as UID 65532
+        #     and own the secrets when seed-job writes them — 0o640 is enough.
+        #   * Grafana runs as UID 472 (its own user, GID 0) — neither owner nor
+        #     in group 65532. It needs world-read on its own secret.
+        # The bootstrap_secrets volume is mounted :ro into a small set of
+        # services; world-read inside the volume is acceptable.
+        if secret_filename == "grafana_oidc_client_secret":
+            secret_file.chmod(0o644)
+        else:
+            secret_file.chmod(0o640)
         print(f"Keycloak: wrote {secret_file}")
 
 
