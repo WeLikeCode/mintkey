@@ -4432,6 +4432,7 @@ x-mintkey-error-codes:
     - service_not_found
     - agent_not_found
     - credential_not_found
+    - not_authorized
     - permission_denied
     - permission_not_found
     - duplicate_resource

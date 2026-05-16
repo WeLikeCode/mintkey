@@ -16,7 +16,7 @@ Mintkey is a credential broker for AI agents. Operators register backend service
 agents discover services over MCP, request short-lived JWTs, and call services through Kong, which
 injects credentials in-flight. The agent never touches the underlying credential.
 
-Architecture is settled across 17 ADRs in
+Architecture is settled across 19 ADRs in
 [`docs/architecture/01-architecture/adr/`](architecture/01-architecture/adr/). Implementation must
 conform to those ADRs. This document explains the pipeline that takes a new feature from idea to
 merged, conformant code.
@@ -32,7 +32,7 @@ customer's API keys — directly, through a log statement, through a span attrib
 payload. The spec process forces the implementer to identify every path to exposure before writing a
 line of code.
 
-**The architecture is non-trivial.** Seventeen ADRs, a polyglot stack (Python/Go/TypeScript), and
+**The architecture is non-trivial.** Nineteen ADRs, a polyglot stack (Python/Go/TypeScript), and
 strong opinions about wire-level contracts mean divergence between services is guaranteed unless
 every change starts from the same shared description. A spec is that shared description.
 

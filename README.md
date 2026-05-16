@@ -128,7 +128,7 @@ docs/
     README.md                      reading order
     00-vision/                     problem, vision, personas, roadmap
     01-architecture/
-      adr/                         17 accepted ADRs (canonical path)
+      adr/                         19 accepted ADRs (canonical path)
       open-questions.md            22 OQ-* tracked items
     03-flows/                      E2E-01 + 6 component flows
     contracts/                     REST OpenAPI, MCP tools, event schemas, proto
