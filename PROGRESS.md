@@ -1,7 +1,7 @@
 # PROGRESS.md — Mintkey implementation drive
 
 > Companion to `team/remediation/MEGA_PROMPT.md`.
-> Last updated: 2026-05-12. All workstreams WS-7a through WS-8 complete.
+> Last updated: 2026-05-16. All workstreams WS-7a through WS-8 complete. OSS-readiness session (2026-05-16-oss-readiness) complete — 9 commits, 13/13 ACs met, 99-report.md closed.
 
 ## §1 Checklist (MEGA_PROMPT Definition of Done)
 
