@@ -10,13 +10,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY realm-mintkey.json .
 
-# Run as non-root (UID 65532 matches distroless nonroot convention for consistency).
-# NOTE: /run/secrets/mintkey/bootstrap-secrets is a Docker named volume mounted
-# at runtime. On fresh installs Docker creates the volume directory owned by the
-# first writer (UID 65532). On existing installs the volume is root-owned from the
-# prior root seed-job run; see DEPLOYMENT.md for the HEALTHCHECK deferral note.
+# seed-job runs as root intentionally (Option B, fix/seed-job-perms-2026-05-17).
+#
+# Rationale: this is a one-shot init container whose sole job is to WRITE secrets
+# into the `bootstrap_secrets` Docker named volume. Named volumes are created
+# root-owned by Docker; UID 65532 cannot write to them, causing PermissionError
+# on '/run/secrets/mintkey/bootstrap-secrets/admin_password' et al.
+#
+# Running as root is the canonical pattern for init/seed containers (cf. Kubernetes
+# init containers, Helm hooks). The chmod calls in main.py (0o640 / 0o644 / 0o600)
+# still run and set per-file permissions so that downstream containers (admin-api
+# UID 65532, Grafana UID 472, etc.) can READ the files after seed-job exits.
+#
+# Security posture: seed-job has no network exposure and no persistent process;
+# it exits 0 immediately after writing. The blast radius of root inside this
+# ephemeral container is bounded by the named volumes it mounts.
 RUN useradd -u 65532 -M -s /sbin/nologin nonroot && chown -R 65532:65532 /app
-USER 65532:65532
+# USER directive omitted — seed-job runs as root so it can write to the
+# root-owned bootstrap_secrets named volume. See comment block above.
 
 # No HEALTHCHECK — this is a one-shot init container. See DEPLOYMENT.md.
 
