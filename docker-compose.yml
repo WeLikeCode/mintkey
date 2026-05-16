@@ -486,7 +486,11 @@ services:
       - --client-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oidc_client_secret
       # cookie secret read from file by ./jaeger-auth/entrypoint.sh → OAUTH2_PROXY_COOKIE_SECRET
       - --redirect-url=${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback
-      - --oidc-issuer-url=${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey
+      # Issuer URL must be the BROWSER-VISIBLE Keycloak URL because oauth2-proxy
+      # uses its discovery response (authorization_endpoint, end_session_endpoint)
+      # for browser-redirect locations. extra_hosts below lets the container
+      # still reach this URL from inside docker (host-gateway = docker host).
+      - --oidc-issuer-url=${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey
       - --upstream=http://jaeger:16686/
       - --http-address=0.0.0.0:4180
       - --email-domain=*
@@ -504,6 +508,11 @@ services:
       - "16686:4180"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    extra_hosts:
+      # Map "localhost" inside the oauth2-proxy container to the docker host
+      # so the browser-flavored Keycloak public URL (http://localhost:8443)
+      # is reachable for server-side token/JWKS calls.
+      - "localhost:host-gateway"
     networks:
       - mintkey
     depends_on:
