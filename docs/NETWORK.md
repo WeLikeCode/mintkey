@@ -164,3 +164,94 @@ one minor version of overlap.
 - [guides/github-quickstart.md](guides/github-quickstart.md) — first agent walkthrough
 - [guides/hermes-coingecko-quickstart.md](guides/hermes-coingecko-quickstart.md) — CoinGecko agent walkthrough
 - ADR-0017: [docs/architecture/01-architecture/adr/0017-round-3-corrections.md](architecture/01-architecture/adr/0017-round-3-corrections.md) — wire-form-everywhere (slug + agent ID semantics)
+
+---
+
+## Keycloak / SSO public URLs
+
+Mintkey uses Keycloak as the operator-identity provider for admin-ui, Grafana, and
+Jaeger. Each service has a Keycloak client and uses OIDC (PKCE) to obtain a session.
+
+Operators see Keycloak at `MINTKEY_KEYCLOAK_PUBLIC_URL`. Internally, containers
+talk to Keycloak via `MINTKEY_KEYCLOAK_INTERNAL_URL` (the docker-network address).
+These can be different — the browser doesn't reach docker hostnames, but the
+backend containers can't reach the operator's browser URL either.
+
+### Env vars
+
+| Variable | Used by | Browser/Server | Default |
+|---|---|---|---|
+| `MINTKEY_KEYCLOAK_PUBLIC_URL` | admin-api, Grafana, oauth2-proxy (redirect target gen) | Browser-facing | `http://localhost:8443` |
+| `MINTKEY_KEYCLOAK_INTERNAL_URL` | admin-api, Grafana, oauth2-proxy (token/JWKS/userinfo) | Server-to-server | `http://keycloak:8443` |
+| `MINTKEY_ADMIN_API_PUBLIC_URL` | admin-api (OIDC redirect URI registration) | Browser-facing | `http://localhost:8080` |
+| `MINTKEY_ADMIN_UI_PUBLIC_URL` | admin-api (post-login 302 destination) | Browser-facing | `http://localhost:8081` |
+| `MINTKEY_GRAFANA_PUBLIC_URL` | Grafana root_url + OIDC redirect URI | Browser-facing | `http://localhost:3003` |
+| `MINTKEY_JAEGER_PUBLIC_URL` | oauth2-proxy redirect URI | Browser-facing | `http://localhost:16686` |
+
+`_PUBLIC_URL` variables are used wherever a URL is returned to an operator browser (OIDC
+redirects, login links, redirect URIs registered on Keycloak clients). They must be
+reachable by operator browsers. `_INTERNAL_URL` is strictly server-to-server — containers
+talk to each other over the docker network and never expose that hostname to a browser.
+
+### LAN setup
+
+If your operators reach Mintkey via a LAN IP (e.g. `10.243.1.200`), set all five
+browser-facing URLs to that IP in `.env`:
+
+```bash
+MINTKEY_KEYCLOAK_PUBLIC_URL=http://10.243.1.200:8443
+MINTKEY_ADMIN_API_PUBLIC_URL=http://10.243.1.200:8080
+MINTKEY_ADMIN_UI_PUBLIC_URL=http://10.243.1.200:8081
+MINTKEY_GRAFANA_PUBLIC_URL=http://10.243.1.200:3003
+MINTKEY_JAEGER_PUBLIC_URL=http://10.243.1.200:16686
+```
+
+`MINTKEY_KEYCLOAK_INTERNAL_URL` stays the docker-network default
+(`http://keycloak:8443`) — containers continue to reach Keycloak inside the network.
+
+Rebuild and restart:
+
+```bash
+docker compose down
+docker compose build
+docker compose up -d
+```
+
+Then visit `http://10.243.1.200:8081` from another machine on the network. The login
+flow redirects to `http://10.243.1.200:8443/realms/mintkey/...` for authentication.
+
+### Cloud / TLS
+
+Same pattern as the MCP/proxy section. Each service can be behind its own
+TLS-terminating reverse proxy. Browser-facing URLs use `https://`; the internal
+URL stays `http://` over the docker network (or use a TLS-internal overlay if your
+security model requires it).
+
+```bash
+MINTKEY_KEYCLOAK_PUBLIC_URL=https://auth.example.com
+MINTKEY_KEYCLOAK_INTERNAL_URL=http://keycloak:8443
+MINTKEY_ADMIN_UI_PUBLIC_URL=https://admin.example.com
+MINTKEY_ADMIN_API_PUBLIC_URL=https://admin-api.example.com
+MINTKEY_GRAFANA_PUBLIC_URL=https://grafana.example.com
+MINTKEY_JAEGER_PUBLIC_URL=https://jaeger.example.com
+```
+
+### Operator-internal services
+
+The Kong admin port (`8001`) is bound to `127.0.0.1` only — Kong's data plane
+(`8000`) remains exposed for agent proxy traffic. Kong-syncer reaches the Kong admin
+API via the docker network (not via the host port), so nothing breaks. **If you need
+to reach Kong admin from another machine, use an SSH tunnel** rather than re-exposing
+the port.
+
+Prometheus is internal-only — no host port mapping. Operators inspect metrics via
+Grafana dashboards (which are SSO-protected).
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| Keycloak login redirects to `localhost:8443` from a remote browser | `MINTKEY_KEYCLOAK_PUBLIC_URL` not set in `.env`; restart the affected services. |
+| Grafana SSO button missing | Grafana not rebuilt after `MINTKEY_KEYCLOAK_INTERNAL_URL` change, or `grafana_oidc_client_secret` file missing in the bootstrap_secrets volume. |
+| `Invalid redirect_uri` from Keycloak | The browser-facing URL doesn't match a redirectUri registered on the Keycloak client. Add it via the realm.json (re-seed) or via Keycloak admin REST. |
+| OIDC callback succeeds but `whoami` says 401 | admin-api session-cookie domain mismatch — set `MINTKEY_ADMIN_UI_PUBLIC_URL` and `MINTKEY_ADMIN_API_PUBLIC_URL` to the same hostname (different paths/ports OK). |
