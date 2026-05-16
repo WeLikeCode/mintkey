@@ -12,7 +12,7 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -122,11 +122,13 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents`,
             "POST",
-            request.payload
+            request.payload,
+            operatorOpts
           );
 
           const body = await resp.json().catch(() => ({})) as { api_key?: string; id?: string; title?: string };
@@ -176,10 +178,13 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}`,
-            "DELETE"
+            "DELETE",
+            undefined,
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -225,10 +230,13 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/revoke`,
-            "POST"
+            "POST",
+            undefined,
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -275,11 +283,13 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = request.params.recordId ?? "";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/rotate-key`,
             "POST",
-            request.payload ?? {}
+            request.payload ?? {},
+            operatorOpts
           );
           const body = await resp.json().catch(() => ({})) as {
             api_key?: string;

@@ -14,7 +14,7 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -92,6 +92,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = request.payload?.agent_id as string | undefined;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           if (!agentId) {
             return {
@@ -113,7 +114,8 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
               allowed_actions,
               constraints: request.payload?.constraints,
               expires_at: request.payload?.expires_at,
-            }
+            },
+            operatorOpts
           );
 
           const body = await resp.json().catch(() => ({})) as { plaintext_key?: string; title?: string };
@@ -153,11 +155,13 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/revoke`,
             "POST",
-            { reason: request.payload?.reason ?? "operator_revoked" }
+            { reason: request.payload?.reason ?? "operator_revoked" },
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -192,10 +196,13 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/agents/${agentId}/api-keys/${keyId}/rotate`,
-            "POST"
+            "POST",
+            undefined,
+            operatorOpts
           );
 
           const body = await resp.json().catch(() => ({})) as { plaintext_key?: string; title?: string };

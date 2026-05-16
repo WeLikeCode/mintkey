@@ -9,7 +9,7 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -129,6 +129,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
           }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           let constraints: Record<string, unknown> = {};
           try {
@@ -150,7 +151,8 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
               service_id: request.payload?.service_id,
               action: request.payload?.action,
               constraints,
-            }
+            },
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -174,10 +176,13 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const permissionId = request.params.recordId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           await apiWrite(
             `/v1/tenants/${tenantId}/permissions/${permissionId}`,
-            "DELETE"
+            "DELETE",
+            undefined,
+            operatorOpts
           );
 
           return { record: await recordJSON(context) };

@@ -12,7 +12,7 @@
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { buildCredentialPayload } from "../lib/auth-scheme.js";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -87,6 +87,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.payload?.service_id as string;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
@@ -94,7 +95,8 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
             buildCredentialPayload(
               request.payload?.auth_scheme as string ?? "none",
               request.payload as Record<string, string> ?? {}
-            )
+            ),
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -144,6 +146,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           // gate it: only pass rotate_from when recordId starts with "cred_".
           const credentialId = request.params.recordId as string | undefined;
           const authScheme = record?.get("auth_scheme") as string ?? "bearer_token";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}/credentials/rotate`,
@@ -153,7 +156,8 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
               // Only pass rotate_from when a genuine cred_ wire ID is available
               // (not the svc_ record key from the AdminJS credentials list).
               ...(credentialId?.startsWith("cred_") ? { rotate_from: credentialId } : {}),
-            }
+            },
+            operatorOpts
           );
 
           if (!resp.ok) {

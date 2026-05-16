@@ -86,6 +86,34 @@ export async function getApiSession(): Promise<ApiSession | null> {
 }
 
 /**
+ * Extract per-operator session credentials from context.currentAdmin.
+ *
+ * requireSession (index.ts) stashes sessionToken + csrfToken on
+ * req.session.adminUser after every successful whoami call. AdminJS exposes
+ * req.session.adminUser as context.currentAdmin inside action handlers.
+ *
+ * Passing the returned object as operatorOpts to apiWrite ensures write calls
+ * are authenticated as the logged-in operator, not via a stale bootstrap
+ * session that may fail when internal_password_hash IS NULL (SSO-REDUX-3 /
+ * D2-b). This is the canonical fix for the apiWrite session threading gap
+ * flagged in SSO-REDUX-3 OPEN items.
+ *
+ * Returns null only if currentAdmin is absent (e.g. unauthenticated requests —
+ * which requireSession should have already blocked).
+ */
+export function operatorOptsFromAdmin(
+  currentAdmin: Record<string, unknown> | null | undefined
+): { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string } | null {
+  if (!currentAdmin) return null;
+  const operatorId = (currentAdmin["operatorId"] ?? "") as string;
+  const tenantId   = (currentAdmin["tenantId"]   ?? "") as string;
+  const sessionToken = (currentAdmin["sessionToken"] ?? "") as string;
+  const csrfToken    = (currentAdmin["csrfToken"]    ?? "") as string;
+  if (!operatorId || !tenantId || !sessionToken) return null;
+  return { operatorId, tenantId, sessionToken, csrfToken };
+}
+
+/**
  * Make an authenticated write call to admin-api.
  *
  * When operatorOpts is provided (per-operator session from currentAdmin), uses
@@ -99,7 +127,7 @@ export async function apiWrite(
   path: string,
   method: string,
   body?: unknown,
-  operatorOpts?: { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string }
+  operatorOpts?: { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string } | null
 ): Promise<Response> {
   const opts = operatorOpts ?? await getApiSession();
 

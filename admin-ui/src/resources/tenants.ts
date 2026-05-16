@@ -16,7 +16,7 @@
  */
 
 import type { ResourceWithOptions, ActionContext } from "adminjs";
-import { apiWrite } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
@@ -121,8 +121,10 @@ Cannot be changed after tenant creation.`,
           if (request.method === "get") {
             return { record: await recordJSON(context, {}) };
           }
+          const { currentAdmin } = context;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
-          const resp = await apiWrite("/v1/tenants", "POST", request.payload);
+          const resp = await apiWrite("/v1/tenants", "POST", request.payload, operatorOpts);
 
           if (!resp.ok) {
             const err = await resp.json() as { title?: string };
@@ -146,12 +148,15 @@ Cannot be changed after tenant creation.`,
           if (request.method === "get") {
             return { record: await recordJSON(context, request.payload ?? {}) };
           }
+          const { currentAdmin: ca } = context;
+          const operatorOpts = operatorOptsFromAdmin(ca as Record<string, unknown>);
           const targetTenantId = request.params.recordId;
 
           const resp = await apiWrite(
             `/v1/tenants/${targetTenantId}`,
             "PATCH",
-            { display_name: request.payload?.display_name }
+            { display_name: request.payload?.display_name },
+            operatorOpts
           );
 
           if (!resp.ok) {

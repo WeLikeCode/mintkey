@@ -15,7 +15,7 @@
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
-import { apiWrite, getApiSession } from "../lib/api-client.js";
+import { apiWrite, getApiSession, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 import { resolveProxyPublicUrl } from "../lib/public-urls.js";
@@ -113,11 +113,13 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services`,
             "POST",
-            request.payload
+            request.payload,
+            operatorOpts
           );
 
           const body = await resp.json().catch(() => ({})) as { id?: string; title?: string };
@@ -145,11 +147,13 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}`,
             "PATCH",
-            request.payload
+            request.payload,
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -169,6 +173,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           const { currentAdmin, h, resource } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           if (request.method === "get") {
             return { record: await recordJSON(context) };
@@ -176,7 +181,9 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
 
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}`,
-            "DELETE"
+            "DELETE",
+            undefined,
+            operatorOpts
           );
 
           if (!resp.ok) {
@@ -328,12 +335,14 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
 
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           // request.payload contains the TransientTestRequest shaped body
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/test-transient`,
             "POST",
-            request.payload
+            request.payload,
+            operatorOpts
           );
 
           const testResult = await resp.json() as {
@@ -409,13 +418,15 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
           const serviceId = request.params.recordId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           // Thread operator-supplied payload directly — no hardcoded values.
           // request.payload contains: method, path, headers?, body?, timeout_ms
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}/test`,
             "POST",
-            request.payload
+            request.payload,
+            operatorOpts
           );
 
           const testResult = await resp.json() as {
