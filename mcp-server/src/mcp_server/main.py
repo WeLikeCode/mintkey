@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from mcp_server.auth.agent_key import validate_agent_key
 from mcp_server.tools.bootstrap import router as bootstrap_router
 from mcp_server.tools.discovery import router as discovery_router
+from mcp_server.tools.jsonrpc import router as jsonrpc_router
 from mcp_server.tools.landing import router as landing_router
 from mcp_server.tools.request_token import router as request_token_router
 
@@ -104,6 +105,11 @@ def create_app() -> FastAPI:
 
     # landing router first — unauthenticated GET discovery pages (MCP-D-A)
     app.include_router(landing_router)
+    # JSON-RPC dispatcher — POST /, /mcp, /v1/mcp (MCP-D-BE)
+    # Must come AFTER landing_router so GET on those paths still hits landing.py.
+    # /, /mcp, /v1/mcp remain in the auth bypass list because method-level auth
+    # is enforced inside the dispatcher for tools/* methods.
+    app.include_router(jsonrpc_router)
     # bootstrap router next — it has no auth; registers GET /v1/tools/bootstrap (R6)
     app.include_router(bootstrap_router)
     app.include_router(discovery_router)
