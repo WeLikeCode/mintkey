@@ -157,18 +157,26 @@ func (q *Queue) compact(triggerReason string) {
 	}
 
 	if _, err := f.WriteString(newContent); err != nil {
-		f.Close()
+		if cerr := f.Close(); cerr != nil {
+			slog.Warn("auditq: compact: close temp file after write error", "err", cerr)
+		}
 		_ = os.Remove(tmpPath)
 		slog.Warn("auditq: compact: write temp file", "err", err)
 		return
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		if cerr := f.Close(); cerr != nil {
+			slog.Warn("auditq: compact: close temp file after sync error", "err", cerr)
+		}
 		_ = os.Remove(tmpPath)
 		slog.Warn("auditq: compact: fsync temp file", "err", err)
 		return
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		slog.Warn("auditq: compact: close temp file", "err", err)
+		return
+	}
 
 	if err := os.Rename(tmpPath, q.walPath); err != nil {
 		_ = os.Remove(tmpPath)
