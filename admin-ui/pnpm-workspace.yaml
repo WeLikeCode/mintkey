@@ -1,3 +1,9 @@
+# Single-package "workspace" — required for pnpm v9+ to accept this file
+# (newer pnpm versions error with "packages field missing or empty" if absent
+# even though we have no sub-packages).
+packages:
+  - "."
+
 allowBuilds:
   esbuild: true
 

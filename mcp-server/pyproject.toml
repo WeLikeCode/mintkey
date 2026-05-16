@@ -21,3 +21,14 @@ dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_server"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+    "mypy>=1.13",
+]
+
+[tool.uv]
+default-groups = ["dev"]

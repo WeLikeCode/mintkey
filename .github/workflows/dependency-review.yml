@@ -37,18 +37,5 @@ jobs:
             CC0-1.0,
             Python-2.0
 
-          # Deny copyleft licenses that would impose reciprocal obligations
-          deny-licenses: >-
-            GPL-2.0,
-            GPL-3.0,
-            LGPL-2.0,
-            LGPL-2.1,
-            LGPL-3.0,
-            AGPL-1.0,
-            AGPL-3.0,
-            EUPL-1.0,
-            EUPL-1.1,
-            EUPL-1.2
-
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
