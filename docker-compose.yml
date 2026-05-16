@@ -183,6 +183,12 @@ services:
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
       # Legacy alias (accepted with deprecation warning) — see docs/NETWORK.md.
       # MCP_BASE_URL: "..."
+      # Keycloak URLs (SSO-B): public for browser redirects, internal for token/JWKS.
+      MINTKEY_KEYCLOAK_PUBLIC_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}"
+      MINTKEY_KEYCLOAK_INTERNAL_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+      MINTKEY_ADMIN_UI_PUBLIC_URL: "${MINTKEY_ADMIN_UI_PUBLIC_URL:-http://localhost:8081}"
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -467,14 +473,15 @@ services:
   # (auth-code + PKCE flow) and returned here with a session cookie.
   # Refs: ADR-0014 §14.2; docs/AUTH.md (added in SSO-G).
   jaeger-auth:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    build:
+      context: ./jaeger-auth
     restart: unless-stopped
     mem_limit: 96m
     command:
       - --provider=keycloak-oidc
       - --client-id=mintkey-jaeger
       - --client-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oidc_client_secret
-      - --cookie-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oauth2_cookie_secret
+      # cookie secret read from file by ./jaeger-auth/entrypoint.sh → OAUTH2_PROXY_COOKIE_SECRET
       - --redirect-url=${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback
       - --oidc-issuer-url=${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey
       - --upstream=http://jaeger:16686/
