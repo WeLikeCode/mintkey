@@ -42,6 +42,34 @@ router = APIRouter(prefix="/v1/tools")
 _rate_limiter = RateLimiter()
 
 
+def _denial_hint(reason: str, agent_id: str, service_id: str, action: str) -> Optional[str]:
+    """
+    Return an agent-facing hint string for a denial reason, or None if the
+    reason is unrecognised (so callers can omit the field rather than emit a
+    placeholder).
+
+    UX-FB-A: every denial path that has a known reason gets a verbatim hint
+    that names the agent, service, and action and tells the agent what to do.
+    """
+    if reason == "permission_not_found":
+        return (
+            f"No permission grant exists for this (agent, service, action) triple. "
+            f"Ask the operator to grant '{action}' on service '{service_id}' to agent "
+            f"'{agent_id}'. Operators do this in the admin UI under Permissions > New."
+        )
+    if reason == "constraint_failed:rate_limit":
+        return (
+            "Rate limit exceeded for this grant. Back off and retry; check "
+            "describe_service.your_constraints.rate_limit for the cap."
+        )
+    if reason == "constraint_failed:time_window":
+        return (
+            "Current time is outside the time_window constraint on this grant. "
+            "Check describe_service.your_constraints.time_window for allowed hours/days."
+        )
+    return None
+
+
 class TokenRequest(BaseModel):
     service_id: str
     action: str
@@ -118,17 +146,23 @@ async def request_token(
     grant = result.fetchone()
 
     if grant is None:
+        _reason = "permission_not_found"
+        _hint = _denial_hint(_reason, agent_id, wire_service_id, body.action)
         await _emit_denial(
             session, tenant_id, agent_id, wire_service_id, body.action,
-            "permission_not_found",
+            _reason,
+            remediation_hint=_hint,
         )
-        return JSONResponse(
-            status_code=403,
-            content={
-                "code": "mintkey:not_authorized",
-                "reason_code": "permission_not_found",
-            },
-        )
+        _body: dict = {
+            "code": "mintkey:not_authorized",
+            "reason_code": _reason,
+            "agent_id": agent_id,
+            "service_id": wire_service_id,
+            "action": body.action,
+        }
+        if _hint is not None:
+            _body["hint"] = _hint
+        return JSONResponse(status_code=403, content=_body)
 
     constraints: dict = grant.constraints or {}
 
@@ -137,25 +171,41 @@ async def request_token(
         key = f"{agent_id}:{wire_service_id}:{body.action}"
         allowed, reason = evaluate_rate_limit(_rate_limiter, key, rate_limit)
         if not allowed:
+            _hint = _denial_hint(reason, agent_id, wire_service_id, body.action)
             await _emit_denial(
-                session, tenant_id, agent_id, wire_service_id, body.action, reason
+                session, tenant_id, agent_id, wire_service_id, body.action, reason,
+                remediation_hint=_hint,
             )
-            return JSONResponse(
-                status_code=403,
-                content={"code": "mintkey:not_authorized", "reason_code": reason},
-            )
+            _body = {
+                "code": "mintkey:not_authorized",
+                "reason_code": reason,
+                "agent_id": agent_id,
+                "service_id": wire_service_id,
+                "action": body.action,
+            }
+            if _hint is not None:
+                _body["hint"] = _hint
+            return JSONResponse(status_code=403, content=_body)
 
     # 3. Evaluate time_window constraint
     if time_window := constraints.get("time_window"):
         allowed, reason = evaluate_time_window(time_window)
         if not allowed:
+            _hint = _denial_hint(reason, agent_id, wire_service_id, body.action)
             await _emit_denial(
-                session, tenant_id, agent_id, wire_service_id, body.action, reason
+                session, tenant_id, agent_id, wire_service_id, body.action, reason,
+                remediation_hint=_hint,
             )
-            return JSONResponse(
-                status_code=403,
-                content={"code": "mintkey:not_authorized", "reason_code": reason},
-            )
+            _body = {
+                "code": "mintkey:not_authorized",
+                "reason_code": reason,
+                "agent_id": agent_id,
+                "service_id": wire_service_id,
+                "action": body.action,
+            }
+            if _hint is not None:
+                _body["hint"] = _hint
+            return JSONResponse(status_code=403, content=_body)
 
     # 4. Call broker to issue a real JWT.
     # Pass the DB UUID to the broker — broker is downstream and always uses UUIDs.
@@ -193,10 +243,26 @@ async def _emit_denial(
     service_id: str,
     action: str,
     reason_code: str,
+    *,
+    remediation_hint: Optional[str] = None,
 ) -> None:
-    """Emit token.denied audit event for any denial path. ADR-0014.7."""
+    """Emit token.denied audit event for any denial path. ADR-0014.7.
+
+    ``remediation_hint`` (UX-FB-A) is the same human-readable string returned
+    in the 403 response body's ``hint`` field.  It is included in the audit
+    payload only when non-null so that future audit filters can target it
+    independently of the agent-facing ``hint``.
+    """
     from uuid import UUID
     _tid = tenant_id if isinstance(tenant_id, UUID) else UUID(str(tenant_id))
+    _payload: dict = {
+        "agent_id": agent_id,
+        "service_id": service_id,
+        "action": action,
+        "reason_code": reason_code,
+    }
+    if remediation_hint is not None:
+        _payload["remediation_hint"] = remediation_hint
     await audit_emit(
         session=session,
         tenant_id=_tid,
@@ -205,10 +271,5 @@ async def _emit_denial(
         actor_type="agent",
         target_id=None,
         target_type="service",
-        payload={
-            "agent_id": agent_id,
-            "service_id": service_id,
-            "action": action,
-            "reason_code": reason_code,
-        },
+        payload=_payload,
     )

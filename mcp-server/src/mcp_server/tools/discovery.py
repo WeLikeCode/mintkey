@@ -139,7 +139,14 @@ async def list_services(
         }
         for r in rows
     ]
-    return JSONResponse({"services": services})
+    payload: dict = {"services": services}
+    if not services:
+        payload["hint"] = (
+            "You have no permission grants on any service. "
+            "Ask your operator to add a Permission Grant in the admin UI: "
+            "Permissions > New > pick this agent + a service + action."
+        )
+    return JSONResponse(payload)
 
 
 @router.get("/discover")
@@ -179,7 +186,14 @@ async def discover(
         }
         for r in rows
     ]
-    return JSONResponse({"services": services})
+    payload: dict = {"services": services}
+    if not services:
+        payload["hint"] = (
+            "You have no permission grants on any service. "
+            "Ask your operator to add a Permission Grant in the admin UI: "
+            "Permissions > New > pick this agent + a service + action."
+        )
+    return JSONResponse(payload)
 
 
 @router.get("/instructions")

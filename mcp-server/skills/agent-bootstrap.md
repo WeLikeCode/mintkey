@@ -236,6 +236,13 @@ The proxy and MCP tools return errors with a structured `mintkey:code` field in 
 | 400 | `credential_passthrough_forbidden` | You included the upstream's credential header. | Remove the header; Mintkey injects it. |
 | 5xx | `upstream_error` | Backend service returned 5xx. Body has the upstream's original response. | Retry with backoff if appropriate. Mintkey does NOT auto-retry. |
 
+**Reading denial responses (post-OPS-LL).** Every 403 from request_token now
+carries `agent_id`, `service_id`, `action`, and a `hint` string. Echo the hint
+verbatim to whoever is operating you — it contains the exact remediation step
+(which agent, which service, which action). Do NOT retry after a 403 unless
+the hint says to (rate_limit hints suggest backoff; permission_not_found
+means stop and ask the operator).
+
 **Revocation semantics** (ADR-0006 + ADR-0016.7):
 - **In-flight read-only tool calls** when your Agent is revoked: complete with current snapshot.
 - **In-flight state-changing tool calls** (`request_token`): abort with `503 tenant_deleted` or `401 agent_revoked`.

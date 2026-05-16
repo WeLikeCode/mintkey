@@ -300,6 +300,238 @@ def test_request_token_cross_tenant_slug_not_resolvable() -> None:
 
 
 # ===========================================================================
+# UX-FB-A: denial enrichment + list_services empty hint + audit payload tests
+# ===========================================================================
+
+
+def test_request_token_permission_denied_body_includes_agent_service_action_hint() -> None:
+    """
+    When request_token returns 403 permission_not_found, the body must include
+    agent_id, service_id, action, and a hint that starts with
+    'No permission grant exists'.
+
+    Source: UX-FB-A behavioural spec §1.
+    """
+    from unittest.mock import patch, AsyncMock
+
+    resp = _run_request_token(
+        _TEST_SERVICE_UUID,
+        slug_row=None,
+        grant_row=None,  # no grant → permission_not_found
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 permission_not_found, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("reason_code") == "permission_not_found", (
+        f"reason_code must be permission_not_found: {body}"
+    )
+    assert "agent_id" in body, f"agent_id missing from 403 body: {body}"
+    assert "service_id" in body, f"service_id missing from 403 body: {body}"
+    assert "action" in body, f"action missing from 403 body: {body}"
+    assert "hint" in body, f"hint missing from 403 body: {body}"
+    assert body["hint"].startswith("No permission grant exists"), (
+        f"hint must start with 'No permission grant exists', got: {body['hint']!r}"
+    )
+    # Backward compat: existing fields still present
+    assert body.get("code") == "mintkey:not_authorized", (
+        f"code must still be mintkey:not_authorized: {body}"
+    )
+
+
+def test_request_token_rate_limit_denial_includes_hint() -> None:
+    """
+    When a grant exists but rate_limit is exceeded, the 403 body must include
+    agent_id, service_id, action, and a hint mentioning 'Rate limit'.
+
+    Strategy: pre-fill the rate-limiter bucket for the exact key that the handler
+    will compute (agent_id:wire_service_id:action) so the check is denied on the
+    first (and only) HTTP call.  This avoids needing two calls and the complexities
+    of broker-mocking for the first one.
+
+    Source: UX-FB-A behavioural spec §1.
+    """
+    import time
+    import mcp_server.tools.request_token as rt_mod
+    from mcp_server.policy.constraints import RateLimiter
+    from mcp_server.utils.wire_ids import db_uuid_to_wire
+    from unittest.mock import patch, AsyncMock
+
+    # Fixed agent_id — same value used when building the fake app context.
+    _fixed_agent_id = str(uuid.uuid4())
+
+    # Pre-build the rate-limiter key the handler will compute.
+    wire_svc_id = db_uuid_to_wire(_TEST_SERVICE_UUID, "svc")
+    rl_key = f"{_fixed_agent_id}:{wire_svc_id}:call"
+
+    # Create a fresh limiter with burst=1 and pre-fill the bucket so the very
+    # first call via the handler is denied.
+    from collections import deque
+    fresh_limiter = RateLimiter()
+    with fresh_limiter._lock:
+        fresh_limiter._buckets[rl_key] = deque([time.time()])  # bucket is full
+
+    orig_limiter = rt_mod._rate_limiter
+    rt_mod._rate_limiter = fresh_limiter
+
+    grant_row = _make_grant_row(
+        service_id=_TEST_SERVICE_UUID,
+        constraints={"rate_limit": {"requests_per_second": 1, "burst": 1}},
+    )
+    slug_row = _make_slug_row(_TEST_SERVICE_UUID)
+
+    try:
+        # Single call — rate limit is already exceeded; audit_emit is mocked to
+        # avoid hash-chain DB interaction in the unit test.
+        with patch(
+            "mcp_server.tools.request_token.audit_emit",
+            new_callable=AsyncMock,
+        ):
+            resp = _run_request_token(
+                _TEST_SERVICE_UUID,
+                slug_row=slug_row,
+                grant_row=grant_row,
+                agent_id=_fixed_agent_id,
+            )
+    finally:
+        rt_mod._rate_limiter = orig_limiter
+
+    assert resp.status_code == 403, (
+        f"Expected 403 on rate-limited call, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert "constraint_failed:rate_limit" in body.get("reason_code", ""), (
+        f"reason_code should contain constraint_failed:rate_limit: {body}"
+    )
+    assert "agent_id" in body, f"agent_id missing from rate-limit 403 body: {body}"
+    assert "service_id" in body, f"service_id missing from rate-limit 403 body: {body}"
+    assert "action" in body, f"action missing from rate-limit 403 body: {body}"
+    assert "hint" in body, f"hint missing from rate-limit 403 body: {body}"
+    assert "Rate limit" in body["hint"], (
+        f"hint should mention 'Rate limit', got: {body['hint']!r}"
+    )
+
+
+def test_list_services_empty_includes_hint() -> None:
+    """
+    When an agent has zero permission grants, GET /v1/tools/list_services returns
+    services: [] AND a non-empty hint directing the operator to add a grant.
+
+    Source: UX-FB-A behavioural spec §3.
+    """
+    import asyncio
+    import mcp_server.main as _main_mod
+    from mcp_server.db.session import get_db_session
+    from mcp_server.tools.discovery import get_agent_context
+    from mcp_server.main import create_app
+    from httpx import AsyncClient, ASGITransport
+    from unittest.mock import AsyncMock, MagicMock
+
+    _tenant_id = uuid.uuid4()
+    _agent_id = str(uuid.uuid4())
+    fake_ctx = {"tenant_id": _tenant_id, "agent_id": _agent_id}
+
+    _orig_validate = _main_mod.validate_agent_key
+
+    async def _fake_validate(key):
+        return fake_ctx, None
+
+    _main_mod.validate_agent_key = _fake_validate
+    app = create_app()
+
+    async def _fake_agent_context():
+        return fake_ctx
+
+    app.dependency_overrides[get_agent_context] = _fake_agent_context
+
+    async def _fake_db_session():
+        session = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.fetchall.return_value = []  # no grants → empty list
+        result_mock.fetchone.return_value = None
+        session.execute = AsyncMock(return_value=result_mock)
+        yield session
+
+    app.dependency_overrides[get_db_session] = _fake_db_session
+
+    try:
+        async def _inner():
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                return await client.get(
+                    "/v1/tools/list_services",
+                    headers={"X-API-Key": "mk_agent_testkey"},
+                )
+
+        resp = asyncio.run(_inner())
+    finally:
+        _main_mod.validate_agent_key = _orig_validate
+
+    assert resp.status_code == 200, (
+        f"Expected 200 from list_services even with empty grants, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("services") == [], (
+        f"Expected services=[], got: {body}"
+    )
+    assert "hint" in body and body["hint"], (
+        f"Expected non-empty hint when services is empty, got: {body}"
+    )
+    assert "Permission Grant" in body["hint"] or "permission" in body["hint"].lower(), (
+        f"Hint should reference permissions, got: {body['hint']!r}"
+    )
+
+
+def test_audit_payload_includes_remediation_hint() -> None:
+    """
+    After a permission_not_found denial, the audit_emit call must receive a
+    payload that includes 'remediation_hint' matching the hint in the 403 body.
+
+    Source: UX-FB-A behavioural spec §2.
+    """
+    import asyncio
+    from unittest.mock import patch, AsyncMock, MagicMock, call
+
+    captured_payloads: list[dict] = []
+
+    original_emit = None
+
+    async def _capturing_emit(**kwargs):
+        captured_payloads.append(kwargs.get("payload", {}))
+
+    with patch(
+        "mcp_server.tools.request_token.audit_emit",
+        side_effect=_capturing_emit,
+    ):
+        resp = _run_request_token(
+            _TEST_SERVICE_UUID,
+            slug_row=None,
+            grant_row=None,  # no grant → permission_not_found
+        )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 permission_not_found, got {resp.status_code}: {resp.text}"
+    )
+    resp_body = resp.json()
+    agent_hint_in_body = resp_body.get("hint", "")
+
+    assert len(captured_payloads) >= 1, (
+        "Expected at least one audit_emit call for the denial, got none"
+    )
+    # Find the token.denied payload (last captured, since there's only one denial)
+    denial_payload = captured_payloads[-1]
+    assert "remediation_hint" in denial_payload, (
+        f"audit payload should include remediation_hint, got: {denial_payload}"
+    )
+    assert denial_payload["remediation_hint"] == agent_hint_in_body, (
+        f"audit remediation_hint should match 403 body hint.\n"
+        f"audit: {denial_payload['remediation_hint']!r}\n"
+        f"body:  {agent_hint_in_body!r}"
+    )
+
+
+# ===========================================================================
 # Integration tests (requires docker-compose stack)
 # ===========================================================================
 
