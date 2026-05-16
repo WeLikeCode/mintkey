@@ -1,7 +1,8 @@
 #!/bin/sh
-# SSO-E: oauth2-proxy entrypoint — reads cookie secret from file at runtime.
-# The distroless quay.io/oauth2-proxy image has no shell, so we layer oauth2-proxy
-# on top of Alpine and exec it here after loading the file-backed secret.
+# SSO-E: oauth2-proxy entrypoint — passes cookie secret file path directly to
+# oauth2-proxy via --cookie-secret-file (supported since v7; binary-safe).
+# The seed-job writes 32 raw random bytes; shell variables cannot hold binary
+# data (null bytes truncate the value), so we never read the file contents here.
 set -e
 
 COOKIE_SECRET_FILE="/run/secrets/mintkey/bootstrap-secrets/jaeger_oauth2_cookie_secret"
@@ -11,10 +12,4 @@ if [ ! -f "${COOKIE_SECRET_FILE}" ]; then
   exit 1
 fi
 
-# oauth2-proxy requires the cookie secret as a 16/24/32-byte value.
-# The seed-job writes a 32-byte hex string (64 hex chars); we base64-encode it
-# so oauth2-proxy receives the 32 raw bytes in the format it expects.
-COOKIE_SECRET_HEX="$(cat "${COOKIE_SECRET_FILE}")"
-export OAUTH2_PROXY_COOKIE_SECRET="$(printf '%s' "${COOKIE_SECRET_HEX}" | xxd -r -p | base64)"
-
-exec /bin/oauth2-proxy "$@"
+exec /bin/oauth2-proxy --cookie-secret-file="${COOKIE_SECRET_FILE}" "$@"
