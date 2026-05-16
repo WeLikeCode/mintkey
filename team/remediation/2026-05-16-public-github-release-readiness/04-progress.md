@@ -80,3 +80,24 @@ Surfacing YELLOW forks to user for the 3 owner-discretion items; will dispatch W
 **Commit:** `fix(ci): convert ci.yml:90 to literal-block run: scalar (REL-1)`
 
 **Files touched:** `.github/workflows/ci.yml`, `02-matrix.md`, `04-progress.md`
+
+---
+
+## 2026-05-16 — REL-2 IMPLEMENTER: define UnprocessableEntity response in openapi.yaml
+
+**Task:** R-4 / REL-2 — `openapi.yaml:1304` (rotate-key POST 422) referenced `#/components/responses/UnprocessableEntity` which was not defined in `components.responses`. `openapi_spec_validator.validate()` exits non-zero, breaking the CI `lint-contracts` job.
+
+**Approach:** Option A — added `UnprocessableEntity` to `components.responses` between `Conflict` and `RateLimited`, matching the existing `application/problem+json` + inline `example` style used by all adjacent response definitions.
+
+**Change:** `docs/architecture/contracts/rest/openapi.yaml` — 11 lines added (the `UnprocessableEntity` response definition). Example `detail` reflects the actual rotate-key `expires_in` validation constraint documented in the endpoint description.
+
+**Verification:**
+- `openapi_spec_validator.validate()` → exit 0, output `openapi: ok`
+- `yaml.safe_load()` → exit 0, output `structural parse: ok`
+- Internal `$ref` sweep → 355 internal refs, 0 UNRESOLVED
+
+**Matrix:** P0-3 (R-4 / REL-2) ⬜ → ✅
+
+**Commit:** `fix(openapi): define UnprocessableEntity response (REL-2)`
+
+**Files touched:** `docs/architecture/contracts/rest/openapi.yaml`, `02-matrix.md`, `04-progress.md`

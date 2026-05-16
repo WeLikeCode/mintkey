@@ -2975,6 +2975,20 @@ components:
             instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/services"
             "mintkey:code": "duplicate_resource"
             "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
+    UnprocessableEntity:
+      description: Request entity validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          example:
+            type: "about:blank"
+            title: "Unprocessable Entity"
+            status: 422
+            detail: "`expires_in` must be one of: '', '30d', '90d', '180d', '365d'."
+            instance: "/v1/tenants/tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9/agents/agent_01HX5J9F8V8H8V0CG3F2Y5J6A1/rotate-key"
+            "mintkey:code": "validation_failed"
+            "mintkey:trace_id": "0af7651916cd43dd8448eb211c80319c"
     RateLimited:
       description: Rate limit exceeded.
       content:
