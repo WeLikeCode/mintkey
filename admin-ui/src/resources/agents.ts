@@ -29,6 +29,9 @@ const _agentsResource = new RestResource({
     { path: "description", type: "string" },
     { path: "status", type: "string" },
     { path: "api_key_fingerprint", type: "string" },
+    { path: "api_key_expires_at", type: "datetime" },
+    { path: "api_key_version", type: "number" },
+    { path: "api_key_last_rotated_at", type: "datetime" },
     { path: "mcp_endpoint", type: "string" },
     { path: "rate_limit_rps", type: "number" },
     { path: "created_at", type: "datetime" },
@@ -48,8 +51,8 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
   options: {
     navigation: { name: "Agents", icon: "Bot" },
     // api_key_fingerprint in list/show — NEVER api_key (S-SEC-1)
-    listProperties: ["id", "name", "status", "grants_count", "api_key_fingerprint", "rate_limit_rps", "created_at"],
-    showProperties: ["_grants_warning", "id", "name", "description", "status", "api_key_fingerprint", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
+    listProperties: ["id", "name", "status", "grants_count", "api_key_fingerprint", "api_key_expires_at", "rate_limit_rps", "created_at"],
+    showProperties: ["_grants_warning", "id", "name", "description", "status", "api_key_fingerprint", "api_key_expires_at", "api_key_version", "api_key_last_rotated_at", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
     filterProperties: ["q", "has_access_to_service_id", "name", "status"],
     properties: {
@@ -64,6 +67,22 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
       api_key_fingerprint: {
         label: "API Key Fingerprint (SHA-256 prefix)",
         description: "First 16 hex chars of SHA-256(api_key). Safe to share in logs and audit events; cannot be reversed to the plaintext key. Use this to identify a key in audit events without exposing the secret.",
+      },
+      api_key_expires_at: {
+        label: "API Key Expires",
+        description: "When this agent's API key will stop authenticating. 'Never' means the key has no expiry (rotate manually via the Rotate Key action).",
+        components: {
+          list: Components.AgentExpiryDisplay,
+          show: Components.AgentExpiryDisplay,
+        },
+      },
+      api_key_version: {
+        label: "API Key Version",
+        description: "Incremented on every rotation. Useful for correlating audit events to a specific key generation.",
+      },
+      api_key_last_rotated_at: {
+        label: "API Key Last Rotated",
+        description: "Timestamp of the most recent key rotation. Blank means the key has never been rotated since creation.",
       },
       mcp_endpoint: {
         description: "URL to copy into your MCP client configuration as `mcpServers.mintkey.url`. The `/v1/agents/{agent_id}` suffix is informational only — actual MCP tool routes live under `/v1/tools/*` and the agent is identified by the bearer API key, not the URL path.",
@@ -232,6 +251,70 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           return {
             record: await recordJSON(context),
             notice: { message: warningMessage, type: keys > 0 ? "error" : "success" },
+          };
+        },
+      },
+
+      // UX-FB-AK-2: Rotate Key action — hard cutover, invalidates old key immediately
+      rotateAgentKey: {
+        actionType: "record",
+        component: Components.AgentKeyRotatedNotice,
+        label: "Rotate Key",
+        icon: "RefreshCw",
+        custom: {
+          description: "Hard cutover: the current API key is invalidated the instant you confirm. Have your agent runtime ready to receive the new key.",
+        },
+        isVisible: (context) => {
+          const rec = context.record as { params?: Record<string, unknown> } | undefined;
+          return rec?.params?.status !== "revoked";
+        },
+        handler: async (request, response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const agentId = request.params.recordId ?? "";
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agents/${agentId}/rotate-key`,
+            "POST",
+            request.payload ?? {}
+          );
+          const body = await resp.json().catch(() => ({})) as {
+            api_key?: string;
+            api_key_fingerprint?: string;
+            api_key_expires_at?: string | null;
+            api_key_version?: number;
+            api_key_last_rotated_at?: string | null;
+            title?: string;
+          };
+
+          if (!resp.ok) {
+            return {
+              record: await recordJSON(context, request.payload ?? {}),
+              notice: { message: body.title ?? "Rotation failed", type: "error" },
+            };
+          }
+
+          const baseRecord = await recordJSON(context, request.payload ?? {});
+          return {
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                rotated_agent_id: agentId,
+                rotated_api_key: body.api_key ?? "",
+                rotated_api_key_fingerprint: body.api_key_fingerprint ?? "",
+                rotated_api_key_expires_at: body.api_key_expires_at ?? null,
+                rotated_api_key_version: body.api_key_version ?? null,
+                rotated_api_key_last_rotated_at: body.api_key_last_rotated_at ?? null,
+              },
+            },
+            notice: {
+              message: `API key rotated for agent [${agentId}]. The old key is now invalid.`,
+              type: "success",
+            },
           };
         },
       },

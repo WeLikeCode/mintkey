@@ -7,11 +7,13 @@
  * - showProperties includes api_key_fingerprint but NOT api_key
  * - getMcpConnectSnippet generates correct JSON snippet
  * - Agent create handler produces notice with API key (shown once)
+ * - formatRelativeExpiry helper (UX-FB-AK-2)
  *
  * Source: ADMIN_UI_SPEC.md §2.5; T-1.4.3; T-1.9.4; ADR-0014.4; S-SEC-1.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { formatRelativeExpiry } from "../src/lib/key-expiry.js";
 import { AgentsResource } from "../src/resources/agents.js";
 import { getMcpConnectSnippet } from "../src/lib/mcp-connect.js";
 
@@ -143,6 +145,48 @@ describe("AgentsResource — UX-CLARITY descriptive uplift (chunk C)", () => {
     expect(revoke).toBeDefined();
     expect(revoke?.custom).toBeDefined();
     expect(revoke?.custom?.description).toBeTruthy();
+  });
+});
+
+describe("formatRelativeExpiry — UX-FB-AK-2", () => {
+  it("returns Never / tone=never for null", () => {
+    const result = formatRelativeExpiry(null);
+    expect(result.label).toBe("Never");
+    expect(result.tone).toBe("never");
+    expect(result.absolute).toBe("");
+  });
+
+  it("returns Never / tone=never for undefined", () => {
+    const result = formatRelativeExpiry(undefined);
+    expect(result.label).toBe("Never");
+    expect(result.tone).toBe("never");
+  });
+
+  it("returns 'in N days' / tone=ok for 10 days in the future (> 7 day threshold)", () => {
+    const tenDays = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    const result = formatRelativeExpiry(tenDays);
+    expect(result.label).toMatch(/^in \d+ days?$/);
+    expect(result.tone).toBe("ok");
+  });
+
+  it("returns 'in N days' / tone=warn for 2 days in the future (< 7 days)", () => {
+    const twoDays = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const result = formatRelativeExpiry(twoDays);
+    expect(result.label).toMatch(/^in \d+ days?$/);
+    expect(result.tone).toBe("warn");
+  });
+
+  it("returns 'Expired N hours ago' / tone=expired for 1 hour in the past", () => {
+    const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const result = formatRelativeExpiry(oneHourAgo);
+    expect(result.label).toMatch(/^Expired \d+ hours? ago$/);
+    expect(result.tone).toBe("expired");
+  });
+
+  it("absolute contains ISO string for non-null expiry", () => {
+    const iso = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    const result = formatRelativeExpiry(iso);
+    expect(result.absolute).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 

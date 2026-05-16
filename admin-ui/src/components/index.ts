@@ -57,6 +57,10 @@ export const Components = {
   RedirectAction: componentLoader.add("RedirectAction", "./actions/RedirectAction"),
   // Agent grants warning panel — red callout on show page when agent has zero grants (UX-FB-CE Part C)
   AgentGrantsWarningPanel: componentLoader.add("AgentGrantsWarningPanel", "./sections/AgentGrantsWarningPanel"),
+  // Agent key expiry display — relative + absolute display for api_key_expires_at (UX-FB-AK-2)
+  AgentExpiryDisplay: componentLoader.add("AgentExpiryDisplay", "./properties/AgentExpiryDisplay"),
+  // Agent key rotated notice — hard-cutover rotation form + show-once result screen (UX-FB-AK-2)
+  AgentKeyRotatedNotice: componentLoader.add("AgentKeyRotatedNotice", "./actions/AgentKeyRotatedNotice"),
 };
 
 // Global override: show-page renderer that inlines property.description below

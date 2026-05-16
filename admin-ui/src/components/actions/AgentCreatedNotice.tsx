@@ -121,6 +121,7 @@ const AgentCreatedNotice = (props: Props): React.ReactElement => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [rateLimitRps, setRateLimitRps] = useState("");
+  const [expiresIn, setExpiresIn] = useState<string | null>(null);
 
   // Whether creation has already happened (show-once screen)
   const [created, setCreated] = useState(false);
@@ -161,6 +162,7 @@ const AgentCreatedNotice = (props: Props): React.ReactElement => {
       const data: Record<string, unknown> = { name: name.trim() };
       if (description.trim()) data.description = description.trim();
       if (rateLimitRps.trim()) data.rate_limit_rps = Number(rateLimitRps);
+      if (expiresIn !== null) data.expires_in = expiresIn;
 
       const resp = await api.resourceAction({
         resourceId: resource?.id ?? "agents",
@@ -445,6 +447,34 @@ const AgentCreatedNotice = (props: Props): React.ReactElement => {
               resize: "vertical",
             }}
           />
+        </Box>
+
+        {/* Key expiry */}
+        <Box mb="default" data-testid="field-expires-in">
+          <Label htmlFor="agent-expires-in">API Key Expiry</Label>
+          <select
+            id="agent-expires-in"
+            value={expiresIn ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              setExpiresIn(val === "" ? null : val);
+            }}
+            data-testid="field-select-expires-in"
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              border: "1px solid #dee2e6",
+              borderRadius: 4,
+              fontSize: 14,
+              boxSizing: "border-box",
+            }}
+          >
+            <option value="">Never</option>
+            <option value="30d">30 days</option>
+            <option value="90d">90 days</option>
+            <option value="180d">180 days</option>
+            <option value="365d">365 days</option>
+          </select>
         </Box>
 
         {/* Rate limit */}
