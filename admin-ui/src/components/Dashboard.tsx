@@ -46,6 +46,9 @@ interface DashboardData {
     mcp: string;
     proxy: string;
   };
+  /** SSO-C: "keycloak" | "internal" — sourced from whoami auth_method claim.
+   *  Absent when the claim is not present (treated as keycloak). */
+  authMethod?: "keycloak" | "internal";
 }
 
 /** localStorage key for the MCP modal opened flag (per browser profile). */
@@ -447,6 +450,11 @@ const Dashboard: React.FC = () => {
         <Text>
           Operator <strong>{data?.email || "—"}</strong>
           {data?.tenantId ? <> &middot; tenant <strong>{data.tenantId}</strong></> : null}
+          {" "}&middot;{" "}
+          Auth:{" "}
+          {data?.authMethod === "internal"
+            ? <Badge variant="warning">internal (break-glass)</Badge>
+            : <Badge variant="success">Keycloak</Badge>}
         </Text>
       </Box>
 

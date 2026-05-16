@@ -4,17 +4,24 @@
  * Express + AdminJS 7.x. All data reads come from admin-api over HTTP.
  * All writes route through admin-api via AdminUiSignedRequest JWTs.
  *
+ * SSO-C: authentication delegated to admin-api / Keycloak.
+ *   - buildRouter (unauthenticated) replaces buildAuthenticatedRouter.
+ *   - requireSession middleware validates each request via /v1/auth/whoami.
+ *   - /admin/login renders the SSO-C login page (primary: Keycloak; break-glass: local).
+ *   - /auth/start redirects to admin-api OIDC login.
+ *   - /auth/internal-login-proxy relays the break-glass form POST to admin-api.
+ *
  * Source: T-1.1.4; T-1.2.3; T-1.3.4; T-1.4.3; T-1.7.4; T-1.12.4;
- *         ADR-0013; ADR-0014.5; ADR-0014.6.
+ *         ADR-0013; ADR-0014.5; ADR-0014.6; ADR-0019; SSO-C.
  */
 
-import express from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import AdminJS from "adminjs";
-import { buildAuthenticatedRouter } from "@adminjs/express";
+import { buildRouter } from "@adminjs/express";
 import pinoHttp from "pino-http";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
-import { adminJSAuthOptions, registerOidcRoutes } from "./auth.js";
+import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
 import { dashboardHandler } from "./dashboard.js";
 import { componentLoader, Components } from "./components/index.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
@@ -27,7 +34,81 @@ import { AuditResource } from "./resources/audit.js";
 import { TenantsResource } from "./resources/tenants.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
-const SESSION_SECRET = process.env.SESSION_SECRET ?? "mintkey-session-secret-change-in-production";
+
+// Internal docker-network URL for server-side whoami calls.
+const ADMIN_API_URL =
+  process.env.MINTKEY_ADMIN_API_URL ??
+  process.env.ADMIN_API_URL ??
+  "http://admin-api:8080";
+
+// Public-facing URL for browser redirects (Keycloak flow).
+const ADMIN_API_PUBLIC_URL =
+  process.env.MINTKEY_ADMIN_API_PUBLIC_URL ?? "http://localhost:8080";
+
+/**
+ * Session shape relayed from admin-api /v1/auth/whoami.
+ */
+interface AdminSession {
+  operator_id: string;
+  email: string;
+  tenant_id: string;
+  is_platform_admin: boolean;
+  auth_method?: "keycloak" | "internal";
+}
+
+// Augment express Request so downstream handlers can read req.adminSession.
+declare global {
+  namespace Express {
+    interface Request {
+      adminSession?: AdminSession;
+    }
+  }
+}
+
+/**
+ * Session middleware: validates the mintkey_session cookie against admin-api
+ * /v1/auth/whoami (15-s LRU cache on admin-api side). Attaches the operator
+ * info to req.adminSession and calls next(). Redirects to /admin/login on
+ * missing / invalid session.
+ *
+ * Paths exempt from authentication (chicken-and-egg):
+ *   /admin/login  — the login page itself
+ *   /auth/        — /auth/start and /auth/internal-login-proxy
+ *   /health       — health check
+ */
+async function requireSession(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  // Exempt unauthenticated paths.
+  if (
+    req.path.startsWith("/admin/login") ||
+    req.path.startsWith("/auth/") ||
+    req.path === "/health"
+  ) {
+    next();
+    return;
+  }
+
+  const cookie = req.headers.cookie ?? "";
+  try {
+    const resp = await fetch(`${ADMIN_API_URL}/v1/auth/whoami`, {
+      headers: { Cookie: cookie },
+    });
+
+    if (resp.status !== 200) {
+      res.redirect("/admin/login");
+      return;
+    }
+
+    const body = await resp.json() as { operator: AdminSession };
+    req.adminSession = body.operator;
+    next();
+  } catch {
+    res.redirect("/admin/login");
+  }
+}
 
 async function main() {
   // Register the REST adapter so AdminJS can handle RestResource instances (P0-1)
@@ -37,8 +118,6 @@ async function main() {
   const admin = new AdminJS({
     componentLoader,
     dashboard: {
-      // `component` (a registered React component) is what makes AdminJS replace
-      // the stock "Welcome on Board!" tips screen; `handler` feeds it data.
       component: Components.Dashboard,
       handler: dashboardHandler,
     },
@@ -65,17 +144,84 @@ async function main() {
   // Logging
   app.use(pinoHttp());
 
-  // PlatformAdmin view flag middleware
-  app.use(platformAdminMiddleware);
+  // Parse URL-encoded bodies for the break-glass proxy route.
+  app.use(express.urlencoded({ extended: false }));
+  app.use(express.json());
 
-  // AdminJS authenticated router
-  const router = buildAuthenticatedRouter(admin, adminJSAuthOptions, null, {
-    resave: false,
-    saveUninitialized: false,
-    secret: SESSION_SECRET,
+  // ── Unauthenticated routes ──────────────────────────────────────────────────
+
+  // Health endpoint — no auth required.
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", service: "admin-ui" });
   });
 
-  // Custom settings page — served within the admin router so session middleware applies
+  // GET /admin/login — SSO-C login page (primary: Keycloak; collapsed: break-glass).
+  app.get("/admin/login", (req, res) => {
+    const err = typeof req.query["error"] === "string" ? req.query["error"] : undefined;
+    res.type("html").send(renderLoginPage(err));
+  });
+
+  // GET /auth/start — proxy redirect to admin-api OIDC login (browser-facing).
+  app.get("/auth/start", (_req, res) => {
+    res.redirect(302, `${ADMIN_API_PUBLIC_URL}/v1/auth/oidc/login`);
+  });
+
+  // POST /auth/internal-login-proxy — server-side relay for break-glass form.
+  // Forwards credentials to admin-api /v1/auth/internal-login and relays any
+  // Set-Cookie headers so the mintkey_session cookie is set on the browser's
+  // admin-api origin. On success, redirects to /admin. On failure, shows error.
+  app.post("/auth/internal-login-proxy", async (req, res) => {
+    const { email, password } = req.body as { email?: string; password?: string };
+    if (!email || !password) {
+      res.redirect(302, "/admin/login?error=Email+and+password+are+required");
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${ADMIN_API_URL}/v1/auth/internal-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (resp.status === 404) {
+        res.redirect(
+          302,
+          "/admin/login?error=Break-glass+login+is+disabled.+Run+%60mintkey+admin+reset-password%60+first."
+        );
+        return;
+      }
+
+      if (!resp.ok) {
+        res.redirect(302, "/admin/login?error=Invalid+credentials");
+        return;
+      }
+
+      // Relay Set-Cookie headers from admin-api to the browser.
+      const setCookieHeaders = resp.headers.getSetCookie?.() ?? [];
+      if (setCookieHeaders.length > 0) {
+        res.setHeader("Set-Cookie", setCookieHeaders);
+      }
+
+      res.redirect(302, "/admin");
+    } catch {
+      res.redirect(302, "/admin/login?error=Login+service+unavailable");
+    }
+  });
+
+  // ── Session middleware — applies BEFORE AdminJS router ──────────────────────
+  // Validates mintkey_session cookie via admin-api whoami on every /admin request.
+  app.use(requireSession);
+
+  // PlatformAdmin view flag middleware (reads from req.adminSession via session shim).
+  app.use(platformAdminMiddleware);
+
+  // ── AdminJS unauthenticated router ──────────────────────────────────────────
+  // buildRouter(admin, predefinedRouter?, formidableOptions?) — we own auth above.
+  // Pass undefined for predefinedRouter so AdminJS creates its own Express Router.
+  const router = buildRouter(admin);
+
+  // Custom settings page — served within the admin router.
   router.get("/settings", (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -94,14 +240,6 @@ async function main() {
   });
 
   app.use(admin.options.rootPath, router);
-
-  // OIDC routes (Keycloak)
-  registerOidcRoutes(app, admin);
-
-  // Health endpoint
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "admin-ui" });
-  });
 
   app.listen(PORT, () => {
     console.info(`AdminJS running at http://localhost:${PORT}/admin`);

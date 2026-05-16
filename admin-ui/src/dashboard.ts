@@ -35,19 +35,25 @@ export interface DashboardData {
     mcp: string;
     proxy: string;
   };
+  /** SSO-C: auth method from whoami — "keycloak" | "internal". */
+  authMethod?: "keycloak" | "internal";
 }
 
 /**
  * dashboardHandler — called by AdminJS as the dashboard handler.
  * Returns DashboardData for the React component to render.
+ *
+ * SSO-C: currentAdmin shape now comes from req.adminSession (whoami) or
+ * falls back to the legacy AdminJS session shape for backward compatibility.
  */
 export async function dashboardHandler(
   _request: unknown,
   _response: unknown,
-  context: { currentAdmin: { tenantId?: string; email?: string } }
+  context: { currentAdmin: { tenantId?: string; email?: string; authMethod?: "keycloak" | "internal" } }
 ): Promise<DashboardData> {
   const tenantId = context.currentAdmin?.tenantId ?? "";
   const email = context.currentAdmin?.email ?? "";
+  const authMethod = context.currentAdmin?.authMethod;
 
   const empty: DashboardData = {
     email,
@@ -67,6 +73,7 @@ export async function dashboardHandler(
       mcp: MCP_PUBLIC_URL,
       proxy: PROXY_PUBLIC_URL,
     },
+    authMethod,
   };
 
   if (!tenantId) return empty;
@@ -122,6 +129,7 @@ export async function dashboardHandler(
         mcp: MCP_PUBLIC_URL,
         proxy: PROXY_PUBLIC_URL,
       },
+      authMethod,
     };
   } catch {
     return empty;

@@ -3,11 +3,14 @@
  *
  * Tests verify:
  * - RestResource instances are constructable without error
- * - auth options have the authenticate function
+ * - auth options have the authenticate function (break-glass helper)
  * - adminJSAuthOptions.cookieName is set (session cookie configured)
  * - All 7 resources export a .resource id string
  *
- * Source: T-1.1.4; T-1.2.3; ADR-0013; ADR-0014.5.
+ * SSO-C: authenticate() is now the break-glass internal-login helper (not the
+ * primary login path — that's handled via /auth/start → admin-api → Keycloak).
+ *
+ * Source: T-1.1.4; T-1.2.3; ADR-0013; ADR-0014.5; SSO-C.
  */
 
 import { describe, it, expect } from "vitest";

@@ -225,6 +225,9 @@ services:
       # Public-facing URLs (see docs/NETWORK.md).
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
       MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # SSO-C: admin-api addresses (docker-network internal + public browser-facing).
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
       # Legacy aliases (accepted with deprecation warning).
       # MINTKEY_PROXY_URL: "..."
     volumes:
