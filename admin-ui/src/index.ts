@@ -19,6 +19,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import AdminJS from "adminjs";
 import { buildRouter } from "@adminjs/express";
 import pinoHttp from "pino-http";
+import session from "express-session";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
 import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
@@ -104,6 +105,22 @@ async function requireSession(
 
     const body = await resp.json() as { operator: AdminSession };
     req.adminSession = body.operator;
+
+    // Populate the AdminJS-standard session key so context.currentAdmin is
+    // available inside action handlers (read by @adminjs/express buildRouter via
+    // `req.session.adminUser`). Also stash the operator's session tokens so
+    // handlers can pass operatorOpts to apiWrite for per-operator signed requests.
+    const sessionTokenMatch = cookie.match(/mintkey_session=([^;]+)/);
+    const csrfTokenMatch = cookie.match(/csrf_token=([^;]+)/);
+    req.session.adminUser = {
+      email: body.operator.email,
+      operatorId: body.operator.operator_id,
+      tenantId: body.operator.tenant_id,
+      isPlatformAdmin: body.operator.is_platform_admin,
+      sessionToken: sessionTokenMatch?.[1] ?? "",
+      csrfToken: csrfTokenMatch?.[1] ?? "",
+    };
+
     next();
   } catch {
     res.redirect("/admin/login");
@@ -144,9 +161,35 @@ async function main() {
   // Logging
   app.use(pinoHttp());
 
-  // Parse URL-encoded bodies for the break-glass proxy route.
-  app.use(express.urlencoded({ extended: false }));
-  app.use(express.json());
+  // Body parsing is scoped to the break-glass proxy route only.
+  //
+  // DO NOT mount express.urlencoded/json globally: the AdminJS router uses
+  // express-formidable to parse request bodies (multipart, urlencoded, JSON).
+  // If express.json() consumes the request stream first, formidable's
+  // form.parse() hangs waiting for a stream that has already been drained —
+  // causing all action handler POST requests (test-transient, new, edit, …)
+  // to time out with statusCode=null. See SSO-REDUX-3.
+
+  // Express-session: provides req.session so AdminJS's action machinery can read
+  // req.session.adminUser (populated by requireSession below) as context.currentAdmin.
+  //
+  // NOTE: MemoryStore is intentional for dev/single-process. For production,
+  // replace with a durable store (e.g. connect-redis or connect-pg-simple) to
+  // survive restarts and support horizontal scaling.
+  app.use(
+    session({
+      name: "adminjs.sid",
+      secret: process.env.SESSION_SECRET ?? "mintkey-dev-secret",
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: false,
+        maxAge: 8 * 60 * 60 * 1000, // 8 h — matches mintkey_session TTL
+      },
+    })
+  );
 
   // ── Unauthenticated routes ──────────────────────────────────────────────────
 
@@ -170,7 +213,10 @@ async function main() {
   // Forwards credentials to admin-api /v1/auth/internal-login and relays any
   // Set-Cookie headers so the mintkey_session cookie is set on the browser's
   // admin-api origin. On success, redirects to /admin. On failure, shows error.
-  app.post("/auth/internal-login-proxy", async (req, res) => {
+  app.post(
+    "/auth/internal-login-proxy",
+    express.urlencoded({ extended: false }),
+    async (req, res) => {
     const { email, password } = req.body as { email?: string; password?: string };
     if (!email || !password) {
       res.redirect(302, "/admin/login?error=Email+and+password+are+required");
@@ -207,7 +253,7 @@ async function main() {
     } catch {
       res.redirect(302, "/admin/login?error=Login+service+unavailable");
     }
-  });
+  });  // end app.post /auth/internal-login-proxy
 
   // ── Session middleware — applies BEFORE AdminJS router ──────────────────────
   // Validates mintkey_session cookie via admin-api whoami on every /admin request.

@@ -21,6 +21,22 @@ declare module "express-session" {
     tenantId?: string;
     isPlatformAdmin?: boolean;
     platformAdminView?: boolean;
+    /**
+     * AdminJS-standard key: read by @adminjs/express buildRouter to populate
+     * context.currentAdmin in action handlers. Populated by requireSession
+     * (index.ts) after each successful /v1/auth/whoami call.
+     *
+     * Includes sessionToken + csrfToken so action handlers can pass
+     * operatorOpts to apiWrite for per-operator signed requests.
+     */
+    adminUser?: {
+      email: string;
+      operatorId: string;
+      tenantId: string;
+      isPlatformAdmin: boolean;
+      sessionToken: string;
+      csrfToken: string;
+    };
   }
 }
 
