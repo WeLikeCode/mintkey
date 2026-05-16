@@ -1,5 +1,238 @@
 # Mintkey roadmap
 
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- PUBLIC PRODUCT ROADMAP                                                  -->
+<!-- Added 2026-05-16. Source of truth for cohort analysis, launch           -->
+<!-- milestones, and open product decisions.                                  -->
+<!-- Architecture-iteration content (Phase 0 → Phase 5) is preserved below  -->
+<!-- the separator line.                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+---
+
+## Section 1 — Current Product State
+
+Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders and developers who want to understand the architecture, run the demo locally, and experiment with the MCP client integration. It is not suitable for production use of any kind.
+
+**What is working today:**
+- `docker compose up -d` starts all 17 containers (15 long-running, 2 one-shot) and reaches healthy state in ≤ 120 seconds on a clean machine.
+- The PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) runs end-to-end: service registration, agent creation, JWT issuance, brokered proxy call, audit chain verification.
+- Four MCP client setup guides exist (`docs/guides/mcp-clients/`): Claude Desktop, Claude Code, Cursor, mcp-cli.
+- GitHub PAT demo (`docs/guides/github-quickstart.md`) runs with a real external API key.
+- 244 Python unit/integration tests pass. 17 architecture tests pass. 23 Go packages pass. 139 admin-ui vitest tests pass.
+- Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16).
+
+**What is not yet in place:**
+- No published container images (deferred; see `docs/RELEASE.md`).
+- No high-availability topology. The state store is in-process (ADR-0020); single-replica only.
+- No TLS ingress documentation; operators provide their own reverse proxy.
+- No backup/restore procedure.
+- No third-party security audit or fuzzing campaign.
+- No compliance attestations (SOC2, ISO 27001, FedRAMP).
+- 10 Dockerfiles run as root; no `HEALTHCHECK`; base images pinned by tag not digest.
+- No hosted or managed offering.
+
+**Wire surface stability:** `experimental`. Version `0.1.0-preview.1`. Breaking changes will bump the major version. See `docs/architecture/contracts/rest/openapi.yaml` (`x-mintkey-stability`).
+
+> **Do not use Mintkey in production.** Self-hosted evaluation and technical preview only.
+
+---
+
+## Section 2 — Audience Cohort Analysis
+
+| Cohort | Would use today? | Primary value | Adoption blockers | What makes it usable |
+|---|---|---|---|---|
+| **Builder / AI engineer** | Yes, with effort | Architecture proof: agents get scoped short-lived tokens; real credential never leaves the broker; per-request audit chain. MCP native. | Setup requires Docker Compose + 15 containers. No SDK helpers yet. Some first-run edge cases need manual troubleshooting. | Mock demo works with zero external keys. MCP client guides for Claude Desktop/Code, Cursor, mcp-cli. GitHub quickstart for real credential flow. Architecture docs are complete. |
+| **Founder / startup CTO** | Maybe — evaluate only | Clear build-vs-buy positioning (comparison table in `marketing/index.html`). Architecture compelling for an agentic product that touches sensitive APIs. | No released images. No upgrade/migration guide. No stable release cadence. Hosted offering not yet decided. No production deployment path. | Marketing comparison table just landed (OSS-7). Can self-host for evaluation. Can adopt post-B-1 when images and upgrade story exist. |
+| **Small business owner** | No | Would benefit from "agents never see my Stripe/QuickBooks credentials" story, but cannot operationalize it. | Too technical: requires Docker Compose, understanding of MCP, manual credential configuration. No setup wizard. No simplified dashboard. No managed offering. | Not usable today without technical staff. Requires either a managed/hosted offering OR a setup wizard with pre-built business app templates. Likely commercial-led path, not pure OSS. |
+| **Enterprise user** | No | The audit chain, tenant isolation, and scoped-credential model are exactly what enterprise compliance needs. | No Helm chart. No HA topology. No SIEM export. No RBAC hardening beyond platform-admin/tenant scope. No compliance attestations. No third-party audit. No SLA. | Not usable in production today. Requires Phase E-1 deliverables: Helm, HA, backup/restore, SIEM, SCIM, RBAC, audit attestation, third-party review. Likely commercial-support model to be decided. |
+
+---
+
+## Section 3 — Phase 1.5 — Public Technical Preview Readiness
+
+The OSS-readiness session (2026-05-16) shipped the bulk of the public technical preview work.
+Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
+
+**Status: mostly complete. Residuals listed below are explicitly deferred.**
+
+| Item | User impact | Status | Notes |
+|---|---|---|---|
+| Root Apache-2.0 `LICENSE` | Required for any OSS contribution | ✅ DONE | OSS-1 commit `2f8a99b` |
+| `<repo-url>`, `<TBD-by-architect>`, `maintainers@example.invalid` placeholders | Broken links in README, SECURITY.md, OpenAPI, marketing | ✅ DONE | OSS-1 commit `2f8a99b` |
+| LLM co-author trailer conflict (CONTRIBUTING.md required trailers, project rules forbid) | Contributor confusion | ✅ DONE | OSS-2 commit `e36492c` |
+| CI gates strict — `\|\| true` masks removed (Mermaid gate, 5 Python linter lines) | False-green CI | ✅ DONE | OSS-3 commit `46e91cf` |
+| Issue templates (bug, feature, config.yml), PR template | Contributor UX | ✅ DONE | OSS-2 commit `e36492c` |
+| CODE_OF_CONDUCT.md, SUPPORT.md, GOVERNANCE.md | Community health | ✅ DONE | OSS-2 commit `e36492c` |
+| Dependabot (github-actions, docker 10 dirs, pip 3 dirs, npm, gomod 4) | Dependency security | ✅ DONE | OSS-3 commit `46e91cf` |
+| CodeQL workflow (Python, JS/TS, Go) | Security automation | ✅ DONE | OSS-3 commit `46e91cf` |
+| Container scan workflow (Trivy, all 10 images) | Supply-chain security | ✅ DONE | OSS-3 commit `46e91cf` |
+| Scorecard workflow | OSS project health | ✅ DONE | OSS-3 commit `46e91cf` |
+| `.dockerignore` (repo root + admin-ui + mock-backend + seed-job) | Build correctness / context size | ✅ DONE | OSS-5 commit `3d99f8c` |
+| Version alignment across all touch-points (`0.1.0-preview.1`) | Release coherence | ✅ DONE | OSS-4 commit `a1abb8a` |
+| `docs/DEPLOYMENT.md` — operator deployment guide with "not supported" boundary | Operator safety | ✅ DONE | OSS-5 commit `3d99f8c` |
+| `docs/RELEASE.md` — manual release procedure | Release operator | ✅ DONE | OSS-4 commit `a1abb8a` |
+| PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) | First-user experience | ✅ DONE | OSS-6 commit `9705c16` |
+| MCP client setup guides (Claude Desktop, Claude Code, Cursor, mcp-cli) | MCP adoption | ✅ DONE | OSS-6 commit `9705c16` |
+| Marketing CTA + comparison table + pre-alpha banners | Positioning | ✅ DONE | OSS-7 commit `65c007d` |
+| Prominent "not production ready" warnings in README, marketing, deployment, release docs | User safety | ✅ DONE | All OSS session commits |
+| Dockerfile `USER` directive (10 services run as root) | Supply-chain hardening | 🟦 Deferred | Future session; audit table in `docs/DEPLOYMENT.md` F-21 |
+| Dockerfile `HEALTHCHECK` (10 services) | Operational visibility | 🟦 Deferred | Future session; F-22 |
+| Base image `@sha256` digest pinning | Supply-chain hardening | 🟦 Deferred | Future session; F-23 |
+| Python dependency unbounded `>=` ranges | Release reproducibility | 🟦 Deferred | Dependabot will raise PRs; F-26 |
+| GHCR publish workflow / image release | Operator convenience | ⛔ Deferred (E-5) | Manual path in `docs/RELEASE.md`; needs owner decision on release cadence |
+| `make lint` GNU Make 3.81 colon-target exit=2 on macOS | Local DX | 🟦 Local only; CI (ubuntu, GNU Make 4.x) is unaffected |
+| Service REST `DELETE /v1/.../services/:id` 500 | Operator UX | ⬜ Pre-existing bug; unrelated to OSS work |
+| `otel-collector` restart loop | Observability reliability | ⬜ Pre-existing; unrelated to OSS work |
+
+**Acceptance criteria for "Public Technical Preview launched" (TP-1):** repo pushed to `https://github.com/WeLikeCode/mintkey`, GitHub Discussions enabled, launch announcement posted. Operator action pending.
+
+---
+
+## Section 4 — Builder Roadmap (Phase B)
+
+**Goal:** Mintkey is great for builders. Evaluating, understanding, and experimenting with Mintkey should take under an hour with zero friction.
+
+Phase B is the "Mintkey is great for builders" milestone. Some of it is already shipped; the remainder needs concrete implementation work.
+
+| Item | Status | Priority | Notes |
+|---|---|---|---|
+| One-command local demo (`make demo`) | Mostly there — `docker compose up -d` + password retrieval is two steps | Medium | A `make demo` wrapper that sequences startup + health check + opens the guide would reduce friction to a single command |
+| PAT-free 10-minute mock demo | ✅ DONE — `docs/guides/10min-mock-demo.md` | — | Verified in OSS-6 with live stack |
+| MCP client setup guides (4 clients) | ✅ DONE — `docs/guides/mcp-clients/` | — | Claude Desktop, Claude Code, Cursor, mcp-cli |
+| GitHub PAT quickstart | ✅ DONE — `docs/guides/github-quickstart.md` | — | Real credential, real API |
+| Example integrations — Slack | NEW | High | Service definition + agent walkthrough |
+| Example integrations — Stripe | NEW | High | Service definition; relevant to SMB cohort too |
+| Example integrations — OpenAI-compatible API | NEW | High | Common pattern for AI builders |
+| Example integrations — generic HTTP service | NEW | Medium | Demonstrates custom headers, bearer injection |
+| SDK / client snippets — Python | NEW | High | Agent-side: request token, call via proxy — 20-line snippet |
+| SDK / client snippets — TypeScript | NEW | High | Same, for TS agents |
+| SDK / client snippets — Go | NEW | Medium | Go agent helpers |
+| "Agent never sees the secret" proof walkthrough | NEW | High | Structured doc or 5-min screencast: token request, proxy call, audit log, OTel trace — demonstrating zero credential exposure end-to-end |
+| Troubleshooting expansion | NEW | High | Extend `docs/DEBUG.md` with first-run failure patterns (otel-collector restart, CSRF 404, delete-500 workaround) |
+| Copy-paste MCP server config verification | Partial — guides exist; need smoke-test against current build | Medium | Verify each config snippet works against the `0.1.0-preview.1` MCP server |
+
+**B-1 exit criteria:** `make demo` runs in one command; 5 example integrations with copy-paste configs; SDK snippets in Python + TypeScript; "agent never sees the secret" proof doc; troubleshooting guide covers the top 5 first-run failures.
+
+---
+
+## Section 5 — Founder / Startup Roadmap (Phase F)
+
+**Goal:** A technical co-founder or startup CTO can evaluate Mintkey, decide whether to adopt it, and — if yes — deploy it and keep it running without surprises.
+
+| Item | Status | Priority | Notes |
+|---|---|---|---|
+| Build-vs-buy positioning | Partial — comparison table in `marketing/index.html` (OSS-7) | High | Extend with total cost of ownership estimate; "what does it cost to build this yourself in 6 months?" |
+| Product comparison page | Partial — comparison table exists; needs deepening | Medium | Add case study: "what Mintkey replaces in a typical agentic SaaS" |
+| Published container images (GHCR) | Deferred — `docs/RELEASE.md` documents manual path | High | Needs release cadence decision first (see Open Decisions) |
+| Stable release cadence | NEEDS DECISION | High | Monthly / on-demand / pinned-by-event? See Open Decisions |
+| Upgrade / migration guide | Deferred — no upgrades exist yet | High | Needed before first breaking change; ADR-0021+ when applicable |
+| CHANGELOG maintained per release | Partial — CHANGELOG rewritten in OSS-4 | Medium | Maintain it as the release cadence is decided |
+| Hosted-preview or commercial-support direction | NEEDS DECISION | High | Owner decision; affects SMB-1 and E-1 entirely |
+| Security contact / disclosure SLA | ✅ DONE — `SECURITY.md` (best-effort, pre-alpha) | — | Will need an upgrade to a real SLA when a commercial offering exists |
+
+**F-1 exit criteria:** GHCR images published; release cadence stable and documented; comparison page deepened with cost analysis; upgrade guide exists; hosted/commercial direction decided.
+
+---
+
+## Section 6 — Small Business Roadmap (Phase SMB)
+
+**Goal:** A non-technical small business owner can protect their SaaS integrations without understanding Docker, Compose, MCP, or Keycloak.
+
+Mintkey is not suitable for SMB adoption today and will not become so on a pure self-hosted OSS path. SMB adoption requires either a managed/hosted offering or an appliance-style product with a setup wizard. This is almost certainly commercial-led, not a pure OSS roadmap item.
+
+| Item | Status | Priority | Notes |
+|---|---|---|---|
+| Hosted or appliance-style deployment | NEW — significant product/architecture work | Critical | Without this, SMB cannot adopt. Needs owner decision on commercial direction. |
+| Setup wizard (admin-ui-driven config flow) | NEW | Critical | Replace `.env` editing with a guided flow: "connect your Stripe account", "connect your QuickBooks" |
+| Plain-language dashboard | NEW | High | Current admin-ui is operator-focused (ULIDs, JWT TTL, RLS). SMB needs "5 agent calls this week to your QuickBooks, all successful, 0 errors." |
+| Pre-built business app templates | NEW | High | Stripe, QuickBooks, Square, Salesforce, HubSpot — pre-configured service definitions with sensible permission models |
+| Alerts and simple audit summaries | NEW | High | Current audit is technical (hash chain, ULID IDs). SMB needs email/SMS alerts on anomalies and weekly plain-language summaries. |
+| Non-technical copy and onboarding | NEW | Medium | The current README, QUICKSTART.md, and docs are written for engineers. SMB needs a different surface. |
+| Support / managed update path | NEW | Critical | Self-hosting with no managed update path is untenable for non-technical operators. |
+
+> **Note:** SMB-1 is most likely commercial-led. A pure open-source self-hosted path will never reach mass SMB adoption without a hosted layer or an operator-managed appliance. This is an owner decision (see Open Decisions).
+
+**SMB-1 exit criteria:** setup wizard deployed in managed offering; plain-language dashboard; 3+ pre-built business app templates; alerts and weekly audit summary; non-technical onboarding flow; managed update path.
+
+---
+
+## Section 7 — Enterprise Roadmap (Phase E)
+
+**Goal:** An enterprise security team can deploy Mintkey in a production Kubernetes environment, pass an internal security review, and operate it with audit-grade confidence.
+
+None of the Phase E items exist today. All are NEW or DEFERRED.
+
+> **Do not claim enterprise-readiness for Mintkey in its current state.** Enterprise deployment requires all of the items below. None are shipped.
+
+| Item | Status | Priority | Notes |
+|---|---|---|---|
+| Helm chart | NEW | Critical | Not yet started. Required for Kubernetes-native deployment. |
+| Production deployment guide | Deferred (E-6) | Critical | `docs/DEPLOYMENT.md` currently documents "unsupported but possible" with explicit caveats. A full production guide requires Helm, HA, and backup/restore first. |
+| HA topology | NEW | Critical | `state_store` is in-process per ADR-0020. Needs Redis or Postgres-backed session/state store for multi-replica admin-api and broker. |
+| Backup and restore | NEW | Critical | No procedure exists. Postgres volume only. A production DR procedure with tested restore is required. |
+| Upgrade and rollback | NEW | Critical | No upgrade path exists. Required before any production deployment. Depends on Helm chart and migration guide. |
+| TLS termination documentation | Partial | High | ADR-0004 notes Kong terminates TLS; `docs/DEPLOYMENT.md` notes operators provide their own reverse proxy. A full TLS guide (cert management, mTLS for backends) is needed. |
+| SIEM export | NEW | High | Current audit chain is Postgres-only. Enterprise SIEM requires streaming (syslog, Splunk HEC, Elasticsearch) or structured log export. |
+| Audit retention policy | NEW | High | No per-tenant retention policy exists. Enterprise compliance requires configurable retention and deletion with hash-chain integrity guarantees. |
+| SCIM / identity lifecycle | NEW | High | Current Keycloak SSO has no SCIM endpoint. Enterprise IdP integration (Okta, Azure AD, Ping) requires SCIM for automated user provisioning/deprovisioning. |
+| RBAC hardening | NEW | High | Current model: platform-admin vs tenant scope. Enterprise needs fine-grained roles (read-only auditor, service admin, agent admin, key admin) within a tenant. |
+| Non-root Dockerfile `USER` directive (10 services) | Deferred (F-21) | High | All 10 Dockerfiles run as root today. Required for enterprise container policy compliance. |
+| Base image `@sha256` digest pinning | Deferred (F-23) | High | Supply-chain security requirement for enterprise. |
+| Image signing / SBOM / provenance | Deferred (E-5) | High | SLSA level 1+ requires signed images and SBOMs. Manual path in `docs/RELEASE.md`; automated workflow deferred. |
+| HashiCorp Vault backend | Planned (Phase 2 architecture) | Medium | ADR-0003 describes v2 Vault Adapter. File backend is pre-alpha only. |
+| Fuzzing / security testing campaign | NEW | Medium | No fuzzing or adversarial testing has been performed. Required before claiming hardened status. |
+| Third-party security audit | NEW | Medium | Owner decision. Required before any production or compliance claim. |
+| Compliance-readiness notes (SOC2 / ISO 27001 / FedRAMP) | NEW | Low (future) | Requires third-party assessment. Not applicable to pre-alpha. |
+| Support / SLA model | NEW | Critical | Owner decision. Enterprise requires a defined support SLA. No SLA exists today. |
+
+**E-1 exit criteria:** Helm chart deploys to a fresh cluster and demo passes; HA topology with tested failover; backup/restore with tested DR; SIEM export (at minimum Elasticsearch or syslog); RBAC hardening with at least 4 built-in roles; non-root containers; digest-pinned base images; signed images + SBOM; third-party security audit complete; published SLA.
+
+---
+
+## Section 8 — Launch Milestones
+
+| Milestone | Audience | Exit criteria |
+|---|---|---|
+| **TP-0** — Public hygiene complete | All | ✅ DONE 2026-05-16. Apache-2.0 license, governance templates, security contact, CI gates strict, Docker hardening partial, deployment docs, mock demo, MCP client guides, marketing with CTAs and comparison table, no production-readiness overclaims. Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`. |
+| **TP-1** — Technical preview launch | Builder / AI engineer | Push to `https://github.com/WeLikeCode/mintkey`, enable GitHub Discussions, post launch announcement. **Pending operator action.** No code changes required. |
+| **B-1** — Builder-friendly local demo | Builder / AI engineer | `make demo` one command; 5 example integrations (Slack, Stripe, OpenAI-compatible, generic HTTP + GitHub); SDK snippets in Python + TypeScript; "agent never sees the secret" proof doc; troubleshooting guide covers top 5 first-run failures. |
+| **F-1** — Founder-ready packaging | Founder / startup CTO | GHCR images published; release cadence stable and documented; upgrade/migration guide exists; comparison page deepened; hosted/commercial direction decided. |
+| **E-1** — Enterprise pilot readiness | Enterprise | Helm chart; HA topology; backup/restore; SIEM export; RBAC hardening (4 built-in roles); non-root containers; digest-pinned base images; signed images + SBOM; third-party security audit; published SLA. |
+| **SMB-1** — Simplified or hosted experience | Small business | Setup wizard; plain-language dashboard; 3+ pre-built business app templates (Stripe, QuickBooks, HubSpot); alerts + weekly audit summary; managed update path. Likely commercial-led. |
+
+Note: TP-1 → B-1 → F-1 form a sequential builder/founder track. E-1 and SMB-1 are parallel tracks that depend on owner decisions about commercial direction and resourcing. No ordering between E-1 and SMB-1 is assumed.
+
+---
+
+## Section 9 — Open Product Decisions
+
+Each decision is owner-facing. Blocking milestones are called out.
+
+| Decision | Why it matters | Recommendation | Status |
+|---|---|---|---|
+| **Public repo URL** | Required for TP-1 launch, all external links | `https://github.com/WeLikeCode/mintkey` — already referenced in README, SECURITY.md, marketing, CONTRIBUTING.md | ✅ DECIDED |
+| **Security contact email** | Required for SECURITY.md, OpenAPI contact, coordinated disclosure | `the+security@ciprianiacobescu.com` — already in SECURITY.md, openapi.yaml, marketing/security.html | ✅ DECIDED |
+| **Apache-2.0 as final license** | Required for all OSS contribution and distribution | Apache-2.0 — LICENSE file in place, README confirmed | ✅ DECIDED |
+| **GHCR as image registry** | Required for F-1 (published images); pattern `ghcr.io/welikecode/mintkey-*` | GHCR — documented in `docs/RELEASE.md`; publish workflow deferred | ✅ DECIDED |
+| **Hosted version planned?** | Determines whether SMB-1 is achievable; affects F-1 positioning | If yes: SMB-1 is on the product roadmap. If no: SMB-1 is out of scope for this project. | Status: OPEN |
+| **Commercial support planned?** | Determines E-1 timeline and SLA feasibility; also affects F-1 | If yes: plan the tier structure alongside E-1. If no: community-only support; document support limits clearly. | Status: OPEN |
+| **SMB as direct target or partner/channel target?** | Determines SMB-1 product shape (build a hosted offering vs partner with an MSP/integrator) | No recommendation without knowing commercial direction. Strongly affects resourcing. | Status: OPEN |
+| **Enterprise as Phase 2 or later?** | E-1 is large (Helm, HA, audit, compliance). If Phase 2: resource it now. If later: focus on B-1 / F-1 first. | Recommend B-1 first (6–12 weeks), then F-1 (4–8 weeks), then E-1 (12–24 weeks). Enterprise timeline depends on team size. | Status: OPEN |
+| **Release cadence: monthly / on-demand / pinned-by-event?** | Unblocks F-1 (published images). Monthly simplifies Dependabot and user upgrade planning. On-demand is fine for pre-launch but creates expectation problems post-launch. | Monthly cadence once images are published. | Status: OPEN |
+| **Pricing / support tiers** (if hosted/commercial) | Only relevant if hosted or commercial support is decided. Affects SMB-1 and E-1. | Defer until hosted/commercial decision is made. | Status: OPEN — depends on hosted/commercial decision |
+
+---
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ARCHITECTURE ITERATION ROADMAP                                          -->
+<!-- Original content preserved below. This is the architecture-focused      -->
+<!-- iteration plan (Phase 0 → Phase 5) that was the original content of     -->
+<!-- this file. Do not edit accepted ADRs.                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+---
+
 ## Where we are
 **Iteration 1 of architecture is complete.** All six iteration‑1 proposals have been promoted to ADRs. Seven ADRs are now Accepted:
 
