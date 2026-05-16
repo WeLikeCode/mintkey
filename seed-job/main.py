@@ -442,17 +442,15 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
 
         secret_file = secrets_dir / secret_filename
         secret_file.write_text(secret_value)
-        # Permission policy (post-REL-3 USER-65532 hardening):
-        #   * Mintkey-internal services (admin-api, jaeger-auth) run as UID 65532
-        #     and own the secrets when seed-job writes them — 0o640 is enough.
-        #   * Grafana runs as UID 472 (its own user, GID 0) — neither owner nor
-        #     in group 65532. It needs world-read on its own secret.
-        # The bootstrap_secrets volume is mounted :ro into a small set of
-        # services; world-read inside the volume is acceptable.
-        if secret_filename == "grafana_oidc_client_secret":
-            secret_file.chmod(0o644)
-        else:
-            secret_file.chmod(0o640)
+        # Permission policy: all bootstrap secrets are stored in a shared Docker
+        # named volume (bootstrap_secrets) mounted :ro into a fixed set of
+        # services. Consumer containers run as various non-root UIDs (grafana:
+        # 472, jaeger-auth/admin-api: 65532) that differ from seed-job's root
+        # UID, so 0o640 (owner-read only) would block them. The Docker volume
+        # itself is the security boundary — no untrusted users exist inside any
+        # container in the compose stack — so world-read (0o644) is correct for
+        # every bootstrap secret written here.
+        secret_file.chmod(0o644)
         print(f"Keycloak: wrote {secret_file}")
 
 
@@ -464,7 +462,9 @@ def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
         return
     cookie_secret = secrets.token_hex(32)
     cookie_secret_file.write_text(cookie_secret)
-    cookie_secret_file.chmod(0o600)
+    # jaeger-auth runs as UID 65532 (non-root); 0o644 lets it read the file.
+    # Security boundary is the Docker volume (bootstrap_secrets), not the mode.
+    cookie_secret_file.chmod(0o644)
     print(f"Keycloak: wrote {cookie_secret_file}")
 
 
