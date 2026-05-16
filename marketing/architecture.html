@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mintkey — Architecture</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="wordmark">Mintkey</div>
+    <nav class="site-nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="security.html">Security</a>
+      <a href="../docs/architecture/README.md">Docs</a>
+      <a href="../CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </header>
+
+  <!-- ── Status strip ────────────────────────────────────────── -->
+  <div class="status-strip" role="note" aria-label="Project status">
+    Status: <span class="pre-alpha">pre-alpha</span> &middot;
+    experimental contract surface (<code>x-mintkey-stability: experimental</code>) &middot;
+    this page is a guided tour; source of truth is the markdown under
+    <a href="../docs/architecture/">docs/architecture/</a>
+  </div>
+
+  <!-- ── Page title ──────────────────────────────────────────── -->
+  <div class="page-title">
+    <h1>Architecture</h1>
+    <p class="subtitle">
+      Mintkey's architecture is documented under
+      <a href="../docs/architecture/"><code>docs/architecture/</code></a>.
+      This page is a guided tour of that documentation.
+      The source of truth is the markdown; this HTML is a rendered summary.
+    </p>
+  </div>
+
+  <!-- ── System context ──────────────────────────────────────── -->
+  <section id="system-context" aria-labelledby="sc-heading">
+    <h2 id="sc-heading">System context (C4 level 1)</h2>
+    <div class="prose-wrap">
+      <p>
+        A black-box view of Mintkey in its environment: who interacts with it,
+        and which external systems it depends on. Three distinct trust zones
+        exist: Operator (high trust, attributed), Agent (low trust, contained),
+        Backend (Mintkey authenticates to it as the service's intended client).
+      </p>
+    </div>
+
+    <div class="diagram-wrap">
+      <img
+        src="assets/system-context.svg"
+        alt="System context diagram showing Operator, Agent Operator, and Agent interacting with the Agentic Credential Broker, which in turn connects to Backend Services, External KMS, Identity Provider, and OTel backends"
+        width="700">
+      <div class="diagram-caption">
+        C4 Level 1 &mdash;
+        <a href="../docs/architecture/01-architecture/01-system-context.md">source: 01-system-context.md</a>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Actor / System</th>
+            <th>Type</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Operator</strong></td>
+            <td>human</td>
+            <td>Configures services, credentials, agents, and permissions via Admin Console.</td>
+          </tr>
+          <tr>
+            <td><strong>Agent Operator</strong></td>
+            <td>human</td>
+            <td>Creates agents, retrieves Agent API Keys, sets up integrations on behalf of agents they own.</td>
+          </tr>
+          <tr>
+            <td><strong>Agent</strong></td>
+            <td>machine</td>
+            <td>Authenticates with Agent API Key; uses MCP to discover services; calls backends through the Egress Proxy.</td>
+          </tr>
+          <tr>
+            <td><strong>Backend Services</strong></td>
+            <td>external</td>
+            <td>The APIs Mintkey brokers access to. Mintkey forwards authenticated requests on the agent's behalf.</td>
+          </tr>
+          <tr>
+            <td><strong>External KMS</strong></td>
+            <td>external</td>
+            <td>Holds the KEK; performs encrypt/decrypt of DEKs at the security boundary.</td>
+          </tr>
+          <tr>
+            <td><strong>Identity Provider</strong></td>
+            <td>external, optional</td>
+            <td>Federates Operator login (OIDC/SAML). Default: Keycloak in the compose stack.</td>
+          </tr>
+          <tr>
+            <td><strong>OTel backends</strong></td>
+            <td>external</td>
+            <td>Receive OTLP traces/metrics/logs. Default: Jaeger + Prometheus + Grafana in compose.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/01-system-context.md">Read the source: 01-system-context.md</a>
+    </p>
+  </section>
+
+  <!-- ── Container view ──────────────────────────────────────── -->
+  <section id="container-view" aria-labelledby="cv-heading">
+    <h2 id="cv-heading">Container view (C4 level 2)</h2>
+    <div class="prose-wrap">
+      <p>
+        Mintkey is organized as a two-plane separation: a control plane
+        (low-traffic, high-trust) and a data plane (high-traffic, latency-sensitive).
+        This lets each plane have different SLOs (control plane 99.5% /
+        data plane 99.9%) and different scaling and deployment cadences.
+      </p>
+    </div>
+
+    <div class="diagram-wrap">
+      <img
+        src="assets/container-view.svg"
+        alt="Container view diagram showing control plane (Admin Console, Admin REST API, Identity, MCP Server, Credential Broker, Vault Adapter, Audit, Postgres), data plane (Egress Proxy), and observability stack (OTel Collector, Jaeger, Prometheus, Grafana)"
+        width="900">
+      <div class="diagram-caption">
+        C4 Level 2 &mdash;
+        <a href="../docs/architecture/01-architecture/02-container-view.md">source: 02-container-view.md</a>
+      </div>
+    </div>
+
+    <h3>Control plane containers</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container</th>
+            <th>Technology</th>
+            <th>Responsibility</th>
+            <th>ADRs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Admin Console (Web UI)</strong></td>
+            <td>AdminJS (Node.js)</td>
+            <td>Renders screens for service registration, credential management, agent management, permission grants, audit viewing. Talks only to the Admin REST API; holds no DB connection.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0013-adminjs-pin.md">ADR-0013</a>, <a href="../docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md">ADR-0019</a></td>
+          </tr>
+          <tr>
+            <td><strong>Admin REST API + BFF</strong></td>
+            <td>Python / FastAPI</td>
+            <td>HTTP surface for both the Admin Console and machine-friendly REST access. Orchestrates Identity, Vault Adapter, Audit, and DB. Every state change emits an audit event.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0005-admin-tech-stack.md">ADR-0005</a>, <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014</a></td>
+          </tr>
+          <tr>
+            <td><strong>Identity and Authorization</strong></td>
+            <td>Python (embedded in Admin API)</td>
+            <td>Source of truth for Operator, Agent, Permission Grant. Verifies Operator sessions and Agent API Keys (hash compared). Enforces RBAC on operators and ABAC on agents.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a>, <a href="../docs/architecture/01-architecture/adr/0018-classical-service-api-keys.md">ADR-0018</a></td>
+          </tr>
+          <tr>
+            <td><strong>MCP Server</strong></td>
+            <td>Python / Anthropic Python SDK</td>
+            <td>Speaks Model Context Protocol to agents. Exposes <code>list_services</code>, <code>describe_service</code>, <code>get_openapi</code>, <code>request_token</code> tools.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md">ADR-0009</a></td>
+          </tr>
+          <tr>
+            <td><strong>Credential Broker</strong></td>
+            <td>Go</td>
+            <td>Mints short-lived, scope-bound, audience-bound JWTs (JWS Ed25519). Holds the signing private key. Publishes JWKS for the Egress Proxy.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a>, <a href="../docs/architecture/01-architecture/adr/0011-shared-go-stack.md">ADR-0011</a></td>
+          </tr>
+          <tr>
+            <td><strong>Vault Adapter</strong></td>
+            <td>Go</td>
+            <td>Encapsulates credential storage with a uniform <code>put/get/rotate</code> interface. v1: encrypted file (AES-256-GCM, envelope). v2: HashiCorp Vault. v3: SQL + external KMS.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md">ADR-0003</a>, <a href="../docs/architecture/01-architecture/adr/0011-shared-go-stack.md">ADR-0011</a></td>
+          </tr>
+          <tr>
+            <td><strong>Audit Service</strong></td>
+            <td>Go (embedded in broker) / Python (admin API)</td>
+            <td>Append-only event sink. Records credential CRUD, token issuance, token use, permission grant/revoke, login. Hash-chained per tenant for tamper evidence.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.7</a></td>
+          </tr>
+          <tr>
+            <td><strong>Kong-syncer</strong></td>
+            <td>Go</td>
+            <td>Pushes declarative YAML to Kong's <code>/config</code> endpoint on operator events (service/credential changes). Listens via Postgres LISTEN/NOTIFY.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0010-change-channel-postgres-listen-notify.md">ADR-0010</a></td>
+          </tr>
+          <tr>
+            <td><strong>PostgreSQL</strong></td>
+            <td>Postgres 15</td>
+            <td>Durable store for config, identities, permissions, audit. Row Level Security on every tenant-scoped table. Schema owned by Liquibase.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a>, <a href="../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md">ADR-0015</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Data plane</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container</th>
+            <th>Technology</th>
+            <th>Responsibility</th>
+            <th>ADRs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Egress Proxy</strong></td>
+            <td>Kong Gateway (DB-less) + Go plugin (go-pdk)</td>
+            <td>Validates JWT, looks up service, retrieves credential via Vault Adapter, injects credential into outbound request, forwards to backend, scrubs credential from response. Stateless; horizontally scalable.</td>
+            <td><a href="../docs/architecture/01-architecture/adr/0004-egress-proxy-kong.md">ADR-0004</a>, <a href="../docs/architecture/01-architecture/adr/0007-proxy-deployment-topology.md">ADR-0007</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/02-container-view.md">Read the source: 02-container-view.md</a>
+    </p>
+  </section>
+
+  <!-- ── Flows ────────────────────────────────────────────────── -->
+  <section id="flows" aria-labelledby="flows-heading">
+    <h2 id="flows-heading">Flows</h2>
+    <div class="prose-wrap">
+      <p>
+        Seven sequence flows cover the complete operational surface.
+        Each flow is a Mermaid sequence diagram with pre/post conditions and
+        per-phase detail.
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Flow</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/E2E-01-builder-happy-path.md">E2E-01</a></td>
+            <td>Builder happy path — end-to-end demo from <code>docker compose up</code> through agent proxied call with full observability. The headline smoke test.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-OP-01-bootstrap-and-login.md">F-OP-01</a></td>
+            <td>Bootstrap and operator login — seed-job, Liquibase, Keycloak realm import, first admin session.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-OP-02-register-service.md">F-OP-02</a></td>
+            <td>Register a service — operator registers a backend service with its base URL and auth scheme.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-OP-03-register-credential-and-test.md">F-OP-03</a></td>
+            <td>Register a credential and test-run — operator stores a credential and verifies the proxy can call the backend with it.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-OP-04-create-agent-and-permissions.md">F-OP-04</a></td>
+            <td>Create an agent and grant permissions — operator creates an agent identity and grants it per-service, per-action permissions.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-AG-01-discover-and-request-token.md">F-AG-01</a></td>
+            <td>Agent discovers services and requests a token — agent authenticates with Agent API Key, calls MCP discovery tools, calls <code>request_token</code>.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/03-flows/F-AG-02-brokered-call-happy-path.md">F-AG-02</a></td>
+            <td>Agent brokered call happy path — agent presents JWT to the Egress Proxy; proxy validates, injects credential, forwards, returns response.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/03-flows/README.md">Read the source: docs/architecture/03-flows/</a>
+    </p>
+  </section>
+
+  <!-- ── ADRs ─────────────────────────────────────────────────── -->
+  <section id="adrs" aria-labelledby="adrs-heading">
+    <h2 id="adrs-heading">Architecture decision records (19)</h2>
+    <div class="prose-wrap">
+      <p>
+        All 19 ADRs have status <em>Accepted</em>. ADRs are immutable once
+        accepted; corrections are recorded in new ADRs that supersede or
+        amend the old.
+        (<a href="../docs/architecture/01-architecture/adr/0001-record-architecture-decisions.md">ADR-0001</a>)
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ADR</th>
+            <th>Title</th>
+            <th>One-sentence summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0001-record-architecture-decisions.md">ADR-0001</a></td>
+            <td>Record architecture decisions</td>
+            <td>Nygard-format ADRs at <code>docs/architecture/01-architecture/adr/</code> are the record for all architectural decisions; immutable once Accepted.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0002-product-name-mintkey.md">ADR-0002</a></td>
+            <td>Adopt "Mintkey" as the product name</td>
+            <td>The product is named Mintkey; ULID prefix registry and API path prefix <code>/v1/</code> derive from this.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md">ADR-0003</a></td>
+            <td>Credential storage — pluggable adapter; v1 = encrypted file</td>
+            <td>Credentials are stored via a pluggable Vault Adapter; v1 is AES-256-GCM envelope encryption on an externally mounted volume.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0004-egress-proxy-kong.md">ADR-0004</a></td>
+            <td>Egress Proxy — Kong Gateway (DB-less) + Go plugin via go-pdk</td>
+            <td>The Egress Proxy is Kong Gateway in DB-less mode with a custom Go plugin for credential injection; Envoy + ext_authz is the documented upgrade path.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0005-admin-tech-stack.md">ADR-0005</a></td>
+            <td>Admin REST API (Python + FastAPI), Admin UI (AdminJS), Postgres + Liquibase</td>
+            <td>Admin REST API is Python/FastAPI; Admin UI is AdminJS; schema migrations are Liquibase; operator auth default is Keycloak OIDC.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a></td>
+            <td>Token format and binding — JWS Ed25519 + fast revocation channel</td>
+            <td>Brokered tokens are JWS over EdDSA (Ed25519) with claims <code>{sub, aud, scope, jti, iat, exp, tnt}</code>; revocation propagates via Postgres LISTEN/NOTIFY.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0007-proxy-deployment-topology.md">ADR-0007</a></td>
+            <td>Proxy deployment topology — explicit forward proxy + per-service virtual-host alias</td>
+            <td>Agents send requests to <code>http://&lt;service-alias&gt;.proxy.mintkey.local/</code>; Kong routes by virtual host; this is explicit, not transparent.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a></td>
+            <td>Multi-tenancy — row-level isolation by default, DB-per-tenant opt-in</td>
+            <td>Default isolation is Postgres RLS on every domain table with <code>tenant_id</code> column; DB-per-tenant is an opt-in high-isolation tier.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md">ADR-0009</a></td>
+            <td>MCP Server stack — Python + Anthropic Python SDK</td>
+            <td>MCP Server is Python using the Anthropic Python SDK; shares the FastAPI process boundary with the Admin API for the MVP.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0010-change-channel-postgres-listen-notify.md">ADR-0010</a></td>
+            <td>Change channel transport — Postgres LISTEN/NOTIFY</td>
+            <td>The revocation and config-change channel uses Postgres LISTEN/NOTIFY; no message broker introduced for the MVP.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0011-shared-go-stack.md">ADR-0011</a></td>
+            <td>Shared Go stack for Broker, Vault Adapter, Kong-syncer, and Egress Proxy plugin</td>
+            <td>Credential Broker, Vault Adapter, Kong-syncer, and Egress Proxy plugin share a Go module with a single <code>go.mod</code>.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0012-python-stack-pin.md">ADR-0012</a></td>
+            <td>Python stack pin for Admin REST API and MCP Server</td>
+            <td>Python 3.12 is pinned; dependency versions are locked in <code>requirements.txt</code> files; reproducible builds enforced.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0013-adminjs-pin.md">ADR-0013</a></td>
+            <td>AdminJS pin set for the Admin Web UI</td>
+            <td>AdminJS version and its adapter set are pinned; amended by ADR-0019 (AdminJS is now a pure BFF with no DB adapter).</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014</a></td>
+            <td>Iteration 1+2 corrections from adversarial review</td>
+            <td>Thirteen narrow corrections including span-attribute allowlist, plaintext-credential chokepoint formalization, audit hash-chain genesis value, and CSRF double-submit pattern.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md">ADR-0015</a></td>
+            <td>Liquibase is the source of truth for the database schema</td>
+            <td>Liquibase changelogs are the canonical schema; SQLAlchemy models are generated mirrors; no column is ever added in SQLAlchemy first.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0016-round-2-corrections.md">ADR-0016</a></td>
+            <td>Round-2 corrections from second adversarial pass</td>
+            <td>Adds <code>jti</code> denylist for token replay prevention, <code>AdminSettings</code> schema, and defers 14 medium-severity items to open questions.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017</a></td>
+            <td>Round-3 corrections from multi-perspective contract review</td>
+            <td>Twelve wire-level decisions including ULID prefix registry (<code>^&lt;prefix&gt;_[0-9A-HJKMNP-TV-Z]{26}$</code>), span-attribute explicit allowlist, and mintkey error code enum.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0018-classical-service-api-keys.md">ADR-0018</a></td>
+            <td>Classical service API keys for non-agent clients</td>
+            <td>Non-agent clients use static <code>mk_svckey_</code>-prefixed API keys (Argon2id-hashed at rest, returned plaintext exactly once); Egress Proxy distinguishes these from brokered JWTs by prefix.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md">ADR-0019</a></td>
+            <td>AdminJS is a backend-for-frontend over the admin-api REST API; write authentication</td>
+            <td>AdminJS holds no DB connection; all data access relays via the Admin REST API; writes require both a <code>mintkey_session</code> cookie and an Ed25519 <code>AdminUiSignedRequest</code> JWT.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/adr/README.md">Read the source: docs/architecture/01-architecture/adr/README.md</a>
+    </p>
+  </section>
+
+  <!-- ── Quality attributes ───────────────────────────────────── -->
+  <section id="quality-attributes" aria-labelledby="qa-heading">
+    <h2 id="qa-heading">Quality attributes</h2>
+    <div class="prose-wrap">
+      <p>
+        Quality attributes are documented as SEI ADD-format scenarios with
+        measurable response measures. Each becomes either an SLO or a test
+        assertion.
+        (<a href="../docs/architecture/01-architecture/03-quality-attributes.md">source: 03-quality-attributes.md</a>)
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Measure</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>S-SEC-1</strong> — Agent never holds a usable backend credential</td>
+            <td>In any successful brokered request, the original credential is never serialized into a response visible to the agent and never present in any log emitted by any container the agent can reach.</td>
+          </tr>
+          <tr>
+            <td><strong>S-SEC-2</strong> — Credentials at rest are encrypted</td>
+            <td>Substrate reveals only ciphertext to an attacker who can read storage but not the KEK. v1 backend: documented limitation (co-located KEK); v2/v3: KMS-rooted.</td>
+          </tr>
+          <tr>
+            <td><strong>S-SEC-3</strong> — Stolen Agent API Key has bounded blast radius</td>
+            <td>0 unauthorized service calls succeed in fuzzing tests; revoke-to-deny propagates within &le;5 s.</td>
+          </tr>
+          <tr>
+            <td><strong>S-AUD-1</strong> — Every issuance and use is logged</td>
+            <td>100% coverage in integration tests; audit query for any 1h window returns within &le;2 s.</td>
+          </tr>
+          <tr>
+            <td><strong>S-PERF-1</strong> — Proxy latency overhead is bounded</td>
+            <td>p50 added latency &le;10 ms; p99 added latency &le;30 ms under 100 RPS sustained per proxy instance.</td>
+          </tr>
+          <tr>
+            <td><strong>S-PERF-2</strong> — Token issuance is fast</td>
+            <td>p99 &le;50 ms at 100 issuances/sec.</td>
+          </tr>
+          <tr>
+            <td><strong>S-OPS-1</strong> — Operator can revoke an agent in seconds</td>
+            <td>End-to-end deny within &le;5 s of revoke click; proxy must check liveness, not just JWT expiry.</td>
+          </tr>
+          <tr>
+            <td><strong>S-OPS-2</strong> — Rotate backend credential without agent changes</td>
+            <td>100% of proxy hits within &le;30 s after rotation use the new credential; zero failures attributable to the rotation.</td>
+          </tr>
+          <tr>
+            <td><strong>S-OBS-1</strong> — One agent request traceable end-to-end</td>
+            <td>&ge;95% of proxy hits have a complete trace; lookup by correlation ID returns within &le;3 s.</td>
+          </tr>
+          <tr>
+            <td><strong>S-MOD-1</strong> — Adding a new backend auth scheme is small and local</td>
+            <td>Change touches &le;3 files in the Proxy and &le;2 in the Vault Adapter; no contract changes for existing schemes.</td>
+          </tr>
+          <tr>
+            <td><strong>S-AVAIL-1</strong> — Control plane downtime does not stop in-flight agent work</td>
+            <td>0 agent-visible failures attributable to control plane outage if agents have &ge;30 s remaining on their JWTs.</td>
+          </tr>
+          <tr>
+            <td><strong>S-MT-1</strong> — Strict tenant isolation</td>
+            <td>Integration test fuzzes API endpoints with cross-tenant IDs and asserts 0 leakage; RLS covers 100% of domain tables (asserted by architecture test).</td>
+          </tr>
+          <tr>
+            <td><strong>S-TEST-1</strong> — E2E smoke passes in CI in &le;90 s</td>
+            <td>Full stack-up + test passes in &le;90 s; all quality scenarios exercised by at least one CI test.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/03-quality-attributes.md">Read the source: 03-quality-attributes.md</a>
+    </p>
+  </section>
+
+  <!-- ── Multi-tenancy ────────────────────────────────────────── -->
+  <section id="multi-tenancy" aria-labelledby="mt-heading">
+    <h2 id="mt-heading">Multi-tenancy</h2>
+    <div class="prose-wrap">
+      <p>
+        Mintkey is multi-tenant by architecture, single-tenant by default.
+        A single instance can host multiple tenants concurrently; the default
+        <code>docker compose up</code> creates one tenant (<code>t_default</code>)
+        and the UI hides tenant selection so a single-tenant operator never sees
+        the concept.
+        (<a href="../docs/architecture/00-vision/02-product-vision.md">02-product-vision.md</a>)
+      </p>
+      <p>
+        Default isolation is row-level (<code>tenant_id</code> column on every
+        domain table + Postgres Row Level Security). An opt-in DB-per-tenant mode
+        is available for high-isolation deployments.
+      </p>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/proposal/P-007-multi-tenancy.md">Full specification: P-007-multi-tenancy.md</a> &middot;
+      <a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a> &middot;
+      <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.8</a> &middot;
+      <a href="../docs/architecture/01-architecture/adr/0016-round-2-corrections.md">ADR-0016.3</a>
+    </p>
+  </section>
+
+  <!-- ── Wire contracts ───────────────────────────────────────── -->
+  <section id="contracts" aria-labelledby="contracts-heading">
+    <h2 id="contracts-heading">Wire contracts</h2>
+    <div class="prose-wrap">
+      <p>
+        Five canonical contract files. CI diffs the running services against
+        these on every commit. Code is not allowed to drift from them.
+        (<a href="../docs/architecture/contracts/README.md">contracts/README.md</a>)
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Contract</th>
+            <th>Format</th>
+            <th>What it governs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="../docs/architecture/contracts/rest/openapi.yaml">contracts/rest/openapi.yaml</a></td>
+            <td>OpenAPI 3.1</td>
+            <td>Admin REST API surface. Canonical source for error codes (<code>mintkey:code</code>), ULID patterns, auth schemes. <code>x-mintkey-stability: experimental</code>.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/contracts/mcp/tools.yaml">contracts/mcp/tools.yaml</a></td>
+            <td>YAML (MCP tool catalog)</td>
+            <td>MCP tool definitions for <code>list_services</code>, <code>describe_service</code>, <code>get_openapi</code>, <code>request_token</code>.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/contracts/events/audit-event.schema.json">contracts/events/audit-event.schema.json</a></td>
+            <td>JSON Schema Draft 2020-12</td>
+            <td>Audit event envelope: every state change the audit service records.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/contracts/events/change-event.schema.json">contracts/events/change-event.schema.json</a></td>
+            <td>JSON Schema Draft 2020-12</td>
+            <td>Change-channel event (Postgres LISTEN/NOTIFY payload for Kong-syncer and revocation propagation).</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/contracts/vault-adapter/vault.proto">contracts/vault-adapter/vault.proto</a></td>
+            <td>Protocol Buffers</td>
+            <td>Vault Adapter gRPC surface. <code>AuthScheme</code> enum is the canonical list of supported auth schemes.</td>
+          </tr>
+          <tr>
+            <td><a href="../docs/architecture/contracts/events/span-attributes.md">contracts/events/span-attributes.md</a></td>
+            <td>Markdown allowlist</td>
+            <td>Explicit allowlist of OTel span attribute names. Attributes not on this list must not appear in any span. Asserted by CI.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/contracts/README.md">Read the source: docs/architecture/contracts/README.md</a>
+    </p>
+  </section>
+
+  <!-- ── Open questions ───────────────────────────────────────── -->
+  <section id="open-questions" aria-labelledby="oq-heading">
+    <h2 id="oq-heading">Open questions</h2>
+    <div class="prose-wrap">
+      <p>
+        Architectural uncertainties that are not yet resolved into ADRs or
+        proposals are tracked as numbered open questions.
+        This is where honest "we don't know yet" lives.
+      </p>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/open-questions.md">Source: docs/architecture/01-architecture/open-questions.md</a>
+    </p>
+  </section>
+
+  <!-- ── Implementation status ────────────────────────────────── -->
+  <section id="status" aria-labelledby="status-heading">
+    <h2 id="status-heading">Implementation status</h2>
+    <div class="prose-wrap">
+      <p>Phase 1 is complete as of 2026-05-12:</p>
+      <ul>
+        <li>244 Python unit tests passing</li>
+        <li>17 Python architecture tests passing (RLS coverage, audit chokepoint, OpenAPI parity)</li>
+        <li>23 Go package tests passing</li>
+        <li>E2E-01 smoke test completes in &le;90 s</li>
+        <li>19 ADRs accepted</li>
+        <li>All five wire contracts validated by CI</li>
+      </ul>
+      <p>
+        This is pre-alpha software. The wire surface is declared
+        <code>x-mintkey-stability: experimental</code> in
+        <a href="../docs/architecture/contracts/rest/openapi.yaml">openapi.yaml</a>.
+        Breaking changes will bump the major version.
+      </p>
+    </div>
+    <p class="read-source">
+      <a href="../PROGRESS.md">Source: PROGRESS.md</a>
+    </p>
+  </section>
+
+  <!-- ── Footer ──────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div>
+      License: Apache-2.0 &middot;
+      <a href="../SECURITY.md">Security policy</a> &middot;
+      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="index.html">Overview</a> &middot;
+      <a href="security.html">Security posture</a>
+    </div>
+    <div style="margin-top:0.5rem;">
+      Stability: <em>experimental</em> &mdash;
+      <strong>pre-alpha</strong> software. No production deployments, no managed offering.
+    </div>
+  </footer>
+
+</div><!-- .page-wrap -->
+</body>
+</html>

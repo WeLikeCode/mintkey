@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mintkey — Security posture</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="wordmark">Mintkey</div>
+    <nav class="site-nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="security.html">Security</a>
+      <a href="../docs/architecture/README.md">Docs</a>
+      <a href="../CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </header>
+
+  <!-- ── Status strip ────────────────────────────────────────── -->
+  <div class="status-strip" role="note" aria-label="Project status">
+    Status: <span class="pre-alpha">pre-alpha</span> &middot;
+    experimental contract surface (<code>x-mintkey-stability: experimental</code>) &middot;
+    no formal audit &middot; no managed offering &middot; self-host only
+  </div>
+
+  <!-- ── Page title ──────────────────────────────────────────── -->
+  <div class="page-title">
+    <h1>Security posture</h1>
+    <p class="subtitle">
+      What Mintkey claims, what it does not claim, and where to read the evidence.
+      Every claim below has a verification command. Without one, the claim is removed.
+    </p>
+  </div>
+
+  <!-- ── Threat model ────────────────────────────────────────── -->
+  <section id="threat-model" aria-labelledby="tm-heading">
+    <h2 id="tm-heading">Threat model</h2>
+    <div class="prose-wrap">
+      <p>
+        Mintkey uses a STRIDE-style threat model covering the system as
+        defined in the container view.
+        (<a href="../docs/architecture/01-architecture/05-threat-model.md">source: 05-threat-model.md</a>)
+      </p>
+    </div>
+
+    <div class="diagram-wrap">
+      <img
+        src="assets/threat-model.svg"
+        alt="Threat model trust boundaries: Untrusted zone (Attacker, Compromised Agent), Semi-trusted zone (Egress Proxy, MCP Server), Trusted zone (Broker, Identity, Vault Adapter, Audit, DB), Strongly trusted zone (External KMS)"
+        width="700">
+      <div class="diagram-caption">
+        Trust boundaries &mdash;
+        <a href="../docs/architecture/01-architecture/05-threat-model.md">source: 05-threat-model.md</a>
+      </div>
+    </div>
+
+    <h3>Named adversaries</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Adversary</th>
+            <th>Position</th>
+            <th>What they can do</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Hostile agent (prompt-injected)</strong></td>
+            <td>Untrusted zone</td>
+            <td>Has full control of the agent process: can dump memory, prompt context, environment, request and response bodies to an external endpoint.</td>
+          </tr>
+          <tr>
+            <td><strong>Network attacker</strong></td>
+            <td>Untrusted zone</td>
+            <td>Can intercept or replay traffic on the wire between zones. Can attempt to forge agent credentials or JWT tokens.</td>
+          </tr>
+          <tr>
+            <td><strong>Curious operator</strong></td>
+            <td>Trusted zone (elevated)</td>
+            <td>Authenticated admin-level access. May attempt to query another tenant's data or escalate their privilege.</td>
+          </tr>
+          <tr>
+            <td><strong>Malicious backend</strong></td>
+            <td>External</td>
+            <td>A backend service that echoes the injected credential back in the response body, or impersonates another backend via DNS poisoning.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../docs/architecture/01-architecture/05-threat-model.md">Read the full threat model: 05-threat-model.md</a>
+    </p>
+  </section>
+
+  <!-- ── What we claim ───────────────────────────────────────── -->
+  <section id="claims" aria-labelledby="claims-heading">
+    <h2 id="claims-heading">What we claim</h2>
+    <div class="prose-wrap">
+      <p>
+        Each card below is a claim with: the mechanism that enforces it,
+        the verification command a reader can run, and the source of truth.
+      </p>
+    </div>
+
+    <article class="card claim-card">
+      <div class="claim">Plaintext credentials never appear in any log, audit payload, OTel span attribute, or response visible to the agent.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> the credential is decrypted only inside the Vault Adapter
+        and used only inside the Egress Proxy's request mutation step. Span attributes are an
+        explicit allowlist
+        (<a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017.6</a>);
+        the proxy holds plaintext only within request scope
+        (<a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.4</a>).
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code>docker compose logs | grep -E "$(cat ./scripts/red-team-fingerprints.txt)"</code></pre>
+        This grep must return empty. Source:
+        <a href="../CLAUDE.md">CLAUDE.md</a> "Verification commands" (lines 224&ndash;226).
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/03-quality-attributes.md">S-SEC-1</a> &middot;
+        <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.4</a> &middot;
+        <a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017.6</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">Tokens are JWS Ed25519, short-lived, bound to service and scope.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> the Credential Broker mints JWTs signed with EdDSA (Ed25519).
+        Claims: <code>{sub: agent_id, aud: service_id, scope: action, jti, iat, exp, tnt}</code>.
+        The proxy-bound JWT TTL is 60 seconds; the standard brokered JWT TTL is 10 minutes.
+        The Egress Proxy fetches the JWKS from the broker; no out-of-band key distribution.
+        (<a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a>)
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong> a <code>request_token</code> MCP call returns a JWT that
+        decodes as EdDSA with <code>iss=mintkey/broker</code>. Run:
+        <pre><code>python3 -c "
+import jwt, json
+tok = '&lt;token-from-request_token&gt;'
+header = jwt.get_unverified_header(tok)
+assert header['alg'] == 'EdDSA', header
+print(json.dumps(header, indent=2))
+"</code></pre>
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a> &middot;
+        <a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">Audit log is hash-chained per tenant.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> every audit row carries <code>prev_hash</code> and
+        <code>hash</code>. The genesis row's <code>prev_hash</code> is
+        <code>sha256("mintkey-audit-genesis-v1:" || tenant_id)</code>.
+        An append to this chain outside the audit chokepoint would break the chain.
+        (<a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.7</a>)
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code>curl -s -X POST \
+  "http://localhost:8080/v1/admin/audit/verify-chain?tenant_id=t_default" \
+  -H "Cookie: mintkey_session=&lt;session-cookie&gt;" \
+  | jq '.valid'</code></pre>
+        Must return <code>true</code>.
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.7</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">All wire IDs are ULIDs with stable prefixes.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> every identifier exposed on the wire follows the pattern
+        <code>^&lt;prefix&gt;_[0-9A-HJKMNP-TV-Z]{26}$</code>.
+        Example: <code>svc_01HX5J9F8V8H8V0CG3F2Y5J6S1</code>.
+        The prefix registry is in
+        <a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017.11</a>.
+        IDs that do not match this pattern are rejected by validation in the Admin REST API.
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code>python3 -c "
+import yaml, re
+spec = yaml.safe_load(open('docs/architecture/contracts/rest/openapi.yaml'))
+# Find any schema property named 'id' and check its pattern
+# openapi-spec-validator validates the full document
+import openapi_spec_validator as v
+v.validate(spec)
+print('OpenAPI schema valid')
+"</code></pre>
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017.11</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">Schema source of truth is Liquibase; SQLAlchemy is a generated mirror.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> Liquibase changelogs are the authoritative schema definition.
+        The SQLAlchemy models in <code>mintkey_models/db.py</code> are generated by
+        <code>sqlacodegen</code> and must not diverge. A CI diff asserts this.
+        No column is ever added in SQLAlchemy first.
+        (<a href="../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md">ADR-0015</a>)
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code>sqlacodegen "postgresql://..." &gt; /tmp/db_generated.py
+diff mintkey_models/db.py /tmp/db_generated.py</code></pre>
+        Diff must be empty. Source:
+        <a href="../CLAUDE.md">CLAUDE.md</a> lines 214&ndash;218.
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md">ADR-0015</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">PostgreSQL Row Level Security on every tenant-scoped table.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> every domain table has a <code>tenant_id</code> column
+        and a Postgres RLS policy. The application sets <code>app.current_tenant</code>
+        per transaction. An architecture test asserts 100% coverage.
+        (<a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a>,
+        <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.8</a>)
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code>pytest tests/architecture/test_rls_coverage.py -v</code></pre>
+        Must report all tests passed, exit 0. Source:
+        <a href="../CLAUDE.md">CLAUDE.md</a> lines 230&ndash;231.
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md">ADR-0008</a> &middot;
+        <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.8</a>
+      </div>
+    </article>
+
+    <article class="card claim-card">
+      <div class="claim">The Agent API Key is returned plaintext exactly once.</div>
+      <div class="mechanism">
+        <strong>Mechanism:</strong> at creation, the API key is returned in the response body
+        and immediately hashed (Argon2id) for storage.
+        The <code>agent.created</code> audit event carries the key fingerprint, never
+        the plaintext. Subsequent reads return only the fingerprint.
+        The broker's resolve endpoint uses constant-time compare even for unknown fingerprints
+        to prevent existence oracles.
+        (<a href="../docs/architecture/01-architecture/adr/0018-classical-service-api-keys.md">ADR-0018</a>)
+      </div>
+      <div class="verify">
+        <strong>Verification:</strong>
+        <pre><code># Create an agent; record the printed key.
+# Immediately GET the agent record.
+curl -s "http://localhost:8080/v1/agents/&lt;agent_id&gt;" \
+  -H "Cookie: mintkey_session=&lt;session&gt;" | jq '.key'
+# Must return null or the fingerprint; never the plaintext.</code></pre>
+      </div>
+      <div class="sources">
+        <strong>Sources:</strong>
+        <a href="../docs/architecture/01-architecture/adr/0018-classical-service-api-keys.md">ADR-0018</a> &middot;
+        <a href="../CLAUDE.md">CLAUDE.md</a> "Audit and security"
+      </div>
+    </article>
+
+  </section>
+
+  <!-- ── What we do not claim ────────────────────────────────── -->
+  <section id="non-claims" aria-labelledby="nonclaims-heading">
+    <h2 id="nonclaims-heading">What we do not claim</h2>
+    <div class="prose-wrap">
+      <p>
+        These are genuine gaps. They are not marketing hedges; they are facts about the current state.
+      </p>
+      <ul>
+        <li>
+          <strong>No formal security audit.</strong> Mintkey has not been reviewed by an external
+          security firm. The threat model
+          (<a href="../docs/architecture/01-architecture/05-threat-model.md">05-threat-model.md</a>)
+          is a first-pass STRIDE analysis, not a penetration test.
+        </li>
+        <li>
+          <strong>No fuzzing campaign.</strong> The integration tests cover
+          known-bad inputs; systematic fuzzing of the wire surface has not been run.
+        </li>
+        <li>
+          <strong>No bug bounty.</strong> This is pre-alpha; there is no managed offering
+          and no bounty program. Report vulnerabilities via
+          <a href="../SECURITY.md">SECURITY.md</a>.
+        </li>
+        <li>
+          <strong>The wire surface may change.</strong>
+          <code>x-mintkey-stability: experimental</code> means breaking changes can
+          happen at any minor version increment until the surface is promoted.
+        </li>
+        <li>
+          <strong>The dev KEK in <code>docker-compose.yml</code> is a fixture, not a
+          production secret.</strong>
+          It is a documented dev fixture. Production deployments must supply a real
+          KEK via a separate volume mount with restrictive permissions.
+          (<a href="../PORTS.md">PORTS.md</a>)
+        </li>
+        <li>
+          <strong>Multi-region active-active is out of scope.</strong>
+          MVP is single-region.
+          (<a href="../docs/architecture/00-vision/02-product-vision.md">02-product-vision.md</a> non-goals)
+        </li>
+        <li>
+          <strong>We do not prevent prompt injection inside the agent.</strong>
+          We contain its impact on credentials. A prompt-injected agent can still
+          take any action within its granted permission set until it is revoked.
+          Revocation propagates within &le;5 s
+          (<a href="../docs/architecture/01-architecture/03-quality-attributes.md">S-OPS-1</a>).
+        </li>
+        <li>
+          <strong>The v1 vault backend's KEK co-resides with the ciphertext.</strong>
+          If an attacker can read both the credential file and the host filesystem,
+          the v1 backend is defeated. This is documented in
+          <a href="../docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md">ADR-0003</a>.
+          Operators in regulated environments must use v2 (HashiCorp Vault) or v3 (SQL + external KMS).
+        </li>
+        <li>
+          <strong>Known open gaps are tracked openly.</strong>
+          See <a href="../docs/architecture/01-architecture/open-questions.md">open-questions.md</a>.
+          Defense in depth has documented gaps at this stage.
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── Reporting ────────────────────────────────────────────── -->
+  <section id="reporting" aria-labelledby="reporting-heading">
+    <h2 id="reporting-heading">Reporting a vulnerability</h2>
+    <div class="prose-wrap">
+      <p>
+        Mintkey is a credential broker. A vulnerability in this project is
+        credentials-impacting by definition. Do not file vulnerabilities as
+        public GitHub issues.
+      </p>
+      <p>
+        Use one of the channels described in
+        <a href="../SECURITY.md">SECURITY.md</a>:
+        a private GitHub Security Advisory (GHSA) or the contact email listed there.
+        Include: reproduction steps, affected commit hash
+        (<code>git rev-parse HEAD</code>), impact assessment, and proposed remediation
+        if known.
+      </p>
+    </div>
+    <p class="read-source">
+      <a href="../SECURITY.md">Full policy: SECURITY.md</a>
+    </p>
+  </section>
+
+  <!-- ── Recurring verification ───────────────────────────────── -->
+  <section id="verification" aria-labelledby="verify-heading">
+    <h2 id="verify-heading">Recurring verification</h2>
+    <div class="prose-wrap">
+      <p>
+        The following CI gates re-prove the claims above on every commit.
+        (<a href="../PROGRESS.md">PROGRESS.md</a> §1 checklist)
+      </p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Gate</th>
+            <th>Command</th>
+            <th>What it proves</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RLS coverage</td>
+            <td><code>pytest tests/architecture/test_rls_coverage.py -q</code></td>
+            <td>Every domain table has a Postgres RLS policy. Zero uncovered tables.</td>
+          </tr>
+          <tr>
+            <td>Audit chokepoint</td>
+            <td><code>pytest tests/architecture/test_audit_chokepoint.py -q</code></td>
+            <td>Every state-changing endpoint emits an audit event. No bypass paths.</td>
+          </tr>
+          <tr>
+            <td>OpenAPI parity</td>
+            <td><code>pytest tests/architecture/test_openapi_parity.py -q</code></td>
+            <td>Running FastAPI routes match <code>openapi.yaml</code>. No undocumented endpoints.</td>
+          </tr>
+          <tr>
+            <td>SQLAlchemy mirror</td>
+            <td><code>sqlacodegen</code> diff against <code>mintkey_models/db.py</code></td>
+            <td>SQLAlchemy models match the Liquibase-generated schema. Zero drift.</td>
+          </tr>
+          <tr>
+            <td>E2E smoke</td>
+            <td><code>make smoke</code></td>
+            <td>Full E2E-01: brokered call succeeds, audit log contains all expected events, chain verifies.</td>
+          </tr>
+          <tr>
+            <td>Plaintext-in-logs red-team</td>
+            <td><code>docker compose logs | grep -E "$(cat ./scripts/red-team-fingerprints.txt)"</code></td>
+            <td>No container log line contains a known credential fingerprint.</td>
+          </tr>
+          <tr>
+            <td>Contract validators</td>
+            <td><code>openapi-spec-validator</code>, <code>Draft202012Validator</code>, <code>protoc</code>, <code>mmdc</code></td>
+            <td>All five contract files parse and validate against their schemas.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="read-source">
+      <a href="../CLAUDE.md">Source: CLAUDE.md "Verification commands"</a> &middot;
+      <a href="../PROGRESS.md">PROGRESS.md</a>
+    </p>
+  </section>
+
+  <!-- ── Footer ──────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div>
+      License: Apache-2.0 &middot;
+      <a href="../SECURITY.md">Security policy</a> &middot;
+      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="index.html">Overview</a> &middot;
+      <a href="architecture.html">Architecture</a>
+    </div>
+    <div style="margin-top:0.5rem;">
+      Stability: <em>experimental</em> &mdash;
+      <strong>pre-alpha</strong> software. No formal audit. No managed offering. Self-host only.
+    </div>
+  </footer>
+
+</div><!-- .page-wrap -->
+</body>
+</html>

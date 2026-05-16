@@ -1,0 +1,229 @@
+/* Mintkey marketing — self-contained, no CDN, no remote fonts, system fonts only */
+
+:root {
+  --bg:           #ffffff;
+  --fg:           #1a1a1a;
+  --fg-muted:     #5a5a5a;
+  --accent:       #1a6bbf;
+  --accent-hover: #124f8e;
+  --code-bg:      #f4f4f4;
+  --code-fg:      #1a1a1a;
+  --border:       #d0d0d0;
+  --card-bg:      #fafafa;
+  --strip-bg:     #fff8e1;
+  --strip-border: #e0c040;
+  --strip-accent: #b8860b;
+  --table-stripe: #f5f5f5;
+  --shadow:       0 1px 3px rgba(0,0,0,0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:           #111418;
+    --fg:           #e8e8e8;
+    --fg-muted:     #9a9a9a;
+    --accent:       #5fa8e8;
+    --accent-hover: #82bff0;
+    --code-bg:      #1e2228;
+    --code-fg:      #d0d0d0;
+    --border:       #333840;
+    --card-bg:      #181c22;
+    --strip-bg:     #2a2200;
+    --strip-border: #806020;
+    --strip-accent: #e0b040;
+    --table-stripe: #161a20;
+    --shadow:       0 1px 4px rgba(0,0,0,0.4);
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 17px; scroll-behavior: smooth; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.page-wrap { max-width: 900px; margin: 0 auto; padding: 0 1.5rem 4rem; }
+.prose-wrap { max-width: 72ch; }
+
+/* ── Typography ─────────────────────────────────────────────────── */
+h1 {
+  font-size: 2rem; font-weight: 700;
+  letter-spacing: -0.02em; line-height: 1.2;
+  margin-bottom: 0.75rem;
+}
+h2 {
+  font-size: 1.4rem; font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.5rem; margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border); padding-bottom: 0.35rem;
+}
+h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.75rem; margin-bottom: 0.5rem; }
+p { margin-bottom: 0.9rem; max-width: 72ch; }
+ul, ol { margin-left: 1.5rem; margin-bottom: 0.9rem; }
+li { margin-bottom: 0.25rem; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); text-decoration: underline; }
+strong { font-weight: 600; }
+
+/* ── Status strip ───────────────────────────────────────────────── */
+.status-strip {
+  background: var(--strip-bg);
+  border-left: 4px solid var(--strip-border);
+  padding: 0.7rem 1rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+.status-strip .pre-alpha { font-weight: 700; color: var(--strip-accent); }
+
+/* ── Site header ────────────────────────────────────────────────── */
+.site-header {
+  border-bottom: 1px solid var(--border);
+  padding: 1.5rem 0 1rem;
+  margin-bottom: 2rem;
+}
+.site-header .wordmark { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+.site-header .tagline { font-size: 0.95rem; color: var(--fg-muted); margin-top: 0.25rem; }
+.site-nav { margin-top: 0.75rem; font-size: 0.9rem; }
+.site-nav a { margin-right: 1.25rem; }
+
+/* ── Page title ─────────────────────────────────────────────────── */
+.page-title { margin-bottom: 1.5rem; }
+.page-title h1 { margin-bottom: 0.5rem; }
+.page-title .subtitle { font-size: 1.05rem; color: var(--fg-muted); max-width: 60ch; }
+
+/* ── Cards ──────────────────────────────────────────────────────── */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.1rem 1.25rem;
+  margin: 1rem 0;
+  box-shadow: var(--shadow);
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.card-grid .card { margin: 0; }
+.card .claim { font-weight: 600; margin-bottom: 0.4rem; }
+.card .mechanism { font-size: 0.92rem; color: var(--fg-muted); margin-bottom: 0.5rem; }
+.card .verify { font-size: 0.85rem; margin-bottom: 0.4rem; }
+.card .sources { font-size: 0.83rem; color: var(--fg-muted); }
+.card.claim-card { border-left: 3px solid var(--accent); }
+
+/* ── Code ───────────────────────────────────────────────────────── */
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.875em;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+pre {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1rem 1.1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1rem 0;
+  line-height: 1.5;
+  border: 1px solid var(--border);
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* ── Tables ─────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; margin: 1rem 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+thead { position: sticky; top: 0; background: var(--bg); }
+th {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+}
+td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-stripe); }
+
+/* ── SVG / diagram embeds ───────────────────────────────────────── */
+.diagram-wrap { margin: 1.5rem 0; text-align: center; overflow-x: auto; }
+.diagram-wrap img {
+  max-width: 100%; height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.diagram-caption { font-size: 0.82rem; color: var(--fg-muted); margin-top: 0.4rem; font-style: italic; }
+
+/* ── Tech stack columns ─────────────────────────────────────────── */
+.stack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.stack-col {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+}
+.stack-col h3 { margin-top: 0; font-size: 0.95rem; margin-bottom: 0.5rem; }
+.stack-col ul { font-size: 0.88rem; margin-left: 1rem; }
+
+/* ── Details / disclosure ───────────────────────────────────────── */
+details {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+summary { cursor: pointer; font-weight: 600; padding: 0.25rem 0; user-select: none; }
+details[open] summary {
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+}
+
+/* ── Callout ────────────────────────────────────────────────────── */
+.callout {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--strip-border);
+  background: var(--strip-bg);
+  border-radius: 0 6px 6px 0;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────── */
+.site-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+.site-footer a { margin-right: 1rem; }
+.read-source { font-size: 0.82rem; color: var(--fg-muted); margin-top: 0.5rem; }
+
+/* ── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  html { font-size: 15px; }
+  .card-grid, .stack-grid { grid-template-columns: 1fr; }
+  .page-wrap { padding: 0 1rem 3rem; }
+}

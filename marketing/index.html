@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mintkey — Agentic Credential Broker</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="wordmark">Mintkey</div>
+    <div class="tagline">
+      A self-hostable broker that lets autonomous agents discover services,
+      acquire scoped short-lived credentials for them, and call them through
+      a proxy that the real credentials never leave through — with
+      operator-grade observability and per-request audit.
+    </div>
+    <nav class="site-nav" aria-label="Site navigation">
+      <a href="index.html">Overview</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="security.html">Security</a>
+      <a href="../docs/architecture/README.md">Docs</a>
+      <a href="../CONTRIBUTING.md">Contributing</a>
+    </nav>
+  </header>
+
+  <!-- ── Status strip ────────────────────────────────────────── -->
+  <div class="status-strip" role="note" aria-label="Project status">
+    Status: <span class="pre-alpha">pre-alpha</span> &middot;
+    experimental contract surface (<code>x-mintkey-stability: experimental</code>) &middot;
+    self-hostable &middot;
+    Phase 1 complete: 244 unit tests, 17 architecture tests, 23 Go package tests passing
+    (source: <a href="../PROGRESS.md">PROGRESS.md</a>)
+  </div>
+
+  <!-- ── The problem ─────────────────────────────────────────── -->
+  <section id="problem" aria-labelledby="problem-heading">
+    <h2 id="problem-heading">The problem</h2>
+    <div class="prose-wrap">
+      <p>
+        Autonomous and semi-autonomous AI agents increasingly need to call
+        third-party services to perform real work. To do that, they need
+        credentials.
+      </p>
+      <p>
+        Today, two unsatisfying patterns dominate. Bake the credential into
+        the agent — embedded API keys in environment variables, prompts, or
+        configuration files. Easy to leak, painful to rotate, impossible to
+        audit at request granularity, and gives the agent the maximum blast
+        radius forever. Or hand-roll a per-integration secret retrieval, pulling
+        credentials from a secrets manager before each call. Better for rotation,
+        but the live credential still lands in the agent's process memory and
+        prompt context — which interacts poorly with prompt injection.
+      </p>
+      <p>
+        Neither pattern gives an honest answer to the questions that matter:
+        which services can this agent use, what did it actually do with this
+        credential, how do I rotate the underlying credential without touching
+        the agent, how do I revoke an agent's access in seconds, not on next
+        deploy?
+      </p>
+      <p>
+        Anything less is just a fancier secrets file.
+        (<a href="../docs/architecture/00-vision/01-problem-statement.md">problem-statement.md</a>)
+      </p>
+    </div>
+  </section>
+
+  <!-- ── What Mintkey does ────────────────────────────────────── -->
+  <section id="what-it-does" aria-labelledby="what-heading">
+    <h2 id="what-heading">What Mintkey does</h2>
+    <div class="prose-wrap">
+      <p>
+        Mintkey sits between agents and third-party APIs. Agents speak MCP to
+        discover what services they may use. Mintkey issues a service-bound,
+        scope-bound, time-bound JWT. The agent calls the Egress Proxy with that
+        JWT. The proxy validates the JWT, looks up the real credential, injects it
+        into the outbound request, and forwards it to the backend. The agent never
+        holds a usable credential.
+      </p>
+    </div>
+
+    <div class="diagram-wrap">
+      <img
+        src="assets/e2e-flow.svg"
+        alt="E2E flow: compose up and seed, operator login, register service, register credential, create agent and grant permission, configure agent as MCP client, agent discovers and requests token, agent calls via proxy, verify trace and audit"
+        width="800">
+      <div class="diagram-caption">
+        Builder happy path (E2E-01). Agent never touches the underlying credential. &mdash;
+        <a href="../docs/architecture/03-flows/E2E-01-builder-happy-path.md">source: E2E-01-builder-happy-path.md</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Five claims ──────────────────────────────────────────── -->
+  <section id="claims" aria-labelledby="claims-heading">
+    <h2 id="claims-heading">Five properties, each linked to its evidence</h2>
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="claim">Containment of prompt-injection blast radius</div>
+        <p>
+          A compromised agent can only use the credentials it was granted, only
+          against the services it was granted, only for the TTL of the active JWT,
+          and only via paths the proxy enforces.
+        </p>
+        <div class="sources">
+          <a href="../docs/architecture/01-architecture/03-quality-attributes.md">S-SEC-1</a> &middot;
+          <a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="claim">Per-request audit, hash-chained per tenant</div>
+        <p>
+          Every credential issuance and every proxied request is logged with
+          agent identity, target service, latency, and outcome. The audit log
+          carries a <code>prev_hash</code> chain per tenant.
+        </p>
+        <div class="sources">
+          <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.7</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="claim">Rotation without code changes</div>
+        <p>
+          The operator rotates the underlying credential in the vault; no agent
+          reconfiguration is required. The proxy picks up the new credential on
+          the next request within the cache TTL.
+        </p>
+        <div class="sources">
+          <a href="../docs/architecture/03-flows/F-OP-03-register-credential-and-test.md">Flow F-OP-03</a> &middot;
+          <a href="../docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md">ADR-0003</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="claim">MCP-native service discovery</div>
+        <p>
+          Agents query <code>list_services</code>, <code>describe_service</code>,
+          and <code>get_openapi</code> over MCP. No out-of-band setup. The agent
+          self-bootstraps a typed client from the served OpenAPI spec.
+        </p>
+        <div class="sources">
+          <a href="../docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md">ADR-0009</a> &middot;
+          <a href="../docs/architecture/contracts/mcp/tools.yaml">contracts/mcp/tools.yaml</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="claim">Plaintext credential never visible to the agent</div>
+        <p>
+          The credential is decrypted only inside the Vault Adapter and used only
+          inside the Egress Proxy's request mutation step. Nothing is cached beyond
+          the encrypted DEK.
+        </p>
+        <div class="sources">
+          <a href="../docs/architecture/01-architecture/03-quality-attributes.md">S-SEC-1</a> &middot;
+          <a href="../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md">ADR-0014.4</a> &middot;
+          <a href="../docs/architecture/01-architecture/adr/0017-round-3-corrections.md">ADR-0017.6</a>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── What it is not ───────────────────────────────────────── -->
+  <section id="non-goals" aria-labelledby="nongoals-heading">
+    <h2 id="nongoals-heading">What Mintkey is not</h2>
+    <div class="prose-wrap">
+      <p>
+        Taken from
+        <a href="../docs/architecture/00-vision/02-product-vision.md">02-product-vision.md</a>
+        non-goals:
+      </p>
+      <ul>
+        <li>Not a replacement for a general-purpose secrets manager (HashiCorp Vault, Infisical, etc.) for human developers and CI/CD pipelines.</li>
+        <li>Not an agent runtime or orchestrator. Mintkey brokers access; it does not provide the agents.</li>
+        <li>Not an inbound API gateway. The proxy is on the agent's egress path.</li>
+        <li>Not a prompt injection prevention layer. Mintkey contains the impact of a compromised agent; it does not prevent the compromise.</li>
+        <li>Not multi-region active-active. MVP is single-region.</li>
+        <li>Not targeting sub-millisecond proxy latency or 10k RPS per instance. Target is ~100 RPS per proxy instance, scaling horizontally.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── Tech stack ───────────────────────────────────────────── -->
+  <section id="stack" aria-labelledby="stack-heading">
+    <h2 id="stack-heading">Built on</h2>
+    <div class="stack-grid">
+
+      <div class="stack-col">
+        <h3>Python</h3>
+        <ul>
+          <li>Admin REST API (FastAPI) &mdash; <a href="../docs/architecture/01-architecture/adr/0005-admin-tech-stack.md">ADR-0005</a></li>
+          <li>MCP Server (Anthropic Python SDK) &mdash; <a href="../docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md">ADR-0009</a></li>
+          <li>Stack pin: Python 3.12 &mdash; <a href="../docs/architecture/01-architecture/adr/0012-python-stack-pin.md">ADR-0012</a></li>
+        </ul>
+      </div>
+
+      <div class="stack-col">
+        <h3>Go</h3>
+        <ul>
+          <li>Credential Broker (JWT issuer) &mdash; <a href="../docs/architecture/01-architecture/adr/0006-token-format-and-binding.md">ADR-0006</a></li>
+          <li>Vault Adapter (envelope crypto) &mdash; <a href="../docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md">ADR-0003</a></li>
+          <li>Egress Proxy plugin (Kong go-pdk) &mdash; <a href="../docs/architecture/01-architecture/adr/0004-egress-proxy-kong.md">ADR-0004</a></li>
+          <li>Kong-syncer &mdash; <a href="../docs/architecture/01-architecture/adr/0010-change-channel-postgres-listen-notify.md">ADR-0010</a></li>
+          <li>Shared Go stack &mdash; <a href="../docs/architecture/01-architecture/adr/0011-shared-go-stack.md">ADR-0011</a></li>
+        </ul>
+      </div>
+
+      <div class="stack-col">
+        <h3>TypeScript / Node</h3>
+        <ul>
+          <li>Admin UI (AdminJS BFF) &mdash; <a href="../docs/architecture/01-architecture/adr/0013-adminjs-pin.md">ADR-0013</a></li>
+          <li>Write auth pattern &mdash; <a href="../docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md">ADR-0019</a></li>
+        </ul>
+      </div>
+
+    </div>
+    <p class="prose-wrap">
+      Observability: OTel Collector + Jaeger + Prometheus + Grafana, all shipped
+      in the compose stack. Schema migrations: Liquibase
+      (<a href="../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md">ADR-0015</a>).
+      Identity: Keycloak (OIDC default).
+    </p>
+  </section>
+
+  <!-- ── How to try it ────────────────────────────────────────── -->
+  <section id="try-it" aria-labelledby="tryit-heading">
+    <h2 id="tryit-heading">How to try it</h2>
+    <div class="prose-wrap">
+      <p>
+        Five commands against a freshly cloned repo. Full walkthrough:
+        <a href="../docs/guides/github-quickstart.md">docs/guides/github-quickstart.md</a>.
+      </p>
+    </div>
+    <pre><code>git clone &lt;repo-url&gt;
+cd mintkey
+docker compose up -d
+make smoke
+open http://localhost:8081   # Admin UI (AdminJS)</code></pre>
+    <div class="prose-wrap">
+      <p>
+        <code>make smoke</code> executes E2E-01 end-to-end: bootstrap, operator
+        login, service registration, credential registration, agent creation,
+        permission grant, MCP discovery, token request, proxied call, and audit
+        verification. It completes in 90 seconds or less
+        (<a href="../docs/architecture/01-architecture/03-quality-attributes.md">S-TEST-1</a>).
+        All 15 long-running containers plus 2 one-shot jobs (Liquibase, seed-job)
+        should report <code>Up (healthy)</code> after <code>docker compose up -d</code>
+        (<a href="../PORTS.md">PORTS.md</a>).
+      </p>
+      <p>
+        See <a href="../QUICKSTART.md">QUICKSTART.md</a> for prerequisites and
+        step-by-step instructions. See
+        <a href="../docs/guides/github-quickstart.md">docs/guides/github-quickstart.md</a>
+        for a detailed walkthrough with a live GitHub API as the demo backend.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Read the architecture ────────────────────────────────── -->
+  <section id="read-more" aria-labelledby="readmore-heading">
+    <h2 id="readmore-heading">Read the architecture</h2>
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="claim">Vision and problem framing</div>
+        <p>Problem statement, product vision, personas, roadmap, iteration plan.</p>
+        <a href="../docs/architecture/00-vision/">docs/architecture/00-vision/</a>
+      </article>
+
+      <article class="card">
+        <div class="claim">Architecture and ADRs</div>
+        <p>System context (C4 L1), container view (C4 L2), quality attributes,
+        threat model, 19 ADRs.</p>
+        <a href="architecture.html">architecture.html</a> &middot;
+        <a href="../docs/architecture/01-architecture/">source docs</a>
+      </article>
+
+      <article class="card">
+        <div class="claim">Wire contracts</div>
+        <p>OpenAPI 3.1, MCP tool catalog, event JSON Schemas, vault proto, OTel
+        span attribute allowlist.</p>
+        <a href="../docs/architecture/contracts/">docs/architecture/contracts/</a>
+      </article>
+
+      <article class="card">
+        <div class="claim">Security posture</div>
+        <p>What we claim, what we do not claim, threat model, verification commands.</p>
+        <a href="security.html">security.html</a>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ── Footer ──────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div>
+      License: Apache-2.0 &middot;
+      <a href="../SECURITY.md">Security policy</a> &middot;
+      <a href="../CONTRIBUTING.md">Contributing</a> &middot;
+      <a href="architecture.html">Architecture</a> &middot;
+      <a href="security.html">Security posture</a>
+    </div>
+    <div style="margin-top:0.5rem;">
+      Stability: <em>experimental</em> &mdash;
+      <code>openapi.yaml</code> declares <code>x-mintkey-stability: experimental</code>,
+      version <code>0.1.0-experimental</code>. Breaking changes bump the major
+      version. This is <span style="font-weight:600;">pre-alpha</span> software.
+    </div>
+  </footer>
+
+</div><!-- .page-wrap -->
+</body>
+</html>
