@@ -10,7 +10,7 @@ Source: ADR-0017.6; T-1.0.14.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 # Exact attribute names to always redact
 EXACT_REDACT = frozenset({
@@ -109,4 +109,5 @@ class RedactingSpanProcessor:
         self._wrapped.shutdown()
 
     def force_flush(self, timeout_millis: int = 30_000) -> bool:
-        return self._wrapped.force_flush(timeout_millis)
+        # self._wrapped is typed Any; cast to bool satisfies strict return type.
+        return cast(bool, self._wrapped.force_flush(timeout_millis))

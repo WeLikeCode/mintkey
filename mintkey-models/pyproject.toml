@@ -15,3 +15,18 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["mintkey_models*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9",
+    "mypy>=1.10",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
