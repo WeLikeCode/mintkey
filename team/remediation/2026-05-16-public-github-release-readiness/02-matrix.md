@@ -15,3 +15,4 @@
 | P1-4 | Containers | Runtime hardening unclear | P1 | ⬜ | Dockerfiles | Non-root or documented deferral | |
 | P1-5 | Release | Version/release policy inconsistent | P1 | ⬜ | 0.1.0-experimental vs 1.0.0 | Policy coherent | |
 | P1-6 | Final | Full readiness verification | P1 | ⬜ | final gates | 99-report complete | |
+| R-15 / REL-5 | Gitignore | Screenshot dirs untracked (admin-ui/screenshots-chunk-g/, admin-ui/screenshots-verify/) | P1 | ✅ | 2 untracked dirs exposed to `git add -A` | `admin-ui/screenshots-*/` glob in .gitignore; `git status --short \| grep screenshots` empty | `git check-ignore -v` → both dirs matched at .gitignore:20 (REL-5) |

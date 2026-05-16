@@ -15,3 +15,6 @@ data/
 # Build artifact — never commit; rebuilt by `go build` in CI
 services/vault-adapter/vault-adapter
 install-*.log
+
+# admin-ui Playwright/test screenshot output
+admin-ui/screenshots-*/

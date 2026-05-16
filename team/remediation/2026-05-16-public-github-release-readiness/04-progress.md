@@ -101,3 +101,23 @@ Surfacing YELLOW forks to user for the 3 owner-discretion items; will dispatch W
 **Commit:** `fix(openapi): define UnprocessableEntity response (REL-2)`
 
 **Files touched:** `docs/architecture/contracts/rest/openapi.yaml`, `02-matrix.md`, `04-progress.md`
+
+---
+
+## 2026-05-16 — REL-5 IMPLEMENTER: add admin-ui screenshot dirs to .gitignore
+
+**Task:** R-15 / REL-5 — Two untracked dirs (`admin-ui/screenshots-chunk-g/`, `admin-ui/screenshots-verify/`) sat in the working tree with no `.gitignore` coverage, creating risk that `git add -A` would accidentally commit them.
+
+**Approach:** Added `admin-ui/screenshots-*/` glob to `.gitignore` near existing admin-ui artefact rules (after `install-*.log`), with a brief comment identifying these as Playwright/test screenshot output. The glob covers both existing siblings and any future `screenshots-*` dirs created by test runs.
+
+**Change:** `.gitignore` — 3 lines added (blank separator, comment, glob pattern).
+
+**Verification:**
+- `git status --short | grep screenshots` → empty (both dirs now ignored)
+- `git check-ignore -v admin-ui/screenshots-chunk-g admin-ui/screenshots-verify` → both matched at `.gitignore:20:admin-ui/screenshots-*/`
+
+**Matrix:** R-15 / REL-5 ⬜ → ✅
+
+**Commit:** `chore(gitignore): hide admin-ui playwright screenshot dirs (REL-5)`
+
+**Files touched:** `.gitignore`, `02-matrix.md`, `04-progress.md`
