@@ -54,6 +54,8 @@ For these, AdminJS Custom Actions invoke FastAPI using a service‑to‑service 
 - After OIDC login, AdminJS calls `GET /v1/auth/whoami` on the FastAPI to fetch the operator's role and active tenant; uses these to scope resource visibility.
 - Logout: invalidate session row + (configurable) Keycloak end‑session redirect.
 
+> **[Amended by ADR-0019 + ADR-0020]** `passport-openidconnect` and `connect-pg-simple` are no longer used. admin-ui now uses `buildRouter` + custom `requireSession` middleware + `express-session`. See [docs/AUTH.md](../../../AUTH.md) and ADR-0020.
+
 ### Project layout
 
 ```

@@ -38,6 +38,9 @@ These choices increase polyglot in the control plane (Python + Node + Go) but mi
 - **Default IdP**: **Keycloak**, **enabled by default** in compose. Realm and client are pre‑seeded by the seed job. Operator can swap to any other OIDC IdP by env var.
 - **Generic OIDC**: any OIDC‑compliant provider works (Auth0, Okta, Azure AD, AWS Cognito, …).
 - **Internal auth fallback**: username + Argon2id password, used for the bootstrap admin and as a break‑glass when OIDC is unreachable. Toggleable per deployment.
+
+> **[Amended by ADR-0020]** Internal auth is OFF by default; Keycloak OIDC is the only operator IdP. Break-glass via CLI. See [docs/AUTH.md](../../../AUTH.md).
+
 - **Authorization model**: roles live in our Identity service (`Admin`, `Auditor`, `AgentOwner`); Keycloak (or any IdP) only answers "who is this". Roles are decoupled from the IdP.
 - **Sessions**: HttpOnly Secure SameSite=Strict cookie; server‑side sessions in Postgres; OIDC refresh tokens stored encrypted via the Vault Adapter ([ADR‑0003](0003-credential-storage-strategy.md)).
 - **Bootstrap**: the seed job creates the initial Admin operator AND seeds the Keycloak `mintkey` realm with a `mintkey-admin` confidential client. The default password and Keycloak admin password are written to `./data/bootstrap-secrets` (mode 0600) and printed to compose logs.

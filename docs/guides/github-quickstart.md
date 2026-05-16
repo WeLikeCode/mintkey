@@ -4,6 +4,15 @@ This guide walks through configuring GitHub as a Mintkey-brokered service: regis
 
 **Prerequisites:** `docker compose up -d` is healthy (all services green).
 
+> **Prerequisite — break-glass session.** The curl examples below use `POST /v1/auth/internal-login` to obtain a session cookie. Post-SSO, that endpoint returns 404 by default (per ADR-0020). To enable the break-glass path before following this guide:
+>
+> ```bash
+> docker compose exec admin-api python -m admin_api.cli admin reset-password --email admin@mintkey.internal
+> # → prints a temporary password; use it in the internal-login call below.
+> ```
+>
+> When you're done, close the window: `mintkey admin clear-password --email admin@mintkey.internal`.
+
 ---
 
 ## 0. Prerequisites

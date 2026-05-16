@@ -222,6 +222,14 @@ See [docs/NETWORK.md — Keycloak / SSO public URLs](NETWORK.md#keycloak--sso-pu
 
 ---
 
+## Known gaps (pre-alpha)
+
+- **PKCE `state_store` is in-process memory.** `admin-api/src/admin_api/auth/oidc.py` keeps the OIDC state cache in a Python `dict` — single-replica only. A horizontally-scaled admin-api would lose state across pods and fail callbacks. Flagged in ADR-0020 open follow-ups; will switch to a shared store (Redis or postgres-backed table) before alpha.
+- **`admin_ui_private.pem` not provisioned in dev.** The signed-request JWT pattern (admin-ui → admin-api, Ed25519-signed per ADR-0019) requires admin-ui to hold a private key. The current bootstrap does not generate this keypair, so admin-ui falls back to omitting the JWT header. admin-api accepts unsigned writes in dev — fine for local stack; **must be fixed before any deployment that runs admin-api without `cookie_secure=true`**.
+- **Existing sessions pre-016 show "Keycloak" badge.** The `sessions.auth_method` column was added in migration `016`. Sessions created before this point have `auth_method=NULL` and display as "Keycloak" regardless of how they were created. Acceptable for pre-alpha; refresh fixes.
+
+---
+
 ## Out of scope
 
 The following auth mechanisms are intentionally separate from Keycloak and do NOT flow through it:
@@ -231,3 +239,45 @@ The following auth mechanisms are intentionally separate from Keycloak and do NO
 - **AdminUiSignedRequest JWT** — Ed25519 JWT signed by AdminJS on writes to admin-api per ADR-0014.6 / ADR-0019. This is a channel-proof mechanism, not an operator IdP.
 
 See [ADR-0020](architecture/adrs/0020-sso-keycloak-canonical-idp.md) for the canonical rationale for this scope boundary.
+
+---
+
+# For developers
+
+This section documents how admin-ui talks to admin-api. Operators don't need any of this.
+
+## Server-side session relay
+
+`admin-ui` is a Node.js BFF — it does not hold the OIDC client_secret. When a request hits admin-ui:
+
+1. `requireSession` middleware (`admin-ui/src/index.ts`) reads the inbound `mintkey_session` cookie.
+2. It calls `admin-api /v1/auth/whoami` with the cookie relayed via `Cookie:` header.
+3. On 200, it stashes the operator on `req.session.adminUser` (express-session) AND on `req.adminSession` (typed Express augmentation).
+4. AdminJS action handlers receive the operator as `context.currentAdmin` (sourced by AdminJS from `req.session.adminUser`).
+
+## Threading the session into admin-api calls
+
+AdminJS resource actions that mutate state (e.g. `services.test-transient`, `agents.create`, `permission_grants.delete`) call `apiWrite()` in `admin-ui/src/lib/api-client.ts`. Always thread the operator's session via `operatorOptsFromAdmin(currentAdmin)`:
+
+```ts
+const resp = await apiWrite(
+  `/v1/tenants/${tenantId}/...`,
+  "POST",
+  request.payload,
+  operatorOptsFromAdmin(currentAdmin)
+);
+```
+
+Without `operatorOpts`, `apiWrite` falls back to `getApiSession()` which tries a bootstrap internal-login that returns 404 by default (D2-b). All write actions WILL fail with 403 (CSRF missing) until you pass `operatorOpts`. This was the SSO-REDUX-3 / UI-E2E `fcac7053` bug class.
+
+## Signed-request JWT (ADR-0019)
+
+Every state-changing call to admin-api must carry both:
+- `mintkey_session` cookie (session-bound identity)
+- `x-mintkey-signed-request` header (Ed25519 JWT issued by admin-ui, signed with `admin_ui_private.pem`)
+
+`admin-ui/src/lib/signed-request.ts` implements the signer; admin-api's `AdminUiSignedRequestMiddleware` validates. **Pre-alpha caveat**: the private key isn't provisioned in dev; the signer gracefully returns null and the header is omitted; admin-api accepts unsigned writes in dev. See "Known gaps" above.
+
+## State_store and OIDC callback race
+
+`oidc.py:_state_store` is an in-process dict. Each `/oidc/login` writes a `(state, code_verifier)` pair; `/oidc/callback` pops it. Single-replica only — see "Known gaps".
