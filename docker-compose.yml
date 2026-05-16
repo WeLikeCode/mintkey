@@ -150,6 +150,12 @@ services:
       start_period: 15s
 
   # ─── 4. Admin API ─────────────────────────────────────────────────────────
+  # Network-facing URLs (see docs/NETWORK.md):
+  #   MINTKEY_MCP_PUBLIC_URL   — what agents/clients see for the MCP server.
+  #   MINTKEY_PROXY_PUBLIC_URL — what agents/clients see for the egress proxy.
+  # Defaults work for `docker compose up` on the same host.
+  # For LAN/cloud: set them in .env to the address remote clients will use.
+  # MCP and proxy may be on different hosts.
   admin-api:
     build:
       context: .
@@ -167,9 +173,11 @@ services:
       MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
-      # OPS-FF Fix 2: explicit MCP_BASE_URL so agent mcp_endpoint URLs use correct port.
-      # Override via .env if mcp-server is exposed on a different host/port.
-      MCP_BASE_URL: "http://localhost:8082"
+      # Public-facing URL that agents/clients use to reach the MCP server.
+      # See docs/NETWORK.md for LAN/cloud setup.
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      # Legacy alias (accepted with deprecation warning) — see docs/NETWORK.md.
+      # MCP_BASE_URL: "..."
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -203,8 +211,11 @@ services:
       ADMIN_EMAIL: admin@mintkey.internal
       ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
       ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
-      # (OPS-X) Proxy base URL shown on service show page as proxy_url field
-      MINTKEY_PROXY_URL: "http://localhost:8000"
+      # Public-facing URLs (see docs/NETWORK.md).
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # Legacy aliases (accepted with deprecation warning).
+      # MINTKEY_PROXY_URL: "..."
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:
@@ -235,9 +246,13 @@ services:
       BROKER_BASE_URL: http://broker:8083
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
-      # OPS-FF Fix 3: override internal Docker DNS default so bootstrap returns
-      # a host-reachable proxy URL. mintkey-proxy:8000 remains correct for in-cluster.
-      MINTKEY_PROXY_URL: "http://localhost:8000"
+      # Public-facing URLs (see docs/NETWORK.md).
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # Legacy aliases (accepted with deprecation warning).
+      # MINTKEY_MCP_URL: "..."
+      # MINTKEY_PROXY_URL: "..."
+      # KONG_PROXY_URL: "..."
     ports:
       - "8082:8082"
     networks:
