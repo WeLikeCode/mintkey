@@ -72,11 +72,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443 2>/dev/null && echo ok || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443 && printf 'GET /realms/master/.well-known/openid-configuration HTTP/1.0\\r\\n\\r\\n' >&3 && head -c 1 <&3 | grep -q ."]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
   liquibase:
@@ -110,6 +110,9 @@ services:
       PGUSER: mintkey_migrate
       PGPASSWORD: changeme
       BOOTSTRAP_SECRETS_DIR: /run/secrets/mintkey/bootstrap-secrets
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      MINTKEY_KEYCLOAK_INTERNAL_URL: http://keycloak:8443
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
     networks:
@@ -117,6 +120,8 @@ services:
     depends_on:
       liquibase:
         condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
 
   # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
   vault-adapter:

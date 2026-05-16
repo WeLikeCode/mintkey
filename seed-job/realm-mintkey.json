@@ -1,0 +1,88 @@
+{
+  "realm": "mintkey",
+  "enabled": true,
+  "displayName": "Mintkey",
+  "accessTokenLifespan": 600,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "mintkey-platform-admin",
+        "description": "Platform-level administrator",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "mintkey-tenant-admin",
+        "description": "Tenant-level administrator",
+        "composite": false,
+        "clientRole": false
+      },
+      {
+        "name": "mintkey-operator",
+        "description": "Standard operator",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "mintkey-admin-api",
+      "name": "Mintkey Admin API",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/v1/auth/oidc/callback",
+        "${MINTKEY_ADMIN_API_PUBLIC_URL}/v1/auth/oidc/callback"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "mintkey-grafana",
+      "name": "Mintkey Grafana",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:3003/login/generic_oauth",
+        "${MINTKEY_GRAFANA_PUBLIC_URL}/login/generic_oauth"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {},
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "mintkey-jaeger",
+      "name": "Mintkey Jaeger",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "redirectUris": [
+        "http://localhost:16686/oauth2/callback",
+        "${MINTKEY_JAEGER_PUBLIC_URL}/oauth2/callback"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {},
+      "protocol": "openid-connect"
+    }
+  ]
+}

@@ -6,7 +6,7 @@ Connects as mintkey_migrate (BYPASSRLS) so RLS policies do not block inserts.
 
 Steps 1-5 are implemented (T-1.0.2 session 1).
 Steps 6-8 (Vault Adapter keypairs) are in session 2 after T-1.0.4.
-Steps 9-11 (Keycloak + audit chain) are in session 3.
+Step 9 (Keycloak realm bootstrap) is implemented in SSO-A.
 Step 12 (mock backend registration) is behind MINTKEY_SEED_DEMO=true (T-1.11.4).
 """
 from __future__ import annotations
@@ -22,6 +22,8 @@ import uuid
 from pathlib import Path
 
 import psycopg2
+import requests
+from tenacity import retry, stop_after_delay, wait_exponential
 
 DEFAULT_TENANT_SLUG = "t_default"
 DEFAULT_ADMIN_EMAIL = os.getenv("MINTKEY_BOOTSTRAP_EMAIL", "admin@mintkey.internal")
@@ -311,6 +313,286 @@ def seed_mock_backend_demo(conn: psycopg2.extensions.connection, tenant_id: str)
 
 
 # ---------------------------------------------------------------------------
+# Step 9: Keycloak realm bootstrap (SSO-A)
+# ---------------------------------------------------------------------------
+
+# Keycloak connection settings — read from env with docker-network defaults.
+_KC_INTERNAL_URL = os.getenv(
+    "MINTKEY_KEYCLOAK_INTERNAL_URL", "http://keycloak:8443"
+).rstrip("/")
+_KC_ADMIN = os.getenv("KEYCLOAK_ADMIN", "admin")
+_KC_ADMIN_PASSWORD = os.getenv("KEYCLOAK_ADMIN_PASSWORD", "changeme")
+
+# Maps client ID to the bootstrap-secrets filename for its secret.
+_CLIENT_SECRET_FILES: dict[str, str] = {
+    "mintkey-admin-api": "oidc_client_secret",
+    "mintkey-grafana": "grafana_oidc_client_secret",
+    "mintkey-jaeger": "jaeger_oidc_client_secret",
+}
+
+# Env vars whose values replace ${...} placeholders in realm.json.
+_REALM_JSON_ENV_VARS = [
+    "MINTKEY_ADMIN_API_PUBLIC_URL",
+    "MINTKEY_GRAFANA_PUBLIC_URL",
+    "MINTKEY_JAEGER_PUBLIC_URL",
+]
+
+
+def _kc_wait_ready() -> None:
+    """Poll Keycloak master realm OIDC discovery until 200 (tenacity, 60 s)."""
+    url = f"{_KC_INTERNAL_URL}/realms/master/.well-known/openid-configuration"
+
+    @retry(
+        stop=stop_after_delay(60),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    def _poll() -> None:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+
+    print(f"Keycloak: waiting for readiness at {url} …")
+    _poll()
+    print("Keycloak: ready.")
+
+
+def _kc_admin_token() -> str:
+    """Obtain a short-lived admin token from the master realm."""
+    resp = requests.post(
+        f"{_KC_INTERNAL_URL}/realms/master/protocol/openid-connect/token",
+        data={
+            "client_id": "admin-cli",
+            "username": _KC_ADMIN,
+            "password": _KC_ADMIN_PASSWORD,
+            "grant_type": "password",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    token = resp.json()["access_token"]
+    return token
+
+
+def _kc_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+def _interpolate_realm_json(raw: str) -> dict:
+    """Replace ${MINTKEY_*_PUBLIC_URL} placeholders with env values (or keep as-is if unset)."""
+    for var in _REALM_JSON_ENV_VARS:
+        value = os.getenv(var, f"${{{var}}}")
+        raw = raw.replace(f"${{{var}}}", value)
+    return json.loads(raw)
+
+
+def _ensure_realm(token: str, realm_json_path: Path) -> None:
+    """Import realm if it does not exist yet."""
+    resp = requests.get(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey",
+        headers=_kc_headers(token),
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        print("Keycloak: realm 'mintkey' already exists — skipping import.")
+        return
+    if resp.status_code != 404:
+        resp.raise_for_status()
+
+    raw = realm_json_path.read_text()
+    realm_body = _interpolate_realm_json(raw)
+    import_resp = requests.post(
+        f"{_KC_INTERNAL_URL}/admin/realms",
+        headers=_kc_headers(token),
+        json=realm_body,
+        timeout=30,
+    )
+    import_resp.raise_for_status()
+    print("Keycloak: realm 'mintkey' imported.")
+
+
+def _write_client_secrets(token: str, secrets_dir: Path) -> None:
+    """Retrieve each client's secret from Keycloak and write to bootstrap-secrets."""
+    for client_id, secret_filename in _CLIENT_SECRET_FILES.items():
+        # Resolve client UUID
+        resp = requests.get(
+            f"{_KC_INTERNAL_URL}/admin/realms/mintkey/clients",
+            params={"clientId": client_id},
+            headers=_kc_headers(token),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        clients = resp.json()
+        if not clients:
+            raise RuntimeError(
+                f"Keycloak: client '{client_id}' not found in realm 'mintkey'"
+            )
+        client_uuid = clients[0]["id"]
+
+        # Retrieve secret
+        secret_resp = requests.get(
+            f"{_KC_INTERNAL_URL}/admin/realms/mintkey/clients/{client_uuid}/client-secret",
+            headers=_kc_headers(token),
+            timeout=15,
+        )
+        secret_resp.raise_for_status()
+        secret_value = secret_resp.json()["value"]
+
+        secret_file = secrets_dir / secret_filename
+        secret_file.write_text(secret_value)
+        secret_file.chmod(0o600)
+        print(f"Keycloak: wrote {secret_file}")
+
+
+def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
+    """Write jaeger_oauth2_cookie_secret (random 32-byte hex) if missing."""
+    cookie_secret_file = secrets_dir / "jaeger_oauth2_cookie_secret"
+    if cookie_secret_file.exists():
+        print("Keycloak: jaeger_oauth2_cookie_secret already exists — skipping.")
+        return
+    cookie_secret = secrets.token_hex(32)
+    cookie_secret_file.write_text(cookie_secret)
+    cookie_secret_file.chmod(0o600)
+    print(f"Keycloak: wrote {cookie_secret_file}")
+
+
+def _ensure_admin_user(token: str) -> str:
+    """Ensure admin@mintkey.internal exists; return user UUID."""
+    email = "admin@mintkey.internal"
+    resp = requests.get(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users",
+        params={"email": email},
+        headers=_kc_headers(token),
+        timeout=15,
+    )
+    resp.raise_for_status()
+    users = resp.json()
+    if users:
+        user_uuid = users[0]["id"]
+        print(f"Keycloak: user '{email}' already exists (id={user_uuid}).")
+        return user_uuid
+
+    create_resp = requests.post(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users",
+        headers=_kc_headers(token),
+        json={
+            "username": email,
+            "email": email,
+            "enabled": True,
+            "emailVerified": True,
+            "firstName": "Mintkey",
+            "lastName": "Admin",
+        },
+        timeout=15,
+    )
+    create_resp.raise_for_status()
+
+    # Re-fetch to get UUID
+    refetch = requests.get(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users",
+        params={"email": email},
+        headers=_kc_headers(token),
+        timeout=15,
+    )
+    refetch.raise_for_status()
+    user_uuid = refetch.json()[0]["id"]
+    print(f"Keycloak: created user '{email}' (id={user_uuid}).")
+    return user_uuid
+
+
+def _sync_admin_password(token: str, user_uuid: str, secrets_dir: Path) -> None:
+    """Set admin password in Keycloak, gated by mtime sentinel."""
+    admin_password_file = secrets_dir / "admin_password"
+    sentinel_file = secrets_dir / ".admin_password_synced"
+
+    if not admin_password_file.exists():
+        print("Keycloak: admin_password file not found — skipping password sync.")
+        return
+
+    if sentinel_file.exists():
+        pw_mtime = admin_password_file.stat().st_mtime
+        sentinel_mtime = sentinel_file.stat().st_mtime
+        if sentinel_mtime >= pw_mtime:
+            print("Keycloak: admin password already synced (sentinel up-to-date) — skipping.")
+            return
+
+    password = admin_password_file.read_text().strip()
+    resp = requests.put(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users/{user_uuid}/reset-password",
+        headers=_kc_headers(token),
+        json={"type": "password", "value": password, "temporary": False},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    print("Keycloak: admin password set.")
+
+
+def _assign_platform_admin_role(token: str, user_uuid: str) -> None:
+    """Assign mintkey-platform-admin realm role to the admin user (idempotent)."""
+    # Get role definition
+    role_resp = requests.get(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/roles/mintkey-platform-admin",
+        headers=_kc_headers(token),
+        timeout=15,
+    )
+    role_resp.raise_for_status()
+    role = role_resp.json()
+
+    # POST is set-add semantics — safe to call repeatedly
+    assign_resp = requests.post(
+        f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users/{user_uuid}/role-mappings/realm",
+        headers=_kc_headers(token),
+        json=[role],
+        timeout=15,
+    )
+    assign_resp.raise_for_status()
+    print("Keycloak: role 'mintkey-platform-admin' assigned to admin user.")
+
+
+def _touch_sentinel(secrets_dir: Path) -> None:
+    sentinel_file = secrets_dir / ".admin_password_synced"
+    sentinel_file.touch()
+    sentinel_file.chmod(0o600)
+
+
+def seed_keycloak_realm_and_admin(
+    conn: psycopg2.extensions.connection, tenant_id: str
+) -> None:
+    """
+    Step 9: Bootstrap Keycloak mintkey realm, clients, admin user.
+
+    - Waits for Keycloak readiness (tenacity, 60s).
+    - Imports realm from realm-mintkey.json if not present.
+    - Writes per-client OIDC secrets to bootstrap-secrets/.
+    - Ensures admin@mintkey.internal exists with correct password and role.
+    - Idempotent: existence checks + mtime sentinel.
+
+    Source: SSO-A spec; ADR-0014 §14.2; Kiro design.md §3 step 9.
+    """
+    secrets_dir = BOOTSTRAP_SECRETS_DIR
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+
+    realm_json_path = Path(__file__).parent / "realm-mintkey.json"
+
+    _kc_wait_ready()
+    token = _kc_admin_token()
+
+    _ensure_realm(token, realm_json_path)
+
+    # Refresh token after realm import (may take a moment)
+    token = _kc_admin_token()
+
+    _write_client_secrets(token, secrets_dir)
+    _ensure_jaeger_cookie_secret(secrets_dir)
+
+    user_uuid = _ensure_admin_user(token)
+    _sync_admin_password(token, user_uuid, secrets_dir)
+    _assign_platform_admin_role(token, user_uuid)
+    _touch_sentinel(secrets_dir)
+
+    print("Keycloak realm bootstrap complete")
+
+
+# ---------------------------------------------------------------------------
 # Composite helpers
 # ---------------------------------------------------------------------------
 
@@ -379,6 +661,9 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"Seed steps 1-5 complete. tenant={tenant_id} operator={operator_id}")
         print("NOTE: Steps 6-8 (Vault Adapter keypairs) pending T-1.0.4.")
+
+        print("Seed: running step 9 — Keycloak realm bootstrap…")
+        seed_keycloak_realm_and_admin(conn, tenant_id)
 
         if os.getenv("MINTKEY_SEED_DEMO", "").lower() in ("1", "true", "yes"):
             print("Seed: MINTKEY_SEED_DEMO=true — registering mock backend…")
