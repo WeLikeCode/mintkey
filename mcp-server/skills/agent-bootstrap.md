@@ -162,7 +162,7 @@ Returns `{ "agent_id": "...", "tenant_id": "...", "expires_at": "..." }`. Useful
 
 1. **Environment variable `MINTKEY_PROXY_URL`** — set by your runtime. Preferred.
 2. **The `<proxy>` block returned alongside this skill** — if your MCP server's `agent_bootstrap` implementation includes a `proxy_url` in its response payload alongside this skill text. Check the surrounding response.
-3. **Sensible defaults** — in `docker compose` deployments inside the same network: `http://mintkey-proxy:8000`. From the host: `http://localhost:8000`. In Kubernetes: `http://mintkey-proxy.<namespace>.svc.cluster.local:8000`.
+3. **The `proxy_url` field in the bootstrap response** — `GET /v1/tools/bootstrap` returns `proxy_url` directly. For self-hosted operators this is whatever `MINTKEY_PROXY_PUBLIC_URL` was set to — see [docs/NETWORK.md](../../docs/NETWORK.md). On a default `docker compose up` deployment it is `http://localhost:8000`.
 4. **Ask the operator** — last resort.
 
 On a multi-host deployment, the operator sets `MINTKEY_MCP_PUBLIC_URL` / `MINTKEY_PROXY_PUBLIC_URL` and the bootstrap response returns those values. Agents do not configure URLs themselves. See [docs/NETWORK.md](../../docs/NETWORK.md) for operator setup details.
@@ -173,7 +173,7 @@ On a multi-host deployment, the operator sets `MINTKEY_MCP_PUBLIC_URL` / `MINTKE
 ```
 {PROXY_URL}/v1/call/{service_id}/{upstream_path...}
 ```
-Example: `http://mintkey-proxy:8000/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42`
+Example (host from `bootstrap.proxy_url`): `<bootstrap.proxy_url>/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42`
 
 *Virtual-host alias form* — operator-configured per service:
 ```
@@ -289,8 +289,8 @@ End-to-end (curl, single agent flow):
 ```bash
 # 0. The operator gave you this API key:
 export MK_KEY="mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
-export MK_MCP="http://mintkey-mcp:8001"
-export MINTKEY_PROXY_URL="http://mintkey-proxy:8000"
+export MK_MCP="http://localhost:8082"  # Replace with bootstrap.mcp_url if running on a different host
+export MINTKEY_PROXY_URL="http://localhost:8000"  # Replace with bootstrap.proxy_url if running on a different host
 
 # 1. Exchange for a brokered token.
 TOKEN=$(curl -s -X POST "$MK_MCP/tools/call" \

@@ -55,11 +55,16 @@ Returns: {"token": "<jwt>", "expires_at": <unix_timestamp>, "service_id": "..."}
 The token is valid for 10 minutes. Never log it.
 
 ## Step 3: Call the service through the proxy
-METHOD http://<kong_host>:8000/proxy/<path>
+METHOD <proxy_url>/v1/call/<service_id>/<path>
 Header: Authorization: Bearer <token_from_step_2>
 
+The `proxy_url` value is announced in the bootstrap response (`GET /v1/tools/bootstrap`)
+and is also embedded in each service's `how_to_call.proxy_url_pattern` (returned by
+`discover` and `list_services`). Use the value the server gives you — do not assume
+localhost.
+
 Rules:
-- The path after /proxy/ is forwarded verbatim to the target service.
+- The path after /v1/call/<service_id>/ is forwarded verbatim to the target service.
 - The proxy already knows the target URL from the registered service base_url — no extra header needed.
 - The proxy strips your Authorization header and injects the real service credential automatically.
 - You never see the actual API key/password — the proxy holds it encrypted.
@@ -82,16 +87,16 @@ async def get_agent_context(request: Request):
 
 def _make_how_to_call(service_id: str, base_url: str) -> dict:
     """Build the how_to_call usage hint for a service entry."""
-    kong_host = resolve_proxy_public_url()
+    proxy_url = resolve_proxy_public_url()
     return {
         "action": "call",
         "step1_request_token": (
             f'POST /v1/tools/request_token {{"service_id": "{service_id}", "action": "call"}}'
         ),
         "step2_proxy_call": (
-            f"Send request to Kong proxy with Authorization: Bearer <token>"
+            f"Send request to proxy with Authorization: Bearer <token>"
         ),
-        "proxy_url_pattern": f"{kong_host}/proxy/<path_on_target_api>",
+        "proxy_url_pattern": f"{proxy_url}/v1/call/{service_id}/<path_on_target_api>",
         "notes": (
             'The action defaults to "call" for all services. '
             "Use the action string your operator granted you — if unsure, try \"call\". "
