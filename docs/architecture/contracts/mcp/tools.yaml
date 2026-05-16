@@ -50,7 +50,7 @@
 mcp_version: "2024-11-05"
 server:
   name: "mintkey"
-  version: "0.1.0-experimental"
+  version: "0.1.0-preview.1"
   description: |
     Discovery and credential-broker tool surface exposed by the Mintkey
     MCP Server (control-plane container C4 in

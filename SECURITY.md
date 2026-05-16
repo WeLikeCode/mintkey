@@ -8,7 +8,7 @@ This project is pre-alpha and self-hosted. There is no managed offering and ther
 
 ## Supported versions
 
-`main` is the only branch receiving fixes. The wire surface is declared `experimental` ([`docs/architecture/contracts/rest/openapi.yaml`](docs/architecture/contracts/rest/openapi.yaml) `x-mintkey-stability: experimental`, version `0.1.0-experimental`). No other version is supported.
+`main` is the only branch receiving fixes. The wire surface is declared `experimental` ([`docs/architecture/contracts/rest/openapi.yaml`](docs/architecture/contracts/rest/openapi.yaml) `x-mintkey-stability: experimental`, version `0.1.0-preview.1`). No other version is supported.
 
 ---
 

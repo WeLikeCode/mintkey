@@ -1,7 +1,7 @@
 // vault.proto -- Mintkey Vault Adapter gRPC IDL.
 //
 // Stability tier: experimental.
-// Version       : 0.1.0-experimental.
+// Version       : 0.1.0-preview.1.
 //
 // This service is the contract between every credential-aware Mintkey
 // component and the Vault Adapter (container C6 in

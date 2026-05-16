@@ -57,7 +57,7 @@ async def _lifespan(app: FastAPI):  # noqa: ARG001
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Mintkey Admin API", version="0.1.0-experimental", lifespan=_lifespan)
+    app = FastAPI(title="Mintkey Admin API", version="0.1.0-preview.1", lifespan=_lifespan)
 
     app.include_router(health_router)
     app.include_router(auth_router)

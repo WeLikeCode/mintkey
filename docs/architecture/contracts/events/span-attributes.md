@@ -1,6 +1,6 @@
 # OpenTelemetry span attribute conventions
 
-**Stability tier**: experimental. **Version**: `0.1.0-experimental`.
+**Stability tier**: experimental. **Version**: `0.1.0-preview.1`.
 
 This document is the *closed* allowlist of OTel attributes Mintkey emits.
 Every container's OTel SDK is configured with a span processor that drops
@@ -122,7 +122,7 @@ semantic-convention attribute is dropped.
 ### Resource attributes (set once per process)
 
 - `service.name`          (e.g. `mintkey.broker`, `mintkey.proxy`)
-- `service.version`       (e.g. `0.1.0-experimental`)
+- `service.version`       (e.g. `0.1.0-preview.1`)
 - `service.instance.id`
 - `deployment.environment` (`dev` / `staging` / `prod` / `compose`)
 

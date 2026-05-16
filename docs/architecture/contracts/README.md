@@ -6,7 +6,7 @@ This is where the *wire-level* contracts live. Iteration 1 stood up a
 skeleton; iteration 4 (this round) lands the typed schemas.
 
 Stability tier: **experimental** for v1. All artifacts use
-`version: "0.1.0-experimental"`.
+`version: "0.1.0-preview.1"`.
 
 ## Surfaces and files
 

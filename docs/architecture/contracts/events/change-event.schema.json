@@ -4,7 +4,7 @@
   "title": "Mintkey ChangeEvent",
   "description": "Reference-only event published on the Postgres LISTEN/NOTIFY change channel (per ADR-0010) and returned by `GET /v1/changes` for reconciliation. Body fields are *references* (ids, key versions); subscribers fetch full state from the Admin REST API or DB on demand.\n\nThe 8 kB Postgres NOTIFY payload limit forces references-only payloads; this schema keeps the envelope deliberately compact.\n\nStability tier: experimental.",
   "x-mintkey-stability": "experimental",
-  "x-mintkey-version": "0.1.0-experimental",
+  "x-mintkey-version": "0.1.0-preview.1",
   "type": "object",
   "$defs": {
     "ulid": {
