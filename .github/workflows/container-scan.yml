@@ -20,13 +20,15 @@ on:
     - cron: "0 6 * * 0"
 
 permissions:
-  security-events: write
   contents: read
 
 jobs:
   build-and-scan:
     name: Build + Trivy scan (${{ matrix.service }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     strategy:
       fail-fast: false
@@ -78,7 +80,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Build image — ${{ matrix.service }}
         run: |
@@ -88,7 +90,7 @@ jobs:
             "${{ matrix.context }}"
 
       - name: Trivy scan — ${{ matrix.service }}
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: "${{ matrix.image }}:scan"
           format: sarif
@@ -103,7 +105,7 @@ jobs:
         # Upload results even when Trivy exits non-zero so findings appear in
         # the Security tab. always() ensures the upload runs even after a failure.
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@458d36d7d4f47d0dd16ca424c1d3cda0060f1360 # v3.35.5
         with:
           sarif_file: "trivy-${{ matrix.service }}.sarif"
           category: "trivy-${{ matrix.service }}"
