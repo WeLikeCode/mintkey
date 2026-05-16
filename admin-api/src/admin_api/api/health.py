@@ -34,6 +34,7 @@ try:
             ["method", "path", "status"],
         )
     except ValueError:
+        # Double-registration fallback (pytest reload): registry returns Collector | None, narrower than Counter | None.
         _REQUESTS_TOTAL = REGISTRY._names_to_collectors.get("mintkey_requests_total")  # type: ignore[assignment]
     _REQUEST_DURATION: Histogram | None
     try:
@@ -43,6 +44,7 @@ try:
             ["method", "path"],
         )
     except ValueError:
+        # Double-registration fallback (pytest reload): registry returns Collector | None, narrower than Histogram | None.
         _REQUEST_DURATION = REGISTRY._names_to_collectors.get("mintkey_request_duration_seconds")  # type: ignore[assignment]
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
