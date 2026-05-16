@@ -35,7 +35,8 @@ jobs:
             ISC,
             Unlicense,
             CC0-1.0,
-            Python-2.0
+            Python-2.0,
+            PSF-2.0
 
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
