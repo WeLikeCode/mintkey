@@ -1,12 +1,12 @@
 # Admin UI Action-Grid Completion — Mega Prompt (Sonnet)
 
-You are a Sonnet implementer working in the Mintkey repo root. **Mission: every action on every resource in the Mintkey AdminJS admin UI works end-to-end in a real browser.** A user hit a "You have to implement action component for your Action..." error on the Service API Keys "Create" page — that is the *symptom*; the *cause* is that nobody ever systematically walked the AdminJS action grid. You will: (1) inventory every action on every resource, (2) classify each cell as working / broken / not-implemented / not-applicable in the live UI, (3) fix every broken/not-implemented cell, (4) keep a tracking matrix at `team/remediation/ADMIN_UI_ACTION_MATRIX.md` that you create and update after every change. The matrix is your contract; it MUST be ≥98% ✅ before you declare DONE. **Do not start fixing anything until Phase 0 (the full audit) is complete.**
+You are a Sonnet implementer working in the Mintkey repo root. **Mission: every action on every resource in the Mintkey AdminJS admin UI works end-to-end in a real browser.** A user hit a "You have to implement action component for your Action..." error on the Service API Keys "Create" page — that is the *symptom*; the *cause* is that nobody ever systematically walked the AdminJS action grid. You will: (1) inventory every action on every resource, (2) classify each cell as working / broken / not-implemented / not-applicable in the live UI, (3) fix every broken/not-implemented cell, (4) keep a tracking matrix at `02-matrix.md` (in this folder) that you create and update after every change. The matrix is your contract; it MUST be ≥98% ✅ before you declare DONE. **Do not start fixing anything until Phase 0 (the full audit) is complete.**
 
 ---
 
 ## Read before starting (in this order)
-1. `team/remediation/PLAYWRIGHT_EXTENSION_PLAN.md` — the consolidated Playwright suite (W0–W8 just landed; new tests go in `admin-ui/e2e/tests/`).
-2. `team/remediation/ADMIN_UI_SPEC.md` (if present — the per-screen UX spec).
+1. `../_archive/2026-05-13-playwright-extension/00-plan.md` — the consolidated Playwright suite (W0–W8 just landed; new tests go in `admin-ui/e2e/tests/`).
+2. `../2026-05-12-admin-ui-rework/01-spec.md` (the per-screen UX spec).
 3. `AGENTS.md` and `CLAUDE.md`.
 4. ADRs: `0013-adminjs-pin.md` (custom actions pattern), `0014-iter-1-2-corrections.md` (§14.5–14.6 AdminUiSignedRequest), `0018-classical-service-api-keys.md` (the `mk_svckey_…` flow), `0019-admin-ui-bff-and-write-auth.md` (write-auth contract).
 5. Every `admin-ui/src/resources/*.ts` (services, credentials, agents, permissions, api_keys, audit, tenants).
@@ -18,7 +18,7 @@ You are a Sonnet implementer working in the Mintkey repo root. **Mission: every 
 
 ## The action matrix (you create + maintain it)
 
-First thing you do: write `team/remediation/ADMIN_UI_ACTION_MATRIX.md` with this exact shape, populated after Phase 0:
+First thing you do: write `02-matrix.md` (in this folder) with this exact shape, populated after Phase 0:
 
 ```markdown
 # Admin UI Action Matrix
@@ -93,7 +93,7 @@ Update this file as the FIRST commit of every phase, and again as part of EVERY 
 1. Read every `admin-ui/src/resources/*.ts`. For each resource, list (a) which AdminJS actions are explicitly configured, (b) which reference a custom `component`, (c) which custom-action handlers exist. Cross-reference against `admin-ui/src/components/index.ts`'s ComponentLoader registrations to find dangling component-name references (these are the "implement action component for your Action…" errors).
 2. Read `docs/architecture/contracts/rest/openapi.yaml`. For each custom action in the matrix, find the backing endpoint and verify it exists in the spec. If an endpoint is missing, mark the row 🚫 ESCALATE in the matrix.
 3. Drive the live UI for EVERY standard-action cell (42 cells minus n/a). For each: navigate (`/admin/resources/<r>` for list, `/admin/resources/<r>/records/<id>/show` for show, `/admin/resources/<r>/actions/new` for new, `/admin/resources/<r>/records/<id>/edit` for edit, etc.), capture a screenshot, read it, classify as ✅ / ❌ (with the visible error message quoted) / 🚫. For destructive (delete/bulkDelete) DON'T actually delete seed data — visit the action's confirmation modal/page; capture; cancel.
-4. Write the full populated matrix to `team/remediation/ADMIN_UI_ACTION_MATRIX.md`.
+4. Write the full populated matrix to `02-matrix.md` (in this folder).
 5. Commit: `docs(admin-ui): inventory all AdminJS actions per resource (Phase 0 of action-grid completion)`. Body: how many cells in each state (✅/❌/🚫/n/a counts). NO source changes in this commit. Pure audit.
 
 After Phase 0 the matrix tells you (and the user) exactly how much work is left. The user can redirect priority based on the audit before you implement.
@@ -136,7 +136,7 @@ Pick the resource with the most ❌/🚫 cells first; or `service_api_keys` sinc
 
 ## When to STOP and ESCALATE
 
-Write a note in `team/remediation/ACTION_GRID_ESCALATIONS.md` (create if needed) and STOP if:
+Write a note in `03-escalations.md` (in this folder; create if needed) and STOP if:
 
 1. A custom action's backing admin-api endpoint genuinely doesn't exist (cross-stack work — out of scope).
 2. AdminJS 7.x has no clean way to express an action you need (e.g. a multi-step wizard for service API key creation).

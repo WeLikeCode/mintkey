@@ -2,10 +2,10 @@
 
 **Status:** Proposed, 2026-05-13. Owner: orchestrator (you or future-you).
 **Companion docs:**
-- [`ADMIN_UI_ACTION_GRID_PROMPT.md`](ADMIN_UI_ACTION_GRID_PROMPT.md) — the prior matrix-driven action-grid prompt; superseded for the remaining work by this file.
-- [`ADMIN_UI_ACTION_MATRIX.md`](ADMIN_UI_ACTION_MATRIX.md) — the Phase-0 audit output (commit `ac240b89`). The contract for what's broken.
+- [`00-plan.md`](00-plan.md) — the prior matrix-driven action-grid prompt; superseded for the remaining work by this file.
+- [`02-matrix.md`](02-matrix.md) — the Phase-0 audit output (commit `ac240b89`). The contract for what's broken.
 - `mcp-server/skills/agent-bootstrap.md` — the agent-facing skill content used by chunk R6.
-- [`PLAYWRIGHT_EXTENSION_PLAN.md`](PLAYWRIGHT_EXTENSION_PLAN.md) — the consolidated Playwright suite where new tests land.
+- [`../_archive/2026-05-13-playwright-extension/00-plan.md`](../_archive/2026-05-13-playwright-extension/00-plan.md) — the consolidated Playwright suite where new tests land.
 
 ---
 
@@ -51,16 +51,16 @@ R1 + R2 + R5 + R6 + R7 are P0; R8 is P1 (a follow-on from R7's review that's act
 **Discipline (non-negotiable):**
 - **Never claim a cell is ✅ without a live-browser screenshot you READ with the Read tool.** The prior pattern of "spec passes → ship" produced 3 separate class-of-bug incidents.
 - **TDD**: failing Playwright test FIRST; run it; paste the failure output in the commit body; THEN implement.
-- **Update `team/remediation/ADMIN_UI_ACTION_MATRIX.md`** as part of every commit that touches an action cell. The matrix is your receipt.
+- **Update `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md`** as part of every commit that touches an action cell. The matrix is your receipt.
 - **Page Objects mandatory** (`admin-ui/e2e/pages/*.ts`) — extend, don't rewrite. Console-error fixture mandatory — import `test` from `admin-ui/e2e/fixtures/test.ts` (or wherever W0 landed it).
 - **Never `--no-verify`** / `--no-gpg-sign`. **No `test.skip` / `test.fixme`** except for genuinely-not-yet-shipped features called out in this prompt; in those cases attach a `// TODO(R_n)` comment naming the chunk.
 - **No `expect(true).toBe(true)`**. No hardcoded passwords. No hardcoded UUIDs except the bootstrap tenant `9593e3ba-…`.
 - **One conventional commit per chunk** (`feat(admin-ui):` / `fix(admin-ui):` / `feat(mcp-server):`). Body documents: failing-then-passing transition, screenshots you read with what you saw, matrix delta.
 
 **Scope boundaries:**
-- **Permitted**: `admin-ui/**`, `mcp-server/**` (R6 only), `team/remediation/ADMIN_UI_ACTION_MATRIX.md` (always).
+- **Permitted**: `admin-ui/**`, `mcp-server/**` (R6 only), `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md` (always).
 - **Forbidden** (escalate if a chunk needs it): `admin-api/**`, `services/**` (except `mcp-server/**` for R6), `docs/architecture/**` (except `proposal/P-*.md` if R6 needs one), `.kiro/**`, `docker-compose.yml`, Liquibase changelogs.
-- Untracked-files caveat (do NOT touch except the matrix): `team/remediation/*.md` other than the matrix, `ORCHESTRATION_STATE.md`, `data/`, the `0019-*.md` ADR copies, root `package.json`/`pnpm-lock.yaml`, `admin-api/db/changelog/011-schema-fixes.yaml`, `tests/acceptance/test_classical_key.py`, `.serena/project.yml` mod.
+- Untracked-files caveat (do NOT touch except the matrix): `team/remediation/**/*.md` other than the matrix, `ORCHESTRATION_STATE.md`, `data/`, the `0019-*.md` ADR copies, root `package.json`/`pnpm-lock.yaml`, `admin-api/db/changelog/011-schema-fixes.yaml`, `tests/acceptance/test_classical_key.py`, `.serena/project.yml` mod.
 
 **ESCALATE conditions (orchestrator surfaces to user):**
 - A chunk requires admin-api source changes.
@@ -73,8 +73,8 @@ R1 + R2 + R5 + R6 + R7 are P0; R8 is P1 (a follow-on from R7's review that's act
 ## §4 — Common context (every chunk's IMPLEMENTER reads this)
 
 Read first, every time:
-1. `team/remediation/ADMIN_UI_ACTION_MATRIX.md` — the audit + status.
-2. `team/remediation/PLAYWRIGHT_EXTENSION_PLAN.md` — where new specs live.
+1. `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md` — the audit + status.
+2. `team/remediation/_archive/2026-05-13-playwright-extension/00-plan.md` — where new specs live.
 3. `AGENTS.md`, `CLAUDE.md` — operating guardrails.
 4. The ADRs the chunk's brief calls out (R1 → ADR-0013/0018; R2 → ADR-0008; R3 → ADR-0013; R6 → ADR-0006/0007/0009).
 5. The relevant `admin-ui/src/resources/<resource>.ts` file (or `mcp-server/src/...` for R6).
@@ -154,7 +154,7 @@ MAY create/modify:
 - `admin-ui/src/lib/api-client.ts` (if a new helper is needed — keep additions surgical).
 - `admin-ui/e2e/tests/32-create-api-key.spec.ts` (new Playwright spec).
 - `admin-ui/e2e/pages/api-keys.ts` (extend POM).
-- `team/remediation/ADMIN_UI_ACTION_MATRIX.md` (cell update).
+- `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md` (cell update).
 
 Do NOT touch: any other resources/*.ts, the dashboard/intro components, admin-api/**, services/**, docs/architecture/**.
 </scope>
@@ -346,7 +346,7 @@ Do NOT: admin-api/**, other resources.
 - `credentials`, `permission_grants` — moderately safer but still risky in bulk.
 - `tenants` — almost certainly catastrophic; tenant-deletion is operator-confirmed-one-by-one per ADR-0016.7's cascade semantics.
 
-**Implementer brief**: instead of wiring, write a short note in `team/remediation/ACTION_GRID_ESCALATIONS.md` explaining the safety analysis; update the matrix to mark each `<resource>/bulkDelete` cell as 🚫 (justified — not implemented for safety) with a `// see ESCALATIONS.md` link; commit a single `docs(admin-ui): document why bulkDelete is intentionally not wired (R4 of action-grid remediation)` change.
+**Implementer brief**: instead of wiring, write a short note in `team/remediation/2026-05-13-admin-ui-action-grid/03-escalations.md` explaining the safety analysis; update the matrix to mark each `<resource>/bulkDelete` cell as 🚫 (justified — not implemented for safety) with a `// see 03-escalations.md` link; commit a single `docs(admin-ui): document why bulkDelete is intentionally not wired (R4 of action-grid remediation)` change.
 
 If the user overrides this recommendation → re-spec as R4-implement with explicit safety guardrails (e.g. bulkDelete requires typing the resource name to confirm, max 5 items per batch, audit-event-amplified).
 
@@ -443,7 +443,7 @@ MAY:
 - `mcp-server/src/**` — add the new tool handler, register it, bypass auth.
 - `mcp-server/skills/agent-bootstrap.md` — already exists; do NOT modify; only read and serve.
 - `mcp-server/tests/**` — new tests (Python pytest, likely `testcontainers` or `httpx` against a started instance).
-- `team/remediation/ADMIN_UI_ACTION_MATRIX.md` — Cross-cutting row "MCP bootstrap" added.
+- `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md` — Cross-cutting row "MCP bootstrap" added.
 
 Do NOT:
 - Modify the skill markdown content (the skill is canonical).
@@ -560,7 +560,7 @@ MAY modify:
 - admin-api/src/admin_api/** (the fix — likely in api/internal.py or api/agents.py).
 - admin-api/tests/** OR tests/integration/admin_api/** (whichever the project uses — survey).
 - A new pytest at tests/acceptance/test_mcp_auth_chain.py (or similar).
-- team/remediation/ADMIN_UI_ACTION_MATRIX.md (cross-cutting row: "MCP agent-key validation chain").
+- team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md (cross-cutting row: "MCP agent-key validation chain").
 
 Do NOT modify:
 - admin-api/requirements.txt, Dockerfile.
@@ -663,7 +663,7 @@ MAY modify:
 - `admin-api/src/admin_api/api/agents.py` (the handler — and any sibling handler with the same bug).
 - `admin-api/src/admin_api/db/deps.py` or `admin-api/src/admin_api/util/ids.py` (or wherever the helper lives — if you need to add/extend a wire-ID-to-UUID helper).
 - `tests/acceptance/test_agent_wire_id_handling.py` (new) OR an extension to `tests/acceptance/test_mcp_auth_chain.py` (only if you can do it cleanly without bloating the existing test).
-- `team/remediation/ADMIN_UI_ACTION_MATRIX.md` — cross-cutting row "admin-api wire-ID handling" added.
+- `team/remediation/2026-05-13-admin-ui-action-grid/02-matrix.md` — cross-cutting row "admin-api wire-ID handling" added.
 
 Do NOT modify:
 - `admin-api/requirements.txt`, `admin-api/Dockerfile`.
@@ -740,7 +740,7 @@ STATUS: DONE | BLOCKED <specific> | ESCALATE <specific>
 <chunk>review-{{R<n>-id}}</chunk>
 
 <context>
-Stack runs via docker compose. Bootstrap operator admin@mintkey.internal; password at data/bootstrap-secrets/admin_password. Read AGENTS.md, CLAUDE.md, the chunk's AC block from team/remediation/ADMIN_UI_REMEDIATION_PROMPT.md §6, and the relevant ADRs.
+Stack runs via docker compose. Bootstrap operator admin@mintkey.internal; password at data/bootstrap-secrets/admin_password. Read AGENTS.md, CLAUDE.md, the chunk's AC block from team/remediation/2026-05-13-admin-ui-action-grid/01-orchestrator-chunks.md §6, and the relevant ADRs.
 
 Pre-existing items (DO NOT fail on): untracked team/remediation/*.md files, the .serena/project.yml mod, the 04be7008 OpenAPI touch (intentional per ADR-0014/0015), the bootstrap tenant UUID 9593e3ba-….
 </context>

@@ -1,14 +1,14 @@
 # PROMPT — Admin UI rework (paste into Claude Code / Sonnet)
 
-> Run from the Mintkey repo root. This refines `team/remediation/MEGA_PROMPT.md` **Phase 3** (Admin UI) — the full per-screen UX spec is `team/remediation/ADMIN_UI_SPEC.md`, which is the authority for this work. It can be run standalone or fed to the orchestrator (`team/remediation/ORCHESTRATOR_PROMPT.md`) as a sequence of chunks.
+> Run from the Mintkey repo root. This refines the original Mintkey MVP mega-prompt **Phase 3** (Admin UI) — the full per-screen UX spec is `01-spec.md` (in this folder), which is the authority for this work. It can be run standalone or fed to the orchestrator (see the `remediation-orchestrator` skill at `~/.claude/skills/remediation-orchestrator/SKILL.md`; original orchestrator prompt archived at `../_archive/2026-05-12-mintkey-mvp/02-orchestrator-prompt.md`) as a sequence of chunks.
 
 ## Copy-paste command (paste this into a Claude Code session in the repo)
 
-> Read `team/remediation/PROMPT_ADMIN_UI.md`, `team/remediation/ADMIN_UI_SPEC.md`, and `team/remediation/MEGA_PROMPT.md`, then execute the admin-UI rework per `PROMPT_ADMIN_UI.md`. **Test-first; validate via tools (run the tests, paste the output, render the UI in a browser with a screenshot or DOM assertion — no "looks fine" claims); and end-to-end test the service-onboarding flow through the UI.** Navigate code with Serena MCP, never dump whole files. Do not stop, hand back, or summarize-and-quit until the Definition of Done is green and you've pasted the proof — especially the end-to-end-through-the-UI test output.
+> Read `team/remediation/2026-05-12-admin-ui-rework/00-plan.md`, `team/remediation/2026-05-12-admin-ui-rework/01-spec.md`, and `team/remediation/_archive/2026-05-12-mintkey-mvp/01-solo-prompt.md`, then execute the admin-UI rework per `00-plan.md`. **Test-first; validate via tools (run the tests, paste the output, render the UI in a browser with a screenshot or DOM assertion — no "looks fine" claims); and end-to-end test the service-onboarding flow through the UI.** Navigate code with Serena MCP, never dump whole files. Do not stop, hand back, or summarize-and-quit until the Definition of Done is green and you've pasted the proof — especially the end-to-end-through-the-UI test output.
 
 ## 0. Mission
 
-Rework `admin-ui/` per `team/remediation/ADMIN_UI_SPEC.md`: make AdminJS actually boot and show data; replace the default "Welcome to AdminJS" landing with a real onboarding dashboard; turn the auth-scheme field into a dropdown with the right conditional fields per scheme; add a working "Test Connection" button; make the credential↔service relationship unambiguous on every screen; and clean up every other screen (Agents + the MCP "Connect" panel, Permissions with dropdowns + structured constraints, API Keys, Audit, Tenants). **The work is judged by tests, not by appearance** — see §4.
+Rework `admin-ui/` per `01-spec.md` (in this folder): make AdminJS actually boot and show data; replace the default "Welcome to AdminJS" landing with a real onboarding dashboard; turn the auth-scheme field into a dropdown with the right conditional fields per scheme; add a working "Test Connection" button; make the credential↔service relationship unambiguous on every screen; and clean up every other screen (Agents + the MCP "Connect" panel, Permissions with dropdowns + structured constraints, API Keys, Audit, Tenants). **The work is judged by tests, not by appearance** — see §4.
 
 ## 1. Definition of Done — all green, with command/screenshot proof for each
 
@@ -37,8 +37,8 @@ Rework `admin-ui/` per `team/remediation/ADMIN_UI_SPEC.md`: make AdminJS actuall
 
 ## 3. Context to load first (in this order)
 
-1. `team/remediation/ADMIN_UI_SPEC.md` — **the authority for this work** (the per-screen spec, the auth-scheme model, the testing requirements, the DoD).
-2. `team/remediation/MEGA_PROMPT.md` — the discipline (§2 hard rules), the verification-suite shape (§9), the XML-tagged subagent-brief format (§10).
+1. `01-spec.md` (same folder) — **the authority for this work** (the per-screen spec, the auth-scheme model, the testing requirements, the DoD).
+2. `../_archive/2026-05-12-mintkey-mvp/01-solo-prompt.md` — the discipline (§2 hard rules), the verification-suite shape (§9), the XML-tagged subagent-brief format (§10). The orchestrator pattern itself is now project-agnostic; see the `remediation-orchestrator` skill at `~/.claude/skills/remediation-orchestrator/SKILL.md`.
 3. `AGENTS.md` and `CLAUDE.md` — operating principles, Mintkey guardrails.
 4. `docs/architecture/contracts/rest/openapi.yaml` — the `AuthScheme` enum and the `RegisterCredentialRequest` discriminated union: the **field-level source of truth** for what each auth scheme's form must collect and POST.
 5. `docs/architecture/01-architecture/adr/0019-admin-ui-bff-and-write-auth.md` — **the decision record** for the BFF-over-REST model and the write-auth (cookie + JWT, must agree, identity from the session); plus `0013-adminjs-pin.md` and `.kiro/specs/mintkey-mvp/design.md §4`/`§5`, `requirements.md REQ-SEC-5`, `tasks.md T-1.0.13` + the AdminJS-resource tasks — the existing specs this refines. **As part of this work, update those Kiro-spec sections to match ADR-0019 + `ADMIN_UI_SPEC.md`** (point `design.md §5` at `ADMIN_UI_SPEC.md`; restate the signed-request middleware in `design.md §4` / `tasks.md T-1.0.13` as the ADR-0019 cookie+JWT model; drop `@adminjs/sql`/`connect-pg-simple` from the AdminJS tasks).
