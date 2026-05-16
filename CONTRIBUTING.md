@@ -45,6 +45,37 @@ The canonical example of this pipeline executed end-to-end is the Mintkey MVP it
 
 ---
 
+## Remediation vs Spec-Driven Work
+
+Mintkey has two workflows for code changes:
+
+- **Remediation** — fixing something broken or risky. Use `team/remediation/YYYY-MM-DD-<topic>/` sessions with issue intake, orchestrator pattern, and independent review. See [`team/remediation/README.md`](team/remediation/README.md).
+- **Spec-driven (Kiro)** — building new capabilities. Use `.kiro/specs/` with requirements → design → tasks → ADR/proposal. See [`docs/SDD.md`](docs/SDD.md).
+
+The decision table below — identical in `team/remediation/README.md`, `AGENTS.md`, and `CLAUDE.md` — codifies which path your change requires.
+
+| Request Type | Required Path | Issue Intake | Reviewer |
+|---|---|---|---|
+| "Fix this bug" with clear evidence | `team/remediation/YYYY-MM-DD-<topic>/` | Full intake file (`ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
+| "Fix this bug" without clear evidence | Ask for issue intake first; **do not start** | Required BEFORE any chunk dispatch | After intake lands |
+| Multi-file remediation | Orchestrator pattern required (`remediation-orchestrator` skill) | Full intake file | Independent REVIEWER per chunk |
+| Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
+| New feature | Kiro spec-driven flow (`.kiro/specs/`) | Use Kiro requirements + ADR/proposal | Per Kiro process |
+| Wire contract change | Proposal/ADR + contract-first flow | Full intake + ADR/proposal link | ADR review + contract review |
+| Database schema change | Liquibase-first flow (`admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
+| Documentation typo | Direct small PR allowed | Brief intake stub (Problem + Evidence) in PR body | Standard PR review |
+| Dependency bump | Direct PR allowed if tests/verification included | Brief intake stub (Problem + Evidence + Verification) | Standard PR review |
+
+Per the F4 owner decision: **every PR has an Issue Definition section in the template** — even doc typos and dep bumps fill it (just briefer). "Direct PR allowed" means "no session folder required", NOT "no intake fields required".
+
+### Issue intake is required for ALL changes
+
+Even doc typos and dependency bumps include a brief intake stub in the PR body's `## Issue Definition` section. The Issue Definition fields are: Problem, Expected behavior, Evidence, Scope, Out of scope. See `.github/pull_request_template.md`.
+
+For multi-file or risky changes, file the full intake at `team/remediation/<session>/ISSUE_INTAKE.md` BEFORE any code change.
+
+---
+
 ## Non-negotiable rules
 
 1. **No code change without a corresponding spec entry under `.kiro/specs/`.** A `requirements.md` `Acceptance Criterion` is the unit of work. PRs cite the AC by number.
