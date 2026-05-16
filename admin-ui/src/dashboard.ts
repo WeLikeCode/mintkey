@@ -7,7 +7,13 @@
  * Source: ADMIN_UI_SPEC.md §2.1; T-1.1.4; ADR-0013; ADR-0014.5.
  */
 
+import { resolveMcpPublicUrl, resolveProxyPublicUrl } from "./lib/public-urls.js";
+
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+
+// Resolved once at startup — server-side only.
+const MCP_PUBLIC_URL = resolveMcpPublicUrl();
+const PROXY_PUBLIC_URL = resolveProxyPublicUrl();
 
 export interface DashboardChecklist {
   hasServices: boolean;
@@ -25,6 +31,10 @@ export interface DashboardData {
   permissionsCount: number;
   auditCount24h: number;
   checklist: DashboardChecklist;
+  publicUrls: {
+    mcp: string;
+    proxy: string;
+  };
 }
 
 /**
@@ -52,6 +62,10 @@ export async function dashboardHandler(
       hasAgents: false,
       hasPermissions: false,
       hasTested: false,
+    },
+    publicUrls: {
+      mcp: MCP_PUBLIC_URL,
+      proxy: PROXY_PUBLIC_URL,
     },
   };
 
@@ -103,6 +117,10 @@ export async function dashboardHandler(
         hasAgents: agents.length > 0,
         hasPermissions: permissions.length > 0,
         hasTested,
+      },
+      publicUrls: {
+        mcp: MCP_PUBLIC_URL,
+        proxy: PROXY_PUBLIC_URL,
       },
     };
   } catch {

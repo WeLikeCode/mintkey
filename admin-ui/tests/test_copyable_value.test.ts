@@ -98,13 +98,22 @@ describe("CopyableValue — services.ts integration (OPS-X)", () => {
     expect(showPropLine).toContain("proxy_url");
   });
 
-  it("recordTransform injects proxy_url using MINTKEY_PROXY_URL env var", () => {
-    expect(servicesSrc).toContain("MINTKEY_PROXY_URL");
+  it("recordTransform injects proxy_url via resolveProxyPublicUrl (canonical: MINTKEY_PROXY_PUBLIC_URL, legacy: MINTKEY_PROXY_URL)", () => {
+    // Canonical resolver imported from lib/public-urls
+    expect(servicesSrc).toContain("resolveProxyPublicUrl");
+    expect(servicesSrc).toContain("PROXY_PUBLIC_URL");
     expect(servicesSrc).toContain("proxy_url =");
     expect(servicesSrc).toContain("recordTransform");
   });
 
-  it("MINTKEY_PROXY_URL has a fallback default of http://localhost:8000", () => {
-    expect(servicesSrc).toContain("http://localhost:8000");
+  it("resolveProxyPublicUrl in public-urls.ts falls back to http://localhost:8000", () => {
+    const publicUrlsSrc = fs.readFileSync(
+      path.resolve(new URL(".", import.meta.url).pathname, "../src/lib/public-urls.ts"),
+      "utf-8",
+    );
+    expect(publicUrlsSrc).toContain("http://localhost:8000");
+    // Legacy alias is still supported via fallback chain
+    expect(publicUrlsSrc).toContain("MINTKEY_PROXY_URL");
+    expect(publicUrlsSrc).toContain("MINTKEY_PROXY_PUBLIC_URL");
   });
 });

@@ -42,6 +42,10 @@ interface DashboardData {
   permissionsCount: number;
   auditCount24h: number;
   checklist: Checklist;
+  publicUrls?: {
+    mcp: string;
+    proxy: string;
+  };
 }
 
 /** localStorage key for the MCP modal opened flag (per browser profile). */
@@ -57,37 +61,35 @@ interface Step {
 // ── MCP config modal ─────────────────────────────────────────────────────────
 
 /**
- * The mcp.config.json snippet that operators copy into Claude Desktop / Claude
- * Code / any MCP client.  The transport is HTTP-SSE (streamable-http) because
+ * Build the mcp.config.json snippet operators copy into Claude Desktop / Claude
+ * Code / any MCP client. The transport is HTTP-SSE (streamable-http) because
  * the Mintkey MCP server exposes a FastAPI HTTP endpoint, not a local process.
  *
- * URL hierarchy (swap in order of specificity):
- *   1. Your production domain  →  https://mintkey.example.com/v1
- *   2. Your docker-compose dev →  http://localhost:8082/v1
+ * The mcpUrl is threaded from DashboardData.publicUrls.mcp (set server-side via
+ * MINTKEY_MCP_PUBLIC_URL). Falls back to "http://localhost:8082" if missing.
  *
- * The Authorization header is required for all tools except mintkey_bootstrap.
- * Replace <PASTE_AGENT_API_KEY> with the mk_agent_... key returned at agent creation.
- *
- * Source: UI-MCP-modal chunk; mcp-server port 8082 (docker-compose.yml #6); OPS-FF Fix 1.
+ * Source: UI-MCP-modal chunk; mcp-server port 8082 (docker-compose.yml #6); OPS-FF Fix 1; NET-C.
  */
-const MCP_CONFIG_SNIPPET = JSON.stringify(
-  {
-    mcpServers: {
-      mintkey: {
-        type: "http",
-        url: "http://localhost:8082/v1",
-        headers: {
-          Authorization: "Bearer <PASTE_AGENT_API_KEY>",
+function buildMcpConfigSnippet(mcpUrl: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        mintkey: {
+          type: "http",
+          url: `${mcpUrl}/v1`,
+          headers: {
+            Authorization: "Bearer <PASTE_AGENT_API_KEY>",
+          },
+          description: "Mintkey credential broker — paste your agent API key above (mk_agent_...).",
         },
-        description: "Mintkey credential broker — paste your agent API key above (mk_agent_...).",
       },
     },
-  },
-  null,
-  2,
-);
+    null,
+    2,
+  );
+}
 
-const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const McpConfigModal: React.FC<{ onClose: () => void; mcpUrl: string }> = ({ onClose, mcpUrl }) => {
   const [copied, setCopied] = useState(false);
   const [copySupported, setCopySupported] = useState(true);
 
@@ -106,13 +108,15 @@ const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     };
   }, [onClose]);
 
+  const snippet = buildMcpConfigSnippet(mcpUrl);
+
   const handleCopy = async () => {
     if (!navigator.clipboard) {
       setCopySupported(false);
       return;
     }
     try {
-      await navigator.clipboard.writeText(MCP_CONFIG_SNIPPET);
+      await navigator.clipboard.writeText(snippet);
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch {
@@ -151,9 +155,8 @@ const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <code>&lt;PASTE_AGENT_API_KEY&gt;</code> with the{" "}
           <code>mk_agent_…</code> key you got when creating your agent. The
           bootstrap tool is unauthenticated but all other tools require this
-          header. Replace{" "}
-          <code>http://localhost:8082</code> with your production Mintkey URL
-          (e.g. <code>https://mintkey.example.com</code>) before deploying.
+          header. The URL above is what Mintkey advertises — set{" "}
+          <code>MINTKEY_MCP_PUBLIC_URL</code> on the server to change it.
         </Text>
 
         <Box
@@ -171,7 +174,7 @@ const McpConfigModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           }}
           data-testid="mcp-config-snippet"
         >
-          {MCP_CONFIG_SNIPPET}
+          {snippet}
         </Box>
 
         <Box flex style={{ gap: 12 }}>
@@ -431,7 +434,12 @@ const Dashboard: React.FC = () => {
   return (
     <>
       {/* ── MCP config modal ─────────────────────────────── */}
-      {mcpModalOpen && <McpConfigModal onClose={() => setMcpModalOpen(false)} />}
+      {mcpModalOpen && (
+        <McpConfigModal
+          onClose={() => setMcpModalOpen(false)}
+          mcpUrl={data?.publicUrls?.mcp ?? "http://localhost:8082"}
+        />
+      )}
 
     <Box variant="grey">
       <Box variant="white" mb="xxl">

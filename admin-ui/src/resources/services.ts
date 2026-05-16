@@ -18,10 +18,11 @@ import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
 import { apiWrite, getApiSession } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
+import { resolveProxyPublicUrl } from "../lib/public-urls.js";
 
 // (OPS-X) Read the proxy base URL at startup time (server-side only).
-// Falls back to http://localhost:8000 for local dev (Kong proxy default port).
-const MINTKEY_PROXY_URL = process.env.MINTKEY_PROXY_URL ?? "http://localhost:8000";
+// Resolves via MINTKEY_PROXY_PUBLIC_URL → MINTKEY_PROXY_URL → http://localhost:8000.
+const PROXY_PUBLIC_URL = resolveProxyPublicUrl();
 
 const _servicesResource = new RestResource({
   id: "services", name: "Services",
@@ -53,7 +54,7 @@ const _servicesResource = new RestResource({
   recordTransform: (item: Record<string, unknown>): Record<string, unknown> => {
     const id = item.id as string | undefined;
     if (id) {
-      item.proxy_url = `${MINTKEY_PROXY_URL}/v1/call/${id}/{path}`;
+      item.proxy_url = `${PROXY_PUBLIC_URL}/v1/call/${id}/{path}`;
     }
     return item;
   },
