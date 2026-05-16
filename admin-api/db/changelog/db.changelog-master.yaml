@@ -38,3 +38,6 @@ databaseChangeLog:
   - include:
       file: 013-agent-key-lifecycle.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 014-operators-keycloak.yaml
+      relativeToChangelogFile: true

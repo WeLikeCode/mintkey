@@ -1,0 +1,18 @@
+databaseChangeLog:
+
+  - changeSet:
+      id: "014-operators-oidc-sub-unique"
+      author: sso-b
+      changes:
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_oidc_sub
+                ON operators (oidc_sub)
+                WHERE oidc_sub IS NOT NULL;
+              CREATE UNIQUE INDEX IF NOT EXISTS idx_operators_tenant_email
+                ON operators (tenant_id, email);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS idx_operators_oidc_sub;
+              DROP INDEX IF EXISTS idx_operators_tenant_email;

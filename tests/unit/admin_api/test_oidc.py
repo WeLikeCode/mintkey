@@ -52,7 +52,10 @@ def app():
 
 @pytest.mark.asyncio
 async def test_oidc_callback_success_creates_session(app) -> None:
-    """Valid OIDC callback → 200, mintkey_session cookie set (Req 2 AC6)."""
+    """Valid OIDC callback → 302 to admin-ui, mintkey_session cookie set (Req 2 AC6).
+
+    SSO-B: callback now redirects (302) to admin-ui instead of returning JSON 200.
+    """
     operator = _make_operator()
     claims = {
         "sub": "oidc_sub_123",
@@ -65,17 +68,22 @@ async def test_oidc_callback_success_creates_session(app) -> None:
         patch("admin_api.api.auth.oidc_token_exchange", new=AsyncMock(return_value=claims)),
         patch("admin_api.api.auth.lookup_operator_by_oidc_sub", new=AsyncMock(return_value=operator)),
         patch("admin_api.api.auth.create_session", new=AsyncMock(return_value="test-oidc-session-token")),
+        patch("admin_api.api.auth._emit_session_created_audit", new=AsyncMock()),
     ):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as client:
             resp = await client.get(
                 "/v1/auth/oidc/callback",
                 params={"code": "authcode123", "state": "validstate"},
             )
 
-    assert resp.status_code == 200, resp.text
+    # SSO-B: 302 redirect to admin-ui/admin
+    assert resp.status_code == 302, resp.text
     assert "mintkey_session" in resp.headers.get("set-cookie", "")
-    body = resp.json()
-    assert body.get("status") == "ok"
+    assert "/admin" in resp.headers.get("location", "")
 
 
 # ---------------------------------------------------------------------------

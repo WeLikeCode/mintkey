@@ -132,17 +132,17 @@ def seed_bootstrap_operator(
     conn: psycopg2.extensions.connection, tenant_id: str
 ) -> tuple:
     """
-    Create bootstrap admin operator with Argon2id-hashed password.
+    Create bootstrap admin operator with internal_password_hash=NULL.
     Returns (operator_id: str, plaintext_password: str).
     Second call returns ("", "") — idempotent per Req 1 AC6.
 
-    Note: argon2-cffi is imported here (session-2 dep); pip install argon2-cffi.
-    Source: Req 1 AC5 step 2, design §3 step 5.
+    SSO-B: internal_password_hash is NULL by default.  The plaintext password
+    is still generated and written to bootstrap-secrets/admin_password so that
+    Keycloak can be seeded in step 9.  The CLI `mintkey admin reset-password`
+    is the only way to set a hash (D2-b).
+
+    Source: Req 1 AC5 step 2, design §3 step 5; SSO-B D2-b.
     """
-    import argon2  # noqa: PLC0415 — deferred so missing dep fails only this step
-
-    ph = argon2.PasswordHasher()
-
     with conn.cursor() as cur:
         cur.execute(
             "SELECT id FROM operators WHERE email = %s AND tenant_id = %s::uuid",
@@ -152,17 +152,18 @@ def seed_bootstrap_operator(
         if row is not None:
             return str(row[0]), ""
 
+        # SSO-B: no password hash stored in the DB — internal_password_hash stays NULL.
+        # A plaintext password is still generated so step 9 can seed Keycloak.
         password = secrets.token_urlsafe(32)
-        hashed = ph.hash(password)
 
         cur.execute(
             """
             INSERT INTO operators
-              (tenant_id, email, display_name, internal_password_hash, is_platform_admin, status)
-            VALUES (%s::uuid, %s, %s, %s, true, 'active')
+              (tenant_id, email, display_name, internal_password_hash, oidc_sub, is_platform_admin, status)
+            VALUES (%s::uuid, %s, %s, NULL, NULL, true, 'active')
             RETURNING id
             """,
-            (tenant_id, DEFAULT_ADMIN_EMAIL, "Bootstrap Admin", hashed),
+            (tenant_id, DEFAULT_ADMIN_EMAIL, "Bootstrap Admin"),
         )
         operator_id = str(cur.fetchone()[0])
 
@@ -560,6 +561,50 @@ def _touch_sentinel(secrets_dir: Path) -> None:
     sentinel_file.chmod(0o600)
 
 
+def _pre_link_operator_oidc_sub(
+    conn: psycopg2.extensions.connection,
+    tenant_id: str,
+    kc_user_uuid: str,
+) -> None:
+    """
+    Step 9b: Pre-link the bootstrap operator's oidc_sub to the Keycloak user UUID.
+
+    Eliminates the lazy-first-login race condition (Opus recommendation).
+    Tolerant: if the operator row is not found, logs and continues rather than
+    blocking bootstrap (hard rule 8 — belt-and-suspenders lazy link remains).
+
+    Source: SSO-B spec §step-9b.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE operators
+                SET oidc_sub = %s
+                WHERE email = %s
+                  AND oidc_sub IS NULL
+                """,
+                (kc_user_uuid, DEFAULT_ADMIN_EMAIL),
+            )
+            rows_updated = cur.rowcount
+        if rows_updated > 0:
+            print(
+                f"Keycloak: pre-linked operator '{DEFAULT_ADMIN_EMAIL}'"
+                f" → oidc_sub={kc_user_uuid}"
+            )
+        else:
+            # Either already linked (re-run) or operator not found
+            print(
+                f"Keycloak: oidc_sub already set or operator not found for"
+                f" '{DEFAULT_ADMIN_EMAIL}' — skipping pre-link."
+            )
+    except Exception as exc:
+        print(
+            f"Keycloak: WARNING — oidc_sub pre-link failed (non-blocking): {exc}",
+            flush=True,
+        )
+
+
 def seed_keycloak_realm_and_admin(
     conn: psycopg2.extensions.connection, tenant_id: str
 ) -> None:
@@ -570,9 +615,10 @@ def seed_keycloak_realm_and_admin(
     - Imports realm from realm-mintkey.json if not present.
     - Writes per-client OIDC secrets to bootstrap-secrets/.
     - Ensures admin@mintkey.internal exists with correct password and role.
+    - Step 9b: pre-links oidc_sub on the local operator row (SSO-B).
     - Idempotent: existence checks + mtime sentinel.
 
-    Source: SSO-A spec; ADR-0014 §14.2; Kiro design.md §3 step 9.
+    Source: SSO-A spec; ADR-0014 §14.2; Kiro design.md §3 step 9; SSO-B step 9b.
     """
     secrets_dir = BOOTSTRAP_SECRETS_DIR
     secrets_dir.mkdir(parents=True, exist_ok=True)
@@ -594,6 +640,9 @@ def seed_keycloak_realm_and_admin(
     _sync_admin_password(token, user_uuid, secrets_dir)
     _assign_platform_admin_role(token, user_uuid)
     _touch_sentinel(secrets_dir)
+
+    # Step 9b: pre-link oidc_sub so first OIDC login is instant (SSO-B)
+    _pre_link_operator_oidc_sub(conn, tenant_id, user_uuid)
 
     print("Keycloak realm bootstrap complete")
 

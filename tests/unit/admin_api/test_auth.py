@@ -173,3 +173,23 @@ async def test_failure_response_body_shape(app) -> None:
     assert body.get("mintkey:code") == "invalid_credentials"
     assert body.get("status") == 401
     assert "Invalid credentials" in body.get("title", "")
+
+
+# ---------------------------------------------------------------------------
+# D2-b: internal_password_hash IS NULL → 404 (SSO-B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_internal_login_returns_404_when_hash_null(app) -> None:
+    """D2-b: internal_password_hash=NULL → 404 (hash-IS-NULL gate, not env-var flag)."""
+    null_hash_operator = _make_operator(password_hash=None)
+
+    with patch("admin_api.auth.internal.fetch_operator", new=AsyncMock(return_value=null_hash_operator)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/auth/internal-login",
+                json={"email": VALID_EMAIL, "password": VALID_PASSWORD},
+            )
+
+    assert resp.status_code == 404, resp.text

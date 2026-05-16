@@ -51,3 +51,36 @@ def resolve_mcp_public_url() -> str:
         legacy_names=["MCP_BASE_URL"],
         default=_DEFAULT_MCP,
     )
+
+
+def resolve_keycloak_public_url() -> str:
+    """Return the browser-facing Keycloak URL (used for /v1/auth/oidc/login redirects).
+
+    Net-A pattern: canonical → legacy → default.
+    """
+    return _read_with_fallback("MINTKEY_KEYCLOAK_PUBLIC_URL", [], "http://localhost:8443")
+
+
+def resolve_keycloak_internal_url() -> str:
+    """Return the server-side Keycloak URL (used for token exchange and JWKS fetch).
+
+    Defaults to the Docker-network hostname so admin-api can reach Keycloak
+    inside the compose network without going through the public port.
+    """
+    return _read_with_fallback("MINTKEY_KEYCLOAK_INTERNAL_URL", [], "http://keycloak:8443")
+
+
+def resolve_admin_api_public_url() -> str:
+    """Return the operator-facing admin-api base URL.
+
+    Used to construct the OIDC callback redirect_uri.
+    """
+    return _read_with_fallback("MINTKEY_ADMIN_API_PUBLIC_URL", [], "http://localhost:8080")
+
+
+def resolve_admin_ui_public_url() -> str:
+    """Return the operator-facing admin-ui base URL.
+
+    Used for the post-login 302 redirect after a successful OIDC callback.
+    """
+    return _read_with_fallback("MINTKEY_ADMIN_UI_PUBLIC_URL", [], "http://localhost:8081")
