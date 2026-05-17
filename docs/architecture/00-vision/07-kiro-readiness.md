@@ -51,9 +51,9 @@ flowchart TB
 | Item | Status | Where it lives |
 |---|---|---|
 | Top‑level README | ✅ | [`/README.md`](../../README.md) |
-| Vision (problem, vision, personas, glossary, iteration plan, roadmap) | ✅ | [`/docs/00-vision/`](.) |
-| Architecture views (system context, container view, quality attributes, threat model, *Views and Beyond*) | ✅ | [`/docs/01-architecture/`](../01-architecture/) |
-| ADRs (7 accepted) | ✅ | [`/docs/01-architecture/adr/`](../01-architecture/adr/) |
+| Vision (problem, vision, personas, glossary, iteration plan, roadmap) | ✅ | [`/docs/architecture/00-vision/`](.) |
+| Architecture views (system context, container view, quality attributes, threat model, *Views and Beyond*) | ✅ | [`/docs/architecture/01-architecture/`](../01-architecture/) |
+| ADRs (20 accepted, latest ADR-0020 2026-05-15) | ✅ | [`/docs/architecture/01-architecture/adr/`](../01-architecture/adr/) |
 | **`KIRO.md` project conventions** at the repo root | ⏳ | `/KIRO.md` (Phase 5; gating) |
 
 `KIRO.md` is the single document Kiro reads first. It must contain:
@@ -74,12 +74,12 @@ Kiro generates server stubs, client SDKs, test fixtures, and validation logic fr
 
 | Contract | Status | Location | Owner |
 |---|---|---|---|
-| REST OpenAPI 3.1 | ⏳ Iteration 4 | [`/docs/contracts/rest/openapi.yaml`](../contracts/rest/) | Admin REST API + MCP server emit it |
-| MCP tool schemas | ⏳ Iteration 4 | [`/docs/contracts/mcp/`](../contracts/mcp/) | MCP Server |
-| Event schemas (audit + OTel attributes) | ⏳ Iteration 4 | [`/docs/contracts/events/`](../contracts/events/) | Audit Service |
-| DB schema (Liquibase changelog) | ⏳ Phase 1 | `/admin-api/db/changelog/` | Admin REST API |
+| REST OpenAPI 3.1 | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/rest/openapi.yaml`](../contracts/rest/) | Admin REST API + MCP server emit it |
+| MCP tool schemas | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/mcp/tools.yaml`](../contracts/mcp/) | MCP Server |
+| Event schemas (audit + OTel attributes) | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/events/`](../contracts/events/) | Audit Service |
+| DB schema (Liquibase changelog) | ✅ 16 changelogs in `admin-api/db/changelog/` | `/admin-api/db/changelog/` | Admin REST API |
 | JWT claim schema | ✅ in [ADR‑0006](../01-architecture/adr/0006-token-format-and-binding.md) | inline | Credential Broker |
-| Vault Adapter gRPC IDL | ⏳ Iteration 4 | [`/docs/contracts/vault-adapter/`](../contracts/) | Vault Adapter |
+| Vault Adapter gRPC IDL | ✅ `vault.proto` in `docs/architecture/contracts/vault-adapter/` | [`/docs/architecture/contracts/vault-adapter/`](../contracts/vault-adapter/) | Vault Adapter |
 
 ### Contract conventions
 - **Schema‑first**: contracts are written before code.
@@ -92,22 +92,24 @@ Kiro generates server stubs, client SDKs, test fixtures, and validation logic fr
 
 ## 3. Per‑component Kiro specs
 
-For each container in [`02-container-view.md`](../01-architecture/02-container-view.md), Kiro needs a spec triple: **requirements**, **design**, **tasks**. Specs live under `docs/specs/<component>/`.
+For each container in [`02-container-view.md`](../01-architecture/02-container-view.md), Kiro needs a spec triple: **requirements**, **design**, **tasks**. Specs live under `.kiro/specs/mintkey-mvp/` (per the Kiro convention; see `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md`).
+
+All Phase 1 containers are covered by the consolidated `.kiro/specs/mintkey-mvp/` triple. All 14 top-level milestones M1.0-M1.13 are checked in `tasks.md` (99 task lines marked [x] as of 2026-05-17; note this is checkbox state, not independent test verification). Per-component spec split is not currently used in this repo; the table below is retained as a reference for the planned split in Phase 5.
 
 | Component | Requirements | Design | Tasks |
 |---|---|---|---|
-| Admin REST API (FastAPI) | ⏳ | ⏳ | ⏳ |
-| Admin UI (AdminJS) | ⏳ | ⏳ | ⏳ |
-| MCP Server | ⏳ | ⏳ | ⏳ |
-| Credential Broker | ⏳ | ⏳ | ⏳ |
-| Vault Adapter (file backend; v2 Vault; v3 SQL+KMS) | ⏳ | ⏳ | ⏳ |
-| Egress Proxy plugin | ⏳ | ⏳ | ⏳ |
-| Kong‑syncer | ⏳ | ⏳ | ⏳ |
-| Audit Service (or as a section of Admin API) | ⏳ | ⏳ | ⏳ |
-| Seed job | ⏳ | ⏳ | ⏳ |
+| Admin REST API (FastAPI) | ✅ (consolidated in `.kiro/specs/mintkey-mvp/`) | ✅ | ✅ |
+| Admin UI (AdminJS) | ✅ | ✅ | ✅ |
+| MCP Server | ✅ | ✅ | ✅ |
+| Credential Broker | ✅ | ✅ | ✅ |
+| Vault Adapter (file backend; v2 Vault; v3 SQL+KMS) | ✅ | ✅ | ✅ |
+| Egress Proxy plugin | ✅ | ✅ | ✅ |
+| Kong‑syncer | ✅ | ✅ | ✅ |
+| Audit Service (or as a section of Admin API) | ✅ | ✅ | ✅ |
+| Seed job | ✅ | ✅ | ✅ |
 
 ### Spec template (Kiro pattern)
-**`docs/specs/<component>/requirements.md`**
+**`docs/specs/<component>/requirements.md`** — illustrative template; the actual layout in this repo is `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md`.
 - One‑line goal.
 - User stories ("As an X, I want Y, so that Z").
 - Functional requirements (numbered).
@@ -115,7 +117,7 @@ For each container in [`02-container-view.md`](../01-architecture/02-container-v
 - Out of scope.
 - Acceptance criteria — each functional requirement maps to at least one test.
 
-**`docs/specs/<component>/design.md`**
+**`docs/specs/<component>/design.md`** — illustrative template.
 - Architecture context (which container, which interfaces).
 - Internal module structure.
 - Data model (with references to the DB schema).
@@ -124,18 +126,18 @@ For each container in [`02-container-view.md`](../01-architecture/02-container-v
 - ADRs invoked.
 - Failure modes and how the component handles them.
 
-**`docs/specs/<component>/tasks.md`**
+**`docs/specs/<component>/tasks.md`** — illustrative template.
 - Sequenced TDD tasks: `[ ] Test X`, `[ ] Implement X`, `[ ] Refactor`, `[ ] Integration test Y`.
 - Estimated complexity per task (S/M/L).
 - Cross‑task dependencies marked.
 
-The smallest Phase 5 unit is **one component spec triple**. The first one to write is the **Vault Adapter** because it has the clearest interface and the smallest scope; specs for the others can follow the same template.
+The smallest Phase 5 unit is **one component spec triple**. The first one to write is the **Vault Adapter** because it has the clearest interface and the smallest scope; specs for the others can follow the same template. The current consolidated spec under `.kiro/specs/mintkey-mvp/` covers Phase 1; per-component splits are a Phase 5 refinement task.
 
 ---
 
 ## 4. Pattern library
 
-"How to do X" reference for common operations. One page each. Lives under `docs/patterns/`.
+"How to do X" reference for common operations. One page each. Aspirational target location: `docs/patterns/`. As of 2026-05-17 this directory does not exist; the pattern library has not been started.
 
 | Pattern | Purpose | Status |
 |---|---|---|
@@ -206,8 +208,8 @@ Fixtures are versioned with the contracts. A breaking contract change requires a
 
 | Language / area | Tool / config | Status |
 |---|---|---|
-| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ⏳ |
-| Go | `gofmt` + `golangci-lint` config; `errcheck`, `goimports`, `revive` | ⏳ |
+| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ✅ ruff + mypy --strict configured and green on admin-api, mintkey-models, mcp-server (last verified 2026-05-16 by `team/remediation/2026-05-16-python-code-quality/99-report.md`) |
+| Go | `gofmt` + `golangci-lint` config; `errcheck`, `goimports`, `revive` | ✅ golangci-lint v8 + go vet configured and green in CI Lint Go (last verified on tag v0.1.0-prealpha 2026-05-17) |
 | AdminJS / TypeScript | `eslint` + `prettier` config; strict TS | ⏳ |
 | SQL | `sqlfluff` config (Postgres dialect) | ⏳ |
 | Liquibase | Changelog naming and structure conventions | ⏳ |
@@ -221,14 +223,14 @@ Fixtures are versioned with the contracts. A breaking contract change requires a
 
 | Gate | Tool / approach | Status |
 |---|---|---|
-| Per‑language linter in CI | ruff, golangci-lint, eslint, sqlfluff | ⏳ |
-| Per‑language type checker | mypy, Go's compiler, tsc | ⏳ |
-| Unit tests | pytest, go test, jest | ⏳ |
-| Integration tests | testcontainers (Postgres, Kong, Keycloak) | ⏳ |
-| Security scan | `govulncheck`, `pip-audit`, `npm audit`, container image scan | ⏳ |
+| Per‑language linter in CI | ruff, golangci-lint, eslint, sqlfluff | ✅ Lint Python + Lint Go configured and green (last verified on tag v0.1.0-prealpha 2026-05-17) |
+| Per‑language type checker | mypy, Go's compiler, tsc | ✅ mypy --strict green for Python services; Go compiler enforced via CI Lint Go (last verified 2026-05-17) |
+| Unit tests | pytest, go test, jest | ✅ Python Unit Tests + Go Unit Tests configured; 244 passed, 2 skipped (last verified 2026-05-12 by WS-8) |
+| Integration tests | testcontainers (Postgres, Kong, Keycloak) | ✅ Integration Tests job configured in CI; runs on main/PRs to main (last verified 2026-05-17 via PR #46 integration-tests-timeout fix) |
+| Security scan | `govulncheck`, `pip-audit`, `npm audit`, container image scan | ✅ CodeQL (`.github/workflows/codeql.yml`) + container scan (`.github/workflows/container-scan.yml`) + dependency review configured |
 | License compatibility | FOSSA or scancode‑toolkit (manual policy) | ⏳ |
-| Architecture test | Custom: assert no module bypasses the audit chokepoint; assert no plaintext credential outside Vault Adapter or proxy plugin request scope | ⏳ |
-| Contract round‑trip | Diff between OpenAPI emitted by FastAPI and `docs/contracts/rest/openapi.yaml` | ⏳ |
+| Architecture test | Custom: assert no module bypasses the audit chokepoint; assert no plaintext credential outside Vault Adapter or proxy plugin request scope | ✅ Architecture Tests job configured with 6 custom checks; 17 passing (last verified 2026-05-12 by WS-8) |
+| Contract round‑trip | Diff between OpenAPI emitted by FastAPI and `docs/architecture/contracts/rest/openapi.yaml` | ✅ OpenAPI parity gate (T-1.11.5) in Schema Integrity Gates CI job (last verified on tag v0.1.0-prealpha 2026-05-17) |
 | Mermaid lint in docs | `mermaid-cli` validates fenced blocks (CI) | ⏳ |
 
 ---
@@ -237,10 +239,10 @@ Fixtures are versioned with the contracts. A breaking contract change requires a
 
 | Item | Status |
 |---|---|
-| Kiro project pointer (`.kiro/project.yaml` or equivalent) | ⏳ Phase 5 |
-| Kiro template: "add a new feature" prompt | ⏳ Phase 5 |
-| Kiro template: "fix a bug" prompt | ⏳ Phase 5 |
-| Documentation of the spec‑driven workflow | ⏳ Phase 5 |
+| Kiro project pointer (`.kiro/project.yaml` or equivalent) | ✅ `.kiro/setup-state.json` + `.kiro/settings/mcp.json` present; `.kiro/` project root established |
+| Kiro template: "add a new feature" prompt | ✅ `.kiro/skills/` contains named skill templates (e.g. `adr-from-decision`, `adversarial-review`, `architecture-advisor`); `.kiro/steering/` contains product/tech/structure/security steering docs |
+| Kiro template: "fix a bug" prompt | ✅ `.kiro/skills/` skill templates present (see `assumption-validate`, `decision-log-append`, etc.) |
+| Documentation of the spec‑driven workflow | ✅ `.kiro/steering/STEERING-PROTOCOL.md` + `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md` document the workflow |
 
 The "add a new feature" template should accept inputs like:
 - Feature description (one or two sentences).
@@ -249,9 +251,9 @@ The "add a new feature" template should accept inputs like:
 - Acceptance criteria (one or more sentences).
 
 …and produce:
-- A draft proposal under `docs/proposal/P-NNN-…md` (if a decision is needed).
-- A draft Kiro spec triple under `docs/specs/<component>/`.
-- Updated contracts under `docs/contracts/`.
+- A draft proposal under `docs/proposal/P-NNN-…md` (if a decision is needed; note: `docs/proposal/` does not yet exist in this repo as of 2026-05-17).
+- A draft Kiro spec triple under `.kiro/specs/mintkey-mvp/` (current repo layout) or `docs/specs/<component>/` (planned Phase 5 split).
+- Updated contracts under `docs/architecture/contracts/`.
 - A draft PR description.
 
 ---
@@ -264,25 +266,39 @@ The "add a new feature" template should accept inputs like:
 
 ---
 
-## Status (as of 2026-05-10)
+## Status (as of 2026-05-17)
 
 | Area | Status |
 |---|---|
-| Project context | ✅ substantially complete; needs `KIRO.md` |
-| ADRs | ✅ 7 accepted (ADR‑0001..0007) |
-| Contracts | ⚠ skeleton only; full population in iteration 4 |
-| Per‑component specs | ❌ not started; first target is the **Vault Adapter** |
-| Pattern library | ❌ not started |
-| Stub services | ❌ not started |
-| Test fixtures | ❌ not started |
-| Coding conventions | ❌ not started |
-| Quality gates | ❌ not started |
-| Kiro scaffolding | ❌ not started |
+| Project context | ✅ substantially complete; `KIRO.md` at repo root still absent (verified 2026-05-17) |
+| ADRs | ✅ 20 accepted (ADR-0001..ADR-0020; ADR-0018 accepted 2026-05-11; ADR-0020 accepted 2026-05-15) |
+| Contracts | 🟢 checked in: REST OpenAPI 3.1, MCP tool schemas, audit+OTel event schemas, Vault Adapter gRPC IDL (`vault.proto`), 16 Liquibase changelogs — all validated in CI Lint Contracts (last verified on tag v0.1.0-prealpha 2026-05-17) |
+| Per‑component specs | ✅ consolidated under `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md`; M1.0-M1.13 all checked in `tasks.md` (99 task lines marked [x] as of 2026-05-17; checkbox state only, not independent test verification) |
+| Pattern library | ❌ not started; `docs/patterns/` does not exist (verified 2026-05-17) |
+| Stub services | ❌ not started; `tests/stubs/` does not exist (verified 2026-05-17) |
+| Test fixtures | ❌ not started; `tests/fixtures/` does not exist (verified 2026-05-17) |
+| Coding conventions | 🟢 ruff + mypy --strict configured and green for Python (admin-api, mintkey-models, mcp-server; last verified 2026-05-16); golangci-lint v8 + go vet configured and green (last verified on tag v0.1.0-prealpha 2026-05-17); TypeScript/SQL conventions ⏳ |
+| Quality gates | 🟢 9 CI jobs configured in `.github/workflows/ci.yml` (Lint Python, Lint Go, Lint Contracts, Python Unit Tests, Go Unit Tests, Architecture Tests, Schema Integrity Gates, Acceptance Tests, Integration Tests) + CodeQL + container scan + OpenSSF Scorecard + dependency review + Playwright; all 13 CI checks passing on tag v0.1.0-prealpha (last verified 2026-05-17) |
+| Kiro scaffolding | ✅ `.kiro/` project root established; `.kiro/specs/mintkey-mvp/` triple present; `.kiro/steering/` (product/tech/structure/security docs) present; `.kiro/skills/` templates present |
 
 ## Fastest path to "Kiro can develop new features"
+
+*Original north-star sequencing (preserved for reference):*
+
 1. **Finish iteration 4 contracts** (the schemas) — this unblocks every code‑generation step.
 2. **Write the Vault Adapter spec** as the first per‑component Kiro spec — it's the smallest container with the clearest interface.
 3. **Write the top 3 pattern library entries** — `add-rest-endpoint`, `add-mcp-tool`, `add-audit-event` — these cover most CRUD work.
 4. **Write the stub services** for Vault Adapter, Kong, and OIDC — these unblock CI for the rest.
 5. **Write `KIRO.md`** at the repo root — make Kiro readable.
 6. From this point, **Kiro can scaffold the rest** (other component specs, other patterns, other stubs).
+
+### Status as of 2026-05-17 (tag v0.1.0-prealpha)
+
+| Step | Status |
+|---|---|
+| 1. Iteration 4 contracts | ✅ Done — REST OpenAPI, MCP tools, event schemas, Vault Adapter IDL all checked in and CI-validated |
+| 2. Vault Adapter spec (per-component) | ✅ Partially done — covered by consolidated `.kiro/specs/mintkey-mvp/`; per-component split deferred to Phase 5 |
+| 3. Top 3 pattern library entries | ❌ Not started — `docs/patterns/` does not exist |
+| 4. Stub services | ❌ Not started — `tests/stubs/` does not exist |
+| 5. Write `KIRO.md` | ❌ Not started — `KIRO.md` not at repo root (verified 2026-05-17) |
+| 6. Kiro scaffolds the rest | 🔄 Unblocked partially — `.kiro/` scaffolding and spec triple in place; patterns + stubs + KIRO.md remain |
