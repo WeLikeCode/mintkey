@@ -113,6 +113,11 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: changeme
       MINTKEY_KEYCLOAK_INTERNAL_URL: http://keycloak:8443
+      # SSO-1: forward operator-set public URLs so seed-job can patch Keycloak
+      # redirect URIs after realm import. Empty string → no-op (localhost only).
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-}"
+      MINTKEY_GRAFANA_PUBLIC_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-}"
+      MINTKEY_JAEGER_PUBLIC_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-}"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
     networks:

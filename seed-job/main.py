@@ -20,6 +20,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 import psycopg2
 import requests
@@ -314,6 +315,49 @@ def seed_mock_backend_demo(conn: psycopg2.extensions.connection, tenant_id: str)
 
 
 # ---------------------------------------------------------------------------
+# Secret-file helper — content-validating idempotent write
+# ---------------------------------------------------------------------------
+
+
+def _ensure_secret_file(
+    path: Path,
+    *,
+    validate: Callable[[bytes], bool],
+    generate: Callable[[], bytes | str],
+    chmod_mode: int = 0o644,
+    label: str = "",
+) -> bool:
+    """Idempotent secret-file ensure with content validation.
+
+    Returns True if the file was (re)generated, False if existing content was valid.
+    Logs WHY a regeneration happened (validate-fail with reason) for ops visibility.
+
+    Algorithm:
+      1. If file does not exist → generate, write, chmod → return True.
+      2. If file exists and validate(content) → log "valid — skipping" → return False.
+      3. If file exists but validate(content) fails → log "INVALID (size=N) — regenerating"
+         → overwrite, chmod → return True.
+    """
+    _label = label or path.name
+    if path.exists():
+        existing = path.read_bytes()
+        if validate(existing):
+            print(f"Bootstrap: {_label} valid — skipping.")
+            return False
+        print(
+            f"Bootstrap: {_label} INVALID (size={len(existing)}) — regenerating."
+        )
+    value = generate()
+    if isinstance(value, str):
+        path.write_text(value)
+    else:
+        path.write_bytes(value)
+    path.chmod(chmod_mode)
+    print(f"Bootstrap: wrote {_label}")
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Step 9: Keycloak realm bootstrap (SSO-A)
 # ---------------------------------------------------------------------------
 
@@ -414,7 +458,20 @@ def _ensure_realm(token: str, realm_json_path: Path) -> None:
 
 
 def _write_client_secrets(token: str, secrets_dir: Path) -> None:
-    """Retrieve each client's secret from Keycloak and write to bootstrap-secrets."""
+    """Retrieve each client's secret from Keycloak and write to bootstrap-secrets.
+
+    Idempotency policy: always fetches the live secret from Keycloak (the
+    canonical source of truth) and writes it if the on-disk file is missing or
+    its content differs from what Keycloak holds.  This catches stale/corrupted
+    files without requiring a manual wipe.
+
+    Validation applied to the *existing* file before skipping:
+      - Non-empty UTF-8 string, length ≥ 16 bytes (Keycloak generates ~36-char
+        UUID-style secrets; anything shorter is definitely wrong).
+      - Content must match the live Keycloak secret (exact equality check).
+        This ensures that if Keycloak regenerates a secret (e.g. via admin UI),
+        the bootstrap-secrets volume is updated on the next seed-job run.
+    """
     for client_id, secret_filename in _CLIENT_SECRET_FILES.items():
         # Resolve client UUID
         resp = requests.get(
@@ -431,17 +488,16 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
             )
         client_uuid = clients[0]["id"]
 
-        # Retrieve secret
+        # Retrieve current secret from Keycloak (canonical value)
         secret_resp = requests.get(
             f"{_KC_INTERNAL_URL}/admin/realms/mintkey/clients/{client_uuid}/client-secret",
             headers=_kc_headers(token),
             timeout=15,
         )
         secret_resp.raise_for_status()
-        secret_value = secret_resp.json()["value"]
+        secret_value: str = secret_resp.json()["value"]
+        secret_bytes = secret_value.encode()
 
-        secret_file = secrets_dir / secret_filename
-        secret_file.write_text(secret_value)
         # Permission policy: all bootstrap secrets are stored in a shared Docker
         # named volume (bootstrap_secrets) mounted :ro into a fixed set of
         # services. Consumer containers run as various non-root UIDs (grafana:
@@ -450,12 +506,19 @@ def _write_client_secrets(token: str, secrets_dir: Path) -> None:
         # itself is the security boundary — no untrusted users exist inside any
         # container in the compose stack — so world-read (0o644) is correct for
         # every bootstrap secret written here.
-        secret_file.chmod(0o644)
-        print(f"Keycloak: wrote {secret_file}")
+        _ensure_secret_file(
+            secrets_dir / secret_filename,
+            validate=lambda b, _sv=secret_bytes: (
+                len(b) >= 16 and b.strip() == _sv
+            ),
+            generate=lambda _sv=secret_value: _sv,
+            chmod_mode=0o644,
+            label=secret_filename,
+        )
 
 
 def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
-    """Write jaeger_oauth2_cookie_secret (base64-encoded 32 bytes) if missing.
+    """Write jaeger_oauth2_cookie_secret (base64-encoded 32 bytes) if missing or invalid.
 
     oauth2-proxy v7.6.0 does not support --cookie-secret-file; the secret must
     be supplied via --cookie-secret as a string value.  The flag accepts either
@@ -465,19 +528,30 @@ def _ensure_jaeger_cookie_secret(secrets_dir: Path) -> None:
 
     Writing urlsafe-base64 (44 ASCII chars, no null bytes) means the entrypoint
     can safely read the file with `cat` and pass the value via --cookie-secret.
+
+    Validation: exactly 44 bytes, all chars in the urlsafe-base64 alphabet
+    (A-Z a-z 0-9 - _ =).  Any other content (e.g., 64 raw bytes from PR #50)
+    is treated as INVALID and regenerated.
     """
     import base64
-    cookie_secret_file = secrets_dir / "jaeger_oauth2_cookie_secret"
-    if cookie_secret_file.exists():
-        print("Keycloak: jaeger_oauth2_cookie_secret already exists — skipping.")
-        return
-    # urlsafe-base64 of 32 random bytes → 44 ASCII chars; oauth2-proxy decodes
-    # this to 32 raw bytes (AES-256) at startup.
-    cookie_secret_file.write_text(base64.urlsafe_b64encode(os.urandom(32)).decode())
-    # jaeger-auth runs as UID 65532 (non-root); 0o644 lets it read the file.
-    # Security boundary is the Docker volume (bootstrap_secrets), not the mode.
-    cookie_secret_file.chmod(0o644)
-    print(f"Keycloak: wrote {cookie_secret_file}")
+
+    _B64URL_ALPHABET = (
+        b"abcdefghijklmnopqrstuvwxyz"
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        b"0123456789-_="
+    )
+
+    _ensure_secret_file(
+        secrets_dir / "jaeger_oauth2_cookie_secret",
+        validate=lambda b: (
+            len(b) == 44 and all(c in _B64URL_ALPHABET for c in b)
+        ),
+        # urlsafe-base64 of 32 random bytes → 44 ASCII chars; oauth2-proxy
+        # decodes this to 32 raw bytes (AES-256) at startup.
+        generate=lambda: base64.urlsafe_b64encode(os.urandom(32)).decode(),
+        chmod_mode=0o644,
+        label="jaeger_oauth2_cookie_secret",
+    )
 
 
 def _ensure_admin_user(token: str) -> str:
@@ -571,6 +645,79 @@ def _assign_platform_admin_role(token: str, user_uuid: str) -> None:
     )
     assign_resp.raise_for_status()
     print("Keycloak: role 'mintkey-platform-admin' assigned to admin user.")
+
+
+def _patch_keycloak_client_redirect_uris(
+    token: str,
+    realm: str,
+    client_id_name: str,
+    callback_path: str,
+    public_url_env: str,
+) -> None:
+    """Patch a Keycloak client's redirectUris based on env-var-derived public URL.
+
+    Removes any literal '${...}' placeholder URIs (broken realm import artifacts).
+    Adds <PUBLIC_URL><callback_path> if the env var is set and not already present.
+    Preserves existing http://localhost:* URIs (dev-default).
+    Idempotent: no-op (no PUT) if already correct.
+
+    Source: SSO-1 scope — 2026-05-17-seed-job-idempotency-and-sso.
+    """
+    # Step 1: GET current client representation by clientId
+    resp = requests.get(
+        f"{_KC_INTERNAL_URL}/admin/realms/{realm}/clients",
+        params={"clientId": client_id_name},
+        headers=_kc_headers(token),
+        timeout=15,
+    )
+    resp.raise_for_status()
+    clients = resp.json()
+    if not clients:
+        print(
+            f"Keycloak: WARNING — client '{client_id_name}' not found in realm"
+            f" '{realm}'; skipping redirect URI patch."
+        )
+        return
+    client_rep = clients[0]
+    client_uuid = client_rep["id"]
+    current_uris = client_rep.get("redirectUris") or []
+
+    # Step 2: Compute desired redirectUris
+    # a) Keep existing localhost URIs (dev-default)
+    desired: list[str] = [u for u in current_uris if u.startswith("http://localhost:")]
+
+    # b) Add env-var-derived URI if the var is set (and not already in desired)
+    public_url = os.getenv(public_url_env, "").rstrip("/")
+    if public_url:
+        derived_uri = f"{public_url}{callback_path}"
+        if derived_uri not in desired:
+            desired.append(derived_uri)
+
+    # c) Preserve any extra non-localhost URIs that are not ${...} placeholders
+    #    and are not the env-var-derived one we just handled above.
+    extras = [
+        u for u in current_uris
+        if not u.startswith("http://localhost:")
+        and "${" not in u
+        and (not public_url or u != f"{public_url}{callback_path}")
+    ]
+    desired = desired + extras
+
+    # Step 3: Compare — only PUT if current URIs contain placeholders OR differ
+    current_has_placeholder = any("${" in u for u in current_uris)
+    if not current_has_placeholder and sorted(desired) == sorted(current_uris):
+        print(f"Keycloak: {client_id_name} redirectUris already current.")
+        return
+
+    client_rep["redirectUris"] = desired
+    put_resp = requests.put(
+        f"{_KC_INTERNAL_URL}/admin/realms/{realm}/clients/{client_uuid}",
+        headers=_kc_headers(token),
+        json=client_rep,
+        timeout=15,
+    )
+    put_resp.raise_for_status()
+    print(f"Keycloak: patched {client_id_name} redirectUris: {desired}")
 
 
 def _enforce_pkce_on_clients(token: str) -> None:
@@ -700,6 +847,23 @@ def seed_keycloak_realm_and_admin(
 
     _write_client_secrets(token, secrets_dir)
     _enforce_pkce_on_clients(token)
+
+    # Patch each client's redirectUris with env-var-derived public URL.
+    # Removes any literal ${...} placeholder URIs left by realm import.
+    # Idempotent (no-op when already correct). Source: SSO-1.
+    for _client_id, _callback_path, _env_var in (
+        ("mintkey-admin-api", "/v1/auth/oidc/callback",  "MINTKEY_ADMIN_API_PUBLIC_URL"),
+        ("mintkey-grafana",   "/login/generic_oauth",    "MINTKEY_GRAFANA_PUBLIC_URL"),
+        ("mintkey-jaeger",    "/oauth2/callback",        "MINTKEY_JAEGER_PUBLIC_URL"),
+    ):
+        _patch_keycloak_client_redirect_uris(
+            token,
+            realm="mintkey",
+            client_id_name=_client_id,
+            callback_path=_callback_path,
+            public_url_env=_env_var,
+        )
+
     _ensure_jaeger_cookie_secret(secrets_dir)
 
     user_uuid = _ensure_admin_user(token)
@@ -733,6 +897,40 @@ def run_steps_1_to_5(conn: psycopg2.extensions.connection) -> dict:
         "operator_id": operator_id,
         "password": password,
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin password file helper
+# ---------------------------------------------------------------------------
+
+
+def _ensure_admin_password_file(
+    secrets_dir: Path,
+    plaintext_password: str,
+) -> None:
+    """Write admin_password to bootstrap-secrets with content validation.
+
+    Called from main() only when seed_bootstrap_operator returns a non-empty
+    password (i.e., the operator was just created for the first time).
+
+    Validation: non-empty UTF-8, 12–128 bytes.  seed_bootstrap_operator
+    generates 32-char URL-safe tokens (secrets.token_urlsafe(32)), so any
+    valid file will comfortably satisfy this range.  Content shorter than 12
+    bytes or longer than 128 bytes indicates a format corruption and triggers
+    regeneration with the freshly-generated plaintext_password.
+
+    chmod: 0o400 (owner-read only) — admin_password is only read by
+    _sync_admin_password inside the seed-job itself; no other container mounts
+    this file with a different UID, so strict mode is safe and correct.
+    """
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_secret_file(
+        secrets_dir / "admin_password",
+        validate=lambda b: 12 <= len(b.strip()) <= 128,
+        generate=lambda: plaintext_password,
+        chmod_mode=0o400,
+        label="admin_password",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -773,12 +971,8 @@ def main(argv: list[str] | None = None) -> int:
         password = result["password"]
 
         if password:
-            BOOTSTRAP_SECRETS_DIR.mkdir(parents=True, exist_ok=True)
-            secret_file = BOOTSTRAP_SECRETS_DIR / "admin_password"
-            secret_file.write_text(password)
-            secret_file.chmod(0o400)
+            _ensure_admin_password_file(BOOTSTRAP_SECRETS_DIR, password)
             print(f"Bootstrap admin password: {password}")
-            print(f"Written to {secret_file}")
 
         print(f"Seed steps 1-5 complete. tenant={tenant_id} operator={operator_id}")
         print("NOTE: Steps 6-8 (Vault Adapter keypairs) pending T-1.0.4.")

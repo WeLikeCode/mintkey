@@ -39,8 +39,7 @@
       "serviceAccountsEnabled": false,
       "authorizationServicesEnabled": false,
       "redirectUris": [
-        "http://localhost:8080/v1/auth/oidc/callback",
-        "${MINTKEY_ADMIN_API_PUBLIC_URL}/v1/auth/oidc/callback"
+        "http://localhost:8080/v1/auth/oidc/callback"
       ],
       "webOrigins": ["+"],
       "attributes": {
@@ -59,8 +58,7 @@
       "serviceAccountsEnabled": false,
       "authorizationServicesEnabled": false,
       "redirectUris": [
-        "http://localhost:3003/login/generic_oauth",
-        "${MINTKEY_GRAFANA_PUBLIC_URL}/login/generic_oauth"
+        "http://localhost:3003/login/generic_oauth"
       ],
       "webOrigins": ["+"],
       "attributes": {
@@ -79,8 +77,7 @@
       "serviceAccountsEnabled": false,
       "authorizationServicesEnabled": false,
       "redirectUris": [
-        "http://localhost:16686/oauth2/callback",
-        "${MINTKEY_JAEGER_PUBLIC_URL}/oauth2/callback"
+        "http://localhost:16686/oauth2/callback"
       ],
       "webOrigins": ["+"],
       "attributes": {
