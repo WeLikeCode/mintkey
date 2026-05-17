@@ -58,7 +58,7 @@ Components from the C4 container view ([`docs/architecture/01-architecture/02-co
 ## What is out of scope
 
 - **Third-party dependency vulnerabilities.** Report these upstream first (Go modules, Python packages, Node packages, Kong itself, Keycloak, PostgreSQL). We will update dependencies in response to upstream fixes, but the fix path is upstream.
-- **The dev KEK hardcoded in `docker-compose.yml`.** This is a documented development fixture, not a production secret. See [`PORTS.md`](PORTS.md) for the annotation. In a production deployment, the KEK is loaded from a keyfile at startup; the `docker-compose.yml` value is for local development only.
+- **The dev KEKs (vault, bootstrap) hardcoded in `docker-compose.yml`.** These are documented development fixtures, not production secrets. See [`PORTS.md`](PORTS.md) for annotations. In a production deployment, each KEK is loaded from a secrets manager or keyfile; the `docker-compose.yml` values are for local development only. `MINTKEY_VAULT_KEK` protects vault credentials; `MINTKEY_BOOTSTRAP_KEK` protects the bootstrap admin password written by the seed-job.
 - **Attacks that require an already-compromised operator session.** The threat model assumes the operator's authentication path (Keycloak OIDC) is intact. See [`docs/architecture/01-architecture/05-threat-model.md`](docs/architecture/01-architecture/05-threat-model.md).
 - **Social engineering attacks against maintainers or operators.** Out of scope for a software security policy.
 - **Vulnerabilities in the demo-backend or seed-job containers.** These are development fixtures.
@@ -101,7 +101,17 @@ Each claim is linked to its source of truth and the verification command that pr
 - There is no multi-region deployment; single-region self-host only.
 - We do not prevent prompt injection inside the agent — we contain its impact on credentials.
 - Defense-in-depth has known gaps tracked in [`docs/architecture/01-architecture/open-questions.md`](docs/architecture/01-architecture/open-questions.md) (22 open items as of this writing).
-- The `docker-compose.yml` dev KEK is not a secret. It is a fixture. Do not use it in a production deployment.
+- The `docker-compose.yml` dev KEKs (`MINTKEY_VAULT_KEK`, `MINTKEY_BOOTSTRAP_KEK`) are not secrets. They are development fixtures. Do not use them in a production deployment. Rotate both in any non-local environment.
+
+## Bootstrap KEK (`MINTKEY_BOOTSTRAP_KEK`)
+
+The seed-job encrypts the bootstrap admin password with a Fernet key (`MINTKEY_BOOTSTRAP_KEK`) before writing it to the `bootstrap-secrets` volume (S6 CodeQL cleartext-storage fix). All services that read `admin_password` from the volume must have `MINTKEY_BOOTSTRAP_KEK` set to the same key. This includes `admin-ui` and any CI pipeline that reads the file. Generate a fresh key with:
+
+```sh
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Store it in your secrets manager and inject it as `MINTKEY_BOOTSTRAP_KEK` into both the seed-job and all reader services. The dev default in `docker-compose.yml` must not be used in production.
 
 ---
 

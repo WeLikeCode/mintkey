@@ -9,6 +9,9 @@ Verifies that:
    next call.
 4. _fernet() raises RuntimeError when MINTKEY_BOOTSTRAP_KEK is absent or malformed.
 5. _sync_admin_password decrypts correctly (unit-level, without real Keycloak).
+
+Strike-2 update: _BOOTSTRAP_KEK_RAW module-level attribute removed; _fernet()
+now reads os.getenv() at call time.  Tests updated to use monkeypatch.setenv().
 """
 from __future__ import annotations
 
@@ -46,22 +49,19 @@ def kek_str(kek: bytes) -> str:
 class TestFernet:
     def test_raises_when_kek_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MINTKEY_BOOTSTRAP_KEK", raising=False)
-        # Re-import to pick up the monkeypatched env (module-level var is cached)
-        import importlib
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", None)
         with pytest.raises(RuntimeError, match="MINTKEY_BOOTSTRAP_KEK env var is not set"):
             m._fernet()
 
     def test_raises_on_malformed_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", "not-a-valid-fernet-key!!!")
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", "not-a-valid-fernet-key!!!")
         with pytest.raises(RuntimeError, match="not a valid Fernet key"):
             m._fernet()
 
     def test_returns_fernet_with_valid_key(self, kek_str: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
         f = m._fernet()
         assert isinstance(f, Fernet)
 
@@ -75,7 +75,7 @@ class TestEnsureAdminPasswordFile:
         self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
 
         password = "SuperSecret_bootstrap_password_42"
         m._ensure_admin_password_file(tmp_path, password)
@@ -96,7 +96,7 @@ class TestEnsureAdminPasswordFile:
         self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
 
         m._ensure_admin_password_file(tmp_path, "some_password_value")
         pw_file = tmp_path / "admin_password"
@@ -107,7 +107,7 @@ class TestEnsureAdminPasswordFile:
         self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
 
         password = "first_password_abc"
         m._ensure_admin_password_file(tmp_path, password)
@@ -125,7 +125,7 @@ class TestEnsureAdminPasswordFile:
         self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
 
         pw_file = tmp_path / "admin_password"
         # Write garbage (simulates corruption or old plaintext from pre-S6)
@@ -148,11 +148,11 @@ class TestEnsureAdminPasswordFile:
         kek_b = Fernet.generate_key().decode()
 
         # Write with KEK-A
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_a)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_a)
         m._ensure_admin_password_file(tmp_path, "password_with_kek_a")
 
         # Validate+generate with KEK-B → should detect invalid, regenerate
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_b)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_b)
         m._ensure_admin_password_file(tmp_path, "password_with_kek_b")
 
         pw_file = tmp_path / "admin_password"
@@ -170,7 +170,7 @@ class TestEnsureSecretFileDispatch:
         self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import main as m
-        monkeypatch.setattr(m, "_BOOTSTRAP_KEK_RAW", kek_str)
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
 
         password = "dispatch_test_password"
         m._ensure_admin_password_file(tmp_path, password)

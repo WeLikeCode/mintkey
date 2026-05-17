@@ -43,16 +43,20 @@ BOOTSTRAP_SECRETS_DIR = Path(os.getenv("BOOTSTRAP_SECRETS_DIR", "./data/bootstra
 # runs the seed job.  Without this env var the seed job will abort rather
 # than write a cleartext password to disk.
 # ---------------------------------------------------------------------------
-_BOOTSTRAP_KEK_RAW: str | None = os.getenv("MINTKEY_BOOTSTRAP_KEK")
 
 
 def _fernet() -> Fernet:
     """Return a Fernet instance keyed by MINTKEY_BOOTSTRAP_KEK.
 
+    The env var is read at call time (not module load) so tests can set it
+    dynamically and the seed-job can run in environments where the var is
+    injected after module import.
+
     Raises RuntimeError if the env var is absent or malformed so callers get
     a clear error instead of a silent cleartext write.
     """
-    if not _BOOTSTRAP_KEK_RAW:
+    kek_raw = os.getenv("MINTKEY_BOOTSTRAP_KEK")
+    if not kek_raw:
         raise RuntimeError(
             "MINTKEY_BOOTSTRAP_KEK env var is not set. "
             "Generate a key with: "
@@ -60,7 +64,7 @@ def _fernet() -> Fernet:
             "and add it to the seed-job service environment in docker-compose.yml."
         )
     try:
-        return Fernet(_BOOTSTRAP_KEK_RAW.encode())
+        return Fernet(kek_raw.encode())
     except (ValueError, Exception) as exc:
         raise RuntimeError(
             f"MINTKEY_BOOTSTRAP_KEK is not a valid Fernet key: {exc}"

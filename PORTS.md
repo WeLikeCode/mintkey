@@ -89,6 +89,22 @@ MINTKEY_VAULT_KEK=0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 
 Replace with a proper secret manager reference before any non-local deployment (ADR-0003).
 
+### Bootstrap admin password KEK
+
+The seed-job encrypts the bootstrap admin password with a Fernet key before writing it to the `bootstrap-secrets` Docker volume (S6 CodeQL cleartext-storage fix). All services that read `admin_password` from the volume need this key.
+
+```
+MINTKEY_BOOTSTRAP_KEK=<URL-safe base64-encoded 32-byte Fernet key>
+```
+
+A dev default is hardcoded in `docker-compose.yml`. Generate a production key with:
+
+```sh
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Inject the same key into: `seed-job`, `admin-ui`, and any CI job that reads `admin_password` from the volume. Do not use the dev default in production.
+
 ---
 
 ## Quick access
