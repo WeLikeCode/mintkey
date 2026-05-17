@@ -10,14 +10,20 @@
 - Built `EVIDENCE_LEDGER.md` (33 EvidenceRefs + 2 residual entries).
 - Wrote `ISSUE_INTAKE.md`, `00-plan.md`, `01-orchestrator-chunks.md`, `02-matrix.md`.
 
-## Phase 1 — Wave 1 dispatch
+## Phase 1 — Wave 1 dispatch (✅ done 2026-05-17)
 
-To follow this entry as chunks complete.
+- Dispatched 4 implementers in parallel (sonnet) for C-2, C-3, C-4, C-5 with disjoint file ownership.
+- All 4 returned DONE.
+- C-2 implementer flagged ESC-C2-01 (PROGRESS.md §1 row 1 stale `15 containers`). Resolved in-line by orchestrator citing `EV-COMPOSE-SERVICES`.
 
-## Phase 2 — REVIEWER
+## Phase 2 — REVIEWER (✅ done 2026-05-17)
 
-To follow.
+- Dispatched 4 fresh REVIEWERs (Opus) in parallel.
+- REV-2 PASS, REV-3 PASS-WITH-RESIDUAL, REV-4 PASS, REV-5 PASS.
+- REV-3 residual (roadmap Section 7 L192/L193) resolved in-line by orchestrator extending C-3 scope; logged as ESC-C3-01.
 
-## Phase 3 — Close
+## Phase 3 — Close (in progress)
 
-To follow: commit, push, PR, owner admin-merge.
+- 99-report.md written.
+- 5 atomic commits planned: C-2 (3 docs), C-3 (roadmap + Section 7 inline fix), C-4 (kiro-readiness), C-5 (4 jaeger 99-reports), then a final commit for session-folder updates (matrix + escalations + progress + 99-report).
+- Push + PR + owner admin-merge.
