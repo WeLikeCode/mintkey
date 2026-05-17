@@ -118,3 +118,51 @@ Store it in your secrets manager and inject it as `MINTKEY_BOOTSTRAP_KEK` into b
 ## Operational bugs
 
 Operational bugs that are not security vulnerabilities go to [`docs/REPORTING.md`](docs/REPORTING.md), not here.
+
+---
+
+## Accepted Scorecard Residuals (v0.1.0-prealpha)
+
+The following OpenSSF Scorecard checks are intentionally not addressed in this release. Each has a documented rationale and a clear "revisit at" criterion. These were reviewed and accepted by the project owner on 2026-05-18 (session S11, branch `fix/s11-scorecard-residuals-2026-05-18`).
+
+Operators and contributors should be aware of these gaps. None of them affect the runtime security of a correctly deployed Mintkey instance — they are project-hygiene and process checks, not vulnerability findings (with the exception of VulnerabilitiesID, documented separately below).
+
+### Code-Review (HIGH)
+
+- **Score**: 0 (Found 0/9 approved changesets)
+- **Why accepted**: This is a solo-author pre-v1 project. Requiring ≥1 approved reviewer per PR plus a no-admin-bypass branch protection rule would block iteration with no second human available to do reviews. Admin-merge stays allowed for now.
+- **Revisit when**: Project gains a second active contributor, or before v1.0 stable — whichever comes first.
+
+### Maintained (HIGH — auto-resolving)
+
+- **Score**: 0 (project < 90 days old)
+- **Why accepted**: The repository was created on 2026-05-02 (first commit `b216c76`). Scorecard requires ≥ 90 days of activity. This check auto-resolves at day 90 with no action required.
+- **Revisit when**: 2026-07-31. No action needed; the alert will close naturally once the repo is 90 days old.
+
+### Fuzzing (MEDIUM)
+
+- **Score**: 0 (no fuzzer integration detected)
+- **Why accepted**: Fuzzing is a post-v1 hardening goal. Current test investment is in unit, integration, and architecture tests. Fuzzing adds value but is not blocking for a pre-alpha credential broker.
+- **Revisit when**: Post-v1.0 stable. Candidates for fuzzing: Go `egress-proxy` URL/header parsing and Python credential-broker input parsing. Consider `go test -fuzz` for Go and `hypothesis` for Python.
+
+### CII-Best-Practices (LOW)
+
+- **Score**: 0 (no OpenSSF Best Practices badge)
+- **Why accepted**: Pursuing a CII Best Practices badge requires governance docs, threat model, security testing evidence, and stable contribution processes — most of which exist but need formal attestation. The badge process is appropriate once the project is stable at v1.0.
+- **Revisit when**: Pre-v1.0 stable release. The groundwork (SECURITY.md, threat model, CODE_OF_CONDUCT.md, CONTRIBUTING.md, CodeQL, Dependabot) is substantially in place.
+
+### Vulnerabilities — GO-2026-XXXX (HIGH)
+
+- **Score**: 0 (Scorecard flagged a Go advisory — exact ID truncated in API response)
+- **Context**: The repository's Go module (`go.mod`) depends on `golang.org/x/net v0.52.0`, `google.golang.org/grpc v1.80.0`, and `google.golang.org/protobuf v1.36.11`. `govulncheck` was not available in the remediation environment to confirm which advisory ID is flagged.
+- **Status**: **Deferred pending upstream resolution.** If an upstream patch is now available for the flagged dependency, this is NOT an accepted residual — it must be fixed in a follow-up session. The owner must check the GitHub Security → Code scanning alerts view for the full advisory ID and verify upstream patch availability.
+- **Action required from owner**:
+  1. Open GitHub Security → Code scanning alerts → filter by "scorecard" category.
+  2. Find the Vulnerabilities alert and note the full `GO-2026-XXXX` advisory ID and the affected Go module.
+  3. If a patched version is published: file a follow-up remediation session to bump the dependency.
+  4. If no upstream patch is available yet: add a comment to the alert "Deferred pending upstream patch — per SECURITY.md §Accepted Scorecard Residuals" and dismiss with "Used in tests" or appropriate rationale.
+- **Revisit when**: As soon as the upstream Go module publishes a patch for the flagged advisory.
+
+---
+
+**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security → Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.

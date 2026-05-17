@@ -97,6 +97,20 @@ Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
 
 **Acceptance criteria for "Public Technical Preview launched" (TP-1):** repo pushed to `https://github.com/WeLikeCode/mintkey`, GitHub Discussions enabled, launch announcement posted. Operator action pending.
 
+### Accepted Scorecard Residuals (v0.1.0-prealpha)
+
+The following OpenSSF Scorecard alerts were reviewed on 2026-05-18 and accepted as documented residuals. Full rationale and revisit criteria are in [`SECURITY.md §Accepted Scorecard Residuals`](../../SECURITY.md). Manual alert dismissal in the GitHub Security UI is a separate owner action.
+
+| Scorecard Check | Severity | Decision | Revisit at |
+|---|---|---|---|
+| Code-Review | HIGH | Accepted — solo-author pre-v1; admin-merge stays allowed | v1.0 or second active contributor |
+| Maintained | HIGH | Accepted — auto-resolves; first commit 2026-05-02, day-90 = 2026-07-31 | 2026-07-31 (no action needed) |
+| Fuzzing | MEDIUM | Accepted — post-v1 hardening goal; go fuzz + hypothesis candidates documented in SECURITY.md | Post-v1.0 stable |
+| CII-Best-Practices | LOW | Accepted — badge groundwork in place; formal attestation is a v1.0 goal | Pre-v1.0 stable release |
+| Vulnerabilities (GO-2026-XXXX) | HIGH | Deferred pending upstream patch — owner must confirm advisory ID + patch status in GitHub Security tab | When upstream Go dep patch is published |
+
+Session record: `team/remediation/2026-05-18-s11-scorecard-residuals/`.
+
 ---
 
 ## Section 4 — Builder Roadmap (Phase B)
