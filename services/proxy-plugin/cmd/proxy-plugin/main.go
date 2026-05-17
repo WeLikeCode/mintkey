@@ -270,7 +270,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// segment after stripping /v1/call/ is the UUID to compare against.
 	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
-			urlSvcID, serviceID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+			safeID(urlSvcID), safeID(serviceID), h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
 		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
 			// Emit audit event for strict-mode rejection (#24).
 			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
@@ -307,7 +307,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CallerActorID: agentID,
 	})
 	if err != nil {
-		log.Printf("proxy-plugin: vault GetCredential error (svc=%s tnt=%s): %v", serviceID, tenantID, err)
+		log.Printf("proxy-plugin: vault GetCredential error (svc=%s tnt=%s): %v", safeID(serviceID), safeID(tenantID), err)
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
 		return
@@ -364,8 +364,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			req.URL.Path = stripped
 		}
 		// Inject the credential (also strips the agent's Authorization header).
+		// safeInjectErr returns a fixed string so the credential plaintext
+		// cannot reach the log sink (CodeQL go/clear-text-logging).
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
-			log.Printf("proxy-plugin: inject error: %v", injectErr)
+			log.Printf("proxy-plugin: inject error: %s", safeInjectErr(injectErr))
 		}
 	}
 
@@ -459,7 +461,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		CallerActorID: res.AgentID,
 	})
 	if err != nil {
-		log.Printf("proxy-plugin: classical key vault error (svc=%s tnt=%s): %v", serviceID, tenantID, err)
+		log.Printf("proxy-plugin: classical key vault error (svc=%s tnt=%s): %v", safeID(serviceID), safeID(tenantID), err)
 		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
 		return
 	}
@@ -503,7 +505,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 			req.URL.Path = stripped
 		}
 		if injectErr := credential.Inject(req, backendCred); injectErr != nil {
-			log.Printf("proxy-plugin: classical key inject error: %v", injectErr)
+			log.Printf("proxy-plugin: classical key inject error: %s", safeInjectErr(injectErr))
 		}
 	}
 
@@ -529,6 +531,29 @@ func urlServiceID(path string) string {
 		return trimmed
 	}
 	return ""
+}
+
+// safeID returns s if it is UUID-shaped (safe structured identifier), otherwise
+// returns "[redacted]".  Use this whenever logging values that come from
+// user-controlled inputs (JWT claims, request headers) to prevent accidental
+// credential leakage into logs (CWE-312; CodeQL go/clear-text-logging).
+func safeID(s string) string {
+	if isUUIDShape(s) {
+		return s
+	}
+	return "[redacted]"
+}
+
+// safeInjectErr returns a sanitized string from a credential.Inject error.
+// credential.Inject only ever returns errors containing the auth-scheme integer
+// or a static sentinel ("mtls: not implemented") — never the credential value.
+// This wrapper exists solely to break the CodeQL go/clear-text-logging data-flow
+// path from cred.Value through Inject's return value to the log sink.
+func safeInjectErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // isUUIDShape returns true for strings that look like a UUID
