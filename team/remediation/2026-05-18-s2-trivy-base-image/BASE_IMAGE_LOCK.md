@@ -45,7 +45,8 @@
 
 ## Notes
 
-- `python:3.12-slim` (generic alias) and `python:3.12-slim-bookworm` (explicit distro tag) had diverged — the explicit tag carries Debian bookworm OS-package security updates. `mock-backend` and `seed-job` were pinned to the older generic-alias digest; this session migrates them to the explicit tag with its newer digest.
+- `python:3.12-slim` (generic alias) and `python:3.12-slim-bookworm` (explicit distro tag) had diverged — as of 2026-05-18 the `3.12-slim` alias points to **Debian 13 (trixie)** while `3.12-slim-bookworm` is **Debian 12 (bookworm)**. The new `python:3.12-slim-bookworm` digest (`d193c6f5`) carries `openssl 3.0.19-1~deb12u2` which patches CVE-2026-31789 (fixed version `3.0.19-1~deb12u2`). `mock-backend` and `seed-job` migrated.
 - `node:22-slim` and `node:22-bookworm-slim` resolve identically (same manifest) as of 2026-05-18; the tag is renamed to explicit bookworm for consistency and future clarity.
-- All other base images confirmed current at their pinned digests. No deferred items.
-- Digest source verified: `docker pull --quiet <image> 2>&1` confirmed "up to date" for unchanged images; `python:3.12-slim-bookworm` returned "Downloaded newer image" confirming new content.
+- `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (e5b65587) is the latest available uv image as of 2026-05-18 but still carries **openssl 3.0.18-1~deb12u2** (not yet patched for CVE-2026-31789). Admin-api and mcp-server CVE-2026-31789 will be resolved when astral-sh rebuilds the uv image with updated Debian packages. **STATUS for uv image: deferred — upstream has not yet published a rebuild.**
+- All other base images confirmed current at their pinned digests.
+- Digest source verified: `docker pull --quiet <image> 2>&1` confirmed "up to date" for unchanged images; `python:3.12-slim-bookworm` returned "Downloaded newer image" confirming new content; OS and package versions verified via `docker run --rm <image> cat /etc/os-release` and `dpkg -l`.
