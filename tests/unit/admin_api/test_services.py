@@ -279,3 +279,107 @@ async def test_forbidden_destination_check_rejects_rfc1918() -> None:
     assert _is_forbidden_destination("http://10.0.0.1/api") is True
     assert _is_forbidden_destination("http://127.0.0.1/api") is True
     assert _is_forbidden_destination("https://api.openai.com") is False
+
+
+# ---------------------------------------------------------------------------
+# S8-codeql: py/stack-trace-exposure — test_service unexpected exception path
+# (services.py:802)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_test_service_unexpected_exception_returns_generic_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    POST /{service_id}/test: when httpx.AsyncClient.request raises an unexpected
+    Exception containing a sensitive message, the HTTP response body must contain
+    only the static string "internal_error" (not the exception text), and the
+    sensitive detail must appear in server logs.
+
+    Closes CodeQL alert py/stack-trace-exposure @ services.py:802.
+    Source: S8-codeql; CWE-209; O2 (strike-2 test gap).
+    """
+    import uuid
+    from fastapi import FastAPI
+    from admin_api.api.services import router as services_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    # Build a minimal DB session that returns a valid service row with an
+    # external (non-RFC1918) base_url so the SSRF guardrail passes.
+    service_db_uuid = str(uuid.UUID("00000000-0000-0000-0000-000000000002"))
+
+    def _make_session_with_service():
+        session = MagicMock()
+        stub_row = MagicMock()
+        stub_row.id = service_db_uuid
+        stub_row.base_url = "https://api.openai.com"
+        stub_row.auth_scheme = "bearer_token"
+
+        async def _execute(*args, **kwargs):
+            result = MagicMock()
+            result.fetchone.return_value = stub_row
+            return result
+
+        session.execute = _execute
+        return session
+
+    local_app = FastAPI()
+    local_app.include_router(services_router)
+
+    async def mock_db():
+        yield _make_session_with_service()
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+
+    # Register the test-service path as CSRF-exempt
+    test_path = f"{BASE_URL_PATH}/svc_00000000000000000000000002/test"
+    csrf_exempt(test_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    SENSITIVE_MSG = "DB password=hunter2 leaked"
+
+    # Mock the httpx.AsyncClient used *inside* the services module so only the
+    # outbound call to the external service is intercepted — not the ASGI test
+    # transport (which is also httpx-based).
+    mock_httpx_client = MagicMock()
+    mock_httpx_client.__aenter__ = AsyncMock(return_value=mock_httpx_client)
+    mock_httpx_client.__aexit__ = AsyncMock(return_value=False)
+    mock_httpx_client.request = AsyncMock(side_effect=Exception(SENSITIVE_MSG))
+
+    with (
+        patch(
+            "admin_api.services.vault_client.get_vault_client",
+            new=AsyncMock(return_value=AsyncMock(get_credential=AsyncMock(return_value=None))),
+        ),
+        patch(
+            "admin_api.api.services.audit_emit",
+            new=AsyncMock(),
+        ),
+        patch(
+            "admin_api.api.services.httpx.AsyncClient",
+            return_value=mock_httpx_client,
+        ),
+        caplog.at_level("WARNING", logger="admin_api.api.services"),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=local_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(test_path, json={"method": "GET", "path": "/health"})
+
+    # HTTP response must use the static error string — not the exception message.
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("error") == "internal_error", (
+        f"Stack-trace exposure: expected 'internal_error', got: {body.get('error')!r}"
+    )
+    assert SENSITIVE_MSG not in resp.text, (
+        f"Stack-trace exposure: sensitive exception text appeared in HTTP response body: {resp.text!r}"
+    )
+
+    # Sensitive detail must appear in server-side logs (so operators can diagnose).
+    assert any(SENSITIVE_MSG in record.message for record in caplog.records), (
+        "Expected sensitive error detail to appear in server logs via logger.warning, "
+        f"but log records were: {[r.message for r in caplog.records]}"
+    )
