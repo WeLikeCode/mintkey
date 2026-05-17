@@ -12,6 +12,7 @@ Source: MCP-DISCOVER-DESIGN Section 6 MCP-D-A.
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -165,12 +166,24 @@ def test_mcp_jsonrpc_note_present() -> None:
     )
 
 
+def _note_references_host(note: str, expected_host: str) -> bool:
+    """Return True if *note* contains a URL whose hostname matches expected_host exactly."""
+    for token in note.split():
+        try:
+            parsed = urlparse(token)
+            if parsed.hostname == expected_host:
+                return True
+        except ValueError:
+            pass
+    return False
+
+
 def test_mcp_jsonrpc_note_contains_spec_url() -> None:
     """GET /mcp jsonrpc_note must reference the MCP spec URL."""
     body = _get("/mcp").json()
     note = body["endpoints"]["mcp_jsonrpc"]["jsonrpc_note"]
-    assert "modelcontextprotocol.io" in note, (
-        f"Expected spec URL in jsonrpc_note, got: {note!r}"
+    assert _note_references_host(note, "modelcontextprotocol.io"), (
+        f"Expected spec URL with host modelcontextprotocol.io in jsonrpc_note, got: {note!r}"
     )
 
 
