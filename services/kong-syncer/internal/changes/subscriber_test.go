@@ -278,3 +278,271 @@ func TestSubscriber_KongFailure_SetsLastErr(t *testing.T) {
 		t.Errorf("expected Stats.Total == 0 after failure, got %d", c.Stats.Total())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Retry and periodic safety-net tests (hermetic — no real Postgres / Kong).
+// ---------------------------------------------------------------------------
+
+// errReconcile is a sentinel error returned by stub reconcile fns.
+type errReconcile struct{ msg string }
+
+func (e *errReconcile) Error() string { return e.msg }
+
+// TestInitialReconcileSucceedsFirstTry: reconcileFn returns nil → 0 retry
+// events, subscriber continues without blocking.
+func TestInitialReconcileSucceedsFirstTry(t *testing.T) {
+	var calls atomic.Int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so Start returns after initial reconcile
+
+	c := changes.NewClient(
+		"postgres://fake-dsn",
+		changes.WithTenantScope(changes.AllTenants),
+		changes.WithKongAdminURL("http://fake-kong"),
+		// reconcileFn returns nil on first call → no retries
+		changes.WithReconcileFn(func() error {
+			calls.Add(1)
+			return nil
+		}),
+		changes.WithInitialRetryMaxDuration(5*time.Minute),
+	)
+
+	c.Start(ctx)
+
+	if n := calls.Load(); n != 1 {
+		t.Errorf("expected reconcileFn called exactly once, got %d", n)
+	}
+	if c.LastErr() != nil {
+		t.Errorf("expected LastErr() == nil after success, got %v", c.LastErr())
+	}
+}
+
+// TestInitialReconcileRetriesThenSucceeds: reconcileFn errors twice then returns
+// nil → exactly 2 retry log events, then ok, LISTEN proceeds.
+func TestInitialReconcileRetriesThenSucceeds(t *testing.T) {
+	var calls atomic.Int32
+
+	errFoo := &errReconcile{"db refused"}
+
+	// Use a live context; Start returns naturally after the 3rd call succeeds
+	// (no LISTEN because KongAdminURL is set but db is non-empty fake string).
+	// We cancel after Start returns so the test doesn't leak goroutines.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := changes.NewClient(
+		"postgres://fake-dsn",
+		changes.WithTenantScope(changes.AllTenants),
+		// No KongAdminURL → LISTEN disabled; Start blocks on ctx.Done() after retry.
+		// Set a large enough max duration so retries are not budget-exhausted.
+		changes.WithReconcileFn(func() error {
+			n := calls.Add(1)
+			if n <= 2 {
+				return errFoo
+			}
+			return nil
+		}),
+		changes.WithInitialRetryMaxDuration(30*time.Second),
+		// Use a tiny base backoff so the two sleeps are fast (2×1ms).
+		changes.WithRetryBaseBackoff(1*time.Millisecond),
+	)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.Start(ctx)
+	}()
+
+	// Wait up to 5s for the 3rd reconcile call to land.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() < 3 {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	<-done
+
+	if n := calls.Load(); n < 3 {
+		t.Errorf("expected at least 3 reconcileFn calls (2 failures + 1 success), got %d", n)
+	}
+	if c.LastErr() != nil {
+		t.Errorf("expected LastErr() == nil after eventual success, got %v", c.LastErr())
+	}
+}
+
+// TestInitialReconcileExhaustsRetries: reconcileFn always errors → after the
+// configured duration, exhaustion is logged and Start continues (no panic).
+// Uses a tiny max duration and tiny base backoff so the test exits in <200ms.
+func TestInitialReconcileExhaustsRetries(t *testing.T) {
+	var calls atomic.Int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errPerm := &errReconcile{"permanent error"}
+
+	c := changes.NewClient(
+		"postgres://fake-dsn",
+		changes.WithTenantScope(changes.AllTenants),
+		// No KongAdminURL so LISTEN is disabled — Start blocks on ctx.Done().
+		changes.WithReconcileFn(func() error {
+			calls.Add(1)
+			return errPerm
+		}),
+		// 50ms budget with 1ms base backoff: exhausts after ~6 attempts in <100ms.
+		changes.WithInitialRetryMaxDuration(50*time.Millisecond),
+		changes.WithRetryBaseBackoff(1*time.Millisecond),
+	)
+
+	// Run in goroutine since LISTEN-disabled path blocks on ctx.Done().
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.Start(ctx)
+	}()
+
+	// Give it a moment then cancel.
+	time.Sleep(500 * time.Millisecond)
+	cancel()
+	<-done
+
+	if n := calls.Load(); n < 1 {
+		t.Error("expected reconcileFn called at least once before exhaustion")
+	}
+	// LastErr must be set (not nil) — reconcile never succeeded.
+	if c.LastErr() == nil {
+		t.Error("expected LastErr() != nil after exhaustion, got nil")
+	}
+}
+
+// newFakeTicker returns a *time.Ticker whose C channel is a buffered channel
+// the caller controls. Stop() is safe (no panic).
+func newFakeTicker(ch chan time.Time) *time.Ticker {
+	return &time.Ticker{C: ch}
+}
+
+// TestPeriodicReconcileFires: with a fake ticker channel that fires 3 times,
+// assert reconcileFn is invoked 3 times beyond the initial reconcile.
+func TestPeriodicReconcileFires(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	periodicCh := make(chan time.Time, 4)
+
+	ml := newMockListener()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	tickerCallCount := 0
+	c := changes.NewClient(
+		"postgres://fake-dsn",
+		changes.WithTenantScope(changes.AllTenants),
+		changes.WithKongAdminURL("http://fake-kong"),
+		changes.WithReconcileFn(func() error {
+			calls.Add(1)
+			return nil
+		}),
+		changes.WithListenerFactory(func(_ string) (changes.PGListener, error) {
+			return ml, nil
+		}),
+		changes.WithPeriodicInterval(time.Millisecond), // enable periodic
+		// Replace newTicker: first call (ping ticker) gets a real never-firing
+		// ticker; second call (periodic ticker) gets our fake channel.
+		changes.WithNewTicker(func(d time.Duration) *time.Ticker {
+			tickerCallCount++
+			if tickerCallCount == 1 {
+				// ping ticker — never fires
+				return time.NewTicker(24 * time.Hour)
+			}
+			// periodic ticker — we control it
+			return newFakeTicker(periodicCh)
+		}),
+		changes.WithInitialRetryMaxDuration(0), // try once, don't retry on error
+	)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.Start(ctx)
+	}()
+
+	// Wait for initial reconcile (calls >= 1).
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() < 1 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if calls.Load() < 1 {
+		t.Fatal("initial reconcile did not fire within 2s")
+	}
+	beforePeriodic := calls.Load()
+
+	// Fire 3 periodic ticks.
+	now := time.Now()
+	periodicCh <- now
+	periodicCh <- now
+	periodicCh <- now
+
+	// Wait for 3 additional calls.
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() < beforePeriodic+3 {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	<-done
+
+	if got := calls.Load() - beforePeriodic; got < 3 {
+		t.Errorf("expected at least 3 periodic reconcile calls, got %d", got)
+	}
+}
+
+// TestPeriodicDisabledWhenZero: interval 0 → no periodic ticker → reconcileFn
+// only invoked by the initial path (once), not by any periodic ticks.
+func TestPeriodicDisabledWhenZero(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	ml := newMockListener()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c := changes.NewClient(
+		"postgres://fake-dsn",
+		changes.WithTenantScope(changes.AllTenants),
+		changes.WithKongAdminURL("http://fake-kong"),
+		changes.WithReconcileFn(func() error {
+			calls.Add(1)
+			return nil
+		}),
+		changes.WithListenerFactory(func(_ string) (changes.PGListener, error) {
+			return ml, nil
+		}),
+		changes.WithPeriodicInterval(0), // disabled
+	)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.Start(ctx)
+	}()
+
+	// Wait for initial reconcile.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() < 1 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if calls.Load() < 1 {
+		t.Fatal("initial reconcile did not fire within 2s")
+	}
+
+	// Hold for a bit to confirm no extra periodic calls.
+	snapshot := calls.Load()
+	time.Sleep(100 * time.Millisecond)
+
+	cancel()
+	<-done
+
+	// Allow for the initial call only; no periodic calls.
+	if after := calls.Load(); after != snapshot {
+		t.Errorf("expected no additional reconcile calls after initial (snapshot=%d), got %d total", snapshot, after)
+	}
+}

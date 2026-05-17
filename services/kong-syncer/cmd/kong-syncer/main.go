@@ -43,6 +43,8 @@ func main() {
 		cfg.DatabaseURL,
 		changes.WithTenantScope(changes.AllTenants),
 		changes.WithKongAdminURL(cfg.KongAdminURL),
+		changes.WithInitialRetryMaxDuration(cfg.InitialRetryMaxDuration),
+		changes.WithPeriodicInterval(cfg.PeriodicInterval),
 	)
 
 	mux := http.NewServeMux()
