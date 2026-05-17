@@ -31,7 +31,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -215,6 +215,31 @@ def _forbidden_response() -> JSONResponse:
             "title": "The base_url resolves to a forbidden destination",
         },
     )
+
+
+def _check_ssrf_hostname(final_url: str, base_url: str) -> None:
+    """
+    Enforce that the outbound URL's effective hostname stays within the
+    service's declared base_url hostname — S-SEC-1 / ADR-0014.4.
+
+    A malicious test.path (e.g. ``//evil.com/foo``) could cause the
+    constructed final_url to escape to a different host.  Parsing both URLs
+    and comparing hostnames (case-insensitive) closes that gap.
+
+    Raises HTTPException(400) if the hostnames do not match.
+    """
+    base_host = urlparse(base_url).hostname or ""
+    final_host = urlparse(final_url).hostname or ""
+    if final_host.lower() != base_host.lower():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "mintkey:code": "ssrf_blocked",
+                "title": "Outbound hostname does not match the service base_url",
+                "base_host": base_host,
+                "final_host": final_host,
+            },
+        )
 
 
 def _wire_id_to_db_uuid(wire_id: str) -> str:
@@ -519,6 +544,11 @@ async def test_service_transient(
         separator = "&" if "?" in final_url else "?"
         final_url = f"{final_url}{separator}{query_param}={plaintext}"
 
+    # SSRF host-binding guardrail — S-SEC-1 / ADR-0014.4
+    # Verify the assembled URL's hostname hasn't escaped the service base_url
+    # (e.g. via a malicious test.path like //evil.com/steal).
+    _check_ssrf_hostname(final_url, base_url)
+
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(test.headers or {})}
     timeout_s = test.timeout_ms / 1000.0
@@ -674,6 +704,11 @@ async def test_service(
                 query_param = "api_key"
             separator = "&" if "?" in final_url else "?"
             final_url = f"{final_url}{separator}{query_param}={plaintext}"
+
+    # SSRF host-binding guardrail — S-SEC-1 / ADR-0014.4
+    # base_url comes from DB (trusted) but an attacker-supplied req.path
+    # could still redirect to a different host via e.g. //evil.com/steal.
+    _check_ssrf_hostname(final_url, base_url)
 
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(req.headers or {})}
