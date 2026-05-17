@@ -12,10 +12,10 @@
 
 | Item | State |
 |---|---|
-| Milestones | WS-0 → WS-8 complete (Phase 1) |
-| Unit tests | 244 passing |
-| Architecture tests | 17 passing |
-| Go package tests | 23 packages green |
+| Milestones | WS-0 → WS-8 complete (Phase 1); `v0.1.0-prealpha` tagged 2026-05-17 |
+| Unit tests | 244 passing (2026-05-12 WS-8 snapshot) |
+| Architecture tests | 17 passing (2026-05-12 WS-8 snapshot) |
+| Go package tests | 23 packages green (2026-05-12 WS-8 snapshot) |
 | Wire surface stability | `experimental` (`openapi.yaml` v0.1.0-preview.1) |
 | License | Apache-2.0 |
 
@@ -81,9 +81,9 @@ docker compose up -d
 make smoke
 ```
 
-On a clean machine, the 15 long-running containers and 2 one-shot jobs (liquibase, seed-job) reach healthy state within ≤ 120 seconds. `make smoke` runs the E2E-01 happy path and completes within ≤ 90 seconds.
+On a clean machine, the 17 long-running containers and 2 one-shot jobs (liquibase, seed-job) reach healthy state within ≤ 120 seconds. `make smoke` runs the E2E-01 happy path and completes within ≤ 90 seconds.
 
-Expected `docker compose ps` output: 15 services showing `Up (healthy)`, 2 one-shot jobs showing `Exit 0`.
+Expected `docker compose ps` output: 17 services showing `Up (healthy)`, 2 one-shot jobs showing `Exit 0`.
 
 Get the bootstrap admin password:
 
@@ -132,7 +132,7 @@ docs/
     README.md                      reading order
     00-vision/                     problem, vision, personas, roadmap
     01-architecture/
-      adr/                         20 ADRs (18 accepted, ADR-0018 proposed)
+      adr/                         20 ADRs (all accepted; ADR-0018 accepted 2026-05-11, ADR-0020 accepted 2026-05-15)
       open-questions.md            22 OQ-* tracked items
     03-flows/                      E2E-01 + 6 component flows
     contracts/                     REST OpenAPI, MCP tools, event schemas, proto
