@@ -1,7 +1,23 @@
-# Remediation Report — S6 codeql-cleartext-storage-seed-job
+# S6 codeql-cleartext-storage-seed-job — Closing Report
+
+**Session:** `2026-05-18-s6-codeql-cleartext-storage-seed-job`
+**Branch:** `fix/s6-codeql-cleartext-storage-seed-job-2026-05-18` (from `main @ 5203e23`)
+**Status:** **CLOSED**
+**Closed:** 2026-05-18
+
+**Commits (strike-1 + strike-2 + strike-3):**
+- `a1c36d7` fix(seed-job): encrypt bootstrap admin password with Fernet (S6 CodeQL)
+- `df3bc90` feat(mintkey-models): shared Fernet decrypt helper
+- `def66fa` fix(readers): patch 14 readers
+- `47822b0` fix(admin-ui, compose): JS decrypt + admin-ui KEK env
+- `74bf31b` docs(security, ports, report): KEK docs + seed-job _fernet() cleanup
+- `49cc84b` fix(compose): unify MINTKEY_BOOTSTRAP_KEK default across seed-job and admin-ui
+- `6911bbd` fix(admin-ui): surface Fernet decrypt errors instead of silent catch
+- `<strike-3-docs-sha>` docs(s6): 99-report status header + strike-3 supplement
+
+---
 
 **Date**: 2026-05-18
-**Branch**: `fix/s6-codeql-cleartext-storage-seed-job-2026-05-18`
 **Alerts closed**: 2 HIGH — `py/clear-text-storage-sensitive-data` at
 `seed-job/main.py:352` and `seed-job/main.py:354`
 
@@ -83,3 +99,69 @@ Note: `test_audit_append_only.py` matched the rg pattern but only uses `"admin_p
 ### Operator instructions — CI
 
 Any pipeline that reads `admin_password` from the bootstrap-secrets volume (directly or via a mounted path) must export `MINTKEY_BOOTSTRAP_KEK` equal to the value used by the seed-job. Without it, `read_bootstrap_password()` raises `BootstrapPasswordError` with a clear message.
+
+---
+
+## Strike-3 supplement (2026-05-18)
+
+Addressed three reviewer-flagged issues; no scope expansion.
+
+### Issue #1 closed — KEK default mismatch (docker-compose.yml)
+
+`admin-ui` had `jePSMThbHXS8J0V2d3xrOOgLmYhXx3V7VCcpVYeX6_0=` as the
+`${MINTKEY_BOOTSTRAP_KEK:-...}` fallback, while `seed-job` and
+`scripts/e2e-setup-env.sh` used `TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=`.
+In dev (no env override), seed-job encrypted with one key, admin-ui tried to
+decrypt with the other — Fernet HMAC fails, login silently breaks.
+
+Fix: `docker-compose.yml:236` updated to use the same canonical dev key as
+line 126 (seed-job) and `scripts/e2e-setup-env.sh:71`.
+
+| File | Change |
+|------|--------|
+| `docker-compose.yml:236` | `jePSMT...` → `TUQpz9...` (admin-ui KEK default) |
+
+### Issue #2 closed — silent catch in admin-ui/src/lib/api-client.ts
+
+`getAdminPassword` previously had a bare `catch { /* fall through */ }` that
+swallowed every decrypt error (HMAC fail, malformed ciphertext, missing KEK),
+then silently returned `""`. This made the KEK-mismatch bug invisible and left
+server-to-server admin-api calls running unauthenticated.
+
+New behaviour:
+- `MINTKEY_BOOTSTRAP_KEK` **unset**: silent plaintext/env-var fallback
+  (documented dev path, no error log).
+- `MINTKEY_BOOTSTRAP_KEK` **set** but decrypt fails: `console.error` with the
+  error message (KEK value is never logged), returns `""` so `getApiSession`
+  treats it as auth-unavailable.
+- In `NODE_ENV=production`: error is rethrown so misconfiguration is loud at
+  startup.
+
+8 vitest tests added in `admin-ui/tests/test_security_config.test.ts` covering
+both paths (including `vi.spyOn(console, 'error')` assertions).
+
+| File | Change |
+|------|--------|
+| `admin-ui/src/lib/api-client.ts` | Reshaped `getAdminPassword`; exported `@internal` for tests |
+| `admin-ui/tests/test_security_config.test.ts` | New: 8 tests for KEK-absent and KEK-set-wrong paths |
+
+### Issue #3 closed — 99-report header + commit SHA citations
+
+This report now has the standard closing-report header block (matching
+`team/remediation/2026-05-17-kong-syncer-startup-retry/99-report.md` convention)
+with `**Status:** **CLOSED**`, branch/session metadata, and all 8 commit SHAs
+cited.
+
+### Verification
+
+```
+rg -nA1 "MINTKEY_BOOTSTRAP_KEK:-" docker-compose.yml
+# 126: seed-job  TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=
+# 236: admin-ui  TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=  ← now match
+
+cd admin-ui && pnpm exec vitest run tests/test_security_config.test.ts
+# 8 passed
+
+cd seed-job && python -m pytest tests/ -x -q
+# 9 passed
+```
