@@ -25,7 +25,7 @@ The CodeQL `py/full-ssrf` alert at `admin-api/src/admin_api/api/services.py:537`
   - Called `_check_ssrf_hostname` in `test_service_transient` immediately after `final_url` is fully assembled (post `api_key_query` mutation), before the `httpx.AsyncClient.request()` call at the CodeQL alert site.
   - Called `_check_ssrf_hostname` in `test_service` at the analogous position for defense-in-depth (user-controlled `req.path` could still redirect even when `base_url` is DB-sourced).
 
-- `admin-api/tests/test_ssrf_hostname_check.py` (new file)
+- `tests/unit/admin_api/test_ssrf_hostname_check.py` (new file)
   - 4 negative tests (`TestSSRFBlocked`): `169.254.169.254`, `localhost`, `internal.local`, `evil.com` as `final_url` host → each raises `HTTPException(400, ssrf_blocked)`.
   - 4 positive tests (`TestSSRFPermitted`): matching hostname, matching hostname with path, case-insensitive match, matching hostname with query params → all return `None` (no exception).
 
@@ -55,7 +55,7 @@ $ git status --short
 
 $ git diff --stat origin/main..HEAD
  admin-api/src/admin_api/api/services.py                              | 44 +++++++++++++++++++++++++++++++++++++++
- admin-api/tests/test_ssrf_hostname_check.py                          | 126 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/unit/admin_api/test_ssrf_hostname_check.py                      | 126 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  team/remediation/2026-05-18-s1-codeql-ssrf/ISSUE_INTAKE.md           | 84 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  team/remediation/2026-05-18-s1-codeql-ssrf/99-report.md              | (this file)
 

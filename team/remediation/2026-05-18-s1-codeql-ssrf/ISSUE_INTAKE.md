@@ -38,7 +38,7 @@ After `final_url` is assembled, the effective hostname parsed from `final_url` m
 
 May be changed:
 - `admin-api/src/admin_api/api/services.py` — add `_check_ssrf_hostname()` helper; call it in both `test_service_transient` and `test_service` after `final_url` is fully assembled.
-- `admin-api/tests/test_ssrf_hostname_check.py` — new unit tests (negative + positive cases).
+- `tests/unit/admin_api/test_ssrf_hostname_check.py` — new unit tests (negative + positive cases).
 - `team/remediation/2026-05-18-s1-codeql-ssrf/ISSUE_INTAKE.md` — this file.
 - `team/remediation/2026-05-18-s1-codeql-ssrf/99-report.md` — closing report.
 
