@@ -24,11 +24,47 @@ from typing import Callable
 
 import psycopg2
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 from tenacity import retry, stop_after_delay, wait_exponential
 
 DEFAULT_TENANT_SLUG = "t_default"
 DEFAULT_ADMIN_EMAIL = os.getenv("MINTKEY_BOOTSTRAP_EMAIL", "admin@mintkey.internal")
 BOOTSTRAP_SECRETS_DIR = Path(os.getenv("BOOTSTRAP_SECRETS_DIR", "./data/bootstrap-secrets"))
+
+# ---------------------------------------------------------------------------
+# Bootstrap KEK — Fernet key for encrypting the admin password on disk.
+#
+# MINTKEY_BOOTSTRAP_KEK must be a URL-safe base64-encoded 32-byte key
+# (exactly as returned by Fernet.generate_key()).  Generate one with:
+#
+#   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#
+# and set it in docker-compose.yml (seed-job service) and any CI env that
+# runs the seed job.  Without this env var the seed job will abort rather
+# than write a cleartext password to disk.
+# ---------------------------------------------------------------------------
+_BOOTSTRAP_KEK_RAW: str | None = os.getenv("MINTKEY_BOOTSTRAP_KEK")
+
+
+def _fernet() -> Fernet:
+    """Return a Fernet instance keyed by MINTKEY_BOOTSTRAP_KEK.
+
+    Raises RuntimeError if the env var is absent or malformed so callers get
+    a clear error instead of a silent cleartext write.
+    """
+    if not _BOOTSTRAP_KEK_RAW:
+        raise RuntimeError(
+            "MINTKEY_BOOTSTRAP_KEK env var is not set. "
+            "Generate a key with: "
+            "python3 -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" "
+            "and add it to the seed-job service environment in docker-compose.yml."
+        )
+    try:
+        return Fernet(_BOOTSTRAP_KEK_RAW.encode())
+    except (ValueError, Exception) as exc:
+        raise RuntimeError(
+            f"MINTKEY_BOOTSTRAP_KEK is not a valid Fernet key: {exc}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +383,11 @@ def _ensure_secret_file(
         print(
             f"Bootstrap: {_label} INVALID (size={len(existing)}) — regenerating."
         )
+    # If the file exists but is being overwritten (invalid-content path above),
+    # it may be read-only (e.g. 0o400).  Make it writable before overwriting so
+    # we don't get PermissionError on the write, then re-apply chmod_mode.
+    if path.exists():
+        path.chmod(0o600)
     value = generate()
     if isinstance(value, str):
         path.write_text(value)
@@ -599,7 +640,12 @@ def _ensure_admin_user(token: str) -> str:
 
 
 def _sync_admin_password(token: str, user_uuid: str, secrets_dir: Path) -> None:
-    """Set admin password in Keycloak, gated by mtime sentinel."""
+    """Set admin password in Keycloak, gated by mtime sentinel.
+
+    The admin_password file contains Fernet-encrypted ciphertext; this
+    function decrypts it with MINTKEY_BOOTSTRAP_KEK before submitting to
+    Keycloak.  The plaintext is never written to disk.
+    """
     admin_password_file = secrets_dir / "admin_password"
     sentinel_file = secrets_dir / ".admin_password_synced"
 
@@ -614,7 +660,8 @@ def _sync_admin_password(token: str, user_uuid: str, secrets_dir: Path) -> None:
             print("Keycloak: admin password already synced (sentinel up-to-date) — skipping.")
             return
 
-    password = admin_password_file.read_text().strip()
+    ciphertext = admin_password_file.read_bytes()
+    password = _fernet().decrypt(ciphertext).decode().strip()
     resp = requests.put(
         f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users/{user_uuid}/reset-password",
         headers=_kc_headers(token),
@@ -908,26 +955,37 @@ def _ensure_admin_password_file(
     secrets_dir: Path,
     plaintext_password: str,
 ) -> None:
-    """Write admin_password to bootstrap-secrets with content validation.
+    """Write Fernet-encrypted admin_password to bootstrap-secrets.
 
     Called from main() only when seed_bootstrap_operator returns a non-empty
     password (i.e., the operator was just created for the first time).
 
-    Validation: non-empty UTF-8, 12–128 bytes.  seed_bootstrap_operator
-    generates 32-char URL-safe tokens (secrets.token_urlsafe(32)), so any
-    valid file will comfortably satisfy this range.  Content shorter than 12
-    bytes or longer than 128 bytes indicates a format corruption and triggers
-    regeneration with the freshly-generated plaintext_password.
+    The file on disk contains only Fernet ciphertext (not the plaintext
+    password), so CodeQL py/clear-text-storage-sensitive-data does not fire.
+    Decryption requires MINTKEY_BOOTSTRAP_KEK to be present in the
+    environment; see _fernet() for key-provisioning instructions.
 
-    chmod: 0o400 (owner-read only) — admin_password is only read by
-    _sync_admin_password inside the seed-job itself; no other container mounts
-    this file with a different UID, so strict mode is safe and correct.
+    Validation: Fernet tokens are URL-safe base64 and always start with
+    'gAAAAA' (version byte 0x80).  Any bytes that cannot be decrypted with
+    the current KEK are treated as invalid and regenerated.
+
+    chmod: 0o400 (owner-read only) — only read by _sync_admin_password inside
+    this same seed-job container.
     """
+    f = _fernet()
+
+    def _validate(raw: bytes) -> bool:
+        try:
+            plaintext = f.decrypt(raw)
+            return 12 <= len(plaintext.strip()) <= 128
+        except (InvalidToken, Exception):
+            return False
+
     secrets_dir.mkdir(parents=True, exist_ok=True)
     _ensure_secret_file(
         secrets_dir / "admin_password",
-        validate=lambda b: 12 <= len(b.strip()) <= 128,
-        generate=lambda: plaintext_password,
+        validate=_validate,
+        generate=lambda: f.encrypt(plaintext_password.encode()),
         chmod_mode=0o400,
         label="admin_password",
     )

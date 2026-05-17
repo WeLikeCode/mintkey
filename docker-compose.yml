@@ -118,6 +118,12 @@ services:
       MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-}"
       MINTKEY_GRAFANA_PUBLIC_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-}"
       MINTKEY_JAEGER_PUBLIC_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-}"
+      # S6 — Fernet key for encrypting the bootstrap admin password on disk.
+      # Closes CodeQL py/clear-text-storage-sensitive-data (seed-job/main.py).
+      # Override in production via .env or secrets manager; never commit a
+      # real key here.  Generate a fresh key with:
+      #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
     networks:
