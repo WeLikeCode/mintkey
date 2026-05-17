@@ -1,8 +1,16 @@
 # Closing Report — S9 trivy-bundled-bins
 
-**Date:** 2026-05-18
-**Branch:** `fix/s9-trivy-bundled-bins-2026-05-18`
-**Base SHA:** `7674d9f`
+**Session:** `2026-05-18-s9-trivy-bundled-bins`
+**Branch:** `fix/s9-trivy-bundled-bins-2026-05-18` (from `main @ 7674d9f`)
+**Status:** **CLOSED**
+**Closed:** 2026-05-18
+
+**Commits:**
+- `f2bc783` docs(s9): scaffold s9-trivy-bundled-bins session
+- `848ce2f` fix(jaeger-auth): bump oauth2-proxy v7.6.0 → v7.15.2
+- `f5101bb` fix(vault-adapter): bump grpc_health_probe v0.4.28 → v0.4.50 with SHA256 verification
+- `c9b06eb` fix(admin-ui): bump esbuild 0.25.12 → 0.28.0
+- `5d1879e` docs(s9): closing report — this commit (self-referential; SHA captured here post-write)
 
 ## Summary
 
