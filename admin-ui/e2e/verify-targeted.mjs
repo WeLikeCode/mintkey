@@ -29,6 +29,18 @@ async function ss(page, name) {
   log(`  Screenshot: ${p}`);
 }
 
+/** Return true if any whitespace-delimited token in text parses as a URL with the given hostname. */
+function textContainsHost(text, expectedHost) {
+  for (const token of text.split(/\s+/)) {
+    try {
+      if (new URL(token).hostname === expectedHost) return true;
+    } catch {
+      // not a URL — skip
+    }
+  }
+  return false;
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   let storageState;
@@ -256,7 +268,7 @@ async function main() {
     const showBody = await page.locator("body").innerText().catch(() => "");
 
     const hasSvcPrefix  = showBody.includes("svc_");
-    const hasBaseUrl    = showBody.includes("base_url") || showBody.includes("Base url") || showBody.includes("https://api.github.com");
+    const hasBaseUrl    = showBody.includes("base_url") || showBody.includes("Base url") || textContainsHost(showBody, "api.github.com");
     const hasScheme     = showBody.includes("auth_scheme") || showBody.includes("Auth scheme") || showBody.includes("bearer_token");
     const hasDesc       = showBody.includes("description") || showBody.includes("Description");
     const hasOpenApi    = showBody.includes("openapi_url") || showBody.includes("Openapi url");

@@ -36,6 +36,18 @@ async function ss(page: any, filename: string) {
   return fpath;
 }
 
+/** Return true if any whitespace-delimited token in text parses as a URL with the given hostname. */
+function textContainsHost(text: string, expectedHost: string): boolean {
+  for (const token of text.split(/\s+/)) {
+    try {
+      if (new URL(token).hostname === expectedHost) return true;
+    } catch {
+      // not a URL — skip
+    }
+  }
+  return false;
+}
+
 test.describe("Runbook UI Verifier — github-quickstart.md", () => {
   test.setTimeout(180_000);
 
@@ -496,7 +508,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
 
     // Verify fields
     const hasSvcPrefix = bodyText.includes("svc_");
-    const hasBaseUrl = bodyText.includes("base_url") || bodyText.includes("Base url") || bodyText.includes("https://api.github.com");
+    const hasBaseUrl = bodyText.includes("base_url") || bodyText.includes("Base url") || textContainsHost(bodyText, "api.github.com");
     const hasAuthScheme = bodyText.includes("auth_scheme") || bodyText.includes("Auth scheme") || bodyText.includes("bearer_token");
     const hasDescription = bodyText.includes("description") || bodyText.includes("Description");
     const hasOpenApiUrl = bodyText.includes("openapi_url") || bodyText.includes("Openapi url");
