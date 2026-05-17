@@ -20,6 +20,7 @@
     "adminjs": "^7.8.13",
     "express": "^4.21.1",
     "express-formidable": "^1.2.0",
+    "express-rate-limit": "7.5.0",
     "express-session": "^1.18.1",
     "jose": "^5.9.6",
     "pino": "^9.5.0",

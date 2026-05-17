@@ -20,6 +20,7 @@ import AdminJS from "adminjs";
 import { buildRouter } from "@adminjs/express";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
 import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
@@ -185,8 +186,11 @@ async function main() {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        sameSite: "lax",
-        secure: false,
+        sameSite: "strict",
+        // secure: always true — admin-ui MUST be served over HTTPS in all envs.
+        // In local dev behind a TLS-terminating proxy (e.g. Caddy / ngrok) this
+        // is already satisfied. Do NOT set to false: CWE-614 / CodeQL clear-text-cookie.
+        secure: true,
         maxAge: 8 * 60 * 60 * 1000, // 8 h — matches mintkey_session TTL
       },
     })
@@ -199,8 +203,20 @@ async function main() {
     res.json({ status: "ok", service: "admin-ui" });
   });
 
+  // Rate-limiter for login endpoints — defense-in-depth against brute-force.
+  // Kong-level rate-limiting is the primary control; this is a secondary in-process
+  // guard (CWE-307 / CodeQL js/missing-rate-limiting).
+  // 20 requests per 15-minute window per IP on login pages.
+  const loginRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts. Please try again later." },
+  });
+
   // GET /admin/login — SSO-C login page (primary: Keycloak; collapsed: break-glass).
-  app.get("/admin/login", (req, res) => {
+  app.get("/admin/login", loginRateLimit, (req, res) => {
     const err = typeof req.query["error"] === "string" ? req.query["error"] : undefined;
     res.type("html").send(renderLoginPage(err));
   });
@@ -216,6 +232,7 @@ async function main() {
   // admin-api origin. On success, redirects to /admin. On failure, shows error.
   app.post(
     "/auth/internal-login-proxy",
+    loginRateLimit,
     express.urlencoded({ extended: false }),
     async (req, res) => {
     const { email, password } = req.body as { email?: string; password?: string };
