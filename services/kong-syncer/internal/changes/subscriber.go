@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -86,6 +87,51 @@ func WithFetcherFn(fn func() ([]kong.ServiceEntry, error)) Option {
 	}
 }
 
+// WithInitialRetryMaxDuration sets the cap on total wall-clock time spent
+// retrying the initial reconcile. 0 means try exactly once (no retries).
+func WithInitialRetryMaxDuration(d time.Duration) Option {
+	return func(c *Client) {
+		c.initialRetryMaxDuration = d
+	}
+}
+
+// WithPeriodicInterval sets the period of the safety-net reconcile ticker.
+// 0 disables the periodic safety-net entirely.
+func WithPeriodicInterval(d time.Duration) Option {
+	return func(c *Client) {
+		c.periodicInterval = d
+	}
+}
+
+// WithReconcileFn overrides the reconcile function (for testing).
+func WithReconcileFn(fn func() error) Option {
+	return func(c *Client) {
+		c.reconcileFn = fn
+	}
+}
+
+// WithNewTicker overrides the ticker constructor (for testing).
+func WithNewTicker(fn func(time.Duration) *time.Ticker) Option {
+	return func(c *Client) {
+		c.newTicker = fn
+	}
+}
+
+// WithNow overrides the clock (for testing).
+func WithNow(fn func() time.Time) Option {
+	return func(c *Client) {
+		c.now = fn
+	}
+}
+
+// WithRetryBaseBackoff overrides the initial backoff duration (for testing).
+// Default is 1s. This option exists solely to make unit tests fast.
+func WithRetryBaseBackoff(d time.Duration) Option {
+	return func(c *Client) {
+		c.retryBaseBackoff = d
+	}
+}
+
 // PushStats holds mutable push counters that main.go reads for /metrics.
 type PushStats struct {
 	total        atomic.Int64
@@ -122,9 +168,17 @@ type Client struct {
 	httpClient   *http.Client
 	Stats        *PushStats
 
+	// Retry / periodic config knobs.
+	initialRetryMaxDuration time.Duration
+	periodicInterval        time.Duration
+	retryBaseBackoff        time.Duration // first backoff sleep; doubles each round
+
 	// Overridable for testing.
 	listenerFactory ListenerFactory
 	fetcherFn       func() ([]kong.ServiceEntry, error)
+	reconcileFn     func() error                     // defaults to c.reconcile
+	newTicker       func(time.Duration) *time.Ticker // defaults to time.NewTicker
+	now             func() time.Time                 // defaults to time.Now
 
 	// mu guards lastErr; used by health handler.
 	mu      sync.RWMutex
@@ -136,14 +190,23 @@ type Client struct {
 // db must be the DATABASE_URL DSN string (passed from config.Load()).
 func NewClient(db interface{}, opts ...Option) *Client {
 	c := &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		Stats:      &PushStats{},
+		httpClient:              &http.Client{Timeout: 30 * time.Second},
+		Stats:                   &PushStats{},
+		initialRetryMaxDuration: 5 * time.Minute,
+		periodicInterval:        5 * time.Minute,
+		retryBaseBackoff:        time.Second,
+		newTicker:               time.NewTicker,
+		now:                     time.Now,
 	}
 	if ds, ok := db.(string); ok {
 		c.db = ds
 	}
 	for _, o := range opts {
 		o(c)
+	}
+	// reconcileFn defaults to c.reconcile after options are applied.
+	if c.reconcileFn == nil {
+		c.reconcileFn = c.reconcile
 	}
 	return c
 }
@@ -155,19 +218,17 @@ func (c *Client) LastErr() error {
 	return c.lastErr
 }
 
-// Start performs an initial reconcile then blocks listening for mintkey:service
-// NOTIFY events, reconciling on each one. Panics if WithTenantScope was not
-// called, enforcing ADR-0014.1 / Req MT-4.
+// Start performs an initial reconcile (with exponential-backoff retry) then
+// blocks listening for mintkey:service NOTIFY events, reconciling on each one.
+// A periodic safety-net ticker also fires at cfg.PeriodicInterval (if > 0).
+// Panics if WithTenantScope was not called, enforcing ADR-0014.1 / Req MT-4.
 func (c *Client) Start(ctx context.Context) {
 	if !c.scopeSet {
 		panic("changes: WithTenantScope is required (ADR-0014.1)")
 	}
 
-	// --- initial reconcile -------------------------------------------------
-	if err := c.reconcile(); err != nil {
-		log.Printf("changes: initial reconcile error: %v", err)
-		c.setLastErr(err)
-	}
+	// --- initial reconcile with exponential backoff ------------------------
+	c.initialReconcileWithRetry(ctx)
 
 	// If no Kong admin URL is configured there is nothing to listen for.
 	if c.kongAdminURL == "" || c.db == "" {
@@ -206,9 +267,72 @@ done:
 	log.Println("changes: subscriber stopped")
 }
 
+// initialReconcileWithRetry retries c.reconcileFn with exponential backoff
+// until success or the configured max duration is exhausted. On exhaustion it
+// logs a warning and returns (does NOT crash) so the LISTEN loop or a future
+// periodic tick can recover.
+func (c *Client) initialReconcileWithRetry(ctx context.Context) {
+	startTime := c.now()
+	backoff := c.retryBaseBackoff
+	const maxBackoff = 256 * time.Second
+
+	for attempt := 1; ; attempt++ {
+		err := c.reconcileFn()
+		if err == nil {
+			elapsed := c.now().Sub(startTime).Milliseconds()
+			log.Printf("level=info event=kong_sync.initial_reconcile_ok attempt=%d elapsed_ms=%d", attempt, elapsed)
+			c.setLastErr(nil)
+			return
+		}
+
+		c.setLastErr(err)
+		elapsed := c.now().Sub(startTime)
+
+		// Check whether we have budget for another sleep.
+		if c.initialRetryMaxDuration > 0 && elapsed >= c.initialRetryMaxDuration {
+			log.Printf("level=warn event=kong_sync.initial_retry_exhausted attempts=%d total_elapsed_ms=%d",
+				attempt, elapsed.Milliseconds())
+			return
+		}
+
+		// Apply ±25% jitter to backoff.
+		jitter := time.Duration(rand.Int63n(int64(backoff/2))) - backoff/4
+		sleep := backoff + jitter
+		if sleep < 0 {
+			sleep = backoff
+		}
+
+		// Don't sleep past the remaining budget.
+		if c.initialRetryMaxDuration > 0 {
+			remaining := c.initialRetryMaxDuration - elapsed
+			if sleep > remaining {
+				sleep = remaining
+			}
+		}
+
+		log.Printf("level=info event=kong_sync.initial_retry attempt=%d elapsed_ms=%d next_backoff_ms=%d err=%q",
+			attempt, elapsed.Milliseconds(), sleep.Milliseconds(), err.Error())
+
+		select {
+		case <-ctx.Done():
+			log.Printf("level=warn event=kong_sync.initial_retry_exhausted attempts=%d total_elapsed_ms=%d",
+				attempt, c.now().Sub(startTime).Milliseconds())
+			return
+		case <-time.After(sleep):
+		}
+
+		// Double backoff for next round, capped at maxBackoff.
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+	}
+}
+
 // listenLoop opens a fresh PGListener, LISTENs on mintkey:service, and
-// reconciles on each incoming notification. Returns nil when ctx is cancelled,
-// or an error on a fatal connection problem.
+// reconciles on each incoming notification. A periodic safety-net ticker also
+// calls reconcile at c.periodicInterval (when > 0). Returns nil when ctx is
+// cancelled, or an error on a fatal connection problem.
 func (c *Client) listenLoop(ctx context.Context) error {
 	var listener PGListener
 
@@ -241,8 +365,16 @@ func (c *Client) listenLoop(ctx context.Context) error {
 
 	notifyCh := listener.NotificationChannel()
 
-	pingTicker := time.NewTicker(30 * time.Second)
+	pingTicker := c.newTicker(30 * time.Second)
 	defer pingTicker.Stop()
+
+	// Periodic safety-net ticker — nil channel when disabled (0 interval).
+	var periodicCh <-chan time.Time
+	if c.periodicInterval > 0 {
+		t := c.newTicker(c.periodicInterval)
+		defer t.Stop()
+		periodicCh = t.C
+	}
 
 	for {
 		select {
@@ -258,10 +390,13 @@ func (c *Client) listenLoop(ctx context.Context) error {
 				continue
 			}
 			log.Printf("changes: received NOTIFY on %q (payload=%q) — triggering reconcile", n.Channel, n.Extra)
-			if err := c.reconcile(); err != nil {
+			if err := c.reconcileFn(); err != nil {
 				log.Printf("changes: reconcile error: %v", err)
 				c.setLastErr(err)
 			}
+
+		case <-periodicCh:
+			c.dispatchPeriodicReconcile()
 
 		case <-pingTicker.C:
 			if err := listener.Ping(); err != nil {
@@ -269,6 +404,18 @@ func (c *Client) listenLoop(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// dispatchPeriodicReconcile calls reconcileFn and logs the outcome.
+func (c *Client) dispatchPeriodicReconcile() {
+	start := c.now()
+	if err := c.reconcileFn(); err != nil {
+		log.Printf("level=error event=kong_sync.periodic_reconcile_err err=%q", err.Error())
+		c.setLastErr(err)
+		return
+	}
+	elapsed := c.now().Sub(start).Milliseconds()
+	log.Printf("level=info event=kong_sync.periodic_reconcile elapsed_ms=%d", elapsed)
 }
 
 // reconcile fetches all active services from Postgres and pushes a fresh
