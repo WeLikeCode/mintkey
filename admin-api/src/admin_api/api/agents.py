@@ -22,12 +22,15 @@ Source: T-1.4.1; ADR-0008; ADR-0014.7; ADR-0017.11; S-SEC-1.
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from argon2 import PasswordHasher
 from fastapi import APIRouter, Depends, Response
@@ -638,7 +641,11 @@ async def rotate_agent_key(
         try:
             new_expires_at = _resolve_expires_at(body.expires_in, now)
         except ValueError as e:
-            return JSONResponse(status_code=422, content={"mintkey:code": "invalid_expires_in", "title": str(e)})
+            logger.warning("rotate_key: invalid expires_in rejected. %s", e)
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_expires_in", "title": "expires_in must be one of 30d/90d/180d/365d or empty string"},
+            )
 
     plaintext, new_hash, new_fp = _generate_agent_api_key()
 

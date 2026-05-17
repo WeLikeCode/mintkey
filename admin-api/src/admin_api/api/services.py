@@ -806,6 +806,12 @@ async def test_service(
         return JSONResponse({"ok": False, "latency_ms": test_latency_ms, "error": "timeout"})
     except Exception as exc:  # noqa: BLE001
         test_latency_ms = int((_time.monotonic() - start) * 1000)
+        logger.warning(
+            "test_service: unexpected error. service=%s tenant=%s error=%r",
+            service_id,
+            str(tenant_id),
+            exc,
+        )
 
         try:
             await audit_emit(
@@ -824,7 +830,7 @@ async def test_service(
                     "latency_ms": test_latency_ms,
                     "ok": False,
                     "transient": False,
-                    "error": str(exc),
+                    "error": "internal_error",
                 },
             )
         except Exception:  # noqa: BLE001
@@ -834,7 +840,7 @@ async def test_service(
                 str(tenant_id),
             )
 
-        return JSONResponse({"ok": False, "error": str(exc)})
+        return JSONResponse({"ok": False, "error": "internal_error"})
 
 
 @router.patch("/{service_id}")

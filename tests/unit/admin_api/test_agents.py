@@ -621,3 +621,53 @@ async def test_rotate_key_audit_emitted_with_no_plaintext(mock_notify) -> None:
     assert "mk_agent_" not in payload_str, (
         f"Plaintext api_key must NOT appear in audit payload, got: {payload_str}"
     )
+
+
+# ---------------------------------------------------------------------------
+# S8-codeql: py/stack-trace-exposure — rotate-key invalid expires_in
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_invalid_expires_in_title_is_generic(mock_audit, mock_notify) -> None:
+    """
+    POST rotate-key with invalid expires_in must return 422 with:
+      - mintkey:code: invalid_expires_in
+      - title that does NOT echo back user-supplied input (no stack-trace exposure)
+
+    Closes CodeQL alert py/stack-trace-exposure @ agents.py:641.
+    Source: S8-codeql; CWE-209.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router, _new_agent_id, _wire_id_to_uuid
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    wire_id = _new_agent_id()
+    agent_uuid_str = _wire_id_to_uuid(wire_id, "agent_")
+    mock_session = _make_mock_session_with_agent_row(agent_uuid_str, TENANT_ID, version=1)
+
+    local_app = FastAPI()
+    local_app.include_router(agents_router)
+
+    async def mock_db():
+        yield mock_session
+
+    local_app.dependency_overrides[get_db_session] = mock_db
+    rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
+    csrf_exempt(rotate_path)
+    local_app.add_middleware(CsrfMiddleware)
+
+    # Use a value that would appear in the ValueError message to verify it isn't echoed
+    malicious_input = "INJECTED_VALUE_12345"
+
+    async with AsyncClient(transport=ASGITransport(app=local_app), base_url="http://test") as client:
+        resp = await client.post(rotate_path, json={"expires_in": malicious_input})
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body.get("mintkey:code") == "invalid_expires_in", f"Expected invalid_expires_in, got: {body}"
+    title = body.get("title", "")
+    assert malicious_input not in title, (
+        f"Stack-trace exposure: user input echoed back in error title: {title!r}"
+    )

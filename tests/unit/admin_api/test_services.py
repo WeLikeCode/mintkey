@@ -260,3 +260,22 @@ async def test_audit_emit_called_on_create(app, mock_audit) -> None:
     mock_audit.assert_called_once()
     call_kwargs = mock_audit.call_args.kwargs
     assert call_kwargs.get("event_type") == "service.registered"
+
+
+# ---------------------------------------------------------------------------
+# S8-codeql: py/stack-trace-exposure — test_service unexpected exception
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_forbidden_destination_check_rejects_rfc1918() -> None:
+    """
+    _is_forbidden_destination returns True for private/loopback addresses.
+    This is a unit check for S-SEC-1 already covered above; kept as a smoke test
+    to ensure the validator itself hasn't regressed under the S8 changes.
+    """
+    from admin_api.api.services import _is_forbidden_destination
+    assert _is_forbidden_destination("http://192.168.1.1/api") is True
+    assert _is_forbidden_destination("http://10.0.0.1/api") is True
+    assert _is_forbidden_destination("http://127.0.0.1/api") is True
+    assert _is_forbidden_destination("https://api.openai.com") is False
