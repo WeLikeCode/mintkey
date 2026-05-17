@@ -368,6 +368,8 @@ services:
     networks:
       - mintkey
     depends_on:
+      postgres:
+        condition: service_healthy
       kong:
         condition: service_healthy
       admin-api:
