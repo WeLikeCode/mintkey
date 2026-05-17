@@ -1,5 +1,5 @@
 # Pinned 2026-05-18; re-pin every quarter.
-FROM node:22-bookworm-slim@sha256:689c11043dad91472750cd824c97dd5e2318e9dd6f954e492fe7af0135d33ceb
+FROM node:26-bookworm-slim@sha256:d2ec0a1766c01dad04a185c2d5558b0adace167a7f1758ce80f0017698431d06
 WORKDIR /app
 
 RUN corepack enable
