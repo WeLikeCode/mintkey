@@ -12,9 +12,18 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Mintkey Mock Backend")
 
 
+def _redact(value: Optional[str], visible: int = 4) -> str:
+    """Return a log-safe token: first *visible* chars + '…', or '<None>'/'<redacted>'."""
+    if value is None:
+        return "<None>"
+    if len(value) <= visible:
+        return "<redacted>"
+    return value[:visible] + "…"
+
+
 @app.get("/health")
 async def health(authorization: Optional[str] = Header(default=None)) -> dict[str, str]:
-    logger.info("health: authorization=%s", authorization)
+    logger.info("health: authorization=%s", _redact(authorization))
     return {"status": "ok"}
 
 
@@ -22,7 +31,7 @@ async def health(authorization: Optional[str] = Header(default=None)) -> dict[st
 async def api_key_header(
     x_api_key: Optional[str] = Header(default=None),
 ) -> JSONResponse:
-    logger.info("api-key-header: x_api_key=%s", x_api_key)
+    logger.info("api-key-header: x_api_key=%s", _redact(x_api_key))
     if x_api_key is None:
         return JSONResponse(status_code=401, content={"detail": "Missing X-Api-Key"})
     return JSONResponse(content={"received_key": x_api_key})
@@ -32,7 +41,7 @@ async def api_key_header(
 async def api_key_query(
     api_key: Optional[str] = Query(default=None),
 ) -> JSONResponse:
-    logger.info("api-key-query: api_key=%s", api_key)
+    logger.info("api-key-query: api_key=%s", _redact(api_key))
     if api_key is None:
         return JSONResponse(status_code=401, content={"detail": "Missing api_key query param"})
     return JSONResponse(content={"received_key": api_key})
@@ -40,7 +49,7 @@ async def api_key_query(
 
 @app.get("/bearer")
 async def bearer(authorization: Optional[str] = Header(default=None)) -> JSONResponse:
-    logger.info("bearer: authorization=%s", authorization)
+    logger.info("bearer: authorization=%s", _redact(authorization))
     if authorization is None or not authorization.lower().startswith("bearer "):
         return JSONResponse(status_code=401, content={"detail": "Missing or invalid Bearer token"})
     token = authorization[len("bearer "):].strip()
@@ -49,7 +58,7 @@ async def bearer(authorization: Optional[str] = Header(default=None)) -> JSONRes
 
 @app.get("/basic-auth")
 async def basic_auth(authorization: Optional[str] = Header(default=None)) -> JSONResponse:
-    logger.info("basic-auth: authorization=%s", authorization)
+    logger.info("basic-auth: authorization=%s", _redact(authorization))
     if authorization is None or not authorization.lower().startswith("basic "):
         return JSONResponse(status_code=401, content={"detail": "Missing or invalid Basic credentials"})
     encoded = authorization[len("basic "):].strip()
@@ -63,7 +72,7 @@ async def basic_auth(authorization: Optional[str] = Header(default=None)) -> JSO
 
 @app.get("/oauth-protected")
 async def oauth_protected(authorization: Optional[str] = Header(default=None)) -> JSONResponse:
-    logger.info("oauth-protected: authorization=%s", authorization)
+    logger.info("oauth-protected: authorization=%s", _redact(authorization))
     if authorization is None or not authorization.lower().startswith("bearer "):
         return JSONResponse(status_code=401, content={"detail": "Missing or invalid Bearer token"})
     token = authorization[len("bearer "):].strip()
