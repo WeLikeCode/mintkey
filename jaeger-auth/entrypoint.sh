@@ -16,4 +16,6 @@ if [ ! -f "${COOKIE_SECRET_FILE}" ]; then
 fi
 
 COOKIE_SECRET=$(cat "$COOKIE_SECRET_FILE")
-exec /bin/oauth2-proxy --cookie-secret="$COOKIE_SECRET" "$@"
+# --code-challenge-method=S256 required because the Keycloak realm enforces
+# PKCE S256 on the mintkey-jaeger client (seed-job _enforce_pkce_on_clients).
+exec /bin/oauth2-proxy --cookie-secret="$COOKIE_SECRET" --code-challenge-method=S256 "$@"
