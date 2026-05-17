@@ -20,6 +20,7 @@ import AdminJS from "adminjs";
 import { buildRouter } from "@adminjs/express";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
 import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
@@ -159,6 +160,13 @@ async function main() {
 
   const app = express();
 
+  // Trust the first hop of X-Forwarded-Proto / X-Forwarded-For from Kong/Caddy.
+  // Required so express-session can see the connection as HTTPS when sitting
+  // behind a TLS-terminating reverse proxy; without this, express-session ignores
+  // X-Forwarded-Proto and treats the local HTTP socket as insecure, which causes
+  // secure cookies to be silently dropped even in prod (O1 — strike-2).
+  app.set("trust proxy", 1);
+
   // Logging
   app.use(pinoHttp());
 
@@ -185,8 +193,15 @@ async function main() {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
-        sameSite: "lax",
-        secure: false,
+        sameSite: "strict",
+        // In production (behind Kong/Caddy with trust proxy set above), express-session
+        // sees X-Forwarded-Proto=https and marks the cookie Secure. In dev (NODE_ENV≠
+        // production, direct HTTP on localhost:8081) the flag is omitted so browsers
+        // accept the cookie over HTTP — dev login works without a local TLS proxy.
+        // CodeQL js/clear-text-cookie: conditional-on-production is the conventional
+        // pattern accepted by the rule (it fires on unconditional secure:false only).
+        // CWE-614; S8-codeql; O1-strike-2.
+        secure: process.env.NODE_ENV === "production",
         maxAge: 8 * 60 * 60 * 1000, // 8 h — matches mintkey_session TTL
       },
     })
@@ -199,8 +214,20 @@ async function main() {
     res.json({ status: "ok", service: "admin-ui" });
   });
 
+  // Rate-limiter for login endpoints — defense-in-depth against brute-force.
+  // Kong-level rate-limiting is the primary control; this is a secondary in-process
+  // guard (CWE-307 / CodeQL js/missing-rate-limiting).
+  // 20 requests per 15-minute window per IP on login pages.
+  const loginRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts. Please try again later." },
+  });
+
   // GET /admin/login — SSO-C login page (primary: Keycloak; collapsed: break-glass).
-  app.get("/admin/login", (req, res) => {
+  app.get("/admin/login", loginRateLimit, (req, res) => {
     const err = typeof req.query["error"] === "string" ? req.query["error"] : undefined;
     res.type("html").send(renderLoginPage(err));
   });
@@ -216,6 +243,7 @@ async function main() {
   // admin-api origin. On success, redirects to /admin. On failure, shows error.
   app.post(
     "/auth/internal-login-proxy",
+    loginRateLimit,
     express.urlencoded({ extended: false }),
     async (req, res) => {
     const { email, password } = req.body as { email?: string; password?: string };
