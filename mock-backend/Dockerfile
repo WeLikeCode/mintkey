@@ -1,7 +1,7 @@
 # Mock Backend — Python 3.12 + FastAPI
 # Build context is mock-backend/ directory.
-# Pinned 2026-05-16; re-pin every quarter.
-FROM python:3.12-slim@sha256:401f6e1a67dad31a1bd78e9ad22d0ee0a3b52154e6bd30e90be696bb6a3d7461
+# Pinned 2026-05-18; re-pin every quarter.
+FROM python:3.12-slim-bookworm@sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2
 
 WORKDIR /app
 
