@@ -20,7 +20,7 @@
 | SHA | Message |
 |---|---|
 | `ef71bf1` | fix(codeql): replace substring URL checks with hostname-parsed comparisons |
-| `SCAFFOLD_SHA` | docs(remediation): add S7 session intake + closing report |
+| `adc943a` | docs(remediation): add S7 session intake + closing report |
 
 ## What changed (and what didn't)
 
