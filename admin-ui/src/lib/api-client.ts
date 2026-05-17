@@ -68,22 +68,51 @@ function decryptFernet(ciphertext: Buffer, kekBase64: string): string {
   return decrypted.toString("utf-8").trimEnd();
 }
 
-function getAdminPassword(): string {
+/** @internal exported for unit tests only — do not call from application code outside this module */
+export function getAdminPassword(): string {
+  const kek = process.env.MINTKEY_BOOTSTRAP_KEK;
   const passwordFile = process.env.ADMIN_PASSWORD_FILE;
-  if (passwordFile) {
-    try {
-      const raw = readFileSync(passwordFile);
-      const kek = process.env.MINTKEY_BOOTSTRAP_KEK;
-      if (kek) {
-        // File contains Fernet ciphertext (S6 CodeQL fix); decrypt it.
-        const ciphertext = Buffer.from(raw.toString("ascii").trim(), "base64");
-        return decryptFernet(ciphertext, kek);
+
+  if (!kek) {
+    // Documented dev path: no encryption in use. Read plaintext file if available,
+    // else fall back to ADMIN_PASSWORD env var.
+    if (passwordFile) {
+      try {
+        return readFileSync(passwordFile).toString("utf-8").trim();
+      } catch {
+        // File unreadable — fall through to env var.
       }
-      // No KEK set — fall back to treating the file as plaintext (dev without KEK).
-      return raw.toString("utf-8").trim();
-    } catch { /* fall through */ }
+    }
+    return process.env.ADMIN_PASSWORD ?? "";
   }
-  return process.env.ADMIN_PASSWORD ?? "";
+
+  // KEK is set: file must contain Fernet ciphertext (S6 CodeQL fix). Decrypt it.
+  if (!passwordFile) {
+    // KEK set but no file path configured — misconfiguration.
+    console.error("admin-ui: MINTKEY_BOOTSTRAP_KEK is set but ADMIN_PASSWORD_FILE is not; cannot decrypt bootstrap password");
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("admin-ui: MINTKEY_BOOTSTRAP_KEK set without ADMIN_PASSWORD_FILE");
+    }
+    return "";
+  }
+
+  try {
+    const raw = readFileSync(passwordFile);
+    const ciphertext = Buffer.from(raw.toString("ascii").trim(), "base64");
+    return decryptFernet(ciphertext, kek);
+  } catch (err) {
+    // KEK was set but decryption failed — this is not a silent fallback path.
+    // Log with enough detail to debug (never log the KEK value itself).
+    console.error(
+      "admin-ui: bootstrap password decrypt failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    if (process.env.NODE_ENV === "production") {
+      throw err;
+    }
+    // Dev: surface as auth-unavailable (getApiSession returns null → unauthenticated fallback).
+    return "";
+  }
 }
 
 interface ApiSession {
