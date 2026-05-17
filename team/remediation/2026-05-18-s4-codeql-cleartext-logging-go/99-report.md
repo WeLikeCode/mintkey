@@ -1,5 +1,14 @@
 # S4 Remediation Report — codeql-cleartext-logging-go
 
+**Session:** `2026-05-18-s4-codeql-cleartext-logging-go`
+**Branch:** `fix/s4-codeql-cleartext-logging-go-2026-05-18` (from `main @ 5203e23`)
+**Status:** **CLOSED**
+**Closed:** 2026-05-18
+
+**Commits:**
+- `8236e71` fix(proxy-plugin): redact tainted IDs and inject errors in log sinks (CWE-312)
+- `f6b8285` docs(remediation): add S4 session report for codeql-cleartext-logging-go
+
 ## Alert sites closed
 
 | Line | What was logged | Fix applied |
