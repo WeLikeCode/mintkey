@@ -13,7 +13,7 @@
 - `74bf31b` docs(security, ports, report): KEK docs + seed-job _fernet() cleanup
 - `49cc84b` fix(compose): unify MINTKEY_BOOTSTRAP_KEK default across seed-job and admin-ui
 - `6911bbd` fix(admin-ui): surface Fernet decrypt errors instead of silent catch
-- `<strike-3-docs-sha>` docs(s6): 99-report status header + strike-3 supplement
+- `034eff2` docs(s6): 99-report status header + strike-3 supplement
 
 ---
 
