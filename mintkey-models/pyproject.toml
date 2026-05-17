@@ -7,7 +7,7 @@ name = "mintkey-models"
 version = "0.1.0-preview.1"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.0",
+    "pydantic>=2.13.4",
     "sqlalchemy[asyncio]>=2.0",
     "prometheus-client>=0.20",
     "cryptography>=42.0",
