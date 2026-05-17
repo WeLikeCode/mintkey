@@ -126,11 +126,28 @@ def pg_query(sql: str) -> str:
 
 
 def get_admin_password() -> str:
+    """Read and decrypt the Fernet-encrypted admin_password from the bootstrap-secrets volume."""
     r = subprocess.run(
         ["docker", "run", "--rm", "-v", "mintkey_bootstrap_secrets:/secrets", "alpine", "cat", "/secrets/admin_password"],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True, timeout=15,
     )
-    return r.stdout.strip()
+    ciphertext = r.stdout.strip()
+    if not ciphertext:
+        return ""
+    kek_raw = os.getenv("MINTKEY_BOOTSTRAP_KEK")
+    if not kek_raw:
+        # Fallback: try treating the output as plaintext (dev stacks without KEK set).
+        try:
+            return ciphertext.decode("utf-8", errors="strict")
+        except (UnicodeDecodeError, AttributeError):
+            return ""
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(kek_raw.encode())
+        return f.decrypt(ciphertext).decode().strip()
+    except Exception:
+        # If decrypt fails, return empty — the caller will bail.
+        return ""
 
 
 # ---------------------------------------------------------------------------

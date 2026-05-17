@@ -24,6 +24,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password
+
 # ---------------------------------------------------------------------------
 # Integration marker
 # ---------------------------------------------------------------------------
@@ -39,12 +41,13 @@ _BOOTSTRAP_PASS_FILE = (
     __import__("pathlib").Path(__file__).resolve().parents[3]
     / "data" / "bootstrap-secrets" / "admin_password"
 )
-BOOTSTRAP_PASSWORD = os.getenv(
-    "MINTKEY_BOOTSTRAP_PASSWORD",
-    _BOOTSTRAP_PASS_FILE.read_text().strip()
-    if _BOOTSTRAP_PASS_FILE.exists()
-    else "changeme",
-)
+try:
+    BOOTSTRAP_PASSWORD = os.getenv(
+        "MINTKEY_BOOTSTRAP_PASSWORD",
+        read_bootstrap_password(_BOOTSTRAP_PASS_FILE) if _BOOTSTRAP_PASS_FILE.exists() else "changeme",
+    )
+except BootstrapPasswordError:
+    BOOTSTRAP_PASSWORD = os.getenv("MINTKEY_BOOTSTRAP_PASSWORD", "changeme")
 
 
 # ---------------------------------------------------------------------------
