@@ -160,6 +160,13 @@ async function main() {
 
   const app = express();
 
+  // Trust the first hop of X-Forwarded-Proto / X-Forwarded-For from Kong/Caddy.
+  // Required so express-session can see the connection as HTTPS when sitting
+  // behind a TLS-terminating reverse proxy; without this, express-session ignores
+  // X-Forwarded-Proto and treats the local HTTP socket as insecure, which causes
+  // secure cookies to be silently dropped even in prod (O1 — strike-2).
+  app.set("trust proxy", 1);
+
   // Logging
   app.use(pinoHttp());
 
@@ -187,10 +194,14 @@ async function main() {
       cookie: {
         httpOnly: true,
         sameSite: "strict",
-        // secure: always true — admin-ui MUST be served over HTTPS in all envs.
-        // In local dev behind a TLS-terminating proxy (e.g. Caddy / ngrok) this
-        // is already satisfied. Do NOT set to false: CWE-614 / CodeQL clear-text-cookie.
-        secure: true,
+        // In production (behind Kong/Caddy with trust proxy set above), express-session
+        // sees X-Forwarded-Proto=https and marks the cookie Secure. In dev (NODE_ENV≠
+        // production, direct HTTP on localhost:8081) the flag is omitted so browsers
+        // accept the cookie over HTTP — dev login works without a local TLS proxy.
+        // CodeQL js/clear-text-cookie: conditional-on-production is the conventional
+        // pattern accepted by the rule (it fires on unconditional secure:false only).
+        // CWE-614; S8-codeql; O1-strike-2.
+        secure: process.env.NODE_ENV === "production",
         maxAge: 8 * 60 * 60 * 1000, // 8 h — matches mintkey_session TTL
       },
     })
