@@ -233,7 +233,7 @@ services:
       ADMIN_EMAIL: admin@mintkey.internal
       ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
       # KEK needed to decrypt the Fernet-encrypted admin_password file (S6 CodeQL fix).
-      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-jePSMThbHXS8J0V2d3xrOOgLmYhXx3V7VCcpVYeX6_0=}"
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
       ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
       # Public-facing URLs (see docs/NETWORK.md).
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
