@@ -15,12 +15,12 @@
 Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders and developers who want to understand the architecture, run the demo locally, and experiment with the MCP client integration. It is not suitable for production use of any kind.
 
 **What is working today:**
-- `docker compose up -d` starts all 17 containers (15 long-running, 2 one-shot) and reaches healthy state in ≤ 120 seconds on a clean machine.
+- `docker compose up -d` starts all 19 containers (17 long-running, 2 one-shot) and reaches healthy state in ≤ 120 seconds on a clean machine.
 - The PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) runs end-to-end: service registration, agent creation, JWT issuance, brokered proxy call, audit chain verification.
 - Four MCP client setup guides exist (`docs/guides/mcp-clients/`): Claude Desktop, Claude Code, Cursor, mcp-cli.
 - GitHub PAT demo (`docs/guides/github-quickstart.md`) runs with a real external API key.
-- 244 Python unit/integration tests pass. 17 architecture tests pass. 23 Go packages pass. 139 admin-ui vitest tests pass.
-- Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16).
+- Test suites green as of WS-8 (2026-05-12): 244 Python unit/integration; 17 architecture; 23 Go packages; 139 admin-ui vitest. Subsequent remediation (PRs #33–#53, 2026-05-16/17) changed the test surface; see `team/remediation/` for per-session verification snapshots.
+- Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16). Pre-release tag `v0.1.0-prealpha` published 2026-05-17.
 
 **What is not yet in place:**
 - No published container images (deferred; see `docs/RELEASE.md`).
@@ -29,7 +29,7 @@ Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders an
 - No backup/restore procedure.
 - No third-party security audit or fuzzing campaign.
 - No compliance attestations (SOC2, ISO 27001, FedRAMP).
-- 10 Dockerfiles run as root; no `HEALTHCHECK`; base images pinned by tag not digest.
+- Container hardening: all 15 Dockerfile `FROM` directives SHA-pinned to upstream registry digests (PR #35); long-running Python/Node containers run as non-root with `HEALTHCHECK` (PR #33). One-shot init containers (`seed-job`, `liquibase`) deliberately run as root for bootstrap volume operations (PR #47).
 - No hosted or managed offering.
 
 **Wire surface stability:** `experimental`. Version `0.1.0-preview.1`. Breaking changes will bump the major version. See `docs/architecture/contracts/rest/openapi.yaml` (`x-mintkey-stability`).
@@ -86,14 +86,14 @@ Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
 | MCP client setup guides (Claude Desktop, Claude Code, Cursor, mcp-cli) | MCP adoption | ✅ DONE | OSS-6 commit `9705c16` |
 | Marketing CTA + comparison table + pre-alpha banners | Positioning | ✅ DONE | OSS-7 commit `65c007d` |
 | Prominent "not production ready" warnings in README, marketing, deployment, release docs | User safety | ✅ DONE | All OSS session commits |
-| Dockerfile `USER` directive (10 services run as root) | Supply-chain hardening | 🟦 Deferred | Future session; audit table in `docs/DEPLOYMENT.md` F-21 |
-| Dockerfile `HEALTHCHECK` (10 services) | Operational visibility | 🟦 Deferred | Future session; F-22 |
-| Base image `@sha256` digest pinning | Supply-chain hardening | 🟦 Deferred | Future session; F-23 |
+| Dockerfile `USER` directive | Supply-chain hardening | ✅ DONE | PR #33 REL-3 added `USER 65532:65532` + `HEALTHCHECK` to 6 long-running Dockerfiles. Go services use distroless static `nonroot`. `seed-job` intentionally root (one-shot init; PR #47). |
+| Dockerfile `HEALTHCHECK` | Operational visibility | ✅ DONE | PR #33 REL-3 added `HEALTHCHECK` to the same 6 long-running Dockerfiles. |
+| Base image `@sha256` digest pinning | Supply-chain hardening | ✅ DONE | PR #35 commit `373221f` SHA-pinned all 15 `FROM` directives across 10 Dockerfiles. |
 | Python dependency unbounded `>=` ranges | Release reproducibility | 🟦 Deferred | Dependabot will raise PRs; F-26 |
 | GHCR publish workflow / image release | Operator convenience | ⛔ Deferred (E-5) | Manual path in `docs/RELEASE.md`; needs owner decision on release cadence |
 | `make lint` GNU Make 3.81 colon-target exit=2 on macOS | Local DX | 🟦 Local only; CI (ubuntu, GNU Make 4.x) is unaffected |
 | Service REST `DELETE /v1/.../services/:id` 500 | Operator UX | ⬜ Pre-existing bug; unrelated to OSS work |
-| `otel-collector` restart loop | Observability reliability | ⬜ Pre-existing; unrelated to OSS work |
+| `otel-collector` restart loop | Observability reliability | ✅ FIXED | PR #48 — spanmetrics connector config repaired for v0.104+ (session 2026-05-17-otel-collector-config) |
 
 **Acceptance criteria for "Public Technical Preview launched" (TP-1):** repo pushed to `https://github.com/WeLikeCode/mintkey`, GitHub Discussions enabled, launch announcement posted. Operator action pending.
 
@@ -189,8 +189,8 @@ None of the Phase E items exist today. All are NEW or DEFERRED.
 | Audit retention policy | NEW | High | No per-tenant retention policy exists. Enterprise compliance requires configurable retention and deletion with hash-chain integrity guarantees. |
 | SCIM / identity lifecycle | NEW | High | Current Keycloak SSO has no SCIM endpoint. Enterprise IdP integration (Okta, Azure AD, Ping) requires SCIM for automated user provisioning/deprovisioning. |
 | RBAC hardening | NEW | High | Current model: platform-admin vs tenant scope. Enterprise needs fine-grained roles (read-only auditor, service admin, agent admin, key admin) within a tenant. |
-| Non-root Dockerfile `USER` directive (10 services) | Deferred (F-21) | High | All 10 Dockerfiles run as root today. Required for enterprise container policy compliance. |
-| Base image `@sha256` digest pinning | Deferred (F-23) | High | Supply-chain security requirement for enterprise. |
+| Non-root Dockerfile `USER` directive across the full image set + image-signing / attestation | Partial | High | Long-running Python/Node containers run as non-root with `USER 65532` + `HEALTHCHECK` since PR #33 REL-3; one-shot init containers (seed-job, liquibase) intentionally root (PR #47). Enterprise bar additionally requires non-root strategy for init containers, image signing (Cosign), and provenance attestation (SLSA L1+). |
+| Base image `@sha256` digest pinning with automated bump policy | Partial | High | All 15 Dockerfile `FROM` directives SHA-pinned since PR #35 (commit `373221f`). Enterprise bar adds automated digest-bump workflow with provenance attestation. |
 | Image signing / SBOM / provenance | Deferred (E-5) | High | SLSA level 1+ requires signed images and SBOMs. Manual path in `docs/RELEASE.md`; automated workflow deferred. |
 | HashiCorp Vault backend | Planned (Phase 2 architecture) | Medium | ADR-0003 describes v2 Vault Adapter. File backend is pre-alpha only. |
 | Fuzzing / security testing campaign | NEW | Medium | No fuzzing or adversarial testing has been performed. Required before claiming hardened status. |
@@ -209,7 +209,7 @@ None of the Phase E items exist today. All are NEW or DEFERRED.
 | Milestone | Audience | Exit criteria |
 |---|---|---|
 | **TP-0** — Public hygiene complete | All | ✅ DONE 2026-05-16. Apache-2.0 license, governance templates, security contact, CI gates strict, Docker hardening partial, deployment docs, mock demo, MCP client guides, marketing with CTAs and comparison table, no production-readiness overclaims. Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`. |
-| **TP-1** — Technical preview launch | Builder / AI engineer | Push to `https://github.com/WeLikeCode/mintkey`, enable GitHub Discussions, post launch announcement. **Pending operator action.** No code changes required. |
+| **TP-1** — Technical preview launch | Builder / AI engineer | Push to `https://github.com/WeLikeCode/mintkey`, enable GitHub Discussions, post launch announcement. `v0.1.0-prealpha` pre-release tag published 2026-05-17; launch announcement still pending owner action. |
 | **B-1** — Builder-friendly local demo | Builder / AI engineer | 5 example integrations live (4 NEW: Slack, Stripe, OpenAI-compatible, generic HTTP; + 1 EXISTING: GitHub PAT quickstart at `docs/guides/github-quickstart.md`), `make demo` wrapper, SDK snippets (Python + TypeScript + Go), "agent never sees the secret" proof walkthrough, expanded troubleshooting. |
 | **F-1** — Founder-ready packaging | Founder / startup CTO | GHCR images published; release cadence stable and documented; upgrade/migration guide exists; comparison page deepened; hosted/commercial direction decided. |
 | **E-1** — Enterprise pilot readiness | Enterprise | Helm chart; HA topology; backup/restore; SIEM export; RBAC hardening (4 built-in roles); non-root containers; digest-pinned base images; signed images + SBOM; third-party security audit; published SLA. |
