@@ -34,13 +34,17 @@ echo "[uv]"
 if command -v uv &>/dev/null; then
   ok "uv found: $(uv --version 2>&1)"
 else
-  info "uv not found — installing..."
+  info "uv not found — installing (hash-verified where possible)..."
+  # tools/uv-requirements.txt generated with:
+  #   uv pip compile tools/uv-requirements.in --generate-hashes --python-version 3.12
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  UV_REQ="$SCRIPT_DIR/uv-requirements.txt"
   if command -v brew &>/dev/null; then
     brew install uv
     added "uv installed via Homebrew"
-  elif command -v pip3 &>/dev/null; then
-    pip3 install uv
-    added "uv installed via pip3"
+  elif command -v pip3 &>/dev/null && [[ -f "$UV_REQ" ]]; then
+    pip3 install --require-hashes -r "$UV_REQ"
+    added "uv installed (hash-verified via pip3)"
   else
     curl -LsSf https://astral.sh/uv/install.sh | sh
     added "uv installed via installer script"
@@ -82,13 +86,18 @@ echo "[csvkit]"
 if python3 -c "import csvkit" 2>/dev/null || command -v csvlook &>/dev/null; then
   ok "csvkit available"
 else
-  info "csvkit not found — installing..."
-  if command -v uv &>/dev/null; then
-    uv pip install --system csvkit 2>/dev/null || pip3 install csvkit
-    added "csvkit installed"
-  elif command -v pip3 &>/dev/null; then
-    pip3 install csvkit
-    added "csvkit installed via pip3"
+  info "csvkit not found — installing (hash-verified)..."
+  # Use the pinned, hash-verified requirements file to satisfy Scorecard
+  # PinnedDependencies. tools/csvkit-requirements.txt was generated with:
+  #   uv pip compile tools/requirements.in --generate-hashes --python-version 3.12
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  CSVKIT_REQ="$SCRIPT_DIR/csvkit-requirements.txt"
+  if command -v uv &>/dev/null && [[ -f "$CSVKIT_REQ" ]]; then
+    uv pip install --system --require-hashes -r "$CSVKIT_REQ" 2>/dev/null
+    added "csvkit installed (hash-verified via uv)"
+  elif command -v pip3 &>/dev/null && [[ -f "$CSVKIT_REQ" ]]; then
+    pip3 install --require-hashes -r "$CSVKIT_REQ"
+    added "csvkit installed (hash-verified via pip3)"
   else
     echo "  ⚠ csvkit not installed (optional — needed for requirements CSV validation)"
   fi

@@ -7,8 +7,13 @@ WORKDIR /app
 
 COPY src/ src/
 COPY pyproject.toml .
+COPY requirements-hashes.txt .
 
-RUN pip install --no-cache-dir -e .
+# Install pinned deps with hash verification, then install the local package.
+# --require-hashes cannot apply to a local editable ('.') path, so we install
+# third-party deps first (hashes verified) and then install the package itself.
+RUN pip install --no-cache-dir --require-hashes -r requirements-hashes.txt \
+ && pip install --no-cache-dir --no-deps .
 
 # Run as non-root (UID 65532 matches distroless nonroot convention for consistency)
 RUN useradd -u 65532 -M -s /sbin/nologin nonroot && chown -R 65532:65532 /app
