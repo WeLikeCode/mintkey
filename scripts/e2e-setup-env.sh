@@ -65,8 +65,19 @@ if [[ ! -f "$BOOTSTRAP_PW_FILE" ]]; then
   echo "     Run 'make dev' first and ensure the seed-job has completed."
   exit 1
 fi
-ADMIN_PASS="$(cat "$BOOTSTRAP_PW_FILE")"
-echo "  ✅ Admin password read from seed secret"
+# The file contains Fernet-encrypted ciphertext (S6 — CodeQL cleartext-storage
+# remediation).  Decrypt using the same MINTKEY_BOOTSTRAP_KEK that the seed-job
+# used to encrypt.  Falls back to the docker-compose default dev key if unset.
+_KEK="${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
+ADMIN_PASS="$(python3 - "$BOOTSTRAP_PW_FILE" "$_KEK" <<'PYEOF'
+import sys
+from cryptography.fernet import Fernet
+pw_file, kek = sys.argv[1], sys.argv[2]
+ciphertext = open(pw_file, "rb").read()
+print(Fernet(kek.encode()).decrypt(ciphertext).decode().strip())
+PYEOF
+)"
+echo "  ✅ Admin password decrypted from seed secret"
 
 # ── 4. Query Postgres for tenant & operator IDs ───────────────────────────────
 echo ""

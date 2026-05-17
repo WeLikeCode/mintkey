@@ -46,6 +46,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password
+
 # ---------------------------------------------------------------------------
 # Integration gate
 # ---------------------------------------------------------------------------
@@ -68,10 +70,13 @@ BROKER_URL = os.getenv("MINTKEY_BROKER_URL", "http://localhost:8083")
 MCP_SERVICE_TOKEN = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "dev-mcp-service-token")
 
 _pwd_file = _REPO_ROOT / "data" / "bootstrap-secrets" / "admin_password"
-BOOTSTRAP_PASSWORD = os.getenv(
-    "MINTKEY_BOOTSTRAP_PASSWORD",
-    _pwd_file.read_text().strip() if _pwd_file.exists() else "changeme",
-)
+try:
+    BOOTSTRAP_PASSWORD = os.getenv(
+        "MINTKEY_BOOTSTRAP_PASSWORD",
+        read_bootstrap_password(_pwd_file) if _pwd_file.exists() else "changeme",
+    )
+except BootstrapPasswordError:
+    BOOTSTRAP_PASSWORD = os.getenv("MINTKEY_BOOTSTRAP_PASSWORD", "changeme")
 
 
 # ---------------------------------------------------------------------------

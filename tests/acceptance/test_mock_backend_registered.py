@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from mintkey_models.bootstrap_password import read_bootstrap_password
+
 # Make seed-job importable from tests
 SEED_DIR = Path(__file__).resolve().parents[2] / "seed-job"
 if str(SEED_DIR) not in sys.path:
@@ -118,7 +120,7 @@ def test_mock_backend_registered_integration():
     # Authenticate as bootstrap admin
     resp = httpx.post(
         f"{admin_api}/v1/auth/internal-login",
-        json={"email": "admin@mintkey.internal", "password": open("data/bootstrap-secrets/admin_password").read().strip()},
+        json={"email": "admin@mintkey.internal", "password": read_bootstrap_password("data/bootstrap-secrets/admin_password")},
     )
     assert resp.status_code == 200
     login_data = resp.json()

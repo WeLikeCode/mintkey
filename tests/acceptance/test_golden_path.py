@@ -38,6 +38,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password
+
 # ---------------------------------------------------------------------------
 # Integration-only marker — all 5 hops require the real docker-compose stack
 # ---------------------------------------------------------------------------
@@ -59,10 +61,13 @@ BASE_KONG = os.getenv("MINTKEY_KONG_URL", "http://localhost:8000")
 KONG_ADMIN = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
 
 _pwd_file = _ROOT / "data" / "bootstrap-secrets" / "admin_password"
-BOOTSTRAP_PASSWORD = os.getenv(
-    "MINTKEY_BOOTSTRAP_PASSWORD",
-    _pwd_file.read_text().strip() if _pwd_file.exists() else "changeme",
-)
+try:
+    BOOTSTRAP_PASSWORD = os.getenv(
+        "MINTKEY_BOOTSTRAP_PASSWORD",
+        read_bootstrap_password(_pwd_file) if _pwd_file.exists() else "changeme",
+    )
+except BootstrapPasswordError:
+    BOOTSTRAP_PASSWORD = os.getenv("MINTKEY_BOOTSTRAP_PASSWORD", "changeme")
 
 # ---------------------------------------------------------------------------
 # Wire-ID helpers (post-#13: Crockford ULID form — ADR-0017.11)

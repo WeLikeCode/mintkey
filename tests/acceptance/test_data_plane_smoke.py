@@ -36,6 +36,8 @@ if str(_ADMIN_API_SRC) not in sys.path:
 
 from admin_api.services import vault_pb2, vault_pb2_grpc  # noqa: E402
 
+from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # Integration gate
 # ---------------------------------------------------------------------------
@@ -60,10 +62,13 @@ VAULT_GRPC = os.getenv("MINTKEY_VAULT_GRPC", "localhost:8084")
 MCP_SERVICE_TOKEN = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "dev-mcp-service-token")
 
 _pwd_file = _REPO_ROOT / "data" / "bootstrap-secrets" / "admin_password"
-BOOTSTRAP_PASSWORD = os.getenv(
-    "MINTKEY_BOOTSTRAP_PASSWORD",
-    _pwd_file.read_text().strip() if _pwd_file.exists() else "changeme",
-)
+try:
+    BOOTSTRAP_PASSWORD = os.getenv(
+        "MINTKEY_BOOTSTRAP_PASSWORD",
+        read_bootstrap_password(_pwd_file) if _pwd_file.exists() else "changeme",
+    )
+except BootstrapPasswordError:
+    BOOTSTRAP_PASSWORD = os.getenv("MINTKEY_BOOTSTRAP_PASSWORD", "changeme")
 
 
 # ---------------------------------------------------------------------------

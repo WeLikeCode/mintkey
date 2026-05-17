@@ -13,20 +13,106 @@
  * Source: ADR-0014.5; ADR-0013; admin-api CSRF middleware.
  */
 
+import { createDecipheriv, createHmac, timingSafeEqual } from "crypto";
 import { readFileSync } from "fs";
 import { signedFetch } from "./signed-request.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? "admin@mintkey.internal";
 
-function getAdminPassword(): string {
-  const passwordFile = process.env.ADMIN_PASSWORD_FILE;
-  if (passwordFile) {
-    try {
-      return readFileSync(passwordFile, "utf-8").trim();
-    } catch { /* fall through */ }
+/**
+ * Decrypt a Fernet token (RFC-like format from the Python `cryptography` library).
+ *
+ * Fernet binary layout (after base64url decode):
+ *   version[1]  = 0x80
+ *   timestamp[8]
+ *   iv[16]      AES-128-CBC IV
+ *   ciphertext[N]  (multiple of 16, PKCS7-padded)
+ *   hmac[32]    HMAC-SHA256 over (version || timestamp || iv || ciphertext)
+ *
+ * The 32-byte key is split: first 16 bytes = HMAC signing key,
+ * last 16 bytes = AES encryption key.
+ *
+ * Source: S6 CodeQL cleartext-storage fix (strike-2); MINTKEY_BOOTSTRAP_KEK.
+ */
+function decryptFernet(ciphertext: Buffer, kekBase64: string): string {
+  const keyBytes = Buffer.from(kekBase64, "base64");
+  if (keyBytes.length !== 32) {
+    throw new Error("MINTKEY_BOOTSTRAP_KEK must be a 32-byte URL-safe base64-encoded Fernet key");
   }
-  return process.env.ADMIN_PASSWORD ?? "";
+  const signingKey = keyBytes.subarray(0, 16);
+  const encKey = keyBytes.subarray(16, 32);
+
+  // Verify this looks like a Fernet token (version byte = 0x80)
+  if (ciphertext[0] !== 0x80) {
+    throw new Error("Not a valid Fernet token: unexpected version byte");
+  }
+  if (ciphertext.length < 1 + 8 + 16 + 16 + 32) {
+    throw new Error("Not a valid Fernet token: too short");
+  }
+
+  const headerAndBody = ciphertext.subarray(0, ciphertext.length - 32);
+  const providedHmac = ciphertext.subarray(ciphertext.length - 32);
+
+  // Verify HMAC-SHA256
+  const mac = createHmac("sha256", signingKey).update(headerAndBody).digest();
+  if (!timingSafeEqual(mac, providedHmac)) {
+    throw new Error("Fernet HMAC verification failed — wrong KEK or tampered ciphertext");
+  }
+
+  const iv = ciphertext.subarray(9, 25);
+  const payload = ciphertext.subarray(25, ciphertext.length - 32);
+
+  const decipher = createDecipheriv("aes-128-cbc", encKey, iv);
+  const decrypted = Buffer.concat([decipher.update(payload), decipher.final()]);
+  return decrypted.toString("utf-8").trimEnd();
+}
+
+/** @internal exported for unit tests only — do not call from application code outside this module */
+export function getAdminPassword(): string {
+  const kek = process.env.MINTKEY_BOOTSTRAP_KEK;
+  const passwordFile = process.env.ADMIN_PASSWORD_FILE;
+
+  if (!kek) {
+    // Documented dev path: no encryption in use. Read plaintext file if available,
+    // else fall back to ADMIN_PASSWORD env var.
+    if (passwordFile) {
+      try {
+        return readFileSync(passwordFile).toString("utf-8").trim();
+      } catch {
+        // File unreadable — fall through to env var.
+      }
+    }
+    return process.env.ADMIN_PASSWORD ?? "";
+  }
+
+  // KEK is set: file must contain Fernet ciphertext (S6 CodeQL fix). Decrypt it.
+  if (!passwordFile) {
+    // KEK set but no file path configured — misconfiguration.
+    console.error("admin-ui: MINTKEY_BOOTSTRAP_KEK is set but ADMIN_PASSWORD_FILE is not; cannot decrypt bootstrap password");
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("admin-ui: MINTKEY_BOOTSTRAP_KEK set without ADMIN_PASSWORD_FILE");
+    }
+    return "";
+  }
+
+  try {
+    const raw = readFileSync(passwordFile);
+    const ciphertext = Buffer.from(raw.toString("ascii").trim(), "base64");
+    return decryptFernet(ciphertext, kek);
+  } catch (err) {
+    // KEK was set but decryption failed — this is not a silent fallback path.
+    // Log with enough detail to debug (never log the KEK value itself).
+    console.error(
+      "admin-ui: bootstrap password decrypt failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+    if (process.env.NODE_ENV === "production") {
+      throw err;
+    }
+    // Dev: surface as auth-unavailable (getApiSession returns null → unauthenticated fallback).
+    return "";
+  }
 }
 
 interface ApiSession {

@@ -118,6 +118,12 @@ services:
       MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-}"
       MINTKEY_GRAFANA_PUBLIC_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-}"
       MINTKEY_JAEGER_PUBLIC_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-}"
+      # S6 — Fernet key for encrypting the bootstrap admin password on disk.
+      # Closes CodeQL py/clear-text-storage-sensitive-data (seed-job/main.py).
+      # Override in production via .env or secrets manager; never commit a
+      # real key here.  Generate a fresh key with:
+      #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
     networks:
@@ -226,6 +232,8 @@ services:
       # Admin credentials for server-to-server API calls (ADR-0019 signed-request JWT)
       ADMIN_EMAIL: admin@mintkey.internal
       ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
+      # KEK needed to decrypt the Fernet-encrypted admin_password file (S6 CodeQL fix).
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
       ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
       # Public-facing URLs (see docs/NETWORK.md).
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
