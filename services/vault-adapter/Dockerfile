@@ -23,9 +23,16 @@ WORKDIR /workspace/services/vault-adapter
 RUN go build -o /vault-adapter ./cmd/vault-adapter
 
 # Download grpc_health_probe for distroless healthchecking.
+# SHA256 digests from https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.50/checksums.txt
 RUN GOARCH=$(go env GOARCH) && \
+    case "${GOARCH}" in \
+      amd64) SHA256="84fb8aa14a6f5467bf12144320e8e91f4e888956c3229efa7da0b8bdb10de8d2" ;; \
+      arm64) SHA256="6cf28a5fa8fae69d71a12800e8702cc3f0465b6f6e804bc4268f868709ca37a5" ;; \
+      *) echo "Unsupported GOARCH: ${GOARCH}" && exit 1 ;; \
+    esac && \
     wget -qO /grpc_health_probe \
-      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.28/grpc_health_probe-linux-${GOARCH}" && \
+      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.50/grpc_health_probe-linux-${GOARCH}" && \
+    echo "${SHA256}  /grpc_health_probe" | sha256sum -c - && \
     chmod +x /grpc_health_probe
 
 # Pinned 2026-05-18; re-pin every quarter.
