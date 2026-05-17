@@ -4,8 +4,8 @@ FROM python:3.12-slim-bookworm@sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-hashes.txt .
+RUN pip install --no-cache-dir --require-hashes -r requirements-hashes.txt
 
 COPY main.py .
 COPY realm-mintkey.json .

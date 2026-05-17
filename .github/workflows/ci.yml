@@ -70,7 +70,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install validators
-        run: pip install openapi-spec-validator jsonschema pyyaml
+        run: pip install --require-hashes -r ci/lint-contracts-requirements.txt
       - name: Validate OpenAPI
         run: |
           python3 -c "
