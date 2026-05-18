@@ -3,7 +3,9 @@ Unit tests for the SSRF host-binding guardrail added in S1 — py/full-ssrf.
 
 Rule: _check_ssrf_hostname(final_url, base_url) must raise HTTPException(400)
 whenever the effective hostname of final_url differs from the hostname of
-base_url (case-insensitive).
+base_url (case-insensitive).  When the hostname is safe the function returns
+final_url unchanged (return-value pattern lets CodeQL recognise the
+assignment site as a taint-sanitization point — CodeQL refactor S5).
 
 Source: S-SEC-1; ADR-0014.4; CodeQL alert py/full-ssrf @ services.py:537.
 """
@@ -95,39 +97,42 @@ class TestSSRFPermitted:
         """Happy path: final_url host == base_url host."""
         from admin_api.api.services import _check_ssrf_hostname
 
-        # Must not raise — returns None
+        final_url = "https://api.github.com/repos/octocat/hello-world"
         result = _check_ssrf_hostname(
-            final_url="https://api.github.com/repos/octocat/hello-world",
+            final_url=final_url,
             base_url="https://api.github.com",
         )
-        assert result is None
+        assert result == final_url
 
     def test_matching_hostname_with_path_passes(self) -> None:
         """base_url with trailing path prefix; final_url extends it — still same host."""
         from admin_api.api.services import _check_ssrf_hostname
 
+        final_url = "https://api.stripe.com/v1/charges"
         result = _check_ssrf_hostname(
-            final_url="https://api.stripe.com/v1/charges",
+            final_url=final_url,
             base_url="https://api.stripe.com",
         )
-        assert result is None
+        assert result == final_url
 
     def test_case_insensitive_hostname_match(self) -> None:
         """Hostname comparison is case-insensitive (RFC 4343)."""
         from admin_api.api.services import _check_ssrf_hostname
 
+        final_url = "https://API.GITHUB.COM/repos"
         result = _check_ssrf_hostname(
-            final_url="https://API.GITHUB.COM/repos",
+            final_url=final_url,
             base_url="https://api.github.com",
         )
-        assert result is None
+        assert result == final_url
 
     def test_matching_hostname_with_query_param_appended(self) -> None:
         """api_key_query scheme appends ?api_key=... — host must still match."""
         from admin_api.api.services import _check_ssrf_hostname
 
+        final_url = "https://api.github.com/repos?api_key=secret"
         result = _check_ssrf_hostname(
-            final_url="https://api.github.com/repos?api_key=secret",
+            final_url=final_url,
             base_url="https://api.github.com",
         )
-        assert result is None
+        assert result == final_url

@@ -217,7 +217,7 @@ def _forbidden_response() -> JSONResponse:
     )
 
 
-def _check_ssrf_hostname(final_url: str, base_url: str) -> None:
+def _check_ssrf_hostname(final_url: str, base_url: str) -> str:
     """
     Enforce that the outbound URL's effective hostname stays within the
     service's declared base_url hostname — S-SEC-1 / ADR-0014.4.
@@ -227,6 +227,10 @@ def _check_ssrf_hostname(final_url: str, base_url: str) -> None:
     and comparing hostnames (case-insensitive) closes that gap.
 
     Raises HTTPException(400) if the hostnames do not match.
+
+    Returns ``final_url`` unchanged when the hostname is safe.  Returning the
+    value (rather than raising-only) lets CodeQL's taint analysis recognise
+    the assignment site as a dataflow sanitization point.
     """
     base_host = urlparse(base_url).hostname or ""
     final_host = urlparse(final_url).hostname or ""
@@ -240,6 +244,7 @@ def _check_ssrf_hostname(final_url: str, base_url: str) -> None:
                 "final_host": final_host,
             },
         )
+    return final_url
 
 
 def _wire_id_to_db_uuid(wire_id: str) -> str:
@@ -547,7 +552,7 @@ async def test_service_transient(
     # SSRF host-binding guardrail — S-SEC-1 / ADR-0014.4
     # Verify the assembled URL's hostname hasn't escaped the service base_url
     # (e.g. via a malicious test.path like //evil.com/steal).
-    _check_ssrf_hostname(final_url, base_url)
+    final_url = _check_ssrf_hostname(final_url, base_url)
 
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(test.headers or {})}
@@ -708,7 +713,7 @@ async def test_service(
     # SSRF host-binding guardrail — S-SEC-1 / ADR-0014.4
     # base_url comes from DB (trusted) but an attacker-supplied req.path
     # could still redirect to a different host via e.g. //evil.com/steal.
-    _check_ssrf_hostname(final_url, base_url)
+    final_url = _check_ssrf_hostname(final_url, base_url)
 
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(req.headers or {})}

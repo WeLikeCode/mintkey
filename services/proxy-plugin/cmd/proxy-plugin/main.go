@@ -269,8 +269,10 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Kong routes are named /v1/call/{service_uuid} so the first non-empty path
 	// segment after stripping /v1/call/ is the UUID to compare against.
 	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
+		safeURLSvcID := safeID(urlSvcID)
+		safeSvcID := safeID(serviceID)
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
-			safeID(urlSvcID), safeID(serviceID), h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+			safeURLSvcID, safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
 		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
 			// Emit audit event for strict-mode rejection (#24).
 			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
@@ -307,7 +309,9 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CallerActorID: agentID,
 	})
 	if err != nil {
-		log.Printf("proxy-plugin: vault GetCredential error (svc=%s tnt=%s): %v", safeID(serviceID), safeID(tenantID), err)
+		safeSvcID := safeID(serviceID)
+		safeTntID := safeID(tenantID)
+		log.Printf("proxy-plugin: vault GetCredential error (svc=%s tnt=%s): %v", safeSvcID, safeTntID, err)
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
 		return
@@ -367,7 +371,8 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// safeInjectErr returns a fixed string so the credential plaintext
 		// cannot reach the log sink (CodeQL go/clear-text-logging).
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
-			log.Printf("proxy-plugin: inject error: %s", safeInjectErr(injectErr))
+			safeErr := safeInjectErr(injectErr)
+			log.Printf("proxy-plugin: inject error: %s", safeErr)
 		}
 	}
 
@@ -461,7 +466,9 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		CallerActorID: res.AgentID,
 	})
 	if err != nil {
-		log.Printf("proxy-plugin: classical key vault error (svc=%s tnt=%s): %v", safeID(serviceID), safeID(tenantID), err)
+		safeSvcID := safeID(serviceID)
+		safeTntID := safeID(tenantID)
+		log.Printf("proxy-plugin: classical key vault error (svc=%s tnt=%s): %v", safeSvcID, safeTntID, err)
 		http.Error(w, "bad gateway: vault error", http.StatusBadGateway)
 		return
 	}
@@ -505,7 +512,8 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 			req.URL.Path = stripped
 		}
 		if injectErr := credential.Inject(req, backendCred); injectErr != nil {
-			log.Printf("proxy-plugin: classical key inject error: %s", safeInjectErr(injectErr))
+			safeErr := safeInjectErr(injectErr)
+			log.Printf("proxy-plugin: classical key inject error: %s", safeErr)
 		}
 	}
 
