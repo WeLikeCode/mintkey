@@ -16,7 +16,7 @@ Working in `/Users/alexandruiacobescu/gooseProjects/mintkey-dev-settings-backup/
 | 2026-05-18 ~09:50 | INVESTIGATOR (Sonnet, async) | Dispatched C-1 broad audit; output to `/tmp/c1_evidence_report.md` |
 | 2026-05-18 — | ORCHESTRATOR | Distill investigator findings into `EVIDENCE_LEDGER.md`; commit scaffold |
 | 2026-05-18 — | C-2 IMPLEMENTER | _pending_ |
-| 2026-05-18 — | C-3 IMPLEMENTER | _pending_ |
+| 2026-05-18 — | C-3 IMPLEMENTER | Implemented: `admin-ui/.gitignore` patched (EV-APP-002/EV-ENV-005); `install.sh --force-destroy` guard added (EV-DESTRUCTIVE-003); 02-matrix.md C-3 row flipped to ✅ |
 | 2026-05-18 — | C-4 IMPLEMENTER | _pending_ |
 | 2026-05-18 — | C-5 REVIEWER | _pending_ |
 | 2026-05-18 — | ORCHESTRATOR | PR open + admin-merge via proxy |

@@ -8,6 +8,8 @@
 # Options:
 #   --non-interactive    Use defaults/env-vars for all prompts; abort if required values missing
 #   --clean              Remove Docker volumes before rebuild (prompts for confirmation)
+#   --force-destroy      Required with --clean --non-interactive; prevents silent volume removal
+#                        (EvidenceRef: EV-DESTRUCTIVE-003, 2026-05-18-dev-settings-backup-recovery)
 #   --help               Show this help message
 #
 # Note: Windows is not supported. Use WSL2 on Windows (future release).
@@ -24,6 +26,10 @@ fi
 # --- Global flags ---
 NON_INTERACTIVE=false
 CLEAN=false
+# --force-destroy: required when combining --clean with --non-interactive.
+# Prevents silent data loss from CI/scripting invocations that bypass the interactive [y/N] prompt.
+# EvidenceRef: EV-DESTRUCTIVE-003 (2026-05-18-dev-settings-backup-recovery)
+FORCE_DESTROY=false
 
 # --- Signal handling ---
 cleanup() {
@@ -244,6 +250,12 @@ parse_args() {
                 CLEAN=true
                 shift
                 ;;
+            --force-destroy)
+                # Required when --clean and --non-interactive are both set.
+                # EvidenceRef: EV-DESTRUCTIVE-003 (2026-05-18-dev-settings-backup-recovery)
+                FORCE_DESTROY=true
+                shift
+                ;;
             --help)
                 show_help
                 exit 0
@@ -267,6 +279,11 @@ build, migrate, seed, start, and verify.
 Options:
   --non-interactive    Use defaults/env-vars for all prompts; abort if required values missing
   --clean              Remove Docker volumes before rebuild (prompts for confirmation)
+  --force-destroy      Required when combining --clean with --non-interactive. Bypasses the
+                       interactive [y/N] confirmation for volume removal. Without this flag,
+                       --clean --non-interactive exits 1 and prints the volume list so you
+                       can run 'bash scripts/dev-backup.sh' first.
+                       (EvidenceRef: EV-DESTRUCTIVE-003)
   --help               Show this help message
 
 Environment variables (for --non-interactive):
@@ -992,10 +1009,27 @@ phase_start() {
     fi
 
     # Handle --clean flag: remove volumes if confirmed
+    # EvidenceRef: EV-DESTRUCTIVE-003 (2026-05-18-dev-settings-backup-recovery)
     if [[ "${CLEAN}" == "true" ]]; then
         if [[ "${NON_INTERACTIVE}" == "true" ]]; then
-            # Non-interactive + clean: remove volumes immediately
-            log INFO "Removing Docker volumes (--clean + --non-interactive)..."
+            # Non-interactive + clean: require --force-destroy to prevent silent data loss.
+            # Without --force-destroy, print a warning + the volume list and exit 1 so the
+            # operator can run 'bash scripts/dev-backup.sh' first.
+            if [[ "${FORCE_DESTROY}" != "true" ]]; then
+                printf "%s\n" "" >&2
+                printf "ERROR: --clean --non-interactive requires --force-destroy to prevent\n" >&2
+                printf "accidental data loss. The following volumes would be permanently deleted:\n" >&2
+                printf "\n" >&2
+                docker compose config --volumes 2>/dev/null | sed 's/^/  - /' >&2 || \
+                    printf "  (could not enumerate volumes — docker compose not available)\n" >&2
+                printf "\n" >&2
+                printf "Back up first: bash scripts/dev-backup.sh\n" >&2
+                printf "Then re-run with: --clean --non-interactive --force-destroy\n" >&2
+                printf "\n" >&2
+                exit 1
+            fi
+            # --force-destroy provided: proceed with volume removal
+            log INFO "Removing Docker volumes (--clean --non-interactive --force-destroy)..."
             local clean_exit=0
             docker compose down -v --timeout 30 >>"${LOG_FILE:-/dev/null}" 2>&1 || clean_exit=$?
             if [[ ${clean_exit} -ne 0 ]]; then
