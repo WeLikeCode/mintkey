@@ -18,7 +18,10 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "20"
+  # pnpm 11 imports `node:sqlite` for its store cache; that builtin requires
+  # Node ≥22.5. Node 20 crashes with ERR_UNKNOWN_BUILTIN_MODULE during the
+  # very first `pnpm install --frozen-lockfile` step. Bumped 2026-05-18.
+  NODE_VERSION: "22"
   PNPM_VERSION: "11"
 
 jobs:
