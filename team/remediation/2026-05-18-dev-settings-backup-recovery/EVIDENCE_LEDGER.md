@@ -163,7 +163,8 @@ Distilled from the C-1 Investigator's `/tmp/c1_evidence_report.md` (Sonnet, 2026
 | EV-DESTRUCTIVE-008 | `.serena/memories/suggested_commands.md:8` — `# stop and remove volumes` | Routine-command framing | NONE | **C-4 doc fix**: change comment to destructive warning |
 | EV-DESTRUCTIVE-009 | `docs/guides/10min-mock-demo.md:353` — `# WARNING: deletes all volumes` | Already has a warning comment | Comment only; no gate | **C-4 doc fix**: link to backup HOWTO |
 | EV-DESTRUCTIVE-010 | `docs/guides/10min-mock-demo.md:379` — `docker volume rm mintkey_postgres_data (data loss!)` | Inline-note in troubleshooting table | Inline note | **C-4 doc fix**: explicit "pg_dump first" prefix |
-| EV-DESTRUCTIVE-011 | `docs/NETWORK.md:225-232` — Option B re-seed | `down` + delete sentinel + `up -d` → rotates bootstrap secrets | Comment warns "last resort" | **C-4 doc fix**: add explicit pre-flight backup step |
+| EV-DESTRUCTIVE-011 | `docs/AUTH.md:183-189` — Option B re-seed (corrected 2026-05-18 follow-up R-1; originally mis-cited as docs/NETWORK.md:225-232 which is the unrelated LAN-rebuild section) | `docker compose down` + `rm data/bootstrap-secrets/.admin_password_synced` + `docker compose up -d` → rotates ALL bootstrap secrets | Inline comment warns "use only as last resort" | **DSBR R-1 follow-up PR**: added pre-flight `bash scripts/dev-backup.sh --write --with-secrets` block above the fence in AUTH.md |
+| EV-DESTRUCTIVE-011b | `docs/NETWORK.md:225-232` — LAN-rebuild section (the file C-4 originally patched per the mis-cited row above) | `docker compose down` (no -v) + restart for env-var reload | Comment warns about config rebuild | C-4 added a pre-flight note here; secondary surface, not the re-seed one |
 
 ### Category K — destructive doc instructions
 
