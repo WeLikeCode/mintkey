@@ -1,8 +1,24 @@
 # Session S5 — codeql-weak-hashing — Final Report
 
-**Date:** 2026-05-18  
-**Branch:** fix/s5-codeql-weak-hashing-2026-05-18  
-**Status:** BLOCKED — all three sites require migration before the alerts can be closed
+**Session:** `2026-05-18-s5-codeql-weak-hashing`
+**Branch:** `fix/s5-codeql-weak-hashing-2026-05-18` (from `main @ 5203e23`)
+**Status:** **CLOSED-WITH-RESIDUALS** — implementer classified 3 alert sites; all require owner-decision migrations before code changes can land. This report is the docs-only closure of the *classification* work; the actual hash-algorithm changes are deferred to follow-up sessions per the recommendations below.
+**Closed:** 2026-05-18
+
+**Commits:**
+- `6fc38e5` docs(s5): classify codeql-weak-hashing alerts — all three BLOCKED pending migration
+
+## Outcome by site
+
+| File:line | Classification | Recommended action |
+|---|---|---|
+| `admin-api/src/admin_api/api/internal.py:119` | stored-fingerprint lookup (`agents.api_key_fingerprint`) | Migration session: HMAC-SHA-256 + maintenance-window key re-issuance OR dual-fingerprint cutover |
+| `admin-api/src/admin_api/api/proxy.py:64` | stored-fingerprint lookup (`service_api_keys.key_fingerprint`) | Same migration as `internal.py:119` |
+| `mintkey-models/mintkey_models/audit.py:85` | Audit hash chain integrity per ADR-0014.7 | Recommend GitHub-UI dismiss as false-positive with ADR-0014.7 rationale |
+
+Original detailed classification table preserved below.
+
+---
 
 ---
 
