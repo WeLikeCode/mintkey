@@ -22,13 +22,17 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet
 
 
 class BootstrapPasswordError(Exception):
     """Raised when the bootstrap password file cannot be decrypted or is missing."""
 
 
-def _get_fernet():  # type: ignore[no-untyped-def]
+def _get_fernet() -> "Fernet":
     """Return a Fernet instance using MINTKEY_BOOTSTRAP_KEK.
 
     Deferred import keeps the cryptography dependency optional for callers
