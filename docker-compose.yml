@@ -30,7 +30,10 @@ services:
 
   # ─── 1. Postgres ─────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16
+    # Pinned 2026-05-18 — root cause of 2026-05-18 dev-data wipe was unpinned
+    # `postgres:16` digest drift during `docker compose up`. Refresh digest
+    # with: docker buildx imagetools inspect postgres:16
+    image: postgres:16@sha256:b6ccf02e9b47eac0d67b5eaa0ef56fd59163bffa5506f64e96ceb5053130ec86
     restart: unless-stopped
     mem_limit: 512m
     command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=4MB"]
