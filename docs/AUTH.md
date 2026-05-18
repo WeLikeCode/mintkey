@@ -181,6 +181,14 @@ docker compose start keycloak
 ```
 
 **Option B — Re-seed (destroys bootstrap state, use only as last resort):**
+
+> **⚠ Pre-flight backup** — this rotates ALL bootstrap secrets. Run a backup first so you can roll back if anything downstream depends on the current values:
+> ```bash
+> bash scripts/dev-backup.sh --write --with-secrets
+> ```
+> Full workflow: [team/remediation/HOWTO-backup-before-reset.md](../team/remediation/HOWTO-backup-before-reset.md).
+> (EvidenceRef: DSBR session `EV-DESTRUCTIVE-011`.)
+
 ```bash
 docker compose down
 rm data/bootstrap-secrets/.admin_password_synced   # forces re-seed
