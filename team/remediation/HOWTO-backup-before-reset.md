@@ -241,6 +241,107 @@ contributor is surprised.
 
 ---
 
+---
+
+## 11. Periodic backups via cron (optional)
+
+> **OPT-IN only.** Nothing in this repository auto-installs a cron job. The steps
+> below are advisory; run them only if you want recurring automated backups.
+>
+> **EV-GAP-005 closed** by `scripts/dev-backup-cron.example.sh` +
+> `team/remediation/2026-05-18-r5-pg-dump-cron-docs/`.
+
+### Why periodic backups
+
+The one-time backup in section 2 requires manual invocation.  For long-running
+development environments where you want a daily safety net — especially before
+unattended overnight work — you can install a cron job that calls the wrapper
+script automatically.
+
+### The wrapper script
+
+`scripts/dev-backup-cron.example.sh` is a thin orchestration layer around
+`scripts/dev-backup.sh --write`.  It:
+
+1. Validates `MINTKEY_REPO_DIR` is set and points to a git repository.
+2. Optionally sources `MINTKEY_BOOTSTRAP_KEK` from a file
+   (`MINTKEY_BOOTSTRAP_KEK_FILE`) so the KEK is never stored in the crontab
+   itself, and passes `--with-secrets` to the backup when the file is present.
+3. Appends all stdout+stderr to `.mintkey-backups/cron.log` (gitignored).
+4. On success, prunes `.mintkey-backups/` subdirectories older than
+   `MINTKEY_BACKUP_RETENTION_DAYS` days (default: 14).
+5. **Fails closed** — any preflight failure (missing `MINTKEY_REPO_DIR`, not a
+   git repo, `dev-backup.sh` missing, empty KEK file) exits non-zero with a
+   clear error message and does NOT proceed.
+
+### Crontab line shape
+
+```
+0 3 * * *  MINTKEY_REPO_DIR=/path/to/mintkey  MINTKEY_BOOTSTRAP_KEK_FILE=/secure/path/to/kek  bash /path/to/mintkey/scripts/dev-backup-cron.example.sh
+```
+
+To back up **without** secrets (keys-only, no KEK required):
+
+```
+0 3 * * *  MINTKEY_REPO_DIR=/path/to/mintkey  bash /path/to/mintkey/scripts/dev-backup-cron.example.sh
+```
+
+### 3-step install
+
+1. **Verify the script works manually** (should fail with a clear error if env
+   vars are missing):
+
+   ```bash
+   # Expect: exit non-zero + "MINTKEY_REPO_DIR is not set" message
+   bash scripts/dev-backup-cron.example.sh 2>&1; echo "exit=$?"
+
+   # Expect: exit 0 + backup written to .mintkey-backups/
+   MINTKEY_REPO_DIR=/path/to/mintkey bash scripts/dev-backup-cron.example.sh
+   ```
+
+2. **Open your personal crontab** (never the system crontab):
+
+   ```bash
+   crontab -e
+   ```
+
+3. **Add a line** using the shape above.  Replace paths; adjust the hour (the
+   `0 3 * * *` example runs at 03:00 UTC daily).  Save and exit.
+
+   Verify with `crontab -l` that the line appears.
+
+### Retention policy
+
+- Default: backups older than **14 days** are pruned on each successful run.
+- Override: set `MINTKEY_BACKUP_RETENTION_DAYS=N` in the crontab line.
+
+  ```
+  0 3 * * *  MINTKEY_REPO_DIR=/path/to/mintkey  MINTKEY_BACKUP_RETENTION_DAYS=30  bash /path/to/mintkey/scripts/dev-backup-cron.example.sh
+  ```
+
+- The log file `.mintkey-backups/cron.log` is **not** pruned; it grows
+  indefinitely.  Rotate it manually or with `logrotate` if disk space is a
+  concern.
+
+### Checking the log
+
+```bash
+tail -50 .mintkey-backups/cron.log
+```
+
+### Security notes
+
+- The `MINTKEY_BOOTSTRAP_KEK_FILE` path should be **outside the repo** (e.g.,
+  `~/.config/mintkey/kek` or a secrets-manager socket path) and readable only
+  by the user running cron (`chmod 600`).
+- Never put the KEK value directly in the crontab line — that would expose it
+  via `crontab -l` and process listings.
+- The cron wrapper inherits the same secrets-handling guarantees as
+  `dev-backup.sh`: values are Fernet-encrypted or redacted; nothing is printed
+  to stdout/stderr in plaintext.
+
+---
+
 ## Source / EvidenceRef map
 
 Every claim in this document traces to a row in
@@ -258,3 +359,4 @@ Every claim in this document traces to a row in
 | 8 — Recovering without a backup | EV-OPERATOR-RECOVERY, EV-DB-001..008 |
 | 9 — Rotating secrets | EV-SECRET-001..004, EV-BOOTSTRAP-001, EV-DB-001 |
 | 10 — Known gaps | EV-GAP-001..007 |
+| 11 — Periodic backups via cron | EV-GAP-005 |
