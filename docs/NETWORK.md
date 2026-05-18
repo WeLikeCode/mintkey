@@ -227,6 +227,12 @@ MINTKEY_JAEGER_PUBLIC_URL=http://10.243.1.200:16686
 
 Rebuild and restart:
 
+> **Pre-flight**: if you also need to wipe volumes (e.g. to force a bootstrap re-seed),
+> run `bash scripts/dev-backup.sh --with-secrets` before `docker compose down -v`.
+> A `down` without `-v` preserves volumes. See
+> [team/remediation/HOWTO-backup-before-reset.md](../team/remediation/HOWTO-backup-before-reset.md)
+> (EV-DESTRUCTIVE-011).
+
 ```bash
 docker compose down
 docker compose build

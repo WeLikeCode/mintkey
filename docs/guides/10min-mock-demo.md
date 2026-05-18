@@ -350,7 +350,7 @@ docker compose start      # resume where you left off
 To tear everything down (data lost):
 
 ```bash
-docker compose down -v    # WARNING: deletes all volumes including vault data
+docker compose down -v    # WARNING: deletes all volumes including vault data; back up first with bash scripts/dev-backup.sh — see team/remediation/HOWTO-backup-before-reset.md (EV-DESTRUCTIVE-009)
 ```
 
 ---
@@ -376,7 +376,7 @@ as the invisible credential intermediary.
 | `docker compose up` hangs | Image pull slow or port conflict | Check `docker compose logs`; ensure ports 8000, 8080, 8081, 8082, 8999 are free |
 | Keycloak login page not loading | keycloak container not healthy | `docker compose logs mintkey-keycloak-1 --tail 30` |
 | `internal-login` returns 404 | Keycloak is up; break-glass not enabled | Run `admin reset-password` CLI (see Step 4 note) |
-| Seed job shows `Exit 1` | Liquibase failed | `docker compose logs mintkey-liquibase-1`; often a stale volume — `docker compose down && docker volume rm mintkey_postgres_data` (data loss!) |
+| Seed job shows `Exit 1` | Liquibase failed | `docker compose logs mintkey-liquibase-1`; often a stale volume — back up first with `bash scripts/dev-backup.sh` (see HOWTO-backup-before-reset.md, EV-DESTRUCTIVE-010), then `docker compose down && docker volume rm mintkey_postgres_data` (data loss!) |
 | `request_token` returns 403 | Permission grant missing | Verify Step 6; check `$SID` matches the registered service |
 | Proxy returns 404 | Kong route not synced | Wait 30 s; `docker compose logs mintkey-kong-syncer-1 | grep routes_published` |
 | Echo endpoint shows `"x-api-key": null` | Credential not stored properly | Re-run credential save in Step 4; check vault-adapter logs |
