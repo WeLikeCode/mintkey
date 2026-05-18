@@ -22,7 +22,7 @@ Any log aggregator (Loki, CloudWatch, Datadog) receiving these lines stores the 
 ## Expected behavior
 
 Log lines must contain only redacted representations of secrets:
-- `authorization` header → `Bearer sk12…` (first 4 chars + `…`)  
+- `authorization` header → `Bearer sk12…` (first 4 chars + `…`)
 - `x_api_key` / `api_key` → first 4 chars + `…`
 - Issued service API keys in output → first 4 chars + `…`
 
@@ -54,8 +54,6 @@ Log lines must contain only redacted representations of secrets:
 - `mock-backend/src/mock_backend/rest/main.py`
 - `mock-backend/tests/test_mock.py`
 - `scripts/e2e_smoke.py`
-- `mintkey-models/mintkey_models/log_redact.py` (new helper)
-- `mintkey-models/tests/test_log_redact.py` (new test)
 
 ## Out of scope
 
