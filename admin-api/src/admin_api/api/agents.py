@@ -30,8 +30,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-logger = logging.getLogger(__name__)
-
 from argon2 import PasswordHasher
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
@@ -45,6 +43,8 @@ from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/agents")
 
