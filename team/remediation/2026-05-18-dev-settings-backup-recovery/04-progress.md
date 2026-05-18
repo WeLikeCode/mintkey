@@ -18,8 +18,9 @@ Working in `/Users/alexandruiacobescu/gooseProjects/mintkey-dev-settings-backup/
 | 2026-05-18 — | C-2 IMPLEMENTER | Implemented: `scripts/dev-backup.sh` (new, EV-ENV-002/003/005, EV-BOOTSTRAP-001..006, EV-VOL-001..004, EV-DB-001..008, EV-COMPOSE-001..003); `scripts/dev-restore.sh` (new, full classification-based restore); `.gitignore` (+`.mintkey-backups/`); shellcheck passes; dry-run writes 0 files; 02-matrix.md C-2 row flipped to ✅ |
 | 2026-05-18 — | C-3 IMPLEMENTER | Implemented: `admin-ui/.gitignore` patched (EV-APP-002/EV-ENV-005); `install.sh --force-destroy` guard added (EV-DESTRUCTIVE-003); 02-matrix.md C-3 row flipped to ✅ |
 | 2026-05-18 — | C-4 IMPLEMENTER | Implemented: `team/remediation/HOWTO-backup-before-reset.md` (new, 10 sections + EvidenceRef map, EV-DOC-* + EV-DESTRUCTIVE-006..011 + EV-GAP-001..007 + EV-BOOTSTRAP-001..007 + EV-VOL-001..007 + EV-DB-001..008); `README.md` (+backup subsection under Run it locally, EV-DESTRUCTIVE-001, EV-VOL-001..007); `CLAUDE.md:224` patched (EV-DESTRUCTIVE-006); `AGENTS.md:226` patched (EV-DESTRUCTIVE-007); `.serena/memories/suggested_commands.md:8` patched (EV-DESTRUCTIVE-008); `docs/guides/10min-mock-demo.md:353,379` patched (EV-DESTRUCTIVE-009/010); `docs/NETWORK.md:228-234` patched (EV-DESTRUCTIVE-011); 02-matrix.md C-4 row flipped to ✅ |
-| 2026-05-18 — | C-5 REVIEWER | _pending_ |
-| 2026-05-18 — | ORCHESTRATOR | PR open + admin-merge via proxy |
+| 2026-05-18 ~10:15 | C-5 REVIEWER (Opus, fresh) | FAIL on P0 secret leak in ISSUE_INTAKE.md:55 (live mk_agent_*); all other checks PASS |
+| 2026-05-18 ~10:25 | ORCHESTRATOR | Scrubbed leak via git rebase -i (rewrote ec322aa→1b2e3a6); force-push-with-lease to branch; updated EVIDENCE_LEDGER (EV-LEAK-001); wrote 99-report |
+| 2026-05-18 ~10:30 | ORCHESTRATOR | Committed 99-report + ledger update; push + PR + (owner-gated) admin-merge |
 
 ## Worktree-cleanup note
 

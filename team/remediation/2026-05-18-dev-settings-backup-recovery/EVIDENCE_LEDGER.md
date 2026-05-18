@@ -24,6 +24,13 @@ This ledger is the source of truth for every change in this session. Every row m
 - `EV-DESTRUCTIVE-*` — destructive scripts/commands
 - `EV-DOC-*` — destructive doc instructions
 - `EV-GAP-*` — explicit "we searched and found nothing" rows
+- `EV-LEAK-*` — secrets accidentally committed during this session (post-mortem; treat as audit trail)
+
+## Mid-session incidents
+
+| EvidenceRef | Source | What happened | Mitigation |
+|---|---|---|---|
+| EV-LEAK-001 | This session, scaffold commit `ec322aa` (later rewritten to `1b2e3a6`) | The ORCHESTRATOR (me) wrote the live `mk_agent_*` plaintext into `ISSUE_INTAKE.md:55` as "evidence" of the manual post-wipe recovery. Committed and pushed to `origin/fix/dev-settings-backup-recovery-2026-05-18`. Live on GitHub for ~30–60 minutes. | C-5 reviewer (Opus, fresh) caught the leak on first pass. Orchestrator scrubbed via `git rebase -i` rewriting the offending commit, then `git push --force-with-lease`. Branch history is now clean. **Owner action required**: rotate the agent's key in admin-ui (Agents → that agent → Rotate Key), per the HOWTO Section 9 workflow this very session authored. Failure mode is the exact class this session exists to prevent — proves the value of the C-5 fresh-reviewer gate. |
 
 ## Anchor entries (pre-investigation)
 

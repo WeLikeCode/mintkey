@@ -9,7 +9,7 @@
 | C-2 | 1 | IMPLEMENTER (Sonnet) | `scripts/dev-backup.sh`, `scripts/dev-restore.sh`, `.gitignore` | ✅ PASS | ⬜ pending (C-5) | see 04-progress.md |
 | C-3 | 1 | IMPLEMENTER (Sonnet) | `admin-ui/.gitignore`, `install.sh` | ✅ PASS | ⬜ pending | (see 04-progress) |
 | C-4 | 1 | IMPLEMENTER (Sonnet) | `README.md`, `team/remediation/HOWTO-backup-before-reset.md`, per-C-1 doc patches | ✅ PASS | ⬜ pending (C-5) | see 04-progress.md |
-| C-5 | 2 | REVIEWER (Opus, fresh) | full session audit | ⬜ pending | — | — |
+| C-5 | 2 | REVIEWER (Opus, fresh) | full session audit | ✅ PASS-with-leak-flagged | — | — |
 | W3 | 3 | ORCHESTRATOR | push + PR + admin-merge | ⬜ pending | — | — |
 
 ## Failure counters
