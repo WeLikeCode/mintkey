@@ -98,6 +98,27 @@ Admin UI: `http://localhost:8081` — full port map in [`PORTS.md`](PORTS.md).
 
 Full walkthrough: [`docs/guides/github-quickstart.md`](docs/guides/github-quickstart.md).
 
+### Backup local state before a reset
+
+Local docker volumes hold curated state (agents/services in `postgres_data`, vault
+credentials in `vault_data`/`vault_kek`, bootstrap secrets). `docker compose down -v`
+wipes all 7 named volumes permanently (EV-DESTRUCTIVE-001, EV-VOL-001..007). Before
+any reset:
+
+```bash
+bash scripts/dev-backup.sh
+```
+
+Default mode redacts secrets and writes to `.mintkey-backups/<timestamp>/`. To recover later:
+
+```bash
+bash scripts/dev-restore.sh .mintkey-backups/<timestamp> --dry-run   # see what would change
+bash scripts/dev-restore.sh .mintkey-backups/<timestamp> --apply     # actually restore
+```
+
+Full workflow: [team/remediation/HOWTO-backup-before-reset.md](team/remediation/HOWTO-backup-before-reset.md).
+EvidenceRefs (source of truth): see that doc's appendix.
+
 ---
 
 ## Where to read next

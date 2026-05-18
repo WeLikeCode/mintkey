@@ -221,6 +221,11 @@ diff -u mintkey-models/src/mintkey_models/sql.py /tmp/sql.py
 # End-to-end smoke (Phase 1 milestone 1.11)
 docker compose up -d
 ./scripts/e2e-smoke.sh
+# ⚠ DESTRUCTIVE — wipes ALL 7 named volumes:
+#   postgres_data (agents, services, audit, credentials, permission_grants, …),
+#   vault_data + vault_kek, bootstrap_secrets, grafana_data, broker_wal, proxy_wal.
+# ALWAYS run `bash scripts/dev-backup.sh` first.
+# See team/remediation/HOWTO-backup-before-reset.md (EV-DESTRUCTIVE-006).
 docker compose down -v
 
 # Plaintext-in-logs red team
