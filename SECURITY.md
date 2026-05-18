@@ -163,6 +163,45 @@ Operators and contributors should be aware of these gaps. None of them affect th
   4. If no upstream patch is available yet: add a comment to the alert "Deferred pending upstream patch — per SECURITY.md §Accepted Scorecard Residuals" and dismiss with "Used in tests" or appropriate rationale.
 - **Revisit when**: As soon as the upstream Go module publishes a patch for the flagged advisory.
 
+### Pinned-Dependencies — `pip install --no-deps .` (MEDIUM)
+
+- **Score**: 9 (Scorecard: "pipCommand not pinned by hash")
+- **Context**: `mock-backend/Dockerfile:16` runs `pip install --no-deps .` for the local-path mock-backend package itself. The PREVIOUS line (`mock-backend/Dockerfile:15`) installs all third-party deps with `--require-hashes` against `mock-backend/requirements-hashes.txt`. The single un-hashed line is the local-package install, which has no downloadable artifact to hash.
+- **Status**: Accepted residual. Fixing this would require pre-building and publishing a `mock-backend` wheel (out of scope for a fixture used only by tests).
+- **Revisit when**: A formal release process exists for the mock-backend wheel.
+
+### Pinned-Dependencies — `tools/deps.sh` curl-bootstrap (MEDIUM)
+
+- **Score**: 9 (Scorecard: "downloadThenRun not pinned by hash")
+- **Context**: `tools/deps.sh:49` includes a `curl -LsSf https://astral.sh/uv/install.sh | sh` fallback as the THIRD installation path (after Homebrew and after hash-verified `pip3 install --require-hashes`). The installer script is fetched at runtime from astral-sh's TLS-protected endpoint without a hash check.
+- **Status**: Accepted residual. The fallback is unreachable on any machine with Homebrew OR pip3, which covers the developer-machine target audience. Not invoked in CI (CI uses `astral-sh/setup-uv@<sha>` GitHub Action instead).
+- **Revisit when**: astral-sh publishes signed install-script hashes that can be verified.
+
+### SAST — coverage rate (MEDIUM)
+
+- **Score**: 9 (Scorecard: "SAST tool detected but not run on all commits: 26 commits out of 30 are checked")
+- **Context**: CodeQL runs on every push to `main` and on every PR. The gap is intermediate commits (squash-merge intermediates, dependabot rebases) that don't trigger a fresh CodeQL run. Effective coverage: ~87% of public commits.
+- **Status**: Accepted residual for `v0.1.0-prealpha`. The cost of scanning every commit (4× current CI minutes for marginal coverage gain) is not justified at this stage.
+- **Revisit when**: We adopt squash-only merge (eliminating intermediate commits) OR move toward production deployment where 100% scan coverage is a compliance requirement.
+
+---
+
+## Trivy alerts on Debian-base images — acceptance policy (post-2026-05-18 image-pin campaign)
+
+The 8 service images in `docker-compose.yml` are now `@sha256:`-pinned (PRs #70 + #74) to the latest patched digests from upstream Docker Hub. Those digests still contain known Debian-base package CVEs (e.g., `CVE-2025-14104` in `zlib`, `CVE-2022-0563` in `util-linux`, `CVE-2026-3184`, `CVE-2026-27456`) that ship in every image based on `python:3.12-slim-bookworm`, `node:22-bookworm-slim`, etc.
+
+**Pinning locks the digest; it does not remove CVEs that exist in the current upstream patched version.** Reducing the Trivy alert count further requires one of:
+
+1. **Wait for Debian** — When `debian:bookworm-slim` ships a patched version of the affected package, upstream images (`python:3.12-slim-bookworm`, `node:22-bookworm-slim`, etc.) eventually rebuild on that. The Container Scan workflow now has a weekly cron + `workflow_dispatch` (PR #76); on each successful re-scan, Trivy publishes fresh SARIF and GitHub auto-closes alerts that no longer match the current scan. **This is the chosen policy.**
+2. **Distroless / chainguard migration** — switch runtime stages to `gcr.io/distroless/python3-debian12` / `cgr.dev/chainguard/*`. Eliminates the Debian-base-CVE class entirely. Out of scope per S2 (2026-05-18) owner decision; revisit pre-v1.0 stable.
+3. **`.trivyignore` suppression list** — declare each accepted CVE with a rationale comment. Trivy drops them from SARIF. Adds upkeep burden (new CVE IDs roll in regularly).
+
+For `v0.1.0-prealpha`, **option 1 is the policy**. Expect ~800–900 open Trivy alerts on the dashboard at any given time, with the count drifting as Debian ships patches and the weekly cron re-baselines. Operators reading the security tab should focus on **critical-severity Trivy alerts only** until a distroless migration lands.
+
+### Deferred upstream rebuilds (waiting on producer)
+
+- **`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`** — CVE-2026-31789 (openssl). Latest astral-sh build still ships `openssl 3.0.18-1~deb12u2`; patched version is `3.0.19`. Re-check trigger: `docker run --rm ghcr.io/astral-sh/uv:python3.12-bookworm-slim dpkg -l openssl` returns ≥3.0.19. Open follow-up: re-run S2 session when upstream publishes.
+
 ---
 
 **Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security → Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.
