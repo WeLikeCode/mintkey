@@ -1,6 +1,24 @@
 name: Container Scan (Trivy)
 
 on:
+  # Re-scan after every merge to main so the Code Scanning dashboard reflects
+  # actual main-branch image state. Without this, image-pin PRs (e.g., PR #70
+  # postgres pin, PR #74 the 8-image bulk pin) close on merge but Trivy never
+  # re-runs against main and the dashboard keeps reporting pre-pin findings as
+  # "Open" until the next weekly cron — confusing for operators auditing the
+  # security tab.
+  push:
+    branches: [main]
+    paths:
+      - "**/Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose*.yml"
+      - "**/requirements.txt"
+      - "**/pyproject.toml"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/package.json"
+      - "**/pnpm-lock.yaml"
   pull_request:
     branches: [main]
     paths:
@@ -18,6 +36,10 @@ on:
   schedule:
     # Weekly on Sundays at 06:00 UTC
     - cron: "0 6 * * 0"
+  # Manual re-trigger — operator action via Actions tab. Used to refresh the
+  # dashboard after security advisories rotate or to validate fixes outside
+  # the cron cadence.
+  workflow_dispatch:
 
 permissions:
   contents: read
