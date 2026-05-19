@@ -21,7 +21,8 @@ COMPOSE_TEST := docker compose -f docker-compose.yml -f docker-compose.test.yml 
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
-        template-diff template-pull
+        template-diff template-pull \
+        demo demo-mock
 
 help:
 	@echo ""
@@ -272,3 +273,70 @@ template-diff:
 
 template-pull:
 	@bash $(TOOLS)/template-diff.sh pull $(VERSION)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Demo targets (Builder B-1 experience)
+# Requirements: 11.*, 12.*
+# WARNING: Neither target destroys volumes. Back up first with
+#   bash scripts/dev-backup.sh --write
+# before any docker compose down -v operation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+## demo: Start the full Mintkey stack and print admin URL + bootstrap password.
+##       Polls all three health endpoints (180 s timeout). Idempotent — safe to
+##       run when the stack is already up.
+demo:
+	@docker info >/dev/null 2>&1 || { echo "ERROR: Docker is not running. Start Docker Desktop (or the Docker daemon) and try again."; exit 1; }
+	@echo "Starting Mintkey stack..."
+	docker compose up -d
+	@echo "Waiting for health checks (admin-api :8080, admin-ui :8081, mcp-server :8082) — 180 s timeout..."
+	@elapsed=0; \
+	while [ $$elapsed -lt 180 ]; do \
+		api_ok=0; ui_ok=0; mcp_ok=0; \
+		curl -sf http://localhost:8080/v1/health >/dev/null 2>&1 && api_ok=1; \
+		curl -sf http://localhost:8081/health    >/dev/null 2>&1 && ui_ok=1; \
+		curl -sf http://localhost:8082/v1/health >/dev/null 2>&1 && mcp_ok=1; \
+		if [ $$api_ok -eq 1 ] && [ $$ui_ok -eq 1 ] && [ $$mcp_ok -eq 1 ]; then \
+			break; \
+		fi; \
+		sleep 5; elapsed=$$((elapsed + 5)); \
+		printf "."; \
+	done; \
+	if [ $$elapsed -ge 180 ]; then \
+		echo ""; \
+		echo "ERROR: Timed out after 180 s waiting for services to become healthy."; \
+		echo "       Run 'docker compose ps' to check container status."; \
+		echo "       Run 'docker compose logs <service>' for diagnostics."; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════════════╗"
+	@echo "║  ✓ Mintkey stack is up.                                              ║"
+	@echo "║                                                                      ║"
+	@echo "║  Open the admin UI:    http://localhost:8081                         ║"
+	@echo "║  Bootstrap password:   cat data/bootstrap-secrets/admin_password     ║"
+	@echo "║                        (Fernet-encrypted; decrypt with              ║"
+	@echo "║                         scripts/dev-backup.sh logic if needed)       ║"
+	@echo "║                                                                      ║"
+	@echo "║  Next steps:                                                         ║"
+	@echo "║    make demo-mock   — run a PAT-free mock-backend demo               ║"
+	@echo "║    bash scripts/dev-backup.sh --write   — back up state before reset ║"
+	@echo "║    docs/guides/agent-never-sees-secret.md   — security walkthrough   ║"
+	@echo "╚══════════════════════════════════════════════════════════════════════╝"
+
+## demo-mock: Auto-start the stack (if not running) then execute the PAT-free
+##            mock-backend demo flow end-to-end (scripts/demo-mock-flow.sh).
+demo-mock:
+	@docker info >/dev/null 2>&1 || { echo "ERROR: Docker is not running. Start Docker Desktop (or the Docker daemon) and try again."; exit 1; }
+	@running=$$(docker compose ps --status running --quiet 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$running" -lt 10 ]; then \
+		echo "Stack not fully running ($$running/10+ expected containers up). Starting..."; \
+		$(MAKE) demo; \
+	else \
+		echo "Stack already running ($$running containers up). Skipping start."; \
+	fi
+	@echo ""
+	@echo "Running PAT-free mock-backend demo flow..."
+	@echo "See: docs/guides/10min-mock-demo.md"
+	@echo ""
+	bash scripts/demo-mock-flow.sh || { echo ""; echo "ERROR: Mock demo failed. Review the output above for the failing step."; exit 1; }
