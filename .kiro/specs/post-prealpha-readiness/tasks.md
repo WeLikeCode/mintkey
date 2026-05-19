@@ -76,38 +76,38 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Create `scripts/demo-mock-flow.sh` orchestrating: register mock service, create agent, request JWT, proxied call, verify response
     - _Requirements: 12.1, 12.2, 12.3_
 
-- [ ] 7. Agent-never-sees-secret proof walkthrough (T-7, WS-3)
-  - [ ] 7.1 Create `docs/guides/agent-never-sees-secret.md`
+- [x] 7. Agent-never-sees-secret proof walkthrough (T-7, WS-3)
+  - [x] 7.1 Create `docs/guides/agent-never-sees-secret.md`
     - Write structured walkthrough: setup, token request, proxy call, audit log check, OTel trace check, conclusion
     - Include copy-paste commands executable against a running stack
     - Demonstrate zero credential exposure at each step
     - _Requirements: 13.1, 13.2, 13.3_
 
-- [ ] 8. Python agent snippet (T-8, WS-3)
-  - [ ] 8.1 Create `examples/python-agent-snippet/`
+- [x] 8. Python agent snippet (T-8, WS-3)
+  - [x] 8.1 Create `examples/python-agent-snippet/`
     - Create `agent.py` (~40 lines): authenticate with agent API key, request JWT via MCP, call backend through egress proxy
     - Create `requirements.txt` with `httpx`
     - Create `README.md` with prerequisites and execution instructions
     - _Requirements: 14.1, 14.2, 14.3_
 
-- [ ] 9. TypeScript agent snippet (T-9, WS-3)
-  - [ ] 9.1 Create `examples/typescript-agent-snippet/`
+- [x] 9. TypeScript agent snippet (T-9, WS-3)
+  - [x] 9.1 Create `examples/typescript-agent-snippet/`
     - Create `agent.ts` (~40 lines): authenticate, request JWT, call backend through proxy
     - Create `package.json` with minimal deps
     - Create `tsconfig.json` with minimal config
     - Create `README.md` with prerequisites and execution instructions
     - _Requirements: 15.1, 15.2, 15.3_
 
-- [ ] 10. OpenAI-compatible API example (T-10, WS-3)
-  - [ ] 10.1 Create `examples/openai-compatible/`
+- [x] 10. OpenAI-compatible API example (T-10, WS-3)
+  - [x] 10.1 Create `examples/openai-compatible/`
     - Create `README.md` explaining the pattern (register OpenAI-compatible endpoint, grant agent, call through proxy)
     - Create `register-service.sh` with curl commands for service registration
     - Create `agent.py` calling the OpenAI-compatible endpoint through Mintkey's proxy
     - Use mock-backend in echo mode (no real API key needed)
     - _Requirements: 16.1, 16.2_
 
-- [ ] 11. Troubleshooting update (T-11, WS-3)
-  - [ ] 11.1 Expand `docs/DEBUG.md` with new troubleshooting entries
+- [x] 11. Troubleshooting update (T-11, WS-3)
+  - [x] 11.1 Expand `docs/DEBUG.md` with new troubleshooting entries
     - Add entry: "Stack not running" (Docker not started / compose not up)
     - Add entry: "Bootstrap password / KEK mismatch" (MINTKEY_BOOTSTRAP_KEK disagreement)
     - Add entry: "oauth2-proxy / Jaeger auth issues" (cookie-secret cascade, redirect loop)
