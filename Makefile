@@ -8,11 +8,15 @@ UV        := uv
 PYTEST    := $(UV) run pytest
 GO        := go
 
+# Test namespace (parallel isolated environment on offset ports)
+COMPOSE_TEST := docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test --project-name mintkey-test
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Mintkey development targets
 # ─────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help dev test test-unit test-arch test-integration test-acceptance \
+.PHONY: help dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
+        test test-unit test-arch test-integration test-acceptance \
         test:e2e test:e2e:headed test:e2e:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
@@ -23,6 +27,11 @@ help:
 	@echo ""
 	@echo "Mintkey dev targets:"
 	@echo "  dev                    Start all services with docker compose"
+	@echo "  dev-test               Start the test namespace (parallel isolated environment)"
+	@echo "  dev-test-down          Stop the test namespace (preserves volumes)"
+	@echo "  dev-test-logs          Tail test namespace logs"
+	@echo "  dev-test-reset         Stop test namespace and destroy all its volumes"
+	@echo "  smoke-test-ns          Run smoke tests against the test namespace"
 	@echo "  test                   Run all tests (unit + arch + acceptance)"
 	@echo "  test-unit              Run unit tests only (Python + Go; no Docker)"
 	@echo "  test-arch              Run architecture tests only (no Docker)"
@@ -60,6 +69,38 @@ dev:
 	docker compose up -d
 	@echo "Stack started. Admin UI: http://localhost:3000"
 	@echo "Bootstrap password: $$(cat data/bootstrap-secrets/admin_password 2>/dev/null || echo 'not yet seeded')"
+
+dev-test-logs:
+	$(COMPOSE_TEST) logs -f
+
+dev-test:
+	$(COMPOSE_TEST) up -d
+	@echo ""
+	@echo "Test namespace started."
+	@echo "  admin-api:  http://localhost:8180"
+	@echo "  admin-ui:   http://localhost:8181"
+	@echo "  Keycloak:   http://localhost:8543"
+	@echo "  Grafana:    http://localhost:3103"
+	@echo ""
+	@echo "Bootstrap password: $$(docker run --rm \
+		-v mintkey-test_bootstrap_secrets:/secrets alpine \
+		cat /secrets/admin_password 2>/dev/null || echo 'not yet seeded')"
+
+dev-test-down:
+	$(COMPOSE_TEST) down
+
+dev-test-reset:
+	@echo "WARNING: This will destroy ALL test namespace data (volumes)."
+	$(COMPOSE_TEST) down --volumes
+
+smoke-test-ns:
+	@$(COMPOSE_TEST) ps --format '{{.State}}' | grep -q running || \
+		(echo "Error: test namespace is not running. Run 'make dev-test' first." && exit 1)
+	MINTKEY_INTEGRATION_TEST=true \
+	MINTKEY_API_URL=http://localhost:8180 \
+	MINTKEY_MCP_URL=http://localhost:8182 \
+	MINTKEY_KONG_URL=http://localhost:8100 \
+	$(PYTHON) -m pytest tests/acceptance/test_e2e_smoke.py -v -s
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 

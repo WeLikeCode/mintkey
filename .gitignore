@@ -8,6 +8,9 @@ __pycache__/
 .venv/
 .env
 .env.local
+# .env.test is intentionally committed — contains only localhost public URLs
+# with offset ports for the dev-test namespace (no secrets).
+!.env.test
 data/
 # Stray root-level Node artefacts (Playwright config lives in admin-ui/)
 /package.json
