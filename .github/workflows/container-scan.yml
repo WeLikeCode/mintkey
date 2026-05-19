@@ -117,9 +117,15 @@ jobs:
           image-ref: "${{ matrix.image }}:scan"
           format: sarif
           output: "trivy-${{ matrix.service }}.sarif"
-          # Fail CI on HIGH or CRITICAL vulnerabilities
+          # Exit-code policy:
+          # - pull_request → "1" so PRs that ADD new HIGH/CRITICAL CVEs are blocked.
+          # - push / schedule / workflow_dispatch → "0" so main-branch and cron
+          #   runs don't chronically fail on accepted Debian-base CVEs. SARIF
+          #   still uploads to the Security tab on every run, which is the
+          #   source of truth per SECURITY.md "Trivy on Debian-base images"
+          #   acceptance policy.
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          exit-code: ${{ github.event_name == 'pull_request' && '1' || '0' }}
           ignore-unfixed: false
           trivyignores: .trivyignore
 

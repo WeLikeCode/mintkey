@@ -11,10 +11,34 @@ pre-release (`0.1.0-preview.N`) during pre-alpha.
 
 ---
 
-## [0.1.0-preview.1] — UNRELEASED — 2026-05-16
+## [0.1.0-preview.1] — 2026-05-19
 
-Pending public release. See [`docs/RELEASE.md`](docs/RELEASE.md) for the
-manual release procedure.
+First versioned public release of Mintkey. See [`docs/RELEASE.md`](docs/RELEASE.md)
+for the manual release procedure.
+
+### Added (post-prealpha-readiness, 2026-05-17 — 2026-05-19)
+
+- **`/KIRO.md`** at repo root — < 100-line link hub for builders (P-1..P-4 invariants, tech-stack table, "how to make a change" recipe).
+- **`docs/patterns/`** — pattern library: `add-rest-endpoint.md`, `add-mcp-tool.md`, `add-audit-event.md`.
+- **`examples/`** at repo root — `python-agent-snippet/`, `typescript-agent-snippet/`, `openai-compatible/` end-to-end agent walkthroughs against the Mintkey proxy.
+- **`docs/guides/agent-never-sees-secret.md`** — structured walkthrough proving zero credential exposure (Setup → Token request → Proxy call → Audit log check → OTel trace check → Conclusion).
+- **`tests/stubs/README.md`** — plan-only specification for 3 priority stubs (Vault Adapter in-memory Go gRPC, Proxy Recorder Go HTTP, OIDC Mock Python FastAPI).
+- **`docs/architecture/01-architecture/security-notes/weak-hash-migration.md`** — formal weak-hash migration design (3 CodeQL sites, accept-for-prealpha rationale, revisit trigger).
+- **`make demo`** and **`make demo-mock`** Makefile targets — single-command Docker stack startup + auto-validation.
+- **`scripts/demo-mock-flow.sh`** — PAT-free mock-backend end-to-end demo (shellcheck-clean).
+- **`scripts/dev-backup.sh`**, **`scripts/dev-restore.sh`**, **`scripts/dev-backup-cron.example.sh`** — postgres dev backup/restore toolkit.
+- **Dev-test namespace** — parallel isolated Mintkey environment via Compose override; 16 host ports offset by +100; 15 unit tests + 4 integration tests for isolation properties. (Previously logged as `[0.3.0] — 2026-05-19`.)
+- **Grafana Request Monitoring dashboard** — pre-baked dashboard with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix), OTel spanmetrics-derived metrics, stable Prometheus datasource UID. (Previously logged as `[0.2.0] — 2026-05-16`.)
+- **`docs/architecture/00-vision/06-roadmap.md`** — 46 EvidenceRef parentheticals across Sections 1 and 3; backup/restore claim corrected to distinguish dev-workflow scripts from production DR.
+- **`.kiro/specs/post-prealpha-readiness/evidence.md`** — 24-row claim-to-evidence ledger.
+- **`docs/DEBUG.md` +6 entries** — Stack not running, KEK mismatch, Jaeger auth, `make smoke` failures, Backup before reset, MCP config mismatch.
+
+### Changed (post-prealpha-readiness + release prep)
+
+- **`SECURITY.md`** — added "GitHub UI Dismissal Steps" subsections for 8 accepted Scorecard residuals; resolved truncated `GO-2026-XXXX` to `GO-2026-4918` (CVE-2026-33814 — `golang.org/x/net` HTTP/2 infinite loop, patched at v0.53.0, dep-bump documented as follow-up); added "Audit hash chain integrity" section citing `tests/acceptance/test_audit_append_only.py` per ADR-0014.7; added "Fixable Scorecard residuals — backlog" section.
+- **`docs/architecture/00-vision/07-kiro-readiness.md`** — 3 status-table rows flipped: KIRO.md ⏳→✅, Pattern library ❌→🟢 partial, Stub services ❌→🟢 plan.
+- **Container scan workflow (`.github/workflows/container-scan.yml`)** — Trivy `exit-code` is now conditional on `github.event_name`: `1` on `pull_request` (blocks new HIGH/CRITICAL CVEs); `0` on `push` / `schedule` / `workflow_dispatch` (SARIF upload only — Security tab is the source of truth per SECURITY.md Trivy-on-Debian-base policy).
+- **`pyproject.toml` versions consolidated** — `admin-api`, `mcp-server`, `mock-backend` bumped from `0.1.0.dev0` / `0.1.0` to `0.1.0-preview.1` to match the other Mintkey packages.
 
 ### Changed (OSS readiness pass)
 
@@ -26,6 +50,17 @@ manual release procedure.
   image target names, and deferred items (release workflow E-5, SBOM/provenance).
 - CHANGELOG header rewritten to separate template scaffold history from Mintkey
   product history.
+
+### Fixed
+
+- **Kong-syncer startup retry** — fixed startup race against postgres LISTEN/NOTIFY readiness with exponential backoff and bounded retry budget.
+- **CodeQL / Scorecard residual campaign (S5–S11)** — weak-hash classification (3 BLOCKED sites preserved, design doc added), SARIF upload reliability, JS XSS guards, SQL-injection architecture test, path-traversal guards, SSRF allowlist verification, secret-detection regex audit.
+
+### Security
+
+- **Image digest pinning** — all 9 `docker-compose.yml` images are now `@sha256:`-pinned.
+- **Container scan trigger expansion** — `push` events on `main` + `workflow_dispatch` now trigger Trivy alongside the weekly cron schedule.
+- **SECURITY.md "Trivy on Debian-base images" acceptance policy** — formalized acceptance criteria and revisit cadence for upstream Debian CVE residuals that no Mintkey code change can fix.
 
 ---
 
