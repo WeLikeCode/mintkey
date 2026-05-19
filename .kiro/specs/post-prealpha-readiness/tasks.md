@@ -18,18 +18,18 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Already complete — `.kiro/specs/post-prealpha-readiness/design.md` exists
     - _Requirements: all_
 
-- [ ] 2. Roadmap and status reconciliation (T-3, WS-1)
-  - [ ] 2.1 Fix Roadmap_Doc backup/restore claim
+- [x] 2. Roadmap and status reconciliation (T-3, WS-1)
+  - [x] 2.1 Fix Roadmap_Doc backup/restore claim
     - Edit `docs/architecture/00-vision/06-roadmap.md` Section 1: remove "No backup/restore procedure"
     - Replace with accurate statement distinguishing dev-workflow scripts from production DR
     - Add EvidenceRef citing `scripts/dev-backup.sh`, `scripts/dev-restore.sh`, `scripts/dev-backup-cron.example.sh`
     - _Requirements: 1.1, 1.2, 1.3_
-  - [ ] 2.2 Add EvidenceRef to all status sentences in Roadmap_Doc
+  - [x] 2.2 Add EvidenceRef to all status sentences in Roadmap_Doc
     - Audit Sections 1 and 3 of `docs/architecture/00-vision/06-roadmap.md`
     - Add EvidenceRef (file path, commit SHA, or CI output) to every status sentence
     - Remove or correct any status sentence that contradicts verified state on main
     - _Requirements: 2.1, 3.1, 3.2_
-  - [ ] 2.3 Create evidence tracking table
+  - [x] 2.3 Create evidence tracking table
     - Create `.kiro/specs/post-prealpha-readiness/evidence.md` with claim/evidence/verified columns
     - Populate with evidence citations gathered during roadmap audit
     - _Requirements: 3.1, 3.2_
@@ -66,12 +66,12 @@ Four workstreams delivering documentation accuracy, security residual closure, B
   - Verify red-team fingerprint grep passes with zero matches (Requirement 8)
   - Ask the user if questions arise.
 
-- [ ] 6. `make demo` target (T-6, WS-3)
-  - [ ] 6.1 Implement `make demo` Makefile target
+- [x] 6. `make demo` target (T-6, WS-3)
+  - [x] 6.1 Implement `make demo` Makefile target
     - Add `demo` target to `Makefile` with Docker availability check, `docker compose up -d`, health-check polling (180s timeout), and success output (admin URL, bootstrap password, next steps)
     - Ensure target never destroys volumes and recommends `scripts/dev-backup.sh`
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
-  - [ ] 6.2 Implement `make demo-mock` Makefile target
+  - [x] 6.2 Implement `make demo-mock` Makefile target
     - Add `demo-mock` target that auto-starts stack if not running, then executes mock demo flow
     - Create `scripts/demo-mock-flow.sh` orchestrating: register mock service, create agent, request JWT, proxied call, verify response
     - _Requirements: 12.1, 12.2, 12.3_

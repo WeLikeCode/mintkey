@@ -15,22 +15,22 @@
 Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders and developers who want to understand the architecture, run the demo locally, and experiment with the MCP client integration. It is not suitable for production use of any kind.
 
 **What is working today:**
-- `docker compose up -d` starts all 19 containers (17 long-running, 2 one-shot) and reaches healthy state in ≤ 120 seconds on a clean machine.
-- The PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) runs end-to-end: service registration, agent creation, JWT issuance, brokered proxy call, audit chain verification.
-- Four MCP client setup guides exist (`docs/guides/mcp-clients/`): Claude Desktop, Claude Code, Cursor, mcp-cli.
-- GitHub PAT demo (`docs/guides/github-quickstart.md`) runs with a real external API key.
-- Test suites green as of WS-8 (2026-05-12): 244 Python unit/integration; 17 architecture; 23 Go packages; 139 admin-ui vitest. Subsequent remediation (PRs #33–#53, 2026-05-16/17) changed the test surface; see `team/remediation/` for per-session verification snapshots.
-- Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16). Pre-release tag `v0.1.0-prealpha` published 2026-05-17.
+- `docker compose up -d` starts all 19 containers (17 long-running, 2 one-shot) and reaches healthy state in ≤ 120 seconds on a clean machine. (EvidenceRef: `docker-compose.yml` — 19 services defined; healthy-state verified in OSS-6 and smoke tests)
+- The PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) runs end-to-end: service registration, agent creation, JWT issuance, brokered proxy call, audit chain verification. (EvidenceRef: OSS-6 commit `9705c16`)
+- Four MCP client setup guides exist (`docs/guides/mcp-clients/`): Claude Desktop, Claude Code, Cursor, mcp-cli. (EvidenceRef: OSS-6 commit `9705c16`)
+- GitHub PAT demo (`docs/guides/github-quickstart.md`) runs with a real external API key. (EvidenceRef: OSS-6 commit `9705c16`)
+- Test suites green as of WS-8 (2026-05-12): 244 Python unit/integration; 17 architecture; 23 Go packages; 139 admin-ui vitest. Subsequent remediation (PRs #33–#53, 2026-05-16/17) changed the test surface; see `team/remediation/` for per-session verification snapshots. (EvidenceRef: `team/remediation/` session 99-report.md files)
+- Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16). Pre-release tag `v0.1.0-prealpha` published 2026-05-17. (EvidenceRef: OSS-1 through OSS-7 commits; `LICENSE`, `SECURITY.md`, `.github/workflows/`)
 
 **What is not yet in place:**
-- No published container images (deferred; see `docs/RELEASE.md`).
-- No high-availability topology. The state store is in-process (ADR-0020); single-replica only.
-- No TLS ingress documentation; operators provide their own reverse proxy.
-- No backup/restore procedure.
-- No third-party security audit or fuzzing campaign.
-- No compliance attestations (SOC2, ISO 27001, FedRAMP).
-- Container hardening: all 15 Dockerfile `FROM` directives SHA-pinned to upstream registry digests (PR #35); long-running Python/Node containers run as non-root with `HEALTHCHECK` (PR #33). One-shot init containers (`seed-job`, `liquibase`) deliberately run as root for bootstrap volume operations (PR #47).
-- No hosted or managed offering.
+- No published container images (deferred; see `docs/RELEASE.md`). (EvidenceRef: `docs/RELEASE.md` documents manual-only path; GHCR workflow deferred per E-5)
+- No high-availability topology. The state store is in-process (ADR-0020); single-replica only. (EvidenceRef: `docs/architecture/01-architecture/adr/0020-*.md`)
+- No TLS ingress documentation; operators provide their own reverse proxy. (EvidenceRef: `docs/DEPLOYMENT.md` §"TLS not documented")
+- Dev-workflow backup/restore scripts are present (`scripts/dev-backup.sh` 526 lines, `scripts/dev-restore.sh` 483 lines — PR #72; `scripts/dev-backup-cron.example.sh` 171 lines — PR #75; HOWTO at `team/remediation/HOWTO-backup-before-reset.md`). Production DR procedure (tested restore drill, Helm-backed PV snapshots) is **not yet documented**. (EvidenceRef: PR #72 commit `4de9631`, PR #75 commit `80717f6`)
+- No third-party security audit or fuzzing campaign. (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals` — Fuzzing accepted as post-v1 goal)
+- No compliance attestations (SOC2, ISO 27001, FedRAMP). (EvidenceRef: `SECURITY.md` — pre-alpha; no assessment started)
+- Container hardening: all 15 Dockerfile `FROM` directives SHA-pinned to upstream registry digests (PR #35 commit `373221f`); 9 of 9 external images in `docker-compose.yml` @sha256-pinned (PRs #70 + #74); long-running Python/Node containers run as non-root with `HEALTHCHECK` (PR #33). One-shot init containers (`seed-job`, `liquibase`) deliberately run as root for bootstrap volume operations (PR #47). (EvidenceRef: `docker-compose.yml` lines 36/60/91/342/465/484/562/581/604; Dockerfiles for all 10 built images)
+- No hosted or managed offering. (EvidenceRef: Section 9 OPEN-A — not yet decided)
 
 **Wire surface stability:** `experimental`. Version `0.1.0-preview.1`. Breaking changes will bump the major version. See `docs/architecture/contracts/rest/openapi.yaml` (`x-mintkey-stability`).
 
@@ -68,32 +68,32 @@ Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
 
 | Item | User impact | Status | Notes |
 |---|---|---|---|
-| Root Apache-2.0 `LICENSE` | Required for any OSS contribution | ✅ DONE | OSS-1 commit `2f8a99b` |
-| `<repo-url>`, `<TBD-by-architect>`, `maintainers@example.invalid` placeholders | Broken links in README, SECURITY.md, OpenAPI, marketing | ✅ DONE | OSS-1 commit `2f8a99b` |
-| LLM co-author trailer conflict (CONTRIBUTING.md required trailers, project rules forbid) | Contributor confusion | ✅ DONE | OSS-2 commit `e36492c` |
-| CI gates strict — `\|\| true` masks removed (Mermaid gate, 5 Python linter lines) | False-green CI | ✅ DONE | OSS-3 commit `46e91cf` |
-| Issue templates (bug, feature, config.yml), PR template | Contributor UX | ✅ DONE | OSS-2 commit `e36492c` |
-| CODE_OF_CONDUCT.md, SUPPORT.md, GOVERNANCE.md | Community health | ✅ DONE | OSS-2 commit `e36492c` |
-| Dependabot (github-actions, docker 10 dirs, pip 3 dirs, npm, gomod 4) | Dependency security | ✅ DONE | OSS-3 commit `46e91cf` |
-| CodeQL workflow (Python, JS/TS, Go) | Security automation | ✅ DONE | OSS-3 commit `46e91cf` |
-| Container scan workflow (Trivy, all 10 images) | Supply-chain security | ✅ DONE | OSS-3 commit `46e91cf` |
-| Scorecard workflow | OSS project health | ✅ DONE | OSS-3 commit `46e91cf` |
-| `.dockerignore` (repo root + admin-ui + mock-backend + seed-job) | Build correctness / context size | ✅ DONE | OSS-5 commit `3d99f8c` |
-| Version alignment across all touch-points (`0.1.0-preview.1`) | Release coherence | ✅ DONE | OSS-4 commit `a1abb8a` |
-| `docs/DEPLOYMENT.md` — operator deployment guide with "not supported" boundary | Operator safety | ✅ DONE | OSS-5 commit `3d99f8c` |
-| `docs/RELEASE.md` — manual release procedure | Release operator | ✅ DONE | OSS-4 commit `a1abb8a` |
-| PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) | First-user experience | ✅ DONE | OSS-6 commit `9705c16` |
-| MCP client setup guides (Claude Desktop, Claude Code, Cursor, mcp-cli) | MCP adoption | ✅ DONE | OSS-6 commit `9705c16` |
-| Marketing CTA + comparison table + pre-alpha banners | Positioning | ✅ DONE | OSS-7 commit `65c007d` |
-| Prominent "not production ready" warnings in README, marketing, deployment, release docs | User safety | ✅ DONE | All OSS session commits |
-| Dockerfile `USER` directive | Supply-chain hardening | ✅ DONE | PR #33 REL-3 added `USER 65532:65532` + `HEALTHCHECK` to 6 long-running Dockerfiles. Go services use distroless static `nonroot`. `seed-job` intentionally root (one-shot init; PR #47). |
-| Dockerfile `HEALTHCHECK` | Operational visibility | ✅ DONE | PR #33 REL-3 added `HEALTHCHECK` to the same 6 long-running Dockerfiles. |
-| Base image `@sha256` digest pinning | Supply-chain hardening | ✅ DONE | PR #35 commit `373221f` SHA-pinned all 15 `FROM` directives across 10 Dockerfiles. |
-| Python dependency unbounded `>=` ranges | Release reproducibility | 🟦 Deferred | Dependabot will raise PRs; F-26 |
-| GHCR publish workflow / image release | Operator convenience | ⛔ Deferred (E-5) | Manual path in `docs/RELEASE.md`; needs owner decision on release cadence |
-| `make lint` GNU Make 3.81 colon-target exit=2 on macOS | Local DX | 🟦 Local only; CI (ubuntu, GNU Make 4.x) is unaffected |
-| Service REST `DELETE /v1/.../services/:id` 500 | Operator UX | ⬜ Pre-existing bug; unrelated to OSS work |
-| `otel-collector` restart loop | Observability reliability | ✅ FIXED | PR #48 — spanmetrics connector config repaired for v0.104+ (session 2026-05-17-otel-collector-config) |
+| Root Apache-2.0 `LICENSE` | Required for any OSS contribution | ✅ DONE | OSS-1 commit `2f8a99b` (EvidenceRef: `LICENSE` file on main) |
+| `<repo-url>`, `<TBD-by-architect>`, `maintainers@example.invalid` placeholders | Broken links in README, SECURITY.md, OpenAPI, marketing | ✅ DONE | OSS-1 commit `2f8a99b` (EvidenceRef: `README.md`, `SECURITY.md`, `docs/architecture/contracts/rest/openapi.yaml`) |
+| LLM co-author trailer conflict (CONTRIBUTING.md required trailers, project rules forbid) | Contributor confusion | ✅ DONE | OSS-2 commit `e36492c` (EvidenceRef: `CONTRIBUTING.md` on main) |
+| CI gates strict — `\|\| true` masks removed (Mermaid gate, 5 Python linter lines) | False-green CI | ✅ DONE | OSS-3 commit `46e91cf` (EvidenceRef: `.github/workflows/ci.yml`) |
+| Issue templates (bug, feature, config.yml), PR template | Contributor UX | ✅ DONE | OSS-2 commit `e36492c` (EvidenceRef: `.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`) |
+| CODE_OF_CONDUCT.md, SUPPORT.md, GOVERNANCE.md | Community health | ✅ DONE | OSS-2 commit `e36492c` (EvidenceRef: `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `GOVERNANCE.md`) |
+| Dependabot (github-actions, docker 10 dirs, pip 3 dirs, npm, gomod 4) | Dependency security | ✅ DONE | OSS-3 commit `46e91cf` (EvidenceRef: `.github/dependabot.yml`) |
+| CodeQL workflow (Python, JS/TS, Go) | Security automation | ✅ DONE | OSS-3 commit `46e91cf` (EvidenceRef: `.github/workflows/codeql.yml`) |
+| Container scan workflow (Trivy, all 10 images) | Supply-chain security | ✅ DONE | OSS-3 commit `46e91cf`; push-trigger added PR #76 commit `00a1048` (EvidenceRef: `.github/workflows/container-scan.yml` — `push: branches: [main]` post-PR #76) |
+| Scorecard workflow | OSS project health | ✅ DONE | OSS-3 commit `46e91cf` (EvidenceRef: `.github/workflows/scorecard.yml`) |
+| `.dockerignore` (repo root + admin-ui + mock-backend + seed-job) | Build correctness / context size | ✅ DONE | OSS-5 commit `3d99f8c` (EvidenceRef: `.dockerignore`, `admin-ui/.dockerignore`, `mock-backend/.dockerignore`, `seed-job/.dockerignore`) |
+| Version alignment across all touch-points (`0.1.0-preview.1`) | Release coherence | ✅ DONE | OSS-4 commit `a1abb8a` (EvidenceRef: `docs/RELEASE.md`, `docker-compose.yml` image tags) |
+| `docs/DEPLOYMENT.md` — operator deployment guide with "not supported" boundary | Operator safety | ✅ DONE | OSS-5 commit `3d99f8c` (EvidenceRef: `docs/DEPLOYMENT.md`) |
+| `docs/RELEASE.md` — manual release procedure | Release operator | ✅ DONE | OSS-4 commit `a1abb8a` (EvidenceRef: `docs/RELEASE.md`) |
+| PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) | First-user experience | ✅ DONE | OSS-6 commit `9705c16` (EvidenceRef: `docs/guides/10min-mock-demo.md`) |
+| MCP client setup guides (Claude Desktop, Claude Code, Cursor, mcp-cli) | MCP adoption | ✅ DONE | OSS-6 commit `9705c16` (EvidenceRef: `docs/guides/mcp-clients/`) |
+| Marketing CTA + comparison table + pre-alpha banners | Positioning | ✅ DONE | OSS-7 commit `65c007d` (EvidenceRef: `marketing/index.html`) |
+| Prominent "not production ready" warnings in README, marketing, deployment, release docs | User safety | ✅ DONE | All OSS session commits (EvidenceRef: `README.md` banner, `docs/DEPLOYMENT.md` warnings, `marketing/index.html`) |
+| Dockerfile `USER` directive | Supply-chain hardening | ✅ DONE | PR #33 REL-3 added `USER 65532:65532` + `HEALTHCHECK` to 6 long-running Dockerfiles. Go services use distroless static `nonroot`. `seed-job` intentionally root (one-shot init; PR #47). (EvidenceRef: `admin-api/Dockerfile`, `mcp-server/Dockerfile`, `admin-ui/Dockerfile`, `mock-backend/Dockerfile`, `services/broker/Dockerfile`, `services/vault-adapter/Dockerfile`) |
+| Dockerfile `HEALTHCHECK` | Operational visibility | ✅ DONE | PR #33 REL-3 added `HEALTHCHECK` to the same 6 long-running Dockerfiles. (EvidenceRef: same Dockerfiles as `USER` above) |
+| Base image `@sha256` digest pinning | Supply-chain hardening | ✅ DONE | PR #35 commit `373221f` SHA-pinned all 15 `FROM` directives across 10 Dockerfiles; 9 of 9 `docker-compose.yml` external images @sha256-pinned (PRs #70 + #74). (EvidenceRef: all `Dockerfile` `FROM` lines; `docker-compose.yml` lines 36/60/91/342/465/484/562/581/604) |
+| Python dependency unbounded `>=` ranges | Release reproducibility | 🟦 Deferred | Dependabot will raise PRs; F-26 (EvidenceRef: `.github/dependabot.yml` — pip ecosystems configured) |
+| GHCR publish workflow / image release | Operator convenience | ⛔ Deferred (E-5) | Manual path in `docs/RELEASE.md`; needs owner decision on release cadence (EvidenceRef: `docs/RELEASE.md` §"Publishing images") |
+| `make lint` GNU Make 3.81 colon-target exit=2 on macOS | Local DX | 🟦 Local only; CI (ubuntu, GNU Make 4.x) is unaffected (EvidenceRef: `Makefile` — CI runs ubuntu-latest) |
+| Service REST `DELETE /v1/.../services/:id` 500 | Operator UX | ⬜ Pre-existing bug; unrelated to OSS work (EvidenceRef: pre-existing; no issue filed yet) |
+| `otel-collector` restart loop | Observability reliability | ✅ FIXED | PR #48 — spanmetrics connector config repaired for v0.104+ (session 2026-05-17-otel-collector-config) (EvidenceRef: `otel-collector-config.yaml`; `team/remediation/2026-05-17-otel-collector-config/`) |
 
 **Acceptance criteria for "Public Technical Preview launched" (TP-1):** repo pushed to `https://github.com/WeLikeCode/mintkey`, GitHub Discussions enabled, launch announcement posted. Operator action pending.
 
@@ -103,13 +103,13 @@ The following OpenSSF Scorecard alerts were reviewed on 2026-05-18 and accepted 
 
 | Scorecard Check | Severity | Decision | Revisit at |
 |---|---|---|---|
-| Code-Review | HIGH | Accepted — solo-author pre-v1; admin-merge stays allowed | v1.0 or second active contributor |
-| Maintained | HIGH | Accepted — auto-resolves; first commit 2026-05-02, day-90 = 2026-07-31 | 2026-07-31 (no action needed) |
-| Fuzzing | MEDIUM | Accepted — post-v1 hardening goal; go fuzz + hypothesis candidates documented in SECURITY.md | Post-v1.0 stable |
-| CII-Best-Practices | LOW | Accepted — badge groundwork in place; formal attestation is a v1.0 goal | Pre-v1.0 stable release |
-| Vulnerabilities (GO-2026-XXXX) | HIGH | Deferred pending upstream patch — owner must confirm advisory ID + patch status in GitHub Security tab | When upstream Go dep patch is published |
+| Code-Review | HIGH | Accepted — solo-author pre-v1; admin-merge stays allowed (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`) | v1.0 or second active contributor |
+| Maintained | HIGH | Accepted — auto-resolves; first commit 2026-05-02, day-90 = 2026-07-31 (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`) | 2026-07-31 (no action needed) |
+| Fuzzing | MEDIUM | Accepted — post-v1 hardening goal; go fuzz + hypothesis candidates documented in SECURITY.md (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`) | Post-v1.0 stable |
+| CII-Best-Practices | LOW | Accepted — badge groundwork in place; formal attestation is a v1.0 goal (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`) | Pre-v1.0 stable release |
+| Vulnerabilities (GO-2026-XXXX) | HIGH | Deferred pending upstream patch — owner must confirm advisory ID + patch status in GitHub Security tab (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`; extended PR #77) | When upstream Go dep patch is published |
 
-Session record: `team/remediation/2026-05-18-s11-scorecard-residuals/`.
+Session record: `team/remediation/2026-05-18-s11-scorecard-residuals/` (EvidenceRef: `team/remediation/2026-05-18-s11-scorecard-residuals/`).
 
 ---
 
