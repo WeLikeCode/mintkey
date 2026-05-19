@@ -130,14 +130,30 @@ Operators and contributors should be aware of these gaps. None of them affect th
 ### Code-Review (HIGH)
 
 - **Score**: 0 (Found 0/9 approved changesets)
-- **Why accepted**: This is a solo-author pre-v1 project. Requiring ≥1 approved reviewer per PR plus a no-admin-bypass branch protection rule would block iteration with no second human available to do reviews. Admin-merge stays allowed for now.
-- **Revisit when**: Project gains a second active contributor, or before v1.0 stable — whichever comes first.
+- **Why accepted**: This is a solo-author pre-v1 project. Requiring >=1 approved reviewer per PR plus a no-admin-bypass branch protection rule would block iteration with no second human available to do reviews. Admin-merge stays allowed for now.
+- **Revisit when**: Project gains a second active contributor, or before v1.0 stable -- whichever comes first.
 
-### Maintained (HIGH — auto-resolving)
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `CodeReviewID`
+3. Click the alert -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - solo-author pre-v1 project; no second reviewer available; admin-merge required until a second active contributor joins.
+5. Click "Dismiss alert"
+
+### Maintained (HIGH -- auto-resolving)
 
 - **Score**: 0 (project < 90 days old)
-- **Why accepted**: The repository was created on 2026-05-02 (first commit `b216c76`). Scorecard requires ≥ 90 days of activity. This check auto-resolves at day 90 with no action required.
+- **Why accepted**: The repository was created on 2026-05-02 (first commit `b216c76`). Scorecard requires >= 90 days of activity. This check auto-resolves at day 90 with no action required.
 - **Revisit when**: 2026-07-31. No action needed; the alert will close naturally once the repo is 90 days old.
+
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `MaintainedID`
+3. Click the alert -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - repo created 2026-05-02; alert auto-resolves at 90 days (2026-07-31) with no action required.
+5. Click "Dismiss alert"
 
 ### Fuzzing (MEDIUM)
 
@@ -145,63 +161,156 @@ Operators and contributors should be aware of these gaps. None of them affect th
 - **Why accepted**: Fuzzing is a post-v1 hardening goal. Current test investment is in unit, integration, and architecture tests. Fuzzing adds value but is not blocking for a pre-alpha credential broker.
 - **Revisit when**: Post-v1.0 stable. Candidates for fuzzing: Go `egress-proxy` URL/header parsing and Python credential-broker input parsing. Consider `go test -fuzz` for Go and `hypothesis` for Python.
 
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `FuzzingID`
+3. Click the alert -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - fuzzing is a post-v1.0 hardening goal; not blocking for pre-alpha.
+5. Click "Dismiss alert"
+
 ### CII-Best-Practices (LOW)
 
 - **Score**: 0 (no OpenSSF Best Practices badge)
-- **Why accepted**: Pursuing a CII Best Practices badge requires governance docs, threat model, security testing evidence, and stable contribution processes — most of which exist but need formal attestation. The badge process is appropriate once the project is stable at v1.0.
+- **Why accepted**: Pursuing a CII Best Practices badge requires governance docs, threat model, security testing evidence, and stable contribution processes -- most of which exist but need formal attestation. The badge process is appropriate once the project is stable at v1.0.
 - **Revisit when**: Pre-v1.0 stable release. The groundwork (SECURITY.md, threat model, CODE_OF_CONDUCT.md, CONTRIBUTING.md, CodeQL, Dependabot) is substantially in place.
 
-### Vulnerabilities — GO-2026-XXXX (HIGH)
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `CIIBestPracticesID`
+3. Click the alert -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - badge process is pre-v1.0 goal; governance docs, threat model, and CodeQL are substantially in place pending formal attestation.
+5. Click "Dismiss alert"
 
-- **Score**: 0 (Scorecard flagged a Go advisory — exact ID truncated in API response)
-- **Context**: The repository's Go module (`go.mod`) depends on `golang.org/x/net v0.52.0`, `google.golang.org/grpc v1.80.0`, and `google.golang.org/protobuf v1.36.11`. `govulncheck` was not available in the remediation environment to confirm which advisory ID is flagged.
-- **Status**: **Deferred pending upstream resolution.** If an upstream patch is now available for the flagged dependency, this is NOT an accepted residual — it must be fixed in a follow-up session. The owner must check the GitHub Security → Code scanning alerts view for the full advisory ID and verify upstream patch availability.
-- **Action required from owner**:
-  1. Open GitHub Security → Code scanning alerts → filter by "scorecard" category.
-  2. Find the Vulnerabilities alert and note the full `GO-2026-XXXX` advisory ID and the affected Go module.
-  3. If a patched version is published: file a follow-up remediation session to bump the dependency.
-  4. If no upstream patch is available yet: add a comment to the alert "Deferred pending upstream patch — per SECURITY.md §Accepted Scorecard Residuals" and dismiss with "Used in tests" or appropriate rationale.
-- **Revisit when**: As soon as the upstream Go module publishes a patch for the flagged advisory.
+### Vulnerabilities -- GO-2026-4918 (HIGH)
 
-### Pinned-Dependencies — `pip install --no-deps .` (MEDIUM)
+- **Score**: 0 (Scorecard flagged Go advisory GO-2026-4918 / CVE-2026-33814)
+- **Advisory**: [GO-2026-4918](https://pkg.go.dev/vuln/GO-2026-4918) -- Infinite loop in HTTP/2 transport when processing a `SETTINGS_MAX_FRAME_SIZE` of 0, causing the transport to enter an infinite loop of writing CONTINUATION frames.
+- **Affected module**: `golang.org/x/net` -- fixed in `v0.53.0`. Current `go.mod` pins `golang.org/x/net v0.52.0`.
+- **Patch status**: **PATCHED upstream** -- `golang.org/x/net v0.53.0` is available and resolves this advisory.
+- **Status**: **Dep-bump required.** This is NOT an accepted residual. A follow-up session must bump `golang.org/x/net` from `v0.52.0` to `v0.53.0` (or latest patched) in `go.mod` + `go.sum`.
+- **Follow-up task**: Run `go get golang.org/x/net@v0.53.0 && go mod tidy` in the repo root; verify `go.sum` is updated; run `make test` to confirm no regressions. File as a dedicated remediation session or merge alongside the next dependency update batch.
+- **Revisit when**: The dep-bump session lands on `main`; confirm the `VulnerabilitiesID` Scorecard alert closes after the next scan.
+
+**GitHub UI Dismissal Steps** (hold off on dismissing until the dep-bump is merged; once merged, dismiss the now-resolved alert):
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `VulnerabilitiesID`
+3. After dep-bump merges: click the alert -> "Dismiss alert" -> reason: "Fixed"
+4. Paste this comment text:
+   > Resolved: bumped golang.org/x/net to v0.53.0 per SECURITY.md - GO-2026-4918 (CVE-2026-33814) patched upstream.
+5. Click "Dismiss alert"
+
+### Pinned-Dependencies -- `pip install --no-deps .` (MEDIUM)
 
 - **Score**: 9 (Scorecard: "pipCommand not pinned by hash")
 - **Context**: `mock-backend/Dockerfile:16` runs `pip install --no-deps .` for the local-path mock-backend package itself. The PREVIOUS line (`mock-backend/Dockerfile:15`) installs all third-party deps with `--require-hashes` against `mock-backend/requirements-hashes.txt`. The single un-hashed line is the local-package install, which has no downloadable artifact to hash.
 - **Status**: Accepted residual. Fixing this would require pre-building and publishing a `mock-backend` wheel (out of scope for a fixture used only by tests).
 - **Revisit when**: A formal release process exists for the mock-backend wheel.
 
-### Pinned-Dependencies — `tools/deps.sh` curl-bootstrap (MEDIUM)
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `PinnedDependenciesID`
+3. Find the alert referencing `mock-backend/Dockerfile` -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - local-path package install has no hash-pinnable artifact; all third-party deps on the preceding line are hash-pinned; fix requires pre-building a wheel (out of scope for a test fixture).
+5. Click "Dismiss alert"
+
+### Pinned-Dependencies -- `tools/deps.sh` curl-bootstrap (MEDIUM)
 
 - **Score**: 9 (Scorecard: "downloadThenRun not pinned by hash")
 - **Context**: `tools/deps.sh:49` includes a `curl -LsSf https://astral.sh/uv/install.sh | sh` fallback as the THIRD installation path (after Homebrew and after hash-verified `pip3 install --require-hashes`). The installer script is fetched at runtime from astral-sh's TLS-protected endpoint without a hash check.
 - **Status**: Accepted residual. The fallback is unreachable on any machine with Homebrew OR pip3, which covers the developer-machine target audience. Not invoked in CI (CI uses `astral-sh/setup-uv@<sha>` GitHub Action instead).
 - **Revisit when**: astral-sh publishes signed install-script hashes that can be verified.
 
-### SAST — coverage rate (MEDIUM)
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `PinnedDependenciesID`
+3. Find the alert referencing `tools/deps.sh` -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - curl-bootstrap is third-priority fallback unreachable on any Homebrew or pip3 machine; CI uses hash-pinned astral-sh/setup-uv action instead; fix pending astral-sh publishing signed hashes.
+5. Click "Dismiss alert"
+
+### SAST -- coverage rate (MEDIUM)
 
 - **Score**: 9 (Scorecard: "SAST tool detected but not run on all commits: 26 commits out of 30 are checked")
 - **Context**: CodeQL runs on every push to `main` and on every PR. The gap is intermediate commits (squash-merge intermediates, dependabot rebases) that don't trigger a fresh CodeQL run. Effective coverage: ~87% of public commits.
-- **Status**: Accepted residual for `v0.1.0-prealpha`. The cost of scanning every commit (4× current CI minutes for marginal coverage gain) is not justified at this stage.
+- **Status**: Accepted residual for `v0.1.0-prealpha`. The cost of scanning every commit (4x current CI minutes for marginal coverage gain) is not justified at this stage.
 - **Revisit when**: We adopt squash-only merge (eliminating intermediate commits) OR move toward production deployment where 100% scan coverage is a compliance requirement.
+
+**GitHub UI Dismissal Steps**:
+1. Open https://github.com/WeLikeCode/mintkey/security/code-scanning?query=is%3Aopen+tool%3Ascorecard
+2. Filter by rule: `SASTID`
+3. Click the alert -> "Dismiss alert" -> reason: "Won't fix"
+4. Paste this comment text:
+   > Accepted residual per SECURITY.md - CodeQL runs on all PRs and main pushes; ~87% coverage gap is squash-merge intermediates; 100% scan coverage deferred until production deployment requirements apply.
+5. Click "Dismiss alert"
 
 ---
 
-## Trivy alerts on Debian-base images — acceptance policy (post-2026-05-18 image-pin campaign)
+## Fixable Scorecard residuals -- backlog
+
+None of the 8 Scorecard residuals above have an immediately available code fix that is within scope at the pre-alpha stage. The assessment for each:
+
+- **CodeReviewID** -- requires a second human reviewer; not a code change. Accepted forever (solo project).
+- **MaintainedID** -- auto-resolves at 90 days; no action needed.
+- **FuzzingID** -- requires building and maintaining a fuzzing harness; deferred to post-v1.0.
+- **CIIBestPracticesID** -- requires formal badge attestation process; deferred to pre-v1.0 stable.
+- **VulnerabilitiesID (GO-2026-4918)** -- upstream patch is available (`golang.org/x/net v0.53.0`); this is a dep-bump task tracked in the Vulnerabilities section above, not a "fixable Scorecard residual" in the code-change sense.
+- **PinnedDependenciesID (`mock-backend/Dockerfile`)** -- fixing requires pre-building and publishing a wheel; out of scope for a test fixture.
+- **PinnedDependenciesID (`tools/deps.sh`)** -- fixing requires astral-sh to publish signed installer hashes; blocked on upstream action.
+- **SASTID** -- fixing requires adopting squash-only merge to eliminate intermediate commits; process change, not a code fix; deferred.
+
+The one item with an actionable dep-bump -- GO-2026-4918 -- is tracked in the Vulnerabilities section above.
+
+---
+
+## Audit hash chain integrity (SHA-256 invariant)
+
+The audit-event chain in `mintkey-models/mintkey_models/audit.py` uses SHA-256 per [ADR-0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md). This is NOT a credential hash -- it is a tamper-evident chain where each event's `hash` incorporates the previous event's `prev_hash`. Changing the algorithm requires a new ADR superseding ADR-0014.7, a migration of all existing `hash`/`prev_hash` columns, and lockstep updates to `audit-verify-job/verify.py`.
+
+Enforced by:
+- `tests/acceptance/test_audit_append_only.py` -- verifies chain integrity invariants
+- ADR-0014.7 -- documents the algorithm choice and the genesis seed `sha256("mintkey-audit-genesis-v1:" || tenant_id)`
+
+Any CodeQL `py/weak-sensitive-data-hashing` alert against `audit.py` is a **FALSE POSITIVE** for this use case. The security goal is tamper-evidence (collision resistance), not secret protection. Dismiss in GitHub UI with rationale: "SHA-256 mandated by ADR-0014.7 for audit chain integrity; not credential hashing."
+
+See also: [`docs/architecture/01-architecture/security-notes/weak-hash-migration.md`](docs/architecture/01-architecture/security-notes/weak-hash-migration.md) for the full weak-hash classification (3 CodeQL sites) and the accept-for-prealpha rationale.
+
+---
+
+## Weak-hash acceptance (CodeQL py/weak-sensitive-data-hashing)
+
+Three CodeQL `py/weak-sensitive-data-hashing` sites were classified in session `2026-05-18-s5-codeql-weak-hashing`:
+
+- `admin-api/src/admin_api/api/internal.py:119` -- SHA-256 fingerprint of a 32-byte CSPRNG agent API key; used as a DB lookup index before Argon2id verification. Brute-force infeasible at 2^256 keyspace.
+- `admin-api/src/admin_api/api/proxy.py:64` -- same pattern for service-key fingerprint.
+- `mintkey-models/mintkey_models/audit.py:85` -- SHA-256 audit chain (ADR-0014.7-mandated; see Audit hash chain integrity section above).
+
+**Acceptance rationale**: Accepted for prealpha. Sites 1+2 fingerprint high-entropy 32-byte CSPRNG keys; rainbow-table attacks require enumeration of 2^256 inputs, which is computationally infeasible. The CodeQL rule fires because it pattern-matches `hashlib.sha256(<sensitive>)` without context about input entropy. Real risk only exists for low-entropy inputs (e.g., user-set passwords), which is not the case here.
+
+**Revisit criterion**: Before v1.0 GA, if the project introduces lower-entropy credentials (e.g., user-set passwords stored as fingerprints), migrate sites 1+2 to HMAC-SHA-256 with a project-static key. Site 3 requires a new ADR.
+
+Full migration strategy: [`docs/architecture/01-architecture/security-notes/weak-hash-migration.md`](docs/architecture/01-architecture/security-notes/weak-hash-migration.md)
+
+---
+
+## Trivy alerts on Debian-base images -- acceptance policy (post-2026-05-18 image-pin campaign)
 
 The 8 service images in `docker-compose.yml` are now `@sha256:`-pinned (PRs #70 + #74) to the latest patched digests from upstream Docker Hub. Those digests still contain known Debian-base package CVEs (e.g., `CVE-2025-14104` in `zlib`, `CVE-2022-0563` in `util-linux`, `CVE-2026-3184`, `CVE-2026-27456`) that ship in every image based on `python:3.12-slim-bookworm`, `node:22-bookworm-slim`, etc.
 
 **Pinning locks the digest; it does not remove CVEs that exist in the current upstream patched version.** Reducing the Trivy alert count further requires one of:
 
-1. **Wait for Debian** — When `debian:bookworm-slim` ships a patched version of the affected package, upstream images (`python:3.12-slim-bookworm`, `node:22-bookworm-slim`, etc.) eventually rebuild on that. The Container Scan workflow now has a weekly cron + `workflow_dispatch` (PR #76); on each successful re-scan, Trivy publishes fresh SARIF and GitHub auto-closes alerts that no longer match the current scan. **This is the chosen policy.**
-2. **Distroless / chainguard migration** — switch runtime stages to `gcr.io/distroless/python3-debian12` / `cgr.dev/chainguard/*`. Eliminates the Debian-base-CVE class entirely. Out of scope per S2 (2026-05-18) owner decision; revisit pre-v1.0 stable.
-3. **`.trivyignore` suppression list** — declare each accepted CVE with a rationale comment. Trivy drops them from SARIF. Adds upkeep burden (new CVE IDs roll in regularly).
+1. **Wait for Debian** -- When `debian:bookworm-slim` ships a patched version of the affected package, upstream images (`python:3.12-slim-bookworm`, `node:22-bookworm-slim`, etc.) eventually rebuild on that. The Container Scan workflow now has a weekly cron + `workflow_dispatch` (PR #76); on each successful re-scan, Trivy publishes fresh SARIF and GitHub auto-closes alerts that no longer match the current scan. **This is the chosen policy.**
+2. **Distroless / chainguard migration** -- switch runtime stages to `gcr.io/distroless/python3-debian12` / `cgr.dev/chainguard/*`. Eliminates the Debian-base-CVE class entirely. Out of scope per S2 (2026-05-18) owner decision; revisit pre-v1.0 stable.
+3. **`.trivyignore` suppression list** -- declare each accepted CVE with a rationale comment. Trivy drops them from SARIF. Adds upkeep burden (new CVE IDs roll in regularly).
 
-For `v0.1.0-prealpha`, **option 1 is the policy**. Expect ~800–900 open Trivy alerts on the dashboard at any given time, with the count drifting as Debian ships patches and the weekly cron re-baselines. Operators reading the security tab should focus on **critical-severity Trivy alerts only** until a distroless migration lands.
+For `v0.1.0-prealpha`, **option 1 is the policy**. Expect ~800-900 open Trivy alerts on the dashboard at any given time, with the count drifting as Debian ships patches and the weekly cron re-baselines. Operators reading the security tab should focus on **critical-severity Trivy alerts only** until a distroless migration lands.
 
 ### Deferred upstream rebuilds (waiting on producer)
 
-- **`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`** — CVE-2026-31789 (openssl). Latest astral-sh build still ships `openssl 3.0.18-1~deb12u2`; patched version is `3.0.19`. Re-check trigger: `docker run --rm ghcr.io/astral-sh/uv:python3.12-bookworm-slim dpkg -l openssl` returns ≥3.0.19. Open follow-up: re-run S2 session when upstream publishes.
+- **`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`** -- CVE-2026-31789 (openssl). Latest astral-sh build still ships `openssl 3.0.18-1~deb12u2`; patched version is `3.0.19`. Re-check trigger: `docker run --rm ghcr.io/astral-sh/uv:python3.12-bookworm-slim dpkg -l openssl` returns >=3.0.19. Open follow-up: re-run S2 session when upstream publishes.
 
 ---
 
-**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security → Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.
+**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security -> Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.

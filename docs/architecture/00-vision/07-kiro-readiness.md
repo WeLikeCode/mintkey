@@ -54,7 +54,7 @@ flowchart TB
 | Vision (problem, vision, personas, glossary, iteration plan, roadmap) | ✅ | [`/docs/architecture/00-vision/`](.) |
 | Architecture views (system context, container view, quality attributes, threat model, *Views and Beyond*) | ✅ | [`/docs/architecture/01-architecture/`](../01-architecture/) |
 | ADRs (20 accepted, latest ADR-0020 2026-05-15) | ✅ | [`/docs/architecture/01-architecture/adr/`](../01-architecture/adr/) |
-| **`KIRO.md` project conventions** at the repo root | ⏳ | `/KIRO.md` (Phase 5; gating) |
+| **`KIRO.md` project conventions** at the repo root | ✅ | `/KIRO.md` (EvidenceRef: `/KIRO.md` created 2026-05-19) |
 
 `KIRO.md` is the single document Kiro reads first. It must contain:
 - One‑paragraph product summary (lifted from the vision).
@@ -270,12 +270,12 @@ The "add a new feature" template should accept inputs like:
 
 | Area | Status |
 |---|---|
-| Project context | ✅ substantially complete; `KIRO.md` at repo root still absent (verified 2026-05-17) |
+| Project context | ✅ complete; `KIRO.md` created at repo root (EvidenceRef: `/KIRO.md`, 2026-05-19) |
 | ADRs | ✅ 20 accepted (ADR-0001..ADR-0020; ADR-0018 accepted 2026-05-11; ADR-0020 accepted 2026-05-15) |
 | Contracts | 🟢 checked in: REST OpenAPI 3.1, MCP tool schemas, audit+OTel event schemas, Vault Adapter gRPC IDL (`vault.proto`), 16 Liquibase changelogs — all validated in CI Lint Contracts (last verified on tag v0.1.0-prealpha 2026-05-17) |
 | Per‑component specs | ✅ consolidated under `.kiro/specs/mintkey-mvp/{requirements,design,tasks}.md`; M1.0-M1.13 all checked in `tasks.md` (99 task lines marked [x] as of 2026-05-17; checkbox state only, not independent test verification) |
-| Pattern library | ❌ not started; `docs/patterns/` does not exist (verified 2026-05-17) |
-| Stub services | ❌ not started; `tests/stubs/` does not exist (verified 2026-05-17) |
+| Pattern library | 🟢 partial — 3 of 11 patterns documented (`add-rest-endpoint`, `add-mcp-tool`, `add-audit-event`); EvidenceRef: `docs/patterns/*.md` (created 2026-05-19) |
+| Stub services | 🟢 plan documented — 3 priority stubs planned (Vault Adapter, Proxy Recorder, OIDC Mock); EvidenceRef: `tests/stubs/README.md` (created 2026-05-19) |
 | Test fixtures | ❌ not started; `tests/fixtures/` does not exist (verified 2026-05-17) |
 | Coding conventions | 🟢 ruff + mypy --strict configured and green for Python (admin-api, mintkey-models, mcp-server; last verified 2026-05-16); golangci-lint v8 + go vet configured and green (last verified on tag v0.1.0-prealpha 2026-05-17); TypeScript/SQL conventions ⏳ |
 | Quality gates | 🟢 9 CI jobs configured in `.github/workflows/ci.yml` (Lint Python, Lint Go, Lint Contracts, Python Unit Tests, Go Unit Tests, Architecture Tests, Schema Integrity Gates, Acceptance Tests, Integration Tests) + CodeQL + container scan + OpenSSF Scorecard + dependency review + Playwright; all 13 CI checks passing on tag v0.1.0-prealpha (last verified 2026-05-17) |
@@ -298,7 +298,7 @@ The "add a new feature" template should accept inputs like:
 |---|---|
 | 1. Iteration 4 contracts | ✅ Done — REST OpenAPI, MCP tools, event schemas, Vault Adapter IDL all checked in and CI-validated |
 | 2. Vault Adapter spec (per-component) | ✅ Partially done — covered by consolidated `.kiro/specs/mintkey-mvp/`; per-component split deferred to Phase 5 |
-| 3. Top 3 pattern library entries | ❌ Not started — `docs/patterns/` does not exist |
-| 4. Stub services | ❌ Not started — `tests/stubs/` does not exist |
-| 5. Write `KIRO.md` | ❌ Not started — `KIRO.md` not at repo root (verified 2026-05-17) |
-| 6. Kiro scaffolds the rest | 🔄 Unblocked partially — `.kiro/` scaffolding and spec triple in place; patterns + stubs + KIRO.md remain |
+| 3. Top 3 pattern library entries | ✅ Done — `docs/patterns/add-rest-endpoint.md`, `add-mcp-tool.md`, `add-audit-event.md` created (EvidenceRef: `docs/patterns/*.md`, 2026-05-19) |
+| 4. Stub services | 🟢 Plan documented — 3 priority stubs planned in `tests/stubs/README.md` (EvidenceRef: `tests/stubs/README.md`, 2026-05-19) |
+| 5. Write `KIRO.md` | ✅ Done — `KIRO.md` created at repo root (EvidenceRef: `/KIRO.md`, 2026-05-19) |
+| 6. Kiro scaffolds the rest | 🔄 Unblocked — KIRO.md, top-3 patterns, and stubs plan all in place (2026-05-19); remaining patterns + full stub implementations are Phase 5 work |

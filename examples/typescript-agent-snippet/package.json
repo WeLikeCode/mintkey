@@ -1,0 +1,12 @@
+{
+  "name": "mintkey-typescript-agent-snippet",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsc && node dist/agent.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -399,3 +399,303 @@ Escalate to [`docs/REPORTING.md`](REPORTING.md) when:
 - A red-team check in Layer 5 finds a plaintext credential in a log, audit payload, or span attribute — this is a security report and goes to [`SECURITY.md`](../SECURITY.md) directly, not Issues.
 
 The full list of canonical `mintkey:code` values is the `x-mintkey-error-codes` block at the bottom of [`docs/architecture/contracts/rest/openapi.yaml`](architecture/contracts/rest/openapi.yaml).
+
+---
+
+## 11. Stack not running
+
+**Symptom:** `make smoke`, direct API calls, or the demo script fail immediately with
+`Connection refused` on ports 8080–8082 or `8000`.
+
+**Diagnostic commands:**
+
+1. Check whether Docker itself is running:
+   ```bash
+   docker info
+   ```
+   If this fails with `Cannot connect to the Docker daemon`, Docker Desktop (or the
+   Docker daemon) is not started.
+
+2. Check which containers are up:
+   ```bash
+   docker compose ps
+   ```
+   If the output is empty or every service shows `Exit`, the stack is not running.
+
+3. Check for port conflicts:
+   ```bash
+   lsof -i :8080 -i :8081 -i :8082 -i :8000 2>/dev/null | head -20
+   ```
+
+**Resolution steps:**
+
+1. Start Docker Desktop (or `sudo systemctl start docker` on Linux) and wait for it to
+   report healthy.
+2. Start the Mintkey stack:
+   ```bash
+   make demo
+   ```
+   `make demo` includes a 180-second health-check loop — it will print the admin URL
+   and bootstrap password once all services are healthy.
+3. If port conflicts exist, stop the conflicting process or change the ports in
+   `docker-compose.yml` (and update `PORTS.md` accordingly).
+4. If the stack is partially up (some containers healthy, some not), check the
+   unhealthy service logs:
+   ```bash
+   docker compose logs <service-name> --tail 100
+   ```
+
+---
+
+## 12. Bootstrap password / KEK mismatch
+
+**Symptom:** admin-ui login returns `401`; admin-api logs contain `InvalidToken`,
+`Fernet`, or `decryption error`; seed-job logs show a key-derivation or decryption
+failure.
+
+**Diagnostic commands:**
+
+1. Compare the `MINTKEY_BOOTSTRAP_KEK` value used by each service:
+   ```bash
+   docker compose exec admin-api  env | grep KEK
+   docker compose exec admin-ui   env | grep KEK
+   docker compose exec seed-job   env | grep KEK 2>/dev/null || true
+   ```
+   All three must match exactly (same base64url string, same length).
+
+2. Check for decryption errors in logs:
+   ```bash
+   docker compose logs mintkey-admin-api-1 | grep -i "kek\|fernet\|decrypt\|InvalidToken"
+   docker compose logs mintkey-seed-job-1  | grep -i "kek\|fernet\|decrypt\|InvalidToken"
+   ```
+
+3. Verify the `.env` file KEK value:
+   ```bash
+   grep MINTKEY_BOOTSTRAP_KEK .env 2>/dev/null | head -1 | cut -c1-50
+   ```
+
+**Resolution steps:**
+
+1. Ensure every service in `docker-compose.yml` and `.env` references the **same**
+   `MINTKEY_BOOTSTRAP_KEK` value. A common cause of drift is editing `.env` after the
+   stack has been started, so only some containers pick up the new value.
+2. After correcting the KEK, restart all services to re-sync:
+   ```bash
+   docker compose down && docker compose up -d
+   ```
+   **IMPORTANT:** run `bash scripts/dev-backup.sh` before `docker compose down` if you
+   have hand-curated state you want to preserve.
+3. If the bootstrap password itself is corrupted, regenerate it via Option B in
+   `docs/AUTH.md`:
+   ```bash
+   bash scripts/dev-backup.sh   # back up first
+   docker compose down
+   rm data/bootstrap-secrets/.admin_password_synced
+   docker compose up -d
+   ```
+4. See [`team/remediation/HOWTO-backup-before-reset.md`](../team/remediation/HOWTO-backup-before-reset.md)
+   for the full backup/restore guide.
+
+---
+
+## 13. oauth2-proxy / Jaeger auth issues
+
+**Symptom:** Opening `http://localhost:16686` (Jaeger UI) redirects to a Keycloak
+login page, then back to Jaeger, then to login again (redirect loop); or `403 Forbidden`
+appears after a seemingly successful login.
+
+**Diagnostic commands:**
+
+1. Check the jaeger-auth (oauth2-proxy) container logs for errors:
+   ```bash
+   docker compose logs mintkey-jaeger-auth-1 --tail 100
+   ```
+   Look for `cookie_secret`, `invalid session`, `CSRF token mismatch`, or Keycloak
+   connectivity errors.
+
+2. Verify the cookie secret length (must be 16, 24, or 32 bytes after base64 decode):
+   ```bash
+   docker compose exec mintkey-jaeger-auth-1 env | grep OAUTH2_PROXY_COOKIE_SECRET
+   ```
+
+3. Check whether the Keycloak realm and OIDC client exist:
+   ```bash
+   docker compose logs mintkey-seed-job-1 | grep -i "jaeger\|oidc\|realm\|keycloak"
+   ```
+
+4. Confirm Keycloak is healthy:
+   ```bash
+   curl -sf http://localhost:8888/health/ready | jq .
+   ```
+
+**Resolution steps:**
+
+1. If the cookie secret is missing or has wrong length, regenerate it via the seed-job.
+   The seed-job writes a correctly-sized secret to `bootstrap_secrets` volume on first
+   run. Restart the seed-job:
+   ```bash
+   docker compose restart mintkey-seed-job-1
+   docker compose restart mintkey-jaeger-auth-1
+   ```
+2. If Keycloak has not seeded the Jaeger OIDC client yet, wait for the seed-job to
+   complete (`docker compose logs mintkey-seed-job-1 | tail -20`) and then restart
+   jaeger-auth.
+3. If a redirect loop persists after the above, clear browser cookies for
+   `localhost:16686` and try again — stale oauth2-proxy session cookies can cause loops.
+4. See `docker-compose.yml` `jaeger-auth` service section for the full oauth2-proxy
+   configuration and environment variables.
+
+---
+
+## 14. `make smoke` failures
+
+**Symptom:** `make smoke` exits non-zero; test output shows assertion errors or
+connection errors.
+
+Common root causes and resolution per each:
+
+**1. Stack not healthy yet**
+
+`make smoke` runs immediately after `make demo` finishes, but some services may still be
+initialising. Diagnostic:
+
+```bash
+docker compose ps
+# Look for any service not showing "healthy"
+docker compose logs mintkey-liquibase-1 --tail 30
+docker compose logs mintkey-seed-job-1  --tail 30
+```
+
+Resolution: wait 30–60 seconds for one-shot jobs (`liquibase`, `seed-job`) to complete,
+then re-run `make smoke`.
+
+**2. Port conflicts on 8080–8082**
+
+Another process holds one of the Mintkey ports. Diagnostic:
+
+```bash
+lsof -i :8080 -i :8081 -i :8082 -i :8000 2>/dev/null | grep LISTEN
+```
+
+Resolution: stop the conflicting process or reconfigure the port in `docker-compose.yml`
+and `.env`.
+
+**3. PostgreSQL connection failures**
+
+admin-api returns `503` with `"db"` in the readiness body. Diagnostic:
+
+```bash
+curl -s http://localhost:8080/v1/ready | jq .
+docker compose logs mintkey-postgres-1 --tail 50
+```
+
+Resolution: if postgres is not healthy, `docker compose restart mintkey-postgres-1`.
+If liquibase failed, check its logs for migration errors:
+```bash
+docker compose logs mintkey-liquibase-1 | grep -i "error\|FAILED"
+```
+
+**4. Stale state from a previous run**
+
+A previous test run left agents, services, or audit rows that conflict with the smoke
+test's assumptions. Resolution:
+
+```bash
+bash scripts/dev-backup.sh      # back up first
+docker compose down
+docker compose up -d
+make smoke
+```
+
+---
+
+## 15. Backup before reset
+
+**Symptom:** You are about to run `docker compose down -v` (or any other volume-
+destructive operation) and want to preserve your hand-curated agents, services,
+permission grants, and audit rows.
+
+**Resolution — ALWAYS run the backup script first:**
+
+```bash
+bash scripts/dev-backup.sh
+```
+
+This dumps PostgreSQL data, snapshots vault and KEK volumes, and copies `.env` with
+secret values redacted. Output is written to `.mintkey-backups/<ISO-timestamp>/`
+(gitignored).
+
+For the full backup/restore guide, including the restore command, KEK considerations,
+and cron automation, see:
+
+```
+team/remediation/HOWTO-backup-before-reset.md
+```
+
+Key rules:
+- **Never** run `docker compose down -v` without a backup.
+- **Never** change `MINTKEY_VAULT_KEK` or `MINTKEY_BOOTSTRAP_KEK` without first backing
+  up — a KEK change makes previous encrypted backups unrestorable without the old key.
+- Use `bash scripts/dev-restore.sh .mintkey-backups/<timestamp> --dry-run` to preview a
+  restore before applying it.
+
+---
+
+## 16. MCP config mismatch
+
+**Symptom:** An MCP client (e.g., Claude Code, a custom agent) receives `401
+Unauthorized` on every call to the Mintkey MCP server, or reports that the `mintkey`
+tools are not found / the tool schema version is unsupported.
+
+**Diagnostic commands:**
+
+1. Check the MCP server URL and key configured in your MCP client:
+   ```bash
+   claude mcp get mintkey
+   ```
+   This prints the URL and any configured headers.
+
+2. Check the live MCP server URL:
+   ```bash
+   curl -s http://localhost:8082/v1/health | jq .
+   ```
+   The MCP server should respond with `{"status": "ok"}`. If it's not reachable,
+   the stack is not running (see §11).
+
+3. Verify the tool schema version reported by the server:
+   ```bash
+   curl -s http://localhost:8082/v1/tools | jq '.schema_version // "unknown"'
+   ```
+   Compare against the version in `docs/architecture/contracts/mcp/tools.yaml`.
+
+4. Check MCP server logs for auth failures:
+   ```bash
+   docker compose logs mintkey-mcp-server-1 --tail 50 | grep -i "401\|auth\|key\|invalid"
+   ```
+
+**Resolution steps:**
+
+1. If the URL is wrong, remove and re-add the Mintkey MCP server in your client:
+   ```bash
+   claude mcp remove mintkey
+   claude mcp add --transport http mintkey http://localhost:8082/mcp \
+     --header "Authorization: Bearer mk_agent_YOUR_AGENT_KEY_HERE"
+   ```
+   Replace `mk_agent_YOUR_AGENT_KEY_HERE` with the actual agent key from admin UI.
+
+2. If the agent key has been rotated (e.g., via admin UI → Agents → Rotate Key), update
+   the MCP client config with the new key using `claude mcp remove` + `claude mcp add`.
+
+3. If the tool schema version is mismatched, pull the latest repo and restart the stack:
+   ```bash
+   git pull
+   docker compose pull
+   docker compose up -d
+   ```
+
+4. Verify the corrected config resolves the issue:
+   ```bash
+   curl -s http://localhost:8082/v1/tools/list_services \
+     -H "Authorization: Bearer mk_agent_YOUR_AGENT_KEY_HERE" | jq '.[].name'
+   ```
+   A `200` response listing services confirms the key and URL are correct.
