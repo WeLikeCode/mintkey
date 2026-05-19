@@ -6,8 +6,8 @@ Implement a parallel, isolated Mintkey development/testing environment using Doc
 
 ## Tasks
 
-- [ ] 1. Create core infrastructure files
-  - [ ] 1.1 Create `docker-compose.test.yml` override file
+- [x] 1. Create core infrastructure files
+  - [x] 1.1 Create `docker-compose.test.yml` override file
     - Remap all 16 host-exposed ports by +100 (container ports unchanged)
     - Pin 10 locally-built services with `image: mintkey-<service>` directives
     - Add `name: mintkey-test` to the file header for self-documentation
@@ -16,58 +16,58 @@ Implement a parallel, isolated Mintkey development/testing environment using Doc
     - Bind kong admin to `127.0.0.1:8101:8001` (localhost-only, matching primary)
     - _Requirements: 2.1, 2.2, 2.3, 6.1, 6.2, 9.1_
 
-  - [ ] 1.2 Create `.env.test` environment file
+  - [x] 1.2 Create `.env.test` environment file
     - Define all 7 `MINTKEY_*_PUBLIC_URL` variables with offset port values
     - Add header comment explaining purpose and loading mechanism
     - _Requirements: 7.2, 8.1, 8.2_
 
-  - [ ] 1.3 Update `.gitignore` to explicitly track `.env.test`
+  - [x] 1.3 Update `.gitignore` to explicitly track `.env.test`
     - Add a comment noting `.env.test` is intentionally committed (no secrets)
     - Ensure `.env.test` is NOT matched by existing `.env` ignore patterns
     - _Requirements: 9.3_
 
-- [ ] 2. Implement Makefile targets
-  - [ ] 2.1 Add a `COMPOSE_TEST` variable to reduce command repetition
+- [x] 2. Implement Makefile targets
+  - [x] 2.1 Add a `COMPOSE_TEST` variable to reduce command repetition
     - Define `COMPOSE_TEST := docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test --project-name mintkey-test`
     - Use this variable in all test namespace targets
     - _Requirements: 5.1, 5.2, 5.3_
 
-  - [ ] 2.2 Add `dev-test` target
+  - [x] 2.2 Add `dev-test` target
     - Start the test namespace in detached mode using `$(COMPOSE_TEST) up -d`
     - Print access URLs (admin-api :8180, admin-ui :8181, Keycloak :8543, Grafana :3103)
     - Print bootstrap admin password from `mintkey-test_bootstrap_secrets` volume
     - _Requirements: 5.1, 5.4, 5.5, 5.6_
 
-  - [ ] 2.3 Add `dev-test-down` target
+  - [x] 2.3 Add `dev-test-down` target
     - Stop and remove test namespace containers without removing volumes
     - Use `$(COMPOSE_TEST) down`
     - _Requirements: 5.2_
 
-  - [ ] 2.4 Add `dev-test-logs` target
+  - [x] 2.4 Add `dev-test-logs` target
     - Tail logs in follow mode from all test namespace containers
     - Use `$(COMPOSE_TEST) logs -f`
     - _Requirements: 5.3_
 
-  - [ ] 2.5 Add `dev-test-reset` target for full volume teardown
+  - [x] 2.5 Add `dev-test-reset` target for full volume teardown
     - Use `$(COMPOSE_TEST) down --volumes`
     - Print warning that all test namespace data will be destroyed
     - _Requirements: 3.1 (adversarial review: MAJOR fix)_
 
-  - [ ] 2.6 Add `smoke-test-ns` target for running smoke tests against test namespace
+  - [x] 2.6 Add `smoke-test-ns` target for running smoke tests against test namespace
     - Set env vars pointing to offset ports (admin-api :8180, admin-ui :8181, etc.)
     - Run existing smoke/integration test suite against test namespace endpoints
     - Verify test namespace is running before executing
     - _Requirements: 10.1, 10.2, 10.3, 10.4 (adversarial review: CRITICAL fix)_
 
-  - [ ] 2.7 Update Makefile `help` target with new dev-test targets
+  - [x] 2.7 Update Makefile `help` target with new dev-test targets
     - Add entries for `dev-test`, `dev-test-down`, `dev-test-logs`, `dev-test-reset`, `smoke-test-ns`
     - _Requirements: 12.1_
 
-- [ ] 3. Checkpoint — Validate compose config merges correctly
+- [x] 3. Checkpoint — Validate compose config merges correctly
   - Ensure `docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test config` succeeds without errors, ask the user if questions arise.
 
-- [ ] 4. Create CI validation script for port-drift detection
-  - [ ] 4.1 Create `tools/validate-test-override.py` script
+- [x] 4. Create CI validation script for port-drift detection
+  - [x] 4.1 Create `tools/validate-test-override.py` script
     - Parse both `docker-compose.yml` and `docker-compose.test.yml` as YAML
     - Assert every port-mapped service in primary has a corresponding override entry
     - Verify each test port equals primary port + 100
@@ -76,15 +76,15 @@ Implement a parallel, isolated Mintkey development/testing environment using Doc
     - Exit non-zero with descriptive error on any drift
     - _Requirements: 2.1, 2.2, 6.2 (adversarial review: CRITICAL fix)_
 
-  - [ ]* 4.2 Write unit tests for the validation script
+  - [x] 4.2 Write unit tests for the validation script
     - Test detection of missing port override
     - Test detection of incorrect port arithmetic
     - Test detection of missing image pin
     - Test detection of missing env var
     - _Requirements: 2.1, 2.2_
 
-- [ ] 5. Create documentation
-  - [ ] 5.1 Create `docs/DEV-TEST.md`
+- [x] 5. Create documentation
+  - [x] 5.1 Create `docs/DEV-TEST.md`
     - Explain the dev-test namespace concept (parallel namespace via Docker Compose override)
     - Document the port offset rule (primary + 100)
     - Include complete port mapping table (16 services × primary port / test port / container port columns)
@@ -96,28 +96,28 @@ Implement a parallel, isolated Mintkey development/testing environment using Doc
     - Include troubleshooting: port conflicts, verifying primary unaffected, env var precedence
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5 (adversarial review: MAJOR fixes)_
 
-  - [ ] 5.2 Update `PORTS.md` with test namespace ports
+  - [x] 5.2 Update `PORTS.md` with test namespace ports
     - Add a "Test Namespace" section or column showing offset ports
     - Reference `docs/DEV-TEST.md` for full documentation
     - _Requirements: 12.2 (adversarial review: MINOR fix)_
 
-- [ ] 6. Checkpoint — Ensure all files are syntactically valid
+- [x] 6. Checkpoint — Ensure all files are syntactically valid
   - Run `docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test config > /dev/null` and `python3 tools/validate-test-override.py`. Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Integration wiring and final validation
-  - [ ] 7.1 Add validation script to CI workflow
+- [x] 7. Integration wiring and final validation
+  - [x] 7.1 Add validation script to CI workflow
     - Add a step in `.github/workflows/ci.yml` that runs `python3 tools/validate-test-override.py`
     - Ensure it runs on PRs that touch `docker-compose*.yml`, `.env.test`, or the validation script itself
     - _Requirements: 2.1, 9.1 (adversarial review: CRITICAL fix)_
 
-  - [ ]* 7.2 Write integration test for namespace isolation
+  - [x] 7.2 Write integration test for namespace isolation
     - Verify merged compose config is valid YAML
     - Verify no port overlap between primary and test namespace
     - Verify all 7 named volumes get `mintkey-test_` prefix in merged config
     - Verify network is `mintkey-test_mintkey` in merged config
     - _Requirements: 1.1, 1.3, 3.1, 4.1_
 
-- [ ] 8. Final checkpoint — Ensure all tests pass
+- [x] 8. Final checkpoint — Ensure all tests pass
   - Run `python3 tools/validate-test-override.py` and verify CI config is valid. Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

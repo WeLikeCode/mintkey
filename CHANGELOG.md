@@ -189,6 +189,16 @@ First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks
 > that Mintkey was bootstrapped from. It is preserved for traceability but has
 > no bearing on Mintkey product versions or releases.
 
+## [0.3.0] — 2026-05-19
+
+### Added
+
+- **Dev-test namespace** — parallel isolated Mintkey environment via Docker Compose multi-file override (`docker-compose.test.yml` + `.env.test`). All 16 host ports offset by +100; volumes, networks, and data fully isolated under project name `mintkey-test`.
+- **Makefile targets**: `dev-test`, `dev-test-down`, `dev-test-logs`, `dev-test-reset`, `smoke-test-ns` for full lifecycle management of the test namespace.
+- **CI port-drift validation** (`tools/validate-test-override.py`) — asserts port offsets, image pins, and env vars stay in sync; added to GitHub Actions CI workflow.
+- **Documentation**: `docs/DEV-TEST.md` (concept, port table, usage, troubleshooting) and `PORTS.md` updated with test namespace column.
+- **Tests**: 15 unit tests for the validation script + 4 integration tests for namespace isolation properties.
+
 ## [0.2.0] — 2026-05-16
 
 ### Added

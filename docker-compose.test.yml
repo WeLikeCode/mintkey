@@ -1,0 +1,89 @@
+# Mintkey test namespace override — layers on top of docker-compose.yml
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml \
+#          --env-file .env.test --project-name mintkey-test up -d
+#
+# All host ports are offset by +100 from the primary instance.
+# Container-internal ports are unchanged.
+
+name: mintkey-test
+
+services:
+
+  # ─── Locally-built services: image pins ───────────────────────────────────
+  # Explicit image: directives prevent Docker Compose from generating
+  # mintkey-test-<service> tags and triggering unnecessary rebuilds.
+  # Both namespaces share the same mintkey-<service> images.
+
+  seed-job:
+    image: mintkey-seed-job
+
+  vault-adapter:
+    image: mintkey-vault-adapter
+    ports: !override
+      - "8184:8084"
+      - "8187:8087"
+
+  admin-api:
+    image: mintkey-admin-api
+    ports: !override
+      - "8180:8080"
+
+  admin-ui:
+    image: mintkey-admin-ui
+    ports: !override
+      - "8181:8081"
+
+  mcp-server:
+    image: mintkey-mcp-server
+    ports: !override
+      - "8182:8082"
+
+  broker:
+    image: mintkey-broker
+    ports: !override
+      - "8183:8083"
+
+  kong-syncer:
+    image: mintkey-kong-syncer
+    ports: !override
+      - "8185:8085"
+
+  proxy-plugin:
+    image: mintkey-proxy-plugin
+    ports: !override
+      - "8186:8086"
+
+  mock-backend:
+    image: mintkey-mock-backend
+    ports: !override
+      - "9099:8999"
+
+  jaeger-auth:
+    image: mintkey-jaeger-auth
+    ports: !override
+      - "16786:4180"
+
+  # ─── Third-party services: port overrides only ────────────────────────────
+
+  keycloak:
+    ports: !override
+      - "8543:8443"
+
+  kong:
+    ports: !override
+      - "8100:8000"
+      - "127.0.0.1:8101:8001"
+
+  otel-collector:
+    ports: !override
+      - "4417:4317"
+
+  # cAdvisor: container listens on 8080, primary maps to 8088, test maps to 8188
+  cadvisor:
+    ports: !override
+      - "8188:8080"
+
+  # Grafana: container listens on 3000, primary maps to 3003, test maps to 3103
+  grafana:
+    ports: !override
+      - "3103:3000"

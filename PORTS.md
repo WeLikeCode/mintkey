@@ -6,22 +6,24 @@ All values reflect the default `docker compose` dev stack. Do not use these in p
 
 ## Service port map
 
-| # | Service | Host port | Purpose |
-|---|---------|-----------|---------|
-| 1 | `keycloak` | **8443** | OIDC / Admin UI |
-| 2 | `admin-api` | **8080** | FastAPI REST API (`/v1/`) |
-| 3 | `admin-ui` | **8081** | AdminJS operator UI |
-| 4 | `mcp-server` | **8082** | MCP tool server |
-| 5 | `broker` | **8083** | Credential Broker (`/v1/`) |
-| 6 | `vault-adapter` | **8084** | Vault gRPC service |
-| 7 | `kong-syncer` | **8085** | Kong config sync (`/v1/`) |
-| 8 | `kong` (proxy) | **8000** | Kong data plane (agent → backend) |
-| 8 | `kong` (admin) | **8001** | Kong admin API |
-| 9 | `mock-backend` | **8999** | Stub backend for smoke tests |
-| 10 | `otel-collector` | **4317** | OTLP gRPC ingest |
-| 11 | `jaeger` | *(internal)* | Trace backend — no host port; access via `jaeger-auth` |
-| 11a | `jaeger-auth` | **16686** | oauth2-proxy fronting Jaeger UI (host 16686:4180; SSO required) |
-| 12 | `grafana` | **3003** | Dashboards |
+| # | Service | Host port | Test namespace port | Purpose |
+|---|---------|-----------|---------------------|---------|
+| 1 | `keycloak` | **8443** | **8543** | OIDC / Admin UI |
+| 2 | `admin-api` | **8080** | **8180** | FastAPI REST API (`/v1/`) |
+| 3 | `admin-ui` | **8081** | **8181** | AdminJS operator UI |
+| 4 | `mcp-server` | **8082** | **8182** | MCP tool server |
+| 5 | `broker` | **8083** | **8183** | Credential Broker (`/v1/`) |
+| 6 | `vault-adapter` | **8084** | **8184** | Vault gRPC service |
+| 7 | `kong-syncer` | **8085** | **8185** | Kong config sync (`/v1/`) |
+| 8 | `kong` (proxy) | **8000** | **8100** | Kong data plane (agent → backend) |
+| 8 | `kong` (admin) | **8001** | **8101** | Kong admin API |
+| 9 | `mock-backend` | **8999** | **9099** | Stub backend for smoke tests |
+| 10 | `otel-collector` | **4317** | **4417** | OTLP gRPC ingest |
+| 11 | `jaeger` | *(internal)* | *(internal)* | Trace backend — no host port; access via `jaeger-auth` |
+| 11a | `jaeger-auth` | **16686** | **16786** | oauth2-proxy fronting Jaeger UI (host 16686:4180; SSO required) |
+| 12 | `grafana` | **3003** | **3103** | Dashboards |
+
+**Test namespace rule:** every test port = primary port + 100. Start with `make dev-test`. See [docs/DEV-TEST.md](docs/DEV-TEST.md) for full documentation.
 
 **Internal only (no host port):** `postgres` (5432), `prometheus` (9090), `proxy-plugin`, `kong-syncer`.
 Grafana queries Prometheus at `http://prometheus:9090` inside the Docker network.
@@ -110,10 +112,18 @@ Inject the same key into: `seed-job`, `admin-ui`, and any CI job that reads `adm
 ## Quick access
 
 ```sh
-make dev                              # start the stack
+make dev                              # start the primary stack
 docker compose logs seed-job          # bootstrap admin password
 open http://localhost:8080/v1/health  # admin-api health
 open http://localhost:8443/admin      # keycloak admin
 open http://localhost:3003            # grafana
 open http://localhost:16686           # jaeger (via jaeger-auth; Keycloak login required)
+
+# Test namespace (parallel isolated instance, ports +100)
+make dev-test                         # start the test namespace
+make dev-test-down                    # stop the test namespace
+make dev-test-logs                    # tail test namespace logs
+open http://localhost:8180/v1/health  # admin-api (test)
+open http://localhost:8543/admin      # keycloak (test)
+open http://localhost:3103            # grafana (test)
 ```
