@@ -34,28 +34,28 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Populate with evidence citations gathered during roadmap audit
     - _Requirements: 3.1, 3.2_
 
-- [ ] 3. Security residual inventory and owner-action matrix (T-4, WS-2)
-  - [ ] 3.1 Document Scorecard owner actions in SECURITY.md
+- [x] 3. Security residual inventory and owner-action matrix (T-4, WS-2)
+  - [x] 3.1 Document Scorecard owner actions in SECURITY.md
     - For each accepted Scorecard_Residual in `SECURITY.md §Accepted Scorecard Residuals`, add "GitHub UI Dismissal Steps" subsection
     - Include exact click-path instructions for GitHub alert dismissal
     - _Requirements: 4.1, 4.2_
-  - [ ] 3.2 Resolve GO-2026-XXXX vulnerability
+  - [x] 3.2 Resolve GO-2026-XXXX vulnerability
     - Check GitHub Security → Code scanning alerts for full advisory ID
     - If upstream patch exists: document dep-bump task
     - If no patch: document deferral with rationale and revisit trigger in SECURITY.md
     - _Requirements: 5.1, 5.2, 5.3_
-  - [ ] 3.3 Document weak hash migration strategy
+  - [x] 3.3 Document weak hash migration strategy
     - Create `docs/architecture/01-architecture/security-notes/weak-hash-migration.md`
     - Document current state, risk assessment, chosen approach (accept-for-prealpha), and revisit trigger
     - Update SECURITY.md with acceptance rationale and revisit criterion
     - _Requirements: 6.1, 6.2, 6.3_
-  - [ ] 3.4 Document audit hash chain SHA-256 invariant
+  - [x] 3.4 Document audit hash chain SHA-256 invariant
     - Document in SECURITY.md that SHA-256 is per ADR-0014.7 and any change requires a new ADR
     - Reference existing tests in `tests/acceptance/test_audit_append_only.py`
     - _Requirements: 7.1, 7.2_
 
-- [ ] 4. Security fixes that do not require owner decisions (T-5, WS-2)
-  - [ ] 4.1 Create remediation tasks for fixable Scorecard residuals
+- [x] 4. Security fixes that do not require owner decisions (T-5, WS-2)
+  - [x] 4.1 Create remediation tasks for fixable Scorecard residuals
     - For any Scorecard_Residual with an available code fix, create a concrete remediation task
     - Reference the specific fix (dep bump, config change, etc.)
     - _Requirements: 4.3, 10.1_
