@@ -20,7 +20,7 @@ dependencies = [
     "grpcio>=1.80",
     "protobuf>=6.31",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
-    "prometheus-client>=0.20",
+    "prometheus-client>=0.25.0",
 ]
 
 [tool.hatch.build.targets.wheel]
