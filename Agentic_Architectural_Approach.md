@@ -39,7 +39,7 @@ If you're looking for a framework that picks your event bus, persistence layer, 
 
 ```bash
 # 1. Clone the template into your engagement repo
-git clone <this-template> my-engagement && cd my-engagement
+git clone <this-template> my-project && cd my-project
 
 # 2. Run the bootstrap wizard via Kiro (reentrant — safe to re-invoke)
 #    Open Kiro and say: "set up this project"  →  invokes the project-setup skill

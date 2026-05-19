@@ -14,7 +14,10 @@
       ],
       "env": {},
       "disabled": false,
-      "autoApprove": []
+      "autoApprove": [
+        "replace_content",
+        "*"
+      ]
     }
   }
 }
