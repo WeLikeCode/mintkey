@@ -123,37 +123,37 @@ Four workstreams delivering documentation accuracy, security residual closure, B
   - Verify red-team fingerprint grep passes with zero matches (Requirement 8)
   - Ask the user if questions arise.
 
-- [ ] 13. Root KIRO.md (T-12, WS-4)
-  - [ ] 13.1 Create `/KIRO.md` at repo root
+- [x] 13. Root KIRO.md (T-12, WS-4)
+  - [x] 13.1 Create `/KIRO.md` at repo root
     - Write thin link hub (< 100 lines): one-paragraph summary, quick links to AGENTS.md, `.kiro/steering/`, `docs/architecture/`, `docs/patterns/`
     - Include tech stack table and "How to make a change" section
     - Include key invariants (P-1 through P-4)
     - Do NOT duplicate content from AGENTS.md or architecture docs
     - _Requirements: 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
 
-- [ ] 14. Pattern docs: REST endpoint, MCP tool, audit event (T-13, WS-4)
-  - [ ] 14.1 Create `docs/patterns/add-rest-endpoint.md`
+- [x] 14. Pattern docs: REST endpoint, MCP tool, audit event (T-13, WS-4)
+  - [x] 14.1 Create `docs/patterns/add-rest-endpoint.md`
     - Six sections: Goal, Where the change lives, Step-by-step, Tests to write, Common pitfalls, References
     - Use relative links to ADRs and contracts
     - _Requirements: 19.1, 19.4_
-  - [ ] 14.2 Create `docs/patterns/add-mcp-tool.md`
+  - [x] 14.2 Create `docs/patterns/add-mcp-tool.md`
     - Six sections: Goal, Where the change lives, Step-by-step, Tests to write, Common pitfalls, References
     - Use relative links to ADRs and contracts
     - _Requirements: 19.2, 19.4_
-  - [ ] 14.3 Create `docs/patterns/add-audit-event.md`
+  - [x] 14.3 Create `docs/patterns/add-audit-event.md`
     - Six sections: Goal, Where the change lives, Step-by-step, Tests to write, Common pitfalls, References
     - Use relative links to ADRs and contracts
     - _Requirements: 19.3, 19.4_
 
-- [ ] 15. Minimal stubs plan (T-14, WS-4)
-  - [ ] 15.1 Create `tests/stubs/README.md`
+- [x] 15. Minimal stubs plan (T-14, WS-4)
+  - [x] 15.1 Create `tests/stubs/README.md`
     - Document three priority stubs: Vault Adapter (in-memory, Go), Kong/Proxy Recorder (HTTP, Go), OIDC/Keycloak Mock (Python)
     - State interface, location, minimum viable scope, and language for each
     - Include uniform conventions and CI integration plan
     - _Requirements: 20.1, 20.2_
 
-- [ ] 16. Update Kiro readiness doc (T-14 cont., WS-4)
-  - [ ] 16.1 Update `docs/architecture/00-vision/07-kiro-readiness.md` status table
+- [x] 16. Update Kiro readiness doc (T-14 cont., WS-4)
+  - [x] 16.1 Update `docs/architecture/00-vision/07-kiro-readiness.md` status table
     - "KIRO.md project conventions" row: ⏳ → ✅ with EvidenceRef `/KIRO.md`
     - "Pattern library" row: ❌ → 🟢 (partial) with EvidenceRef `docs/patterns/*.md`
     - "Stub services" row: ❌ → 🟢 (plan documented) with EvidenceRef `tests/stubs/README.md`
