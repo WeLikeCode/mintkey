@@ -36,7 +36,7 @@ RUN GOARCH=$(go env GOARCH) && \
     chmod +x /grpc_health_probe
 
 # Pinned 2026-05-18; re-pin every quarter.
-FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
+FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
 COPY --from=builder /vault-adapter /vault-adapter
 COPY --from=builder /grpc_health_probe /grpc_health_probe
 ENTRYPOINT ["/vault-adapter"]
