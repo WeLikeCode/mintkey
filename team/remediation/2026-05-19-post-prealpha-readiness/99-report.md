@@ -35,7 +35,7 @@ The full kiro spec at `.kiro/specs/post-prealpha-readiness/` (21 requirements, 1
 ### WS-3 — Builder B-1 experience
 
 - `Makefile` — `make demo` (Docker check + `up -d` + 180s health-poll + success banner) and `make demo-mock` (auto-start + run `scripts/demo-mock-flow.sh`); never destructive (C-4)
-- `scripts/demo-mock-flow.sh` — NEW, 247 lines, shellcheck-clean; PAT-free mock-backend demo end-to-end; redacts all `mk_agent_*` and JWTs in stdout (C-4)
+- `scripts/demo-mock-flow.sh` — NEW, 400 lines, shellcheck-clean; PAT-free mock-backend demo end-to-end; redacts all `mk_agent_*` and JWTs in stdout (C-4)
 - `docs/guides/agent-never-sees-secret.md` — NEW, 269 lines; 6-section structured walkthrough proving zero credential exposure (C-5)
 - `examples/python-agent-snippet/{agent.py, requirements.txt, README.md}` — NEW, ~40-line Python agent using httpx (C-5)
 - `examples/typescript-agent-snippet/{agent.ts, package.json, tsconfig.json, README.md}` — NEW, ~40-line TS agent using native fetch (C-5)
