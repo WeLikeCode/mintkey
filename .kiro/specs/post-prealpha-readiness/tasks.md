@@ -60,11 +60,8 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Reference the specific fix (dep bump, config change, etc.)
     - _Requirements: 4.3, 10.1_
 
-- [ ] 5. Checkpoint — Security and documentation accuracy
-  - Ensure all SECURITY.md updates are consistent with ADR immutability (Requirement 9)
-  - Verify no accepted ADR was edited
-  - Verify red-team fingerprint grep passes with zero matches (Requirement 8)
-  - Ask the user if questions arise.
+- [x] 5. Checkpoint — Security and documentation accuracy
+  - Verified by ORCHESTRATOR C-7 audit (2026-05-19): SECURITY.md updates consistent with ADR immutability ✓; no accepted ADR edited (`git diff --stat origin/main..HEAD -- docs/architecture/01-architecture/adr/` empty) ✓; red-team fingerprint grep returns 0 hits across all new/modified files ✓ (one pre-existing placeholder `mk_agent_NEWKEYVALUE0...` in `docs/architecture/contracts/rest/openapi.yaml` is on main, not introduced by this session).
 
 - [x] 6. `make demo` target (T-6, WS-3)
   - [x] 6.1 Implement `make demo` Makefile target
@@ -117,11 +114,8 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Follow existing DEBUG.md format: symptom, diagnostic commands, resolution steps
     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5, 17.6_
 
-- [ ] 12. Checkpoint — Builder B-1 experience complete
-  - Ensure all WS-3 deliverables exist and contain required sections
-  - Verify no credentials appear in any example code (placeholder values only)
-  - Verify red-team fingerprint grep passes with zero matches (Requirement 8)
-  - Ask the user if questions arise.
+- [x] 12. Checkpoint — Builder B-1 experience complete
+  - Verified by ORCHESTRATOR C-7 audit (2026-05-19): all WS-3 deliverables exist (`docs/guides/agent-never-sees-secret.md`, `examples/python-agent-snippet/{3 files}`, `examples/typescript-agent-snippet/{4 files}`, `examples/openai-compatible/{3 files}`, `docs/DEBUG.md +6 entries`, `Makefile demo + demo-mock`, `scripts/demo-mock-flow.sh`) ✓; placeholder-only credentials (red-team grep 0 hits across all new files) ✓.
 
 - [x] 13. Root KIRO.md (T-12, WS-4)
   - [x] 13.1 Create `/KIRO.md` at repo root
@@ -159,18 +153,12 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - "Stub services" row: ❌ → 🟢 (plan documented) with EvidenceRef `tests/stubs/README.md`
     - _Requirements: 21.1, 21.2, 21.3_
 
-- [ ] 17. Verification and final report (T-15)
-  - [ ] 17.1 Run final verification checks
-    - Verify all deliverable files exist at expected paths
-    - Run red-team fingerprint grep across all new/modified files (zero matches required)
-    - Verify no accepted ADR was edited (`git diff` on `docs/architecture/01-architecture/adr/`)
-    - Verify Kiro_Readiness_Doc status table is current
-    - Confirm evidence.md is populated with all claims and their EvidenceRefs
+- [x] 17. Verification and final report (T-15)
+  - [x] 17.1 Run final verification checks
+    - Verified 2026-05-19 by ORCHESTRATOR C-7 audit: 19/19 deliverable files exist ✓; red-team grep returns 0 hits for new/modified files (1 pre-existing placeholder in `docs/architecture/contracts/rest/openapi.yaml:api_key` is on main, not introduced) ✓; `git diff --stat origin/main..HEAD -- docs/architecture/01-architecture/adr/` empty ✓; Kiro_Readiness_Doc 3 status rows updated by C-6 ✓; `.kiro/specs/post-prealpha-readiness/evidence.md` populated with 24 rows by C-2 ✓.
     - _Requirements: 8.1, 8.2, 9.1, 2.4, 10.2_
-  - [ ] 17.2 Produce final readiness report
-    - Summarize all deliverables with file paths
-    - List any deferred items or owner decisions still needed
-    - Confirm all 21 requirements are addressed
+  - [x] 17.2 Produce final readiness report
+    - `team/remediation/2026-05-19-post-prealpha-readiness/99-report.md` (this session's closing report); summarises all 19 deliverables with paths + commit SHAs + per-requirement coverage.
     - _Requirements: all_
 
 ## Notes
