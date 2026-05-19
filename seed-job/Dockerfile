@@ -1,6 +1,6 @@
 # Seed job — Python 3.12, one-shot (ADR-0005)
 # Pinned 2026-05-18; re-pin every quarter.
-FROM python:3.12-slim-bookworm@sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2
+FROM python:3.14-slim-bookworm@sha256:a3974109d36f164ca70024bc0d0828ac706e4ccda849f8638d879e91f79e90ec
 
 WORKDIR /app
 
