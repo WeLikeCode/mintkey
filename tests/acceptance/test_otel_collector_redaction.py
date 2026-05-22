@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-_CONFIG_PATH = Path(__file__).parent.parent.parent / "otel-collector-config.yaml"
+_CONFIG_PATH = Path(__file__).parent.parent.parent / "infra" / "observability" / "otel-collector-config.yaml"
 
 # Keys that MUST be deleted by the attributes/redact processor.
 _REQUIRED_DELETE_KEYS = {

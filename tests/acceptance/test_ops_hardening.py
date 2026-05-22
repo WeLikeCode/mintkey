@@ -29,20 +29,20 @@ _ROOT = Path(__file__).parent.parent.parent
 
 def test_alert_rules_file_exists() -> None:
     """alert_rules.yml must exist at the repo root."""
-    path = _ROOT / "alert_rules.yml"
+    path = _ROOT / "infra" / "observability" / "alert_rules.yml"
     assert path.exists(), f"Missing: {path}"
 
 
 def test_alert_rules_yaml_valid() -> None:
     """alert_rules.yml must be valid YAML."""
-    path = _ROOT / "alert_rules.yml"
+    path = _ROOT / "infra" / "observability" / "alert_rules.yml"
     content = yaml.safe_load(path.read_text())
     assert "groups" in content, "alert_rules.yml must have a 'groups' key"
 
 
 def test_required_alert_rules_present() -> None:
     """All 8 required alerting rules must be defined."""
-    path = _ROOT / "alert_rules.yml"
+    path = _ROOT / "infra" / "observability" / "alert_rules.yml"
     src = path.read_text()
     required = [
         "AuditChainTampered",
@@ -60,7 +60,7 @@ def test_required_alert_rules_present() -> None:
 
 def test_mintkey_container_mem_high_alert_exists() -> None:
     """MintkeyContainerMemHigh alert must exist and use cAdvisor metrics."""
-    path = _ROOT / "alert_rules.yml"
+    path = _ROOT / "infra" / "observability" / "alert_rules.yml"
     src = path.read_text()
     assert "MintkeyContainerMemHigh" in src, "MintkeyContainerMemHigh alert missing"
     assert "container_memory_working_set_bytes" in src, "cAdvisor metric missing in alert"
@@ -74,7 +74,7 @@ def test_mintkey_container_mem_high_alert_exists() -> None:
 
 def test_prometheus_loads_alert_rules() -> None:
     """prometheus.yml must reference the alert_rules.yml file."""
-    prom = _ROOT / "prometheus.yml"
+    prom = _ROOT / "infra" / "observability" / "prometheus.yml"
     src = prom.read_text()
     assert "alert_rules.yml" in src, "prometheus.yml must reference alert_rules.yml"
     assert "rule_files" in src, "prometheus.yml must have a rule_files section"
@@ -82,7 +82,7 @@ def test_prometheus_loads_alert_rules() -> None:
 
 def test_prometheus_scrapes_cadvisor() -> None:
     """prometheus.yml must scrape cAdvisor for container memory metrics."""
-    prom = _ROOT / "prometheus.yml"
+    prom = _ROOT / "infra" / "observability" / "prometheus.yml"
     src = prom.read_text()
     assert "cadvisor" in src, "prometheus.yml missing cadvisor scrape target"
 
@@ -109,7 +109,7 @@ def test_cadvisor_in_compose() -> None:
 
 def test_grafana_memory_dashboard_exists() -> None:
     """A Grafana memory dashboard with cAdvisor panels must be provisioned."""
-    dashboard_dir = _ROOT / "grafana" / "provisioning" / "dashboards"
+    dashboard_dir = _ROOT / "infra" / "observability" / "grafana" / "provisioning" / "dashboards"
     dashboards = list(dashboard_dir.glob("*.json"))
     contents = [d.read_text() for d in dashboards]
     has_memory = any(

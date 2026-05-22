@@ -31,8 +31,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BROKER_DIR = REPO_ROOT / "services" / "broker"
-PROXY_PLUGIN_DIR = REPO_ROOT / "services" / "proxy-plugin"
+BROKER_DIR = REPO_ROOT / "apps" / "broker"
+PROXY_PLUGIN_DIR = REPO_ROOT / "apps" / "proxy-plugin"
 
 # ---------------------------------------------------------------------------
 # Integration marker — skips Variant B unless MINTKEY_INTEGRATION_TEST=true

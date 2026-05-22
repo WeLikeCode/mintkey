@@ -41,9 +41,9 @@ def test_e2e_smoke_components_exist() -> None:
     required = [
         _ROOT / "apps/admin-api" / "src" / "admin_api",
         _ROOT / "apps/mcp-server" / "src" / "mcp_server",
-        _ROOT / "services" / "broker",
-        _ROOT / "services" / "proxy-plugin",
-        _ROOT / "services" / "vault-adapter",
+        _ROOT / "apps" / "broker",
+        _ROOT / "apps" / "proxy-plugin",
+        _ROOT / "apps" / "vault-adapter",
         _ROOT / "apps/mock-backend" / "src" / "mock_backend",
         _ROOT / "docker-compose.yml",
     ]

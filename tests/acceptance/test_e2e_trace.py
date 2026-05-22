@@ -68,7 +68,7 @@ def test_broker_has_otel_instrumentation() -> None:
     Source: T-1.10.4; ADR-0017.6.
     """
     issuer_go = (
-        _ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go"
+        _ROOT / "apps" / "broker" / "internal" / "issuer" / "issuer.go"
     )
     assert issuer_go.exists(), f"issuer.go not found at {issuer_go}"
 
@@ -78,7 +78,7 @@ def test_broker_has_otel_instrumentation() -> None:
 
     # If the issuer itself is thin (no direct tracing), the broker's go.mod
     # must at least declare the OTel dependency.
-    broker_go_mod = _ROOT / "services" / "broker" / "go.mod"
+    broker_go_mod = _ROOT / "apps" / "broker" / "go.mod"
     has_otel_in_mod = False
     if broker_go_mod.exists():
         has_otel_in_mod = "opentelemetry" in broker_go_mod.read_text()
@@ -103,7 +103,7 @@ def test_proxy_plugin_audit_emitter_creates_span() -> None:
     Source: T-1.10.4; T-1.6.5; ADR-0017.6.
     """
     emitter_go = (
-        _ROOT / "services" / "proxy-plugin" / "internal" / "audit" / "emitter.go"
+        _ROOT / "apps" / "proxy-plugin" / "internal" / "audit" / "emitter.go"
     )
     assert emitter_go.exists(), f"emitter.go not found at {emitter_go}"
 
@@ -129,7 +129,7 @@ def test_expected_span_names_documented() -> None:
     Source: T-1.10.4; ADR-0017.6.
     """
     emitter_go = (
-        _ROOT / "services" / "proxy-plugin" / "internal" / "audit" / "emitter.go"
+        _ROOT / "apps" / "proxy-plugin" / "internal" / "audit" / "emitter.go"
     )
     assert emitter_go.exists(), f"emitter.go not found at {emitter_go}"
 

@@ -160,10 +160,10 @@ def test_golden_path_chain_components_exist() -> None:
         "mcp-server bootstrap": _ROOT / "apps/mcp-server" / "src" / "mcp_server" / "tools" / "bootstrap.py",
         "mcp-server request_token": _ROOT / "apps/mcp-server" / "src" / "mcp_server" / "tools" / "request_token.py",
         "admin-api internal (validate-agent-key)": _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py",
-        "broker issue endpoint": _ROOT / "services" / "broker" / "internal" / "api" / "issue" / "issue.go",
-        "broker issuer (JWT signing)": _ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go",
-        "proxy-plugin main (JWT verify + credential inject)": _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
-        "vault-adapter server (GetCredential)": _ROOT / "services" / "vault-adapter" / "internal" / "server" / "vault.go",
+        "broker issue endpoint": _ROOT / "apps" / "broker" / "internal" / "api" / "issue" / "issue.go",
+        "broker issuer (JWT signing)": _ROOT / "apps" / "broker" / "internal" / "issuer" / "issuer.go",
+        "proxy-plugin main (JWT verify + credential inject)": _ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
+        "vault-adapter server (GetCredential)": _ROOT / "apps" / "vault-adapter" / "internal" / "server" / "vault.go",
         "mock-backend api-key-header endpoint": _ROOT / "apps/mock-backend" / "src" / "mock_backend" / "rest" / "main.py",
         "agent-bootstrap skill markdown": _ROOT / "apps/mcp-server" / "skills" / "agent-bootstrap.md",
         "docker-compose": _ROOT / "docker-compose.yml",
@@ -207,7 +207,7 @@ def test_golden_path_admin_api_vault_client_is_grpc() -> None:
 
     Source: WS-9; ADR-0011; T-1.3.1.
     """
-    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "apps" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")
@@ -240,7 +240,7 @@ def test_golden_path_broker_jwt_claims_present() -> None:
 
     Source: ADR-0006; proxy-plugin/internal/jwt/verifier.go; WS-8 Hop 3.
     """
-    issuer_go = _ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go"
+    issuer_go = _ROOT / "apps" / "broker" / "internal" / "issuer" / "issuer.go"
     assert issuer_go.exists(), f"issuer.go not found: {issuer_go}"
 
     src = issuer_go.read_text(encoding="utf-8")
@@ -710,7 +710,7 @@ def test_ws10_vault_client_list_versions_parses_metadata() -> None:
 
     Source: WS-10; vault.proto; T-1.3.1.
     """
-    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "apps" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")

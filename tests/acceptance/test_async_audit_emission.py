@@ -31,14 +31,14 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUDITQ_PKG = REPO_ROOT / "packages" / "go" / "auditq"
-BROKER_DIR = REPO_ROOT / "services" / "broker"
-PROXY_DIR = REPO_ROOT / "services" / "proxy-plugin"
+BROKER_DIR = REPO_ROOT / "apps" / "broker"
+PROXY_DIR = REPO_ROOT / "apps" / "proxy-plugin"
 ADMIN_API_INTERNAL = REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py"
-BROKER_CONFIG = REPO_ROOT / "services" / "broker" / "internal" / "config" / "config.go"
-PROXY_CONFIG = REPO_ROOT / "services" / "proxy-plugin" / "internal" / "config" / "config.go"
-BROKER_MAIN = REPO_ROOT / "services" / "broker" / "cmd" / "broker" / "main.go"
-PROXY_MAIN = REPO_ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
-BROKER_ISSUE = REPO_ROOT / "services" / "broker" / "internal" / "api" / "issue" / "issue.go"
+BROKER_CONFIG = REPO_ROOT / "apps" / "broker" / "internal" / "config" / "config.go"
+PROXY_CONFIG = REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "config" / "config.go"
+BROKER_MAIN = REPO_ROOT / "apps" / "broker" / "cmd" / "broker" / "main.go"
+PROXY_MAIN = REPO_ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
+BROKER_ISSUE = REPO_ROOT / "apps" / "broker" / "internal" / "api" / "issue" / "issue.go"
 
 INTEGRATION = pytest.mark.skipif(
     os.getenv("MINTKEY_INTEGRATION_TEST") != "true",

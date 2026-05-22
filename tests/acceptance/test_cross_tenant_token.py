@@ -17,8 +17,8 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-VERIFIER_GO = REPO_ROOT / "services" / "proxy-plugin" / "internal" / "jwt" / "verifier.go"
-PROXY_PLUGIN_DIR = REPO_ROOT / "services" / "proxy-plugin"
+VERIFIER_GO = REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "jwt" / "verifier.go"
+PROXY_PLUGIN_DIR = REPO_ROOT / "apps" / "proxy-plugin"
 
 
 # ---------------------------------------------------------------------------
