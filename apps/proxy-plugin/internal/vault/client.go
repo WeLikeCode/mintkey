@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
+	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"

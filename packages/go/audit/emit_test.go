@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mintkey/mintkey/internal/audit"
+	"github.com/mintkey/mintkey/packages/go/audit"
 )
 
 // fixedTime is a deterministic timestamp for test events.

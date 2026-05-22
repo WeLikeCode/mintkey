@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mintkey/mintkey/internal/otelinit"
+	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/changes"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/config"
 	"github.com/mintkey/mintkey/services/kong-syncer/internal/health"

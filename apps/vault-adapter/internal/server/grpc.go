@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
+	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"

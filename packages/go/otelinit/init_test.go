@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mintkey/mintkey/internal/otelinit"
+	"github.com/mintkey/mintkey/packages/go/otelinit"
 )
 
 // TestRedactAttributes_ExactMatch verifies that exact forbidden attribute names

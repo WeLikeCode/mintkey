@@ -12,7 +12,7 @@ import (
 	"net"
 	"testing"
 
-	vaultv1 "github.com/mintkey/mintkey/internal/vault/v1"
+	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

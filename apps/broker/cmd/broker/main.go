@@ -16,9 +16,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mintkey/mintkey/internal/auditq"
-	"github.com/mintkey/mintkey/internal/otelinit"
-	"github.com/mintkey/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/packages/go/otelinit"
+	"github.com/mintkey/mintkey/packages/go/ulid"
 	"github.com/mintkey/mintkey/services/broker/internal/api/issue"
 	"github.com/mintkey/mintkey/services/broker/internal/api/resolve"
 	"github.com/mintkey/mintkey/services/broker/internal/config"

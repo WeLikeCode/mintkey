@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/mintkey/mintkey/internal/auditq"
+	"github.com/mintkey/mintkey/packages/go/auditq"
 )
 
 // Config holds all runtime configuration for the Credential Broker.

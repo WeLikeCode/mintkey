@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mintkey/mintkey/internal/svcid"
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 func TestNewClient_ReadsTokenFromFile(t *testing.T) {

@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mintkey/mintkey/internal/auditq"
+	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/services/broker/internal/issuer"
 	"github.com/mintkey/mintkey/services/broker/internal/metrics"
 )

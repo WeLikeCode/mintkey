@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mintkey/mintkey/internal/otelinit"
+	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/changes"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/config"

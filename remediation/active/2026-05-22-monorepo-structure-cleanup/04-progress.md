@@ -7,6 +7,73 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-3 IMPLEMENTER (Sonnet)
+
+### Chunk C-3: Packages move executed
+
+**Tasks completed:** 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12
+
+**Moves performed:**
+- Created `packages/python/` and `packages/go/` directories
+- `git mv mintkey-models/ packages/python/mintkey-models/` (1 Python package)
+- `git mv internal/audit/ packages/go/audit/` 
+- `git mv internal/auditq/ packages/go/auditq/`
+- `git mv internal/changes/ packages/go/changes/`
+- `git mv internal/otelinit/ packages/go/otelinit/`
+- `git mv internal/svcid/ packages/go/svcid/`
+- `git mv internal/ulid/ packages/go/ulid/`
+- `git mv internal/vault/ packages/go/vault/` (7 Go packages)
+- `rmdir internal/cfg internal/models internal/` (empty dirs, no tracked files)
+
+**Go import rewrites:**
+- Module root: `github.com/mintkey/mintkey`
+- `find . -name '*.go' | xargs sed -i.bak 's|github.com/mintkey/mintkey/internal/|github.com/mintkey/mintkey/packages/go/|g'`
+- 20 `.go` files rewritten
+- Important fix: `packages/go/vault/v1/vault.pb.go` — sed accidentally rewrote a binary string in the protobuf rawDesc constant (`Z4` varint length prefix encoded 52-char old path; sed changed content to 55 chars without updating the length → `slice bounds out of range [-5:]` panic). Reverted the binary string to preserve the length-prefixed encoding while the actual Go import statement was unchanged (there were no Go import statements in vault.pb.go to begin with — only the rawDesc string).
+
+**go.work directive note:**
+- The 7 moved Go packages have NO individual `go.mod` — they are part of the root module (`github.com/mintkey/mintkey`)
+- Root module `.` is already listed in `go.work`; no new `use` directives needed
+- `go work sync` exit 0; go.mod/go.sum drive-by version bumps reverted with `git checkout HEAD -- go.mod go.sum` per strike-2 policy
+- `go.work.sum` minor cleanups (3 removed `.mod` entries, no new versions) retained
+
+**Dockerfile COPY updates:**
+- `apps/admin-api/Dockerfile`: `COPY mintkey-models/mintkey_models/` → `COPY packages/python/mintkey-models/mintkey_models/`
+- `apps/mcp-server/Dockerfile`: same
+- `apps/broker/Dockerfile`: `COPY internal/ internal/` → `COPY packages/go/ packages/go/`
+- `apps/vault-adapter/Dockerfile`: same
+- `apps/kong-syncer/Dockerfile`: same
+- `apps/proxy-plugin/Dockerfile`: same
+
+**pyproject.toml check (R-3.10):**
+- No `[tool.uv.workspace]` references to `mintkey-models` path found in any pyproject.toml
+- No changes needed
+
+**Python import names (R-3.9):**
+- `mintkey_models` package name unchanged; only filesystem path changed
+- Confirmed by `uv run pytest tests/` passing all 60 tests
+
+**Verification:**
+- `go work sync` → exit 0
+- `go.mod`/`go.sum` drive-by bumps reverted ✓
+- `go test ./...` (root module) → exit 0 (audit, auditq, changes, otelinit, svcid, ulid, vault/v1: ok/no test files)
+- `go test ./...` (apps/broker) → exit 0
+- `go test ./...` (apps/vault-adapter) → exit 0
+- `go test ./...` (apps/kong-syncer) → exit 0
+- `go test ./...` (apps/proxy-plugin) → exit 0
+- `uv run pytest tests/` (packages/python/mintkey-models) → 60 passed, exit 0
+- `internal/` directory removed ✓
+
+**Intentionally NOT modified (C-4/C-5 scope):**
+- `docker-compose.yml` and `docker-compose.test.yml` build contexts referencing `internal/` (C-4 scope; those files not present at root post-C-4 move)
+- Documentation and .kiro references to `internal/` (C-5 scope)
+
+### Next
+- Dispatch fresh REVIEWER (Opus) for C-3.
+- C-4 IMPLEMENTER can run in parallel (both gated on C-2 only).
+
+---
+
 ## 2026-05-22 — C-2 STRIKE-2 IMPLEMENTER (Sonnet)
 
 ### Chunk C-2 strike-2: Revert root go.mod + go.sum to pre-restructure pinning

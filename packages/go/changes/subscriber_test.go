@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mintkey/mintkey/internal/changes"
+	"github.com/mintkey/mintkey/packages/go/changes"
 )
 
 // TestClient_PanicsWithoutTenantScope asserts that Start() panics with the

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mintkey/mintkey/internal/auditq"
+	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"

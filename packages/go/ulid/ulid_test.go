@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mintkey/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/packages/go/ulid"
 )
 
 var validPrefixes = []string{

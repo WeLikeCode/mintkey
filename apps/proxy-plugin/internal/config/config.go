@@ -9,7 +9,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/mintkey/mintkey/internal/auditq"
+	"github.com/mintkey/mintkey/packages/go/auditq"
 )
 
 // AudEnforcement controls how the proxy-plugin enforces the JWT aud-vs-URL

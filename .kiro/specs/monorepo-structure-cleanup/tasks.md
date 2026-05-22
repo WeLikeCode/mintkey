@@ -45,18 +45,18 @@
 
 ## Wave 2 — Packages move (C-3) — gated on C-2
 
-- [ ] 3.1 — Create `packages/{python,go}/` directory tree (R-3.1)
-- [ ] 3.2 — `git mv mintkey-models/ packages/python/mintkey-models/` (R-3.2)
-- [ ] 3.3 — `git mv internal/<pkg>/ packages/go/<pkg>/` for 7 Go packages (R-3.3)
-- [ ] 3.4 — Delete empty `internal/cfg/` and `internal/models/` (R-3.4)
-- [ ] 3.5 — Remove empty `internal/` top-level (R-3.5)
-- [ ] 3.6 — Rewrite Go imports: `<mod>/internal/<pkg>` → `<mod>/packages/go/<pkg>` (R-3.6)
-- [ ] 3.7 — Update `go.work` `use` directives for new package paths (R-3.7)
-- [ ] 3.8 — Verification: `go work sync && go test ./...` exit 0 (R-3.8)
-- [ ] 3.9 — Python import names unchanged — verify (R-3.9)
-- [ ] 3.10 — Update `pyproject.toml [tool.uv.workspace]` references (R-3.10)
-- [ ] 3.11 — Update Dockerfile `COPY mintkey-models/ ...` → `COPY packages/python/mintkey-models/ ...` (R-3.11)
-- [ ] 3.12 — Verification: `cd packages/python/mintkey-models && uv run pytest tests/` exit 0 (R-3.12)
+- [x] 3.1 — Create `packages/{python,go}/` directory tree (R-3.1)
+- [x] 3.2 — `git mv mintkey-models/ packages/python/mintkey-models/` (R-3.2)
+- [x] 3.3 — `git mv internal/<pkg>/ packages/go/<pkg>/` for 7 Go packages (R-3.3)
+- [x] 3.4 — Delete empty `internal/cfg/` and `internal/models/` (R-3.4)
+- [x] 3.5 — Remove empty `internal/` top-level (R-3.5)
+- [x] 3.6 — Rewrite Go imports: `<mod>/internal/<pkg>` → `<mod>/packages/go/<pkg>` (R-3.6)
+- [x] 3.7 — Update `go.work` `use` directives for new package paths (R-3.7)
+- [x] 3.8 — Verification: `go work sync && go test ./...` exit 0 (R-3.8)
+- [x] 3.9 — Python import names unchanged — verify (R-3.9)
+- [x] 3.10 — Update `pyproject.toml [tool.uv.workspace]` references (R-3.10)
+- [x] 3.11 — Update Dockerfile `COPY mintkey-models/ ...` → `COPY packages/python/mintkey-models/ ...` (R-3.11)
+- [x] 3.12 — Verification: `cd packages/python/mintkey-models && uv run pytest tests/` exit 0 (R-3.12)
 
 ## Wave 2 — Infra grouping (C-4) — gated on C-2
 

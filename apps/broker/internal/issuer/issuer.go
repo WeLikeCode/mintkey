@@ -12,7 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	"github.com/mintkey/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/packages/go/ulid"
 	"github.com/mintkey/mintkey/services/broker/internal/keys"
 	"time"
 )

@@ -1,5 +1,5 @@
 # Admin API — Python 3.12 + FastAPI (ADR-0005, ADR-0012)
-# Build context must be repo root so mintkey-models/ is accessible.
+# Build context must be repo root so packages/python/mintkey-models/ is accessible.
 # Pinned 2026-05-18; re-pin every quarter.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
 
@@ -12,7 +12,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 # Copy source
 COPY apps/admin-api/src/ src/
 # Copy shared mintkey_models package directly into PYTHONPATH so no editable install needed.
-COPY mintkey-models/mintkey_models/ src/mintkey_models/
+COPY packages/python/mintkey-models/mintkey_models/ src/mintkey_models/
 
 # Install the project itself (without re-resolving) — picks up admin_api package
 RUN uv sync --frozen --no-dev
