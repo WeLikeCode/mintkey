@@ -7,6 +7,57 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-4 IMPLEMENTER (Sonnet)
+
+### Chunk C-4: Infra grouping executed
+
+**Tasks completed:** 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11
+
+**Directories created:**
+- `infra/compose/` (via mkdir -p; compose files moved in)
+- `infra/observability/` (via mkdir -p; observability files moved in)
+- `infra/keycloak/` (via mkdir -p + `.gitkeep` per CD-2/E-3.A placeholder)
+
+**Moves performed (5 git mv operations):**
+- `docker-compose.yml` → `infra/compose/docker-compose.yml`
+- `docker-compose.test.yml` → `infra/compose/docker-compose.test.yml`
+- `prometheus.yml` → `infra/observability/prometheus.yml`
+- `alert_rules.yml` → `infra/observability/alert_rules.yml`
+- `otel-collector-config.yaml` → `infra/observability/otel-collector-config.yaml`
+- `grafana/` → `infra/observability/grafana/`
+
+**realm-mintkey.json decision (4.6 / CD-2):** `apps/seed-job/realm-mintkey.json` stays in place. Docker `COPY` from build context constraint makes it unsafe to move to `infra/keycloak/`. Documented in `99-report.md` (EV-KEEP-5-009). `infra/keycloak/.gitkeep` created as placeholder.
+
+**Root shim (4.7 / CD-1):** Docker Compose v5.1.4 detected — well above v2.20.0 threshold. Created root `docker-compose.yml` with `include: - ./infra/compose/docker-compose.yml` (no symlink needed).
+
+**Internal compose path updates (infra/compose/docker-compose.yml) — 14 build-context + volume-mount edits:**
+- Build contexts (services with `context: ./apps/<svc>` → `../../apps/<svc>`): seed-job, admin-ui, mock-backend, jaeger-auth (4 services)
+- Build contexts (services with `context: .` → `../..`): vault-adapter, admin-api, mcp-server, broker, kong-syncer, proxy-plugin (6 services)
+- Volume mounts updated: `./apps/admin-api/db/changelog` → `../../apps/admin-api/db/changelog`; `./apps/proxy-plugin/kong.yml` → `../../apps/proxy-plugin/kong.yml`; `./otel-collector-config.yaml` → `../observability/otel-collector-config.yaml`; `./prometheus.yml` → `../observability/prometheus.yml`; `./alert_rules.yml` → `../observability/alert_rules.yml`; `./grafana/provisioning/dashboards` → `../observability/grafana/provisioning/dashboards`; `./grafana/provisioning/datasources` → `../observability/grafana/provisioning/datasources`
+
+**docker-compose.test.yml:** No path updates needed — test overlay only overrides ports and image tags, has no build contexts or volume mounts.
+
+**Makefile update (4.8 / R-5.7):** 1 update — `COMPOSE_TEST` variable: `docker-compose.yml -f docker-compose.test.yml` → `infra/compose/docker-compose.yml -f infra/compose/docker-compose.test.yml`. The `dev`, `demo`, `smoke`, `demo-mock` targets use `docker compose` without `-f` and work via root shim.
+
+**Script updates (4.11 / R-5.10):** 
+- `scripts/dev-backup.sh`: 4 occurrences of `-f "${REPO_ROOT}/docker-compose.yml"` → `-f "${REPO_ROOT}/infra/compose/docker-compose.yml"`
+- `scripts/dev-restore.sh`: 1 occurrence, same update
+- `scripts/demo-mock-flow.sh`: no `-f` flag usage (only comments) — unchanged
+- `scripts/e2e-setup-env.sh`: no `-f` flag usage — unchanged
+
+**Verification results:**
+- `docker compose -f infra/compose/docker-compose.yml config` → exit 0 ✅
+- `docker compose -f infra/compose/docker-compose.test.yml config` → exit 0 ✅ (warning: standalone overlay without base — expected; combined with base exits 0)
+- `docker compose config` (root shim) → exit 0 ✅
+- `make help` → pre-existing Makefile error on line 18 (`.PHONY` with `test:e2e` colon patterns); NOT introduced by C-4; exit=0 ✅
+- `make -n demo` → same pre-existing Makefile error; exit=0 ✅
+
+### Next
+- Dispatch fresh REVIEWER (Opus) for C-4.
+- C-5 gated on C-2, C-3, C-4 — dispatch after C-3 and C-4 reviewers pass.
+
+---
+
 ## 2026-05-22 — C-3 IMPLEMENTER (Sonnet)
 
 ### Chunk C-3: Packages move executed

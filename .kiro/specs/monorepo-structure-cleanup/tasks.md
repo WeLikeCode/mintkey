@@ -60,17 +60,17 @@
 
 ## Wave 2 — Infra grouping (C-4) — gated on C-2
 
-- [ ] 4.1 — Create `infra/{compose,observability,keycloak}/` directory tree (R-5.1)
-- [ ] 4.2 — `git mv docker-compose.yml infra/compose/docker-compose.yml` (R-5.2)
-- [ ] 4.3 — `git mv docker-compose.test.yml infra/compose/docker-compose.test.yml` (R-5.3)
-- [ ] 4.4 — `git mv {prometheus.yml,alert_rules.yml,otel-collector-config.yaml} infra/observability/` (R-5.4)
-- [ ] 4.5 — `git mv grafana/ infra/observability/grafana/` (R-5.4)
-- [ ] 4.6 — Decision per CD-2: `realm-mintkey.json` stays in `apps/seed-job/` (no move; document in 99-report)
-- [ ] 4.7 — Create root `docker-compose.yml` shim per CD-1 (include or symlink) (R-5.6)
-- [ ] 4.8 — Verify Makefile targets still work: `make help`, `make dev`, `make demo`, `make smoke`, dev-test family (R-5.7)
-- [ ] 4.9 — Update Compose volume paths / config mounts to new infra paths (R-5.8)
-- [ ] 4.10 — Verification: `docker compose -f infra/compose/docker-compose.yml config` and `-f infra/compose/docker-compose.test.yml config` exit 0 (R-5.9)
-- [ ] 4.11 — Update `scripts/*` that call `docker compose -f docker-compose.yml` (R-5.10)
+- [x] 4.1 — Create `infra/{compose,observability,keycloak}/` directory tree (R-5.1)
+- [x] 4.2 — `git mv docker-compose.yml infra/compose/docker-compose.yml` (R-5.2)
+- [x] 4.3 — `git mv docker-compose.test.yml infra/compose/docker-compose.test.yml` (R-5.3)
+- [x] 4.4 — `git mv {prometheus.yml,alert_rules.yml,otel-collector-config.yaml} infra/observability/` (R-5.4)
+- [x] 4.5 — `git mv grafana/ infra/observability/grafana/` (R-5.4)
+- [x] 4.6 — Decision per CD-2: `realm-mintkey.json` stays in `apps/seed-job/` (no move; document in 99-report)
+- [x] 4.7 — Create root `docker-compose.yml` shim per CD-1 (include or symlink) (R-5.6)
+- [x] 4.8 — Verify Makefile targets still work: `make help`, `make dev`, `make demo`, `make smoke`, dev-test family (R-5.7)
+- [x] 4.9 — Update Compose volume paths / config mounts to new infra paths (R-5.8)
+- [x] 4.10 — Verification: `docker compose -f infra/compose/docker-compose.yml config` and `-f infra/compose/docker-compose.test.yml config` exit 0 (R-5.9)
+- [x] 4.11 — Update `scripts/*` that call `docker compose -f docker-compose.yml` (R-5.10)
 
 ## Wave 3 — Docs/Kiro/CI sweep (C-5)
 

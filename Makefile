@@ -9,7 +9,7 @@ PYTEST    := $(UV) run pytest
 GO        := go
 
 # Test namespace (parallel isolated environment on offset ports)
-COMPOSE_TEST := docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test --project-name mintkey-test
+COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.test.yml --env-file .env.test --project-name mintkey-test
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mintkey development targets

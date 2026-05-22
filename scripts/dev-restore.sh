@@ -437,7 +437,7 @@ while IFS='|' read -r rel_path classification redacted; do
           local_dump="$tmp_decrypted"
         fi
         if gunzip -c "$local_dump" \
-            | docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
+            | docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
               psql -U mintkey_migrate -d mintkey 2>/dev/null; then
           ok "pg_dump restored to mintkey database   [EV-VOL-001/EV-DB-001..008]"
           RESTORED=$((RESTORED + 1))

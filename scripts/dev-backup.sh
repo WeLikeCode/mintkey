@@ -325,7 +325,7 @@ heading "3. Postgres pg_dump"
 # EvidenceRef: EV-VOL-001, EV-DB-001..008
 
 PG_HEALTHY=0
-if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json 2>/dev/null \
+if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
 data = sys.stdin.read().strip()
@@ -359,7 +359,7 @@ else
   else
     DUMP_TMP="${BACKUP_DIR}/postgres_dump.sql.gz.tmp"
     info "Running pg_dump…"
-    if docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
+    if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
         pg_dump -U mintkey_migrate -d mintkey --no-owner --no-privileges 2>/dev/null \
         | gzip > "$DUMP_TMP"; then
       if [[ $WITH_SECRETS -eq 1 ]]; then
@@ -394,7 +394,7 @@ heading "4. Docker volume snapshots"
 # Check if vault-adapter is running
 # EvidenceRef: EV-VOL-002, EV-VOL-003, EV-VOL-004
 VAULT_RUNNING=0
-if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json 2>/dev/null \
+if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
 data = sys.stdin.read().strip()
@@ -467,7 +467,7 @@ heading "5. Running services + image digests"
 if [[ $DRY_RUN -eq 1 ]]; then
   info "WOULD capture: docker compose ps --format json → services.json   [EV-COMPOSE-001..003]"
 else
-  if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json \
+  if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json \
       > "${BACKUP_DIR}/services.json" 2>/dev/null; then
     local_sz=$(wc -c < "${BACKUP_DIR}/services.json" | tr -d ' ')
     manifest_add "services.json" "$local_sz" "$(file_sha256 "${BACKUP_DIR}/services.json")" "repo-tracked default" "false"

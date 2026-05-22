@@ -1,0 +1,649 @@
+# Mintkey full-stack compose — 15 long-running services + 2 one-shot jobs = 17 services
+# Startup graph and volume requirements from design §11; KEK separate mount per ADR-0003.
+# Port mapping from design §11 networking table.
+
+name: mintkey
+
+# ---------------------------------------------------------------------------
+# Named volumes
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:        # /var/lib/postgresql/data
+  vault_data:           # /var/lib/mintkey/ (vault.sqlite) — encrypted credential store
+  vault_kek:            # /run/secrets/ (mintkey_kek_keyfile) — SEPARATE from vault_data (ADR-0003 defense in depth)
+  bootstrap_secrets:    # /run/secrets/mintkey/bootstrap-secrets/
+  grafana_data:         # /var/lib/grafana
+  broker_wal:           # /var/lib/mintkey/ — broker WAL + dead-letter (#22)
+  proxy_wal:            # /var/lib/mintkey/ — proxy-plugin WAL + dead-letter (#22)
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  mintkey:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+
+  # ─── 1. Postgres ─────────────────────────────────────────────────────────
+  postgres:
+    # Pinned 2026-05-18 — root cause of 2026-05-18 dev-data wipe was unpinned
+    # `postgres:16` digest drift during `docker compose up`. Refresh digest
+    # with: docker buildx imagetools inspect postgres:16
+    image: postgres:16@sha256:b6ccf02e9b47eac0d67b5eaa0ef56fd59163bffa5506f64e96ceb5053130ec86
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=4MB"]
+    environment:
+      POSTGRES_DB: mintkey
+      POSTGRES_USER: mintkey_migrate
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mintkey_migrate -d mintkey"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ─── 2. Keycloak (parallel; uses postgres for its own schema) ─────────────
+  keycloak:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk
+    # identical to the postgres incident. Refresh digest with:
+    # docker buildx imagetools inspect quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    restart: unless-stopped
+    mem_limit: 1g
+    command: start-dev --db postgres --db-url jdbc:postgresql://postgres:5432/mintkey --db-username mintkey_migrate --db-password changeme
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/mintkey
+      KC_DB_USERNAME: mintkey_migrate
+      KC_DB_PASSWORD: changeme
+      KC_HTTP_PORT: "8443"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      JAVA_OPTS_APPEND: "-Xms256m -Xmx768m"
+    ports:
+      - "8443:8443"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443 && printf 'GET /realms/master/.well-known/openid-configuration HTTP/1.0\\r\\n\\r\\n' >&3 && head -c 1 <&3 | grep -q ."]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
+  liquibase:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect liquibase/liquibase:4.27.0
+    image: liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e662c4212e834468df959983
+    restart: on-failure:3
+    mem_limit: 256m
+    command:
+      - --url=jdbc:postgresql://postgres:5432/mintkey
+      - --username=mintkey_migrate
+      - --password=changeme
+      - --changeLogFile=changelog/db.changelog-master.yaml
+      - update
+    volumes:
+      - ../../apps/admin-api/db/changelog:/liquibase/changelog:ro
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
+  seed-job:
+    build:
+      context: ../../apps/seed-job
+    restart: on-failure:3
+    mem_limit: 128m
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: mintkey
+      PGUSER: mintkey_migrate
+      PGPASSWORD: changeme
+      BOOTSTRAP_SECRETS_DIR: /run/secrets/mintkey/bootstrap-secrets
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      MINTKEY_KEYCLOAK_INTERNAL_URL: http://keycloak:8443
+      # SSO-1: forward operator-set public URLs so seed-job can patch Keycloak
+      # redirect URIs after realm import. Empty string → no-op (localhost only).
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-}"
+      MINTKEY_GRAFANA_PUBLIC_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-}"
+      MINTKEY_JAEGER_PUBLIC_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-}"
+      # S6 — Fernet key for encrypting the bootstrap admin password on disk.
+      # Closes CodeQL py/clear-text-storage-sensitive-data (seed-job/main.py).
+      # Override in production via .env or secrets manager; never commit a
+      # real key here.  Generate a fresh key with:
+      #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
+    networks:
+      - mintkey
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
+  # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
+  vault-adapter:
+    build:
+      context: ../..
+      dockerfile: apps/vault-adapter/Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      MINTKEY_VAULT_KEK: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+      VAULT_GRPC_PORT: "8084"
+      VAULT_HTTP_PORT: "8087"
+      MINTKEY_VAULT_FILE_PATH: /var/lib/mintkey/vault.sqlite
+    volumes:
+      - vault_data:/var/lib/mintkey
+      - vault_kek:/run/secrets
+    ports:
+      - "8084:8084"
+      - "8087:8087"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/grpc_health_probe", "-addr=:8084"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 4. Admin API ─────────────────────────────────────────────────────────
+  # Network-facing URLs (see docs/NETWORK.md):
+  #   MINTKEY_MCP_PUBLIC_URL   — what agents/clients see for the MCP server.
+  #   MINTKEY_PROXY_PUBLIC_URL — what agents/clients see for the egress proxy.
+  # Defaults work for `docker compose up` on the same host.
+  # For LAN/cloud: set them in .env to the address remote clients will use.
+  # MCP and proxy may be on different hosts.
+  admin-api:
+    build:
+      context: ../..
+      dockerfile: apps/admin-api/Dockerfile
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      MINTKEY_ENV: dev
+      ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
+      # Service tokens: allowlist for /v1/internal/audit/emit (#22).
+      # Real deployments must override these with secrets from a vault / CI secret store.
+      MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      # Public-facing URL that agents/clients use to reach the MCP server.
+      # See docs/NETWORK.md for LAN/cloud setup.
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      # Legacy alias (accepted with deprecation warning) — see docs/NETWORK.md.
+      # MCP_BASE_URL: "..."
+      # Keycloak URLs (SSO-B): public for browser redirects, internal for token/JWKS.
+      MINTKEY_KEYCLOAK_PUBLIC_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}"
+      MINTKEY_KEYCLOAK_INTERNAL_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+      MINTKEY_ADMIN_UI_PUBLIC_URL: "${MINTKEY_ADMIN_UI_PUBLIC_URL:-http://localhost:8081}"
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - mintkey
+    depends_on:
+      seed-job:
+        condition: service_completed_successfully
+      vault-adapter:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8080/v1/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ─── 5. Admin UI (AdminJS) ─────────────────────────────────────────────────
+  admin-ui:
+    build:
+      context: ../../apps/admin-ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      ADMIN_API_URL: http://admin-api:8080
+      SESSION_SECRET: mintkey-session-secret-change-in-production
+      PORT: "8081"
+      # Admin credentials for server-to-server API calls (ADR-0019 signed-request JWT)
+      ADMIN_EMAIL: admin@mintkey.internal
+      ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
+      # KEK needed to decrypt the Fernet-encrypted admin_password file (S6 CodeQL fix).
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
+      ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
+      # Public-facing URLs (see docs/NETWORK.md).
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # SSO-C: admin-api addresses (docker-network internal + public browser-facing).
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+      # Legacy aliases (accepted with deprecation warning).
+      # MINTKEY_PROXY_URL: "..."
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    ports:
+      - "8081:8081"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8081/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # ─── 6. MCP Server ────────────────────────────────────────────────────────
+  mcp-server:
+    build:
+      context: ../..
+      dockerfile: apps/mcp-server/Dockerfile
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      ADMIN_API_BASE_URL: http://admin-api:8080
+      MINTKEY_ENV: dev
+      BROKER_BASE_URL: http://broker:8083
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      # Public-facing URLs (see docs/NETWORK.md).
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # Legacy aliases (accepted with deprecation warning).
+      # MINTKEY_MCP_URL: "..."
+      # MINTKEY_PROXY_URL: "..."
+      # KONG_PROXY_URL: "..."
+    ports:
+      - "8082:8082"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8082/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # ─── 7. Broker ────────────────────────────────────────────────────────────
+  broker:
+    build:
+      context: ../..
+      dockerfile: apps/broker/Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      BROKER_PORT: "8083"
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      # Audit async emission (#22): broker identity token + admin-api URL.
+      MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+    volumes:
+      - broker_wal:/var/lib/mintkey
+    ports:
+      - "8083:8083"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8083/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 8. Kong (DB-less) ────────────────────────────────────────────────────
+  kong:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect kong:3.6
+    image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_NGINX_WORKER_PROCESSES: "2"
+    volumes:
+      - ../../apps/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+      - "127.0.0.1:8001:8001"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kong health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ─── 9. Kong Syncer ───────────────────────────────────────────────────────
+  kong-syncer:
+    build:
+      context: ../..
+      dockerfile: apps/kong-syncer/Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      KONG_ADMIN_URL: http://kong:8001
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey?sslmode=disable
+      KONG_SYNCER_HTTP_PORT: "8085"
+    ports:
+      - "8085:8085"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://127.0.0.1:8085/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 10. Proxy Plugin ─────────────────────────────────────────────────────
+  proxy-plugin:
+    build:
+      context: ../..
+      dockerfile: apps/proxy-plugin/Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      BROKER_ADDR: broker:8083
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      PLUGIN_PORT: "8086"
+      DEFAULT_TARGET: http://mock-backend:8999
+      # MINTKEY_PROXY_SERVICE_TOKEN serves dual purpose:
+      #   (a) X-Mintkey-Service-Token sent to broker /v1/api-keys/resolve (ADR-0018)
+      #   (b) X-Mintkey-Service-Token sent to admin-api /v1/internal/audit/emit (#22)
+      # Must match the value in admin-api's MINTKEY_PROXY_SERVICE_TOKEN allowlist.
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      # ADR-0004 addendum: permissive in dev (default); operators set strict in production.
+      # Override with MINTKEY_AUD_ENFORCEMENT=strict to test strict mode locally.
+      MINTKEY_AUD_ENFORCEMENT: permissive
+      # Audit async emission (#22): admin-api URL for WAL drain.
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+    volumes:
+      - proxy_wal:/var/lib/mintkey
+    ports:
+      - "8086:8086"
+    networks:
+      - mintkey
+    depends_on:
+      kong:
+        condition: service_healthy
+    # proxy-plugin now runs as an HTTP reverse proxy on PLUGIN_PORT.
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8086/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── 11. Mock Backend ─────────────────────────────────────────────────────
+  mock-backend:
+    build:
+      context: ../../apps/mock-backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "8999:8999"
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8999/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 12. OTel Collector ───────────────────────────────────────────────────
+  otel-collector:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect otel/opentelemetry-collector-contrib:0.104.0
+    image: otel/opentelemetry-collector-contrib:0.104.0@sha256:e07e325e303e86f4a87a617491e921b579a92da6d404007394757ac910bf9587
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+    networks:
+      - mintkey
+    # otel-collector-contrib is distroless — no shell/wget for CMD-SHELL.
+    # Healthcheck disabled; services tolerate transient OTel unavailability.
+
+  # ─── 13. Jaeger ───────────────────────────────────────────────────────────
+  # Host port mapping removed (SSO-E): Jaeger UI is now reachable only from
+  # inside the docker network. External access goes through jaeger-auth (oauth2-proxy).
+  jaeger:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect jaegertracing/all-in-one:1.56
+    image: jaegertracing/all-in-one:1.56@sha256:d2cd4c226624bdc116decd3106091b4df9882da8db42f8550293596cab79b8ea
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    expose:
+      - "16686"
+    networks:
+      - mintkey
+    depends_on:
+      - otel-collector
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:14269/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 13b. Jaeger Auth (oauth2-proxy) ──────────────────────────────────────
+  # SSO-E: oauth2-proxy sits in front of Jaeger and requires a Keycloak session.
+  # Operators visit http://localhost:16686 — they are redirected through Keycloak
+  # (auth-code + PKCE flow) and returned here with a session cookie.
+  # Refs: ADR-0014 §14.2; docs/AUTH.md (added in SSO-G).
+  jaeger-auth:
+    build:
+      context: ../../apps/jaeger-auth
+    restart: unless-stopped
+    mem_limit: 96m
+    command:
+      - --provider=keycloak-oidc
+      - --client-id=mintkey-jaeger
+      - --client-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oidc_client_secret
+      # cookie secret read from file by ./jaeger-auth/entrypoint.sh → OAUTH2_PROXY_COOKIE_SECRET
+      - --redirect-url=${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback
+      # Issuer URL must be the BROWSER-VISIBLE Keycloak URL because oauth2-proxy
+      # uses its discovery response (authorization_endpoint, end_session_endpoint)
+      # for browser-redirect locations. extra_hosts below lets the container
+      # still reach this URL from inside docker (host-gateway = docker host).
+      - --oidc-issuer-url=${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey
+      - --upstream=http://jaeger:16686/
+      - --http-address=0.0.0.0:4180
+      - --email-domain=*
+      - --cookie-secure=false           # dev: http; flip in prod via env
+      - --cookie-samesite=lax
+      - --pass-access-token=false
+      - --pass-authorization-header=false
+      - --skip-provider-button=true
+      - --reverse-proxy=false
+      - --skip-jwt-bearer-tokens=false
+      - --insecure-oidc-allow-unverified-email=true   # pre-alpha; Keycloak doesn't verify by default
+    environment:
+      OAUTH2_PROXY_REDIRECT_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback"
+    ports:
+      - "16686:4180"
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    extra_hosts:
+      # Map "localhost" inside the oauth2-proxy container to the docker host
+      # so the browser-flavored Keycloak public URL (http://localhost:8443)
+      # is reachable for server-side token/JWKS calls.
+      - "localhost:host-gateway"
+    networks:
+      - mintkey
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4180/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─── 14. Prometheus ───────────────────────────────────────────────────────
+  prometheus:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect prom/prometheus:v2.51.0
+    image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 16b. cAdvisor — container memory metrics ────────────────────────────
+  cadvisor:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8088:8080"
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ─── 15. Grafana ──────────────────────────────────────────────────────────
+  grafana:
+    # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
+    # Refresh digest with: docker buildx imagetools inspect grafana/grafana:10.3.3
+    image: grafana/grafana:10.3.3@sha256:8640e5038e83ca4554ed56b9d76375158bcd51580238c6f5d8adaf3f20dd5379
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      # Server config
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SERVER_ROOT_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}"
+      # Login form: kept as break-glass; SSO is the recommended path.
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      # Generic OAuth (Keycloak) — see docs/AUTH.md.
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: "Mintkey SSO"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "mintkey-grafana"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE: /run/secrets/mintkey/bootstrap-secrets/grafana_oidc_client_secret
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid email profile roles"
+      GF_AUTH_GENERIC_OAUTH_EMPTY_SCOPES: "false"
+      # Browser-facing URL (the user's browser hits this for the auth code redirect).
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/auth"
+      # Server-side URLs (Grafana → Keycloak inside the docker network).
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/token"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/userinfo"
+      GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/logout?redirect_uri=${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}/login"
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      # Role mapping via JMESPath on the parsed JWT claims.
+      # mintkey-platform-admin → Admin; mintkey-grafana-editor → Editor; else Viewer.
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(realm_access.roles[*], 'mintkey-platform-admin') && 'Admin' || contains(realm_access.roles[*], 'mintkey-grafana-editor') && 'Editor' || 'Viewer'"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro   # NEW
+    ports:
+      - "3003:3000"
+    networks:
+      - mintkey
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
