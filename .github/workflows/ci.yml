@@ -123,7 +123,7 @@ jobs:
         working-directory: apps/admin-api
         run: |
           uv sync
-          uv run pytest ../tests/unit/admin_api/ -v --tb=short
+          uv run pytest ../../tests/unit/admin_api/ -v --tb=short
       - name: Test mintkey-models
         working-directory: packages/python/mintkey-models
         run: |
@@ -155,22 +155,22 @@ jobs:
         run: uv sync
       - name: No SQL injection (T-1.0.15)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_no_sql_injection.py -v
+        run: uv run pytest ../../tests/acceptance/test_no_sql_injection.py -v
       - name: Audit chokepoint (T-1.7.3)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_audit_coverage.py -v
+        run: uv run pytest ../../tests/acceptance/test_audit_coverage.py -v
       - name: Audit append-only (T-1.7.2)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_audit_append_only.py -v
+        run: uv run pytest ../../tests/acceptance/test_audit_append_only.py -v
       - name: SQLAlchemy mirror diff (T-1.11.6)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_sqlalchemy_mirror.py -v
+        run: uv run pytest ../../tests/acceptance/test_sqlalchemy_mirror.py -v
       - name: PlatformAdmin RLS patterns (T-1.12.4)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_platform_admin_rls.py -v
+        run: uv run pytest ../../tests/acceptance/test_platform_admin_rls.py -v
       - name: OTel redaction (T-1.10.1)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_no_plaintext_in_spans.py ../tests/acceptance/test_otel_collector_redaction.py -v
+        run: uv run pytest ../../tests/acceptance/test_no_plaintext_in_spans.py ../../tests/acceptance/test_otel_collector_redaction.py -v
 
   # ────────────────────────────────────────────────────────────────────────────
   # Schema integrity gates (T-1.11.5, T-1.11.6, T-1.11.7)
@@ -186,13 +186,13 @@ jobs:
         run: uv sync
       - name: OpenAPI parity gate (T-1.11.5)
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_openapi_parity.py -v
+        run: uv run pytest ../../tests/acceptance/test_openapi_parity.py -v
       - name: Mermaid render gate (T-1.11.7)
         # Blocking gate: Mermaid render failures surface real diagram-sync bugs.
         # The || true mask was removed (OSS-3 remediation) so CI now fails on
         # broken diagrams rather than silently ignoring them.
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_mermaid_renders.py -v
+        run: uv run pytest ../../tests/acceptance/test_mermaid_renders.py -v
 
   # ────────────────────────────────────────────────────────────────────────────
   # Acceptance tests (no Docker required)
@@ -210,19 +210,19 @@ jobs:
       - name: Run acceptance tests
         working-directory: apps/admin-api
         run: |
-          uv run pytest ../tests/acceptance/ -v --tb=short \
-            --ignore=../tests/acceptance/test_brokered_call.py \
-            --ignore=../tests/acceptance/test_rotation_propagation.py \
-            --ignore=../tests/acceptance/test_revocation_timing.py \
-            --ignore=../tests/acceptance/test_token_issuance_perf.py \
-            --ignore=../tests/acceptance/test_proxy_latency.py \
-            --ignore=../tests/acceptance/test_avail.py \
-            --ignore=../tests/acceptance/test_e2e_smoke.py \
-            --ignore=../tests/acceptance/test_e2e_trace.py \
-            --ignore=../tests/acceptance/test_mermaid_renders.py \
-            --ignore=../tests/acceptance/test_metrics.py \
-            --ignore=../tests/acceptance/test_grafana.py \
-            --ignore=../tests/acceptance/test_mock_backend_registered.py
+          uv run pytest ../../tests/acceptance/ -v --tb=short \
+            --ignore=../../tests/acceptance/test_brokered_call.py \
+            --ignore=../../tests/acceptance/test_rotation_propagation.py \
+            --ignore=../../tests/acceptance/test_revocation_timing.py \
+            --ignore=../../tests/acceptance/test_token_issuance_perf.py \
+            --ignore=../../tests/acceptance/test_proxy_latency.py \
+            --ignore=../../tests/acceptance/test_avail.py \
+            --ignore=../../tests/acceptance/test_e2e_smoke.py \
+            --ignore=../../tests/acceptance/test_e2e_trace.py \
+            --ignore=../../tests/acceptance/test_mermaid_renders.py \
+            --ignore=../../tests/acceptance/test_metrics.py \
+            --ignore=../../tests/acceptance/test_grafana.py \
+            --ignore=../../tests/acceptance/test_mock_backend_registered.py
 
   # ────────────────────────────────────────────────────────────────────────────
   # Integration tests (Docker required — only on main / PRs to main)
@@ -255,13 +255,13 @@ jobs:
         run: |
           uv sync
           uv run pytest \
-            ../tests/acceptance/test_brokered_call.py \
-            ../tests/acceptance/test_rotation_propagation.py \
-            ../tests/acceptance/test_revocation_timing.py \
+            ../../tests/acceptance/test_brokered_call.py \
+            ../../tests/acceptance/test_rotation_propagation.py \
+            ../../tests/acceptance/test_revocation_timing.py \
             -v --tb=short
       - name: Smoke test
         working-directory: apps/admin-api
-        run: uv run pytest ../tests/acceptance/test_e2e_smoke.py -v -s
+        run: uv run pytest ../../tests/acceptance/test_e2e_smoke.py -v -s
       - name: Capture container logs
         if: failure()
         run: docker compose logs --no-color > /tmp/compose-logs.txt 2>&1 || true
