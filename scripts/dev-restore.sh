@@ -274,7 +274,7 @@ while IFS='|' read -r rel_path classification redacted; do
       case "$rel_path" in
         env.redacted|env.fernet)         current_file="${REPO_ROOT}/.env" ;;
         env_local.redacted|env_local.fernet) current_file="${REPO_ROOT}/.env.local" ;;
-        e2e_env_local.redacted|e2e_env_local.fernet) current_file="${REPO_ROOT}/admin-ui/e2e/.env.local" ;;
+        e2e_env_local.redacted|e2e_env_local.fernet) current_file="${REPO_ROOT}/apps/admin-ui/e2e/.env.local" ;;
         *)
           warn "  Unknown user-config path mapping: ${rel_path} — skipping"
           SKIPPED=$((SKIPPED + 1))

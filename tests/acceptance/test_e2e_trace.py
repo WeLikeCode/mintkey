@@ -40,7 +40,7 @@ def test_otel_sdk_configured_in_admin_api() -> None:
 
     Source: ADR-0017.6; T-1.10.4.
     """
-    otel_py = _ROOT / "admin-api" / "src" / "admin_api" / "middleware" / "otel.py"
+    otel_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "middleware" / "otel.py"
     assert otel_py.exists(), f"otel.py not found at {otel_py}"
 
     src = otel_py.read_text()

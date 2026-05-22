@@ -39,9 +39,9 @@ INTEGRATION = pytest.mark.skipif(
 
 
 def test_proxy_plugin_has_agent_revocation_subscriber():
-    """services/proxy-plugin/internal/changes/subscriber.go must exist and
+    """apps/proxy-plugin/internal/changes/subscriber.go must exist and
     subscribe to the mintkey:agent channel (ADR-0014.1)."""
-    path = "services/proxy-plugin/internal/changes/subscriber.go"
+    path = "apps/proxy-plugin/internal/changes/subscriber.go"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "mintkey:agent" in content, (
@@ -50,9 +50,9 @@ def test_proxy_plugin_has_agent_revocation_subscriber():
 
 
 def test_mcp_server_has_agent_revocation_cache():
-    """mcp-server/src/mcp_server/changes/subscriber.py must exist and handle
+    """apps/mcp-server/src/mcp_server/changes/subscriber.py must exist and handle
     agent.revoked events (ADR-0014.1)."""
-    path = "mcp-server/src/mcp_server/changes/subscriber.py"
+    path = "apps/mcp-server/src/mcp_server/changes/subscriber.py"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "agent.revoked" in content, (
@@ -61,9 +61,9 @@ def test_mcp_server_has_agent_revocation_cache():
 
 
 def test_revocation_emits_agent_revoked_notify():
-    """admin-api/src/admin_api/api/agents.py must call pg_notify with the
+    """apps/admin-api/src/admin_api/api/agents.py must call pg_notify with the
     mintkey:agent channel on revocation (ADR-0014.1, ADR-0008)."""
-    path = "admin-api/src/admin_api/api/agents.py"
+    path = "apps/admin-api/src/admin_api/api/agents.py"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "pg_notify" in content or "mintkey:agent" in content, (

@@ -25,8 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Scan these directories for Python source files.
 SCAN_DIRS = [
-    REPO_ROOT / "admin-api" / "src",
-    REPO_ROOT / "mcp-server" / "src",
+    REPO_ROOT / "apps/admin-api" / "src",
+    REPO_ROOT / "apps/mcp-server" / "src",
 ]
 
 # SQL keywords that must not appear inside f-strings in production code.
@@ -253,7 +253,7 @@ def test_no_sql_injection_in_admin_api_and_mcp_server() -> None:
 
 def test_scan_covers_admin_api_health_and_middleware() -> None:
     """Smoke test: the scanner actually reads admin-api/src/ files."""
-    scanned = list(_collect_py_files([REPO_ROOT / "admin-api" / "src"]))
+    scanned = list(_collect_py_files([REPO_ROOT / "apps/admin-api" / "src"]))
     # We know health.py and tenant.py exist from T-1.0.3.
     names = {f.name for f in scanned}
     assert "health.py" in names, f"health.py not found in scan. Scanned: {names}"

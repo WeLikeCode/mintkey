@@ -35,7 +35,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_ADMIN_API_SRC = _REPO_ROOT / "admin-api" / "src"
+_ADMIN_API_SRC = _REPO_ROOT / "apps/admin-api" / "src"
 _MODELS_SRC = _REPO_ROOT / "mintkey-models"
 
 for _p in [str(_ADMIN_API_SRC), str(_MODELS_SRC)]:
@@ -254,7 +254,7 @@ def test_cross_tenant_path_param_isolation():
 # Test 5: static enforcement — AST coverage check
 # ---------------------------------------------------------------------------
 
-_API_DIR = _REPO_ROOT / "admin-api" / "src" / "admin_api" / "api"
+_API_DIR = _REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "api"
 
 # Handlers that legitimately skip set_tenant_context because they are:
 #   - platform-admin / cross-tenant operations (no per-tenant scoping needed)

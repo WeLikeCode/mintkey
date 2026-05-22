@@ -46,7 +46,7 @@ from mintkey_models.audit import audit_emit, compute_hash  # noqa: E402
 # Constants
 # ---------------------------------------------------------------------------
 
-CHANGELOG_DIR = os.path.join(_REPO_ROOT, "admin-api", "db", "changelog")
+CHANGELOG_DIR = os.path.join(_REPO_ROOT, "apps/admin-api", "db", "changelog")
 MASTER_CHANGELOG = "db.changelog-master.yaml"
 LIQUIBASE_IMAGE = "liquibase/liquibase:4.27.0"
 

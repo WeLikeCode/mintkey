@@ -29,7 +29,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 SEED_JOB_DIR = os.path.join(REPO_ROOT, "seed-job")
 sys.path.insert(0, SEED_JOB_DIR)
 
-CHANGELOG_DIR = os.path.join(REPO_ROOT, "admin-api", "db", "changelog")
+CHANGELOG_DIR = os.path.join(REPO_ROOT, "apps/admin-api", "db", "changelog")
 MASTER_CHANGELOG = "db.changelog-master.yaml"
 LIQUIBASE_IMAGE = "liquibase/liquibase:4.27.0"
 

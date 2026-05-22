@@ -2,8 +2,8 @@ go 1.26.2
 
 use (
 	.
-	./services/broker
-	./services/kong-syncer
-	./services/proxy-plugin
-	./services/vault-adapter
+	./apps/broker
+	./apps/kong-syncer
+	./apps/proxy-plugin
+	./apps/vault-adapter
 )

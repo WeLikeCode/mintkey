@@ -39,8 +39,8 @@ _ROOT = Path(__file__).parent.parent.parent
 def test_e2e_smoke_components_exist() -> None:
     """All required component directories / files must exist."""
     required = [
-        _ROOT / "admin-api" / "src" / "admin_api",
-        _ROOT / "mcp-server" / "src" / "mcp_server",
+        _ROOT / "apps/admin-api" / "src" / "admin_api",
+        _ROOT / "apps/mcp-server" / "src" / "mcp_server",
         _ROOT / "services" / "broker",
         _ROOT / "services" / "proxy-plugin",
         _ROOT / "services" / "vault-adapter",
@@ -58,7 +58,7 @@ def test_e2e_smoke_all_routers_registered() -> None:
     Checked routers: health, auth, services, agents, changes, credentials,
     internal, permissions, audit, audit_admin, settings, tenants.
     """
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     assert main_py.exists(), f"main.py not found at {main_py}"
 
     src = main_py.read_text()

@@ -27,7 +27,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-MCP_SERVER_SRC = os.path.join(REPO_ROOT, "mcp-server", "src")
+MCP_SERVER_SRC = os.path.join(REPO_ROOT, "apps/mcp-server", "src")
 if MCP_SERVER_SRC not in sys.path:
     sys.path.insert(0, MCP_SERVER_SRC)
 

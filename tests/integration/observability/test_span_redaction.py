@@ -30,7 +30,7 @@ import pytest
 # ---------------------------------------------------------------------------
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 for _src in (
-    _REPO_ROOT / "admin-api" / "src",
+    _REPO_ROOT / "apps/admin-api" / "src",
     _REPO_ROOT / "mintkey-models",
 ):
     _s = str(_src)

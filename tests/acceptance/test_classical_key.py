@@ -31,13 +31,13 @@ _ROOT = Path(__file__).parent.parent.parent
 
 def test_classical_key_schema_exists() -> None:
     """Liquibase changeset 012-service-api-keys.yaml must exist."""
-    changelog = _ROOT / "admin-api" / "db" / "changelog" / "012-service-api-keys.yaml"
+    changelog = _ROOT / "apps/admin-api" / "db" / "changelog" / "012-service-api-keys.yaml"
     assert changelog.exists(), f"Missing: {changelog}"
 
 
 def test_classical_key_admin_api_routers_exist() -> None:
     """admin-api/main.py must import api_keys routers."""
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     src = main_py.read_text()
     assert "api_keys_router" in src, "api_keys_router not wired in main.py"
     assert "api_keys_shortcut_router" in src, "api_keys_shortcut_router not wired"

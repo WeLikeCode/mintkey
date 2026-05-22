@@ -23,11 +23,11 @@ PROMETHEUS_YML = REPO_ROOT / "prometheus.yml"
 
 # Expected metric names per component (T-1.10.2)
 REQUIRED_METRICS = {
-    "admin-api": ["mintkey_requests_total", "mintkey_request_duration_seconds"],
+    "apps/admin-api": ["mintkey_requests_total", "mintkey_request_duration_seconds"],
     "broker": ["mintkey_token_issued_total", "mintkey_requests_total"],
     "proxy-plugin": ["mintkey_proxy_hit_total", "mintkey_proxy_added_latency_seconds"],
     "vault-adapter": ["mintkey_vault_dek_cache_hit_total", "mintkey_vault_dek_cache_miss_total"],
-    "mcp-server": ["mintkey_requests_total", "mintkey_request_duration_seconds"],
+    "apps/mcp-server": ["mintkey_requests_total", "mintkey_request_duration_seconds"],
 }
 
 # Metric naming convention: must match this pattern (Prometheus best practices)
@@ -55,7 +55,7 @@ def test_prometheus_scrapes_all_required_containers():
     data = yaml.safe_load(PROMETHEUS_YML.read_text())
     job_names = {job["job_name"] for job in data["scrape_configs"]}
 
-    required_jobs = {"admin-api", "broker", "mcp-server", "vault-adapter", "otel-collector"}
+    required_jobs = {"apps/admin-api", "broker", "apps/mcp-server", "vault-adapter", "otel-collector"}
     missing = required_jobs - job_names
     assert not missing, f"Missing scrape jobs in prometheus.yml: {missing}"
 
@@ -72,7 +72,7 @@ def test_metric_names_follow_convention():
 
 def test_red_metrics_defined_for_api_components():
     """API components (admin-api, mcp-server) define RED metrics."""
-    for component in ["admin-api", "mcp-server"]:
+    for component in ["apps/admin-api", "apps/mcp-server"]:
         metrics = REQUIRED_METRICS[component]
         has_rate = any("requests_total" in m for m in metrics)
         has_duration = any("duration" in m for m in metrics)
@@ -99,9 +99,9 @@ def test_vault_adapter_defines_dek_cache_metrics():
 # ─────────────────────────────────────────────────────────────────────────────
 
 CONTAINER_PORTS = {
-    "admin-api": ("localhost", 8080),
+    "apps/admin-api": ("localhost", 8080),
     "broker": ("localhost", 8083),
-    "mcp-server": ("localhost", 8082),
+    "apps/mcp-server": ("localhost", 8082),
     "vault-adapter": ("localhost", 8084),
 }
 

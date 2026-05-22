@@ -60,44 +60,44 @@ jobs:
           # (mintkey-models/, go.work, internal/, other service go.mod files).
           - service: admin-api
             context: .
-            dockerfile: admin-api/Dockerfile
+            dockerfile: apps/admin-api/Dockerfile
             image: mintkey-admin-api
           - service: mcp-server
             context: .
-            dockerfile: mcp-server/Dockerfile
+            dockerfile: apps/mcp-server/Dockerfile
             image: mintkey-mcp-server
           - service: broker
             context: .
-            dockerfile: services/broker/Dockerfile
+            dockerfile: apps/broker/Dockerfile
             image: mintkey-broker
           - service: vault-adapter
             context: .
-            dockerfile: services/vault-adapter/Dockerfile
+            dockerfile: apps/vault-adapter/Dockerfile
             image: mintkey-vault-adapter
           - service: proxy-plugin
             context: .
-            dockerfile: services/proxy-plugin/Dockerfile
+            dockerfile: apps/proxy-plugin/Dockerfile
             image: mintkey-proxy-plugin
           - service: kong-syncer
             context: .
-            dockerfile: services/kong-syncer/Dockerfile
+            dockerfile: apps/kong-syncer/Dockerfile
             image: mintkey-kong-syncer
           # context: subdirectory — self-contained Dockerfiles with no sibling COPYs.
           - service: admin-ui
-            context: admin-ui
-            dockerfile: admin-ui/Dockerfile
+            context: apps/admin-ui
+            dockerfile: apps/admin-ui/Dockerfile
             image: mintkey-admin-ui
           - service: seed-job
-            context: seed-job
-            dockerfile: seed-job/Dockerfile
+            context: apps/seed-job
+            dockerfile: apps/seed-job/Dockerfile
             image: mintkey-seed-job
           - service: mock-backend
-            context: mock-backend
-            dockerfile: mock-backend/Dockerfile
+            context: apps/mock-backend
+            dockerfile: apps/mock-backend/Dockerfile
             image: mintkey-mock-backend
           - service: jaeger-auth
-            context: jaeger-auth
-            dockerfile: jaeger-auth/Dockerfile
+            context: apps/jaeger-auth
+            dockerfile: apps/jaeger-auth/Dockerfile
             image: mintkey-jaeger-auth
 
     steps:

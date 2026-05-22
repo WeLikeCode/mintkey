@@ -59,10 +59,10 @@ def test_prometheus_scrapes_all_services() -> None:
     assert prom.exists(), f"Missing: {prom}"
     src = prom.read_text()
     required_targets = [
-        "admin-api",
+        "apps/admin-api",
         "broker",
         "vault-adapter",
-        "mcp-server",
+        "apps/mcp-server",
         "kong-syncer",
         "proxy-plugin",
     ]

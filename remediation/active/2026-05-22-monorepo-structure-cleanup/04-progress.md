@@ -7,6 +7,70 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-2 IMPLEMENTER (Sonnet)
+
+### Chunk C-2: Apps move executed
+
+**Tasks completed:** 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 2.12
+
+**Moves performed (11 git mv operations):**
+- `admin-api/` → `apps/admin-api/`
+- `admin-ui/` → `apps/admin-ui/`
+- `mcp-server/` → `apps/mcp-server/`
+- `mock-backend/` → `apps/mock-backend/`
+- `seed-job/` → `apps/seed-job/`
+- `audit-verify-job/` → `apps/audit-verify-job/`
+- `jaeger-auth/` → `apps/jaeger-auth/`
+- `services/broker/` → `apps/broker/`
+- `services/proxy-plugin/` → `apps/proxy-plugin/`
+- `services/kong-syncer/` → `apps/kong-syncer/`
+- `services/vault-adapter/` → `apps/vault-adapter/`
+- Removed empty `services/` directory
+
+**Path-reference updates:**
+- `docker-compose.yml`: 12 build context/dockerfile path updates + 1 volume mount path
+- `docker-compose.test.yml`: no build contexts (image-only overrides) — no changes needed
+- `Makefile`: 10 `cd <svc>` targets updated to `cd apps/<svc>`; 3 file-existence checks updated
+- `.github/workflows/ci.yml`: 17 `working-directory:` entries updated
+- `.github/workflows/playwright.yml`: 6 `working-directory:`, 4 artifact paths, 2 `paths:` filters updated
+- `.github/workflows/container-scan.yml`: 10 service context/dockerfile matrix entries updated
+- `go.work`: 4 `use ./services/<svc>` → `use ./apps/<svc>` updated
+- `apps/admin-api/Dockerfile`: 2 COPY paths updated
+- `apps/mcp-server/Dockerfile`: 3 COPY paths updated
+- `apps/broker/Dockerfile`: 6 COPY paths + 1 WORKDIR updated
+- `apps/vault-adapter/Dockerfile`: 6 COPY paths + 1 WORKDIR updated
+- `apps/kong-syncer/Dockerfile`: 6 COPY paths + 1 WORKDIR updated
+- `apps/proxy-plugin/Dockerfile`: 6 COPY paths + 1 WORKDIR updated
+- `scripts/e2e-setup-env.sh`: 1 path updated
+- `scripts/dev-backup.sh`: 4 path references updated
+- Tests: batch sed on ~57 test files; manual fixes to 3 files with functional path strings
+
+**Intentionally NOT modified (C-3 scope):**
+- `COPY mintkey-models/` in Dockerfiles — C-3 will update when mintkey-models moves
+- `COPY internal/` in Go Dockerfiles — C-3 will update when internal/ moves
+- Go module identity (`module` lines in go.mod files) — unchanged per R-2.9/CD-6
+
+**pyproject.toml check (R-2.10):**
+- `admin-api/pyproject.toml`, `mcp-server/pyproject.toml`, `mock-backend/pyproject.toml`, `mintkey-models/pyproject.toml` — none reference `[tool.uv.workspace]` with other service paths. No changes needed.
+
+**pnpm-workspace.yaml (special note admin-ui):**
+- `apps/admin-ui/pnpm-workspace.yaml` uses `packages: ["."]` (single-package workspace). No relative path references to parent. No changes needed.
+- `apps/admin-ui/e2e/package.json` — no `workspace:` protocol dependencies.
+
+**Verification:**
+- `docker compose -f docker-compose.yml config` → exit 0 ✅
+- `docker compose -f docker-compose.test.yml config` → exit 0 ✅
+- `go work sync` → exit 0 ✅
+- 11 apps confirmed in `apps/` directory
+- `services/` directory removed ✅
+- No `COPY ..` paths in any Dockerfile ✅
+
+### Next
+- Dispatch fresh REVIEWER (Opus) for C-2.
+- C-3 and C-4 IMPLEMENTERS can run in parallel (both gated on C-2).
+
+---
+
 ## 2026-05-22 — C-1 IMPLEMENTER (Sonnet)
 
 ### Chunk C-1: Remediation archive executed

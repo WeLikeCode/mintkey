@@ -16,8 +16,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parents[2]
-MAIN_PY = REPO_ROOT / "admin-api" / "src" / "admin_api" / "main.py"
-API_DIR = REPO_ROOT / "admin-api" / "src" / "admin_api" / "api"
+MAIN_PY = REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
+API_DIR = REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "api"
 CANONICAL_OPENAPI = REPO_ROOT / "docs" / "architecture" / "contracts" / "rest" / "openapi.yaml"
 SNAPSHOT_PATH = Path(__file__).parent / "openapi_snapshot.json"
 

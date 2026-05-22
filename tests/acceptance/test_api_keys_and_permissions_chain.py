@@ -79,7 +79,7 @@ def test_create_api_key_handler_decodes_wire_id() -> None:
 
     Source: R9; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     assert api_keys_py.exists(), f"api_keys.py not found at {api_keys_py}"
     src = api_keys_py.read_text()
 
@@ -118,7 +118,7 @@ def test_tenant_permissions_endpoint_exists() -> None:
 
     Source: R9; T-1.4.3; ADR-0008.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     assert permissions_py.exists(), f"permissions.py not found at {permissions_py}"
     src = permissions_py.read_text()
 
@@ -134,7 +134,7 @@ def test_tenant_permissions_endpoint_exists() -> None:
         "/v1/tenants/{tenantId}/permissions — Bug A2 R9."
     )
 
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     assert main_py.exists(), f"main.py not found at {main_py}"
     main_src = main_py.read_text()
 

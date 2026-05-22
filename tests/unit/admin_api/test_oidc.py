@@ -36,7 +36,7 @@ def app():
     import sys, os
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     for p in (
-        os.path.join(repo_root, "admin-api", "src"),
+        os.path.join(repo_root, "apps/admin-api", "src"),
         os.path.join(repo_root, "mintkey-models"),
     ):
         if p not in sys.path:

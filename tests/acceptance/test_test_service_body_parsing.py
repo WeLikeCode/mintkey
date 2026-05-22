@@ -60,7 +60,7 @@ def test_test_service_has_body_model() -> None:
 
     Source: R14b; services.py test_service; OpenAPI testRunService.
     """
-    services_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "services.py"
+    services_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "services.py"
     assert services_py.exists(), f"services.py not found at {services_py}"
     src = services_py.read_text()
 
@@ -90,7 +90,7 @@ def test_test_service_uses_path_in_request() -> None:
 
     Source: R14b; services.py test_service.
     """
-    services_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "services.py"
+    services_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "services.py"
     src = services_py.read_text()
 
     fn_idx = src.find("async def test_service(")

@@ -11,7 +11,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-E2E_DIR="${REPO_ROOT}/admin-ui/e2e"
+E2E_DIR="${REPO_ROOT}/apps/admin-ui/e2e"
 ENV_FILE="${E2E_DIR}/.env.local"
 
 echo "═══════════════════════════════════════════════════════════════"

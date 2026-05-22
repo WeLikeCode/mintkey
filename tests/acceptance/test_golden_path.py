@@ -157,15 +157,15 @@ def test_golden_path_chain_components_exist() -> None:
     Plus the bootstrap skill that starts the flow.
     """
     required = {
-        "mcp-server bootstrap": _ROOT / "mcp-server" / "src" / "mcp_server" / "tools" / "bootstrap.py",
-        "mcp-server request_token": _ROOT / "mcp-server" / "src" / "mcp_server" / "tools" / "request_token.py",
-        "admin-api internal (validate-agent-key)": _ROOT / "admin-api" / "src" / "admin_api" / "api" / "internal.py",
+        "mcp-server bootstrap": _ROOT / "apps/mcp-server" / "src" / "mcp_server" / "tools" / "bootstrap.py",
+        "mcp-server request_token": _ROOT / "apps/mcp-server" / "src" / "mcp_server" / "tools" / "request_token.py",
+        "admin-api internal (validate-agent-key)": _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py",
         "broker issue endpoint": _ROOT / "services" / "broker" / "internal" / "api" / "issue" / "issue.go",
         "broker issuer (JWT signing)": _ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go",
         "proxy-plugin main (JWT verify + credential inject)": _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
         "vault-adapter server (GetCredential)": _ROOT / "services" / "vault-adapter" / "internal" / "server" / "vault.go",
         "mock-backend api-key-header endpoint": _ROOT / "mock-backend" / "src" / "mock_backend" / "rest" / "main.py",
-        "agent-bootstrap skill markdown": _ROOT / "mcp-server" / "skills" / "agent-bootstrap.md",
+        "agent-bootstrap skill markdown": _ROOT / "apps/mcp-server" / "skills" / "agent-bootstrap.md",
         "docker-compose": _ROOT / "docker-compose.yml",
     }
     missing = [name for name, path in required.items() if not path.exists()]
@@ -183,7 +183,7 @@ def test_golden_path_bootstrap_skill_has_required_sections() -> None:
 
     Source: R6; ADR-0009; WS-8 step 2.
     """
-    skill_path = _ROOT / "mcp-server" / "skills" / "agent-bootstrap.md"
+    skill_path = _ROOT / "apps/mcp-server" / "skills" / "agent-bootstrap.md"
     assert skill_path.exists(), f"agent-bootstrap.md not found at {skill_path}"
 
     skill_text = skill_path.read_text(encoding="utf-8")
@@ -207,7 +207,7 @@ def test_golden_path_admin_api_vault_client_is_grpc() -> None:
 
     Source: WS-9; ADR-0011; T-1.3.1.
     """
-    vault_client_py = _ROOT / "admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")
@@ -710,7 +710,7 @@ def test_ws10_vault_client_list_versions_parses_metadata() -> None:
 
     Source: WS-10; vault.proto; T-1.3.1.
     """
-    vault_client_py = _ROOT / "admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")

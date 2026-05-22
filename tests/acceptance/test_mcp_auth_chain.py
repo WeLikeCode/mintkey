@@ -72,7 +72,7 @@ def test_validate_agent_key_sets_platform_admin_context() -> None:
 
     Source: R7; ADR-0016.3; ADR-0009.
     """
-    internal_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "internal.py"
+    internal_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py"
     assert internal_py.exists(), f"internal.py not found at {internal_py}"
     src = internal_py.read_text()
 
@@ -96,7 +96,7 @@ def test_internal_endpoint_csrf_exempt() -> None:
 
     Source: R7; ADR-0009.
     """
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     assert main_py.exists(), f"main.py not found at {main_py}"
     src = main_py.read_text()
 

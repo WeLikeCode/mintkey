@@ -98,7 +98,7 @@ services:
       - --changeLogFile=changelog/db.changelog-master.yaml
       - update
     volumes:
-      - ./admin-api/db/changelog:/liquibase/changelog:ro
+      - ./apps/admin-api/db/changelog:/liquibase/changelog:ro
     networks:
       - mintkey
     depends_on:
@@ -108,7 +108,7 @@ services:
   # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
   seed-job:
     build:
-      context: ./seed-job
+      context: ./apps/seed-job
     restart: on-failure:3
     mem_limit: 128m
     environment:
@@ -146,7 +146,7 @@ services:
   vault-adapter:
     build:
       context: .
-      dockerfile: services/vault-adapter/Dockerfile
+      dockerfile: apps/vault-adapter/Dockerfile
     restart: unless-stopped
     mem_limit: 128m
     environment:
@@ -183,7 +183,7 @@ services:
   admin-api:
     build:
       context: .
-      dockerfile: admin-api/Dockerfile
+      dockerfile: apps/admin-api/Dockerfile
     restart: unless-stopped
     mem_limit: 256m
     environment:
@@ -229,7 +229,7 @@ services:
   # ─── 5. Admin UI (AdminJS) ─────────────────────────────────────────────────
   admin-ui:
     build:
-      context: ./admin-ui
+      context: ./apps/admin-ui
       dockerfile: Dockerfile
     restart: unless-stopped
     mem_limit: 512m
@@ -271,7 +271,7 @@ services:
   mcp-server:
     build:
       context: .
-      dockerfile: mcp-server/Dockerfile
+      dockerfile: apps/mcp-server/Dockerfile
     restart: unless-stopped
     mem_limit: 256m
     environment:
@@ -306,7 +306,7 @@ services:
   broker:
     build:
       context: .
-      dockerfile: services/broker/Dockerfile
+      dockerfile: apps/broker/Dockerfile
     restart: unless-stopped
     mem_limit: 128m
     environment:
@@ -353,7 +353,7 @@ services:
       KONG_PROXY_LISTEN: "0.0.0.0:8000"
       KONG_NGINX_WORKER_PROCESSES: "2"
     volumes:
-      - ./services/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
+      - ./apps/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
     ports:
       - "8000:8000"
       - "127.0.0.1:8001:8001"
@@ -373,7 +373,7 @@ services:
   kong-syncer:
     build:
       context: .
-      dockerfile: services/kong-syncer/Dockerfile
+      dockerfile: apps/kong-syncer/Dockerfile
     restart: unless-stopped
     mem_limit: 128m
     environment:
@@ -403,7 +403,7 @@ services:
   proxy-plugin:
     build:
       context: .
-      dockerfile: services/proxy-plugin/Dockerfile
+      dockerfile: apps/proxy-plugin/Dockerfile
     restart: unless-stopped
     mem_limit: 128m
     environment:
@@ -443,7 +443,7 @@ services:
   # ─── 11. Mock Backend ─────────────────────────────────────────────────────
   mock-backend:
     build:
-      context: ./mock-backend
+      context: ./apps/mock-backend
       dockerfile: Dockerfile
     restart: unless-stopped
     mem_limit: 128m
@@ -506,7 +506,7 @@ services:
   # Refs: ADR-0014 §14.2; docs/AUTH.md (added in SSO-G).
   jaeger-auth:
     build:
-      context: ./jaeger-auth
+      context: ./apps/jaeger-auth
     restart: unless-stopped
     mem_limit: 96m
     command:

@@ -110,7 +110,7 @@ test: test-unit test-arch test-acceptance
 
 test-unit:
 	@echo "── Python unit tests ──"
-	cd admin-api && $(UV) run pytest $(REPO_ROOT)/tests/unit/admin_api/ -v
+	cd apps/admin-api && $(UV) run pytest $(REPO_ROOT)/tests/unit/admin_api/ -v
 	@echo "── mintkey-models unit tests ──"
 	cd mintkey-models && $(UV) run pytest tests/ -v
 	@echo "── Go unit tests ──"
@@ -118,7 +118,7 @@ test-unit:
 
 test-arch:
 	@echo "── Architecture tests ──"
-	cd admin-api && $(UV) run pytest \
+	cd apps/admin-api && $(UV) run pytest \
 		$(REPO_ROOT)/tests/acceptance/test_no_sql_injection.py \
 		$(REPO_ROOT)/tests/acceptance/test_audit_coverage.py \
 		$(REPO_ROOT)/tests/acceptance/test_audit_append_only.py \
@@ -128,7 +128,7 @@ test-arch:
 
 test-acceptance:
 	@echo "── Acceptance tests ──"
-	cd admin-api && $(UV) run pytest $(REPO_ROOT)/tests/acceptance/ -v \
+	cd apps/admin-api && $(UV) run pytest $(REPO_ROOT)/tests/acceptance/ -v \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_brokered_call.py \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_rotation_propagation.py \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_revocation_timing.py \
@@ -143,7 +143,7 @@ test-acceptance:
 
 test-integration:
 	@echo "── Integration tests (requires Docker) ──"
-	MINTKEY_INTEGRATION_TEST=true cd admin-api && $(UV) run pytest \
+	MINTKEY_INTEGRATION_TEST=true cd apps/admin-api && $(UV) run pytest \
 		$(REPO_ROOT)/tests/acceptance/test_brokered_call.py \
 		$(REPO_ROOT)/tests/acceptance/test_rotation_propagation.py \
 		$(REPO_ROOT)/tests/acceptance/test_revocation_timing.py \
@@ -189,16 +189,16 @@ test:e2e-setup:
 	@bash $(TOOLS)/e2e-setup-env.sh
 
 test:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
 
 test:e2e:headed: ## Run Playwright E2E UI tests in headed mode (debug)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
 
 test:e2e:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
 
 # ── Linting ───────────────────────────────────────────────────────────────────
 
@@ -209,11 +209,11 @@ lint-python:
 	@echo "── Python: ruff ──"
 	# Blocking linters: || true masks removed (OSS-3 remediation) so Python lint
 	# failures now exit non-zero and are visible to contributors.
-	cd admin-api && $(UV) run ruff check src/
-	cd mcp-server && $(UV) run ruff check src/
+	cd apps/admin-api && $(UV) run ruff check src/
+	cd apps/mcp-server && $(UV) run ruff check src/
 	cd mintkey-models && $(UV) run ruff check mintkey_models/
 	@echo "── Python: mypy ──"
-	cd admin-api && $(UV) run mypy --strict src/admin_api/
+	cd apps/admin-api && $(UV) run mypy --strict src/admin_api/
 	cd mintkey-models && $(UV) run mypy --strict mintkey_models/
 
 lint-go:
@@ -224,10 +224,10 @@ lint-go:
 
 lint-ts:
 	@echo "── TypeScript: eslint ──"
-	@if [ -d admin-ui/node_modules ]; then \
-		cd admin-ui && pnpm eslint src/ --max-warnings=0; \
+	@if [ -d apps/admin-ui/node_modules ]; then \
+		cd apps/admin-ui && pnpm eslint src/ --max-warnings=0; \
 	else \
-		echo "  (admin-ui not installed; run 'cd admin-ui && pnpm install')"; \
+		echo "  (admin-ui not installed; run 'cd apps/admin-ui && pnpm install')"; \
 	fi
 
 lint-contracts:

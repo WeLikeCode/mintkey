@@ -17,8 +17,8 @@
 # EvidenceRefs:
 #   EV-ENV-002     .env (local user config, must never commit)
 #   EV-ENV-003     .env.local (local user config, must never commit)
-#   EV-ENV-005     admin-ui/e2e/.env.local (generated secret, gitignore gap)
-#   EV-APP-002     admin-ui/e2e/.env.local alias for EV-ENV-005
+#   EV-ENV-005     apps/admin-ui/e2e/.env.local (generated secret, gitignore gap)
+#   EV-APP-002     apps/admin-ui/e2e/.env.local alias for EV-ENV-005
 #   EV-BOOTSTRAP-001..006  bootstrap-secrets directory contents
 #   EV-VOL-001     postgres_data / pg_dump
 #   EV-VOL-002     vault_data volume snapshot
@@ -74,7 +74,7 @@ DEFAULTS
 WHAT IS CAPTURED
   .env                               keys-only (REDACTED)     EV-ENV-002
   .env.local                         keys-only (REDACTED)     EV-ENV-003
-  admin-ui/e2e/.env.local            keys-only (REDACTED)     EV-ENV-005/EV-APP-002
+  apps/admin-ui/e2e/.env.local       keys-only (REDACTED)     EV-ENV-005/EV-APP-002
   data/bootstrap-secrets/*           existence+sha256 only    EV-BOOTSTRAP-001..006
   postgres mintkey pg_dump (gzip)    if postgres healthy       EV-VOL-001/EV-DB-001..008
   vault_data volume snapshot (tar)   if vault-adapter running  EV-VOL-002/EV-VOL-003
@@ -274,7 +274,7 @@ capture_env_file() {
 
 capture_env_file ".env"                   "env"           "local user config"  "EV-ENV-002"
 capture_env_file ".env.local"             "env_local"     "local user config"  "EV-ENV-003"
-capture_env_file "admin-ui/e2e/.env.local" "e2e_env_local" "local user config"  "EV-ENV-005/EV-APP-002"
+capture_env_file "apps/admin-ui/e2e/.env.local" "e2e_env_local" "local user config"  "EV-ENV-005/EV-APP-002"
 
 # ── Section 2: bootstrap-secrets ─────────────────────────────────────────────
 heading "2. bootstrap-secrets (data/bootstrap-secrets/)"

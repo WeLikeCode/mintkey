@@ -32,7 +32,7 @@ from testcontainers.postgres import PostgresContainer
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-CHANGELOG_DIR = os.path.join(REPO_ROOT, "admin-api", "db", "changelog")
+CHANGELOG_DIR = os.path.join(REPO_ROOT, "apps/admin-api", "db", "changelog")
 MASTER_CHANGELOG = "db.changelog-master.yaml"
 
 # Every tenant-scoped table that must carry a tenant_isolation RLS policy.

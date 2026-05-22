@@ -70,7 +70,7 @@ def test_grant_permission_decodes_service_wire_id() -> None:
 
     Source: R11a; permissions.py:345; ADR-0017.11.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     assert permissions_py.exists(), f"permissions.py not found at {permissions_py}"
     src = permissions_py.read_text()
 
@@ -106,7 +106,7 @@ def test_grant_permission_defaults_constraints_to_empty_dict() -> None:
 
     Source: R11a carry-forward; permissions.py constraints handling.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     src = permissions_py.read_text()
 
     grant_fn_idx = src.find("async def grant_permission(")
@@ -132,7 +132,7 @@ def test_list_api_keys_decodes_agent_wire_id() -> None:
 
     Source: R11a; api_keys.py:~L351; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     assert api_keys_py.exists()
     src = api_keys_py.read_text()
 
@@ -156,7 +156,7 @@ def test_get_api_key_decodes_agent_wire_id() -> None:
 
     Source: R11a; api_keys.py:~L428; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     src = api_keys_py.read_text()
 
     fn_idx = src.find("async def get_api_key(")
@@ -178,7 +178,7 @@ def test_revoke_api_key_decodes_agent_wire_id() -> None:
 
     Source: R11a; api_keys.py:~L480; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     src = api_keys_py.read_text()
 
     fn_idx = src.find("async def revoke_api_key(")
@@ -200,7 +200,7 @@ def test_rotate_api_key_decodes_agent_wire_id() -> None:
 
     Source: R11a; api_keys.py:~L566; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     src = api_keys_py.read_text()
 
     fn_idx = src.find("async def rotate_api_key(")

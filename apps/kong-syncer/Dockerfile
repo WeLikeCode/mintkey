@@ -10,15 +10,15 @@ COPY go.mod go.sum ./
 COPY internal/ internal/
 
 # Copy all service go.mod/go.sum so the workspace can resolve every listed module.
-COPY services/broker/go.mod services/broker/go.sum services/broker/
-COPY services/kong-syncer/go.mod services/kong-syncer/go.sum services/kong-syncer/
-COPY services/proxy-plugin/go.mod services/proxy-plugin/go.sum services/proxy-plugin/
-COPY services/vault-adapter/go.mod services/vault-adapter/go.sum services/vault-adapter/
+COPY apps/broker/go.mod apps/broker/go.sum apps/broker/
+COPY apps/kong-syncer/go.mod apps/kong-syncer/go.sum apps/kong-syncer/
+COPY apps/proxy-plugin/go.mod apps/proxy-plugin/go.sum apps/proxy-plugin/
+COPY apps/vault-adapter/go.mod apps/vault-adapter/go.sum apps/vault-adapter/
 
 # Copy only this service's full source.
-COPY services/kong-syncer/ services/kong-syncer/
+COPY apps/kong-syncer/ apps/kong-syncer/
 
-WORKDIR /workspace/services/kong-syncer
+WORKDIR /workspace/apps/kong-syncer
 RUN go build -o /kong-syncer ./cmd/kong-syncer
 
 # Pinned 2026-05-18; re-pin every quarter.

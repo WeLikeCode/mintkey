@@ -37,10 +37,10 @@ import os
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
-API_KEYS_PY = os.path.join(REPO_ROOT, "admin-api/src/admin_api/api/api_keys.py")
-RESOLVE_GO = os.path.join(REPO_ROOT, "services/broker/internal/api/resolve/resolve.go")
-HANDLER_GO = os.path.join(REPO_ROOT, "services/proxy-plugin/internal/classicalkey/handler.go")
-SUBSCRIBER_GO = os.path.join(REPO_ROOT, "services/proxy-plugin/internal/changes/subscriber.go")
+API_KEYS_PY = os.path.join(REPO_ROOT, "apps/admin-api/src/admin_api/api/api_keys.py")
+RESOLVE_GO = os.path.join(REPO_ROOT, "apps/broker/internal/api/resolve/resolve.go")
+HANDLER_GO = os.path.join(REPO_ROOT, "apps/proxy-plugin/internal/classicalkey/handler.go")
+SUBSCRIBER_GO = os.path.join(REPO_ROOT, "apps/proxy-plugin/internal/changes/subscriber.go")
 RLS_TEST = os.path.join(REPO_ROOT, "tests/architecture/test_rls_coverage.py")
 
 

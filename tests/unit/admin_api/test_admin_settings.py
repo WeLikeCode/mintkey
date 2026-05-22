@@ -25,7 +25,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-ADMIN_API_SRC = os.path.join(REPO_ROOT, "admin-api", "src")
+ADMIN_API_SRC = os.path.join(REPO_ROOT, "apps/admin-api", "src")
 MODELS_SRC = os.path.join(REPO_ROOT, "mintkey-models")
 for p in (ADMIN_API_SRC, MODELS_SRC):
     if p not in sys.path:

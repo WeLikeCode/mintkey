@@ -12,7 +12,7 @@ from pathlib import Path
 
 _AGENTS_PY = (
     Path(__file__).parent.parent.parent
-    / "admin-api"
+    / "apps/admin-api"
     / "src"
     / "admin_api"
     / "api"

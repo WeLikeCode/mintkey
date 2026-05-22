@@ -78,11 +78,11 @@ def test_new_agent_id_and_wire_id_roundtrip() -> None:
     import importlib
     import sys
 
-    agents_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "agents.py"
+    agents_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "agents.py"
     assert agents_py.exists(), f"agents.py not found at {agents_py}"
 
     # Import agents module from the source tree
-    sys.path.insert(0, str(_ROOT / "admin-api" / "src"))
+    sys.path.insert(0, str(_ROOT / "apps/admin-api" / "src"))
     spec = importlib.util.spec_from_file_location("admin_api.api.agents", agents_py)
     mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     try:
@@ -171,7 +171,7 @@ def test_get_agent_handler_decodes_wire_id() -> None:
 
     Source: R8; ADR-0017.11.
     """
-    agents_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "agents.py"
+    agents_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "agents.py"
     assert agents_py.exists(), f"agents.py not found at {agents_py}"
     src = agents_py.read_text()
 
@@ -201,7 +201,7 @@ def test_list_permissions_handler_decodes_agent_wire_id() -> None:
 
     Source: R8; ADR-0017.11.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     assert permissions_py.exists(), f"permissions.py not found at {permissions_py}"
     src = permissions_py.read_text()
 
