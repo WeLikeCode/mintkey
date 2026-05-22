@@ -7,6 +7,41 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-5.5 IMPLEMENTER (Sonnet)
+
+### Chunk C-5.5: Root go.mod workspace MVS sync
+
+**Task completed:** 6.5.1
+
+**Option chosen:** Option A — accept MVS-propagated bumps as a one-time consistency sync.
+
+**Rationale:** The root go.mod was left pinned at pre-restructure versions (intentionally per R-0.1 / OOS-4). However, every upgraded version was already present in apps/*/go.mod prior to this restructure PR — none are net-new upgrades introduced by C-5.5. Running `go work sync` without this fix would forever produce a non-empty diff, making future maintenance noisy. The root go.mod is de facto unused for builds (Go workspace mode routes each sub-module through its own go.mod); this sync only matters for `go test ./...` against root-module packages.
+
+**Version bumps propagated (apps/*/go.mod → root go.mod via MVS):**
+- `google.golang.org/grpc`: v1.80.0 → v1.81.0 (direct; driven by apps/proxy-plugin, apps/vault-adapter)
+- `golang.org/x/net`: v0.52.0 → v0.53.0 (indirect; driven by apps/proxy-plugin, apps/vault-adapter)
+- `golang.org/x/sys`: v0.42.0 → v0.44.0 (indirect; driven by apps/broker, apps/proxy-plugin, apps/vault-adapter)
+- `golang.org/x/text`: v0.35.0 → v0.37.0 (indirect; driven by apps/broker, apps/proxy-plugin, apps/vault-adapter)
+- `github.com/davecgh/go-spew`: added (pre-release commit; driven by apps/broker, apps/proxy-plugin)
+- `github.com/pmezard/go-difflib`: added (pre-release commit; driven by apps/broker, apps/proxy-plugin)
+- `go.sum`: checksums swapped for the above; no new transitive checksums
+
+**Files modified:** `go.mod`, `go.sum` (only)
+
+**Verification:**
+- `go work sync` (first run) → exit 0 ✅
+- `git diff --stat go.mod go.sum go.work.sum` → 2 files changed (go.work.sum unchanged) ✅
+- `go test ./...` (root module) → exit 0 (audit, auditq, changes, otelinit, svcid, ulid, vault/v1: ok) ✅
+- `uv run pytest tests/` (packages/python/mintkey-models) → 60 passed ✅
+- `go work sync` (second run — idempotency check) → empty diff ✅
+
+**Commit:** 4fa8819
+
+### Next
+- Dispatch C-6 REVIEWER (Opus) for full session audit.
+
+---
+
 ## 2026-05-22 — C-5 IMPLEMENTER (Sonnet)
 
 ### Chunk C-5: Docs/Kiro/CI sweep executed

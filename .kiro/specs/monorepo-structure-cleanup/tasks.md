@@ -86,6 +86,7 @@
 - [x] 6.10 — Update `CODEOWNERS` (R-6.10)
 - [x] 6.11 — Audit root + per-service `.dockerignore` (R-6.11)
 - [x] 6.12 — Confirm repo-root file list matches R-6.12 inventory (R-6.12)
+- [x] 6.5.1 — C-5.5 root go.mod workspace MVS sync (post-restructure consistency)
 
 ## Wave 4 — Final reviewer (C-6)
 

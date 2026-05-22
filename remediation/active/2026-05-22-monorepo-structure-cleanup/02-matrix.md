@@ -11,6 +11,7 @@
 | C-3 | 2 | IMPLEMENTER (Sonnet) | `mintkey-models/`, `internal/`, `packages/`, Go imports, pyproject | 3.1..3.12 | ✅ | ✅ | df48155 |
 | C-4 | 2 | IMPLEMENTER (Sonnet) | `docker-compose*`, observability files, `grafana/`, `infra/`, scripts | 4.1..4.11 | ✅ | ✅ | 0e0de41 |
 | C-5 | 3 | IMPLEMENTER (Sonnet) | README/KIRO/AGENTS/CLAUDE/docs/.kiro/.github/CODEOWNERS/Makefile | 6.1..6.12 | ✅ | ✅ | 3a1a420 |
+| C-5.5 | 3 | IMPLEMENTER (Sonnet) | `go.mod`, `go.sum` | 6.5.1 | ✅ | n/a | 4fa8819 |
 | C-6 | 4 | REVIEWER (Opus, fresh) | full session audit | 17 | n/a | ⬜ pending | _no commits_ |
 
 ## Legend
@@ -32,4 +33,5 @@
 | C-3 | 0 | 3 | ok |
 | C-4 | 0 | 3 | ok |
 | C-5 | 0 | 3 | ok |
+| C-5.5 | 0 | 3 | ok |
 | C-6 | 0 | 3 | ok (review-only) |
