@@ -357,7 +357,7 @@ def test_hash_chain_serialisation_comment_exists() -> None:
     intentional, not accidental.
     """
     from pathlib import Path
-    audit_py = REPO_ROOT / "mintkey-models" / "mintkey_models" / "audit.py"
+    audit_py = REPO_ROOT / "packages/python/mintkey-models" / "mintkey_models" / "audit.py"
     src = audit_py.read_text(encoding="utf-8")
 
     assert "pg_advisory_xact_lock" in src, (

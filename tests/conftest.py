@@ -14,8 +14,8 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).parent.parent
 for _src in (
-    _REPO_ROOT / "admin-api" / "src",
-    _REPO_ROOT / "mintkey-models",
+    _REPO_ROOT / "apps/admin-api" / "src",
+    _REPO_ROOT / "packages/python/mintkey-models",
 ):
     _src_str = str(_src)
     if _src_str not in sys.path:

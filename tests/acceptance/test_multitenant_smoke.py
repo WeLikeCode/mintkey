@@ -34,7 +34,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ADMIN_API_SRC = _REPO_ROOT / "apps/admin-api" / "src"
-_MODELS_SRC = _REPO_ROOT / "mintkey-models"
+_MODELS_SRC = _REPO_ROOT / "packages/python/mintkey-models"
 _API_DIR = _ADMIN_API_SRC / "admin_api" / "api"
 _VERIFIER_GO = (
     _REPO_ROOT

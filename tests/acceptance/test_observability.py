@@ -84,7 +84,7 @@ def test_otel_collector_config_has_redaction() -> None:
 
 def test_audit_emit_implementation_exists() -> None:
     """mintkey_models/audit.py must have a real audit_emit implementation."""
-    audit_py = _ROOT / "mintkey-models" / "mintkey_models" / "audit.py"
+    audit_py = _ROOT / "packages/python/mintkey-models" / "mintkey_models" / "audit.py"
     assert audit_py.exists(), f"Missing: {audit_py}"
     src = audit_py.read_text()
     assert "pg_advisory_xact_lock" in src, "advisory lock missing in audit_emit"

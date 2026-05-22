@@ -7,6 +7,88 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-5 STRIKE-3 IMPLEMENTER (Sonnet)
+
+### Chunk C-5 strike-3: Fix ~38 test files with broken runtime path constructors (R-0.1 regression caught by C-6)
+
+**Trigger:** C-6 REVIEWER (Opus) found a REAL R-0.1 regression — ~35 test files under tests/ had Python runtime path constructors pointing at the OLD (pre-restructure) directory layout. These would cause `sys.path` insertions to resolve to non-existent directories, breaking every affected test at collection time.
+
+**Root cause:** The C-2 batch sed sweep updated many test files, but missed the `mintkey-models` → `packages/python/mintkey-models`, `seed-job` → `apps/seed-job`, `audit-verify-job` → `apps/audit-verify-job`, and `mock-backend` → `apps/mock-backend` conversions in the test tree.
+
+**Files updated: 38 test files**
+
+Breakdown by substitution category:
+
+- `mintkey-models` → `packages/python/mintkey-models` (30 files):
+  - `tests/conftest.py` (line 18)
+  - `tests/integration/admin_api/conftest.py` (line 39)
+  - `tests/integration/admin_api/test_audit_emit_rate_limit.py`
+  - `tests/integration/admin_api/test_vault_client_concurrency.py`
+  - `tests/integration/observability/test_span_redaction.py`
+  - `tests/unit/admin_api/test_acknowledge_tamper.py`
+  - `tests/unit/admin_api/test_admin_settings.py`
+  - `tests/unit/admin_api/test_agents.py`
+  - `tests/unit/admin_api/test_api_keys.py`
+  - `tests/unit/admin_api/test_audit.py`
+  - `tests/unit/admin_api/test_audit_verify_endpoint.py`
+  - `tests/unit/admin_api/test_changes.py`
+  - `tests/unit/admin_api/test_credentials.py`
+  - `tests/unit/admin_api/test_oidc.py`
+  - `tests/unit/admin_api/test_permissions.py`
+  - `tests/unit/admin_api/test_platform_admin_audit.py`
+  - `tests/unit/admin_api/test_revocation.py`
+  - `tests/unit/admin_api/test_rotation.py`
+  - `tests/unit/admin_api/test_services.py`
+  - `tests/unit/admin_api/test_tenants.py`
+  - `tests/unit/admin_api/test_vault_client_get_credential.py`
+  - `tests/unit/mcp_server/test_auth.py`
+  - `tests/unit/mcp_server/test_discovery.py`
+  - `tests/unit/mcp_server/test_request_token.py`
+  - `tests/acceptance/test_audit_chain.py`
+  - `tests/acceptance/test_async_audit_emission.py`
+  - `tests/acceptance/test_multitenant_smoke.py`
+  - `tests/acceptance/test_no_plaintext_in_spans.py` (2 occurrences)
+  - `tests/acceptance/test_observability.py`
+  - `tests/acceptance/test_platform_admin_rls.py`
+  - `tests/acceptance/test_reconciliation.py`
+  - `tests/acceptance/test_sqlalchemy_mirror.py`
+  - `tests/acceptance/test_tenant_isolation.py`
+
+- `seed-job` → `apps/seed-job` (2 files):
+  - `tests/unit/seed/test_seed_idempotent.py`
+  - `tests/acceptance/test_mock_backend_registered.py`
+
+- `audit-verify-job` → `apps/audit-verify-job` (2 files):
+  - `tests/unit/audit_verify/test_chain_verify.py`
+  - `tests/acceptance/test_e2e_smoke.py`
+
+- `mock-backend` → `apps/mock-backend` (2 files):
+  - `tests/acceptance/test_e2e_smoke.py` (2 occurrences)
+  - `tests/acceptance/test_golden_path.py`
+
+- `admin-api` → `apps/admin-api` (1 file):
+  - `tests/conftest.py` (line 17)
+
+**Not changed (correct non-path uses):**
+- `tests/unit/test_validate_test_override.py` — `"admin-ui"`, `"seed-job"`, `"mock-backend"`, `"jaeger-auth"` appear as docker-compose service name keys in fixture data dicts, not filesystem path constructors.
+- `tests/acceptance/test_admin_ui_boot.py` — `"seed-job"` appears as a docker compose service name argument to `subprocess.run`.
+- `tests/acceptance/test_mock_backend_registered.py:149` — `"mock-backend"` appears in a runtime API slug assertion, not a path.
+
+**scripts/ scan:** `scripts/e2e_smoke.py` has `"mock-backend"` and `"mcp-server"` but only as service name strings and URLs — no filesystem path constructors. No changes needed in scripts/.
+
+**pytest --collect-only result:**
+- 738 tests collected, exit=0 — all test files importable, no collection errors.
+
+**Verification:**
+- `grep -nE '(_REPO_ROOT|REPO_ROOT|Path\(__file__\).parent[^"]+).*"(admin-api|...mintkey-models)"'` → empty ✅
+- `grep -nE '"services/(broker|proxy-plugin|kong-syncer|vault-adapter)"'` → empty ✅
+- `python3 -m pytest tests/ --collect-only` → 738 tests collected, exit=0 ✅
+- No ADR files modified ✅
+
+**Commit:** TBD (next step)
+
+---
+
 ## 2026-05-22 — C-5 STRIKE-2 IMPLEMENTER (Sonnet)
 
 ### Chunk C-5 strike-2: Fix 6 stale-path misses from strike-1 reviewer

@@ -29,7 +29,7 @@ from sqlalchemy.orm import DeclarativeBase
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MODELS_SRC = REPO_ROOT / "mintkey-models"
+MODELS_SRC = REPO_ROOT / "packages/python/mintkey-models"
 CHANGELOG_DIR = REPO_ROOT / "apps/admin-api" / "db" / "changelog"
 
 # ---------------------------------------------------------------------------

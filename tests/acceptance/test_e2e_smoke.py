@@ -44,7 +44,7 @@ def test_e2e_smoke_components_exist() -> None:
         _ROOT / "services" / "broker",
         _ROOT / "services" / "proxy-plugin",
         _ROOT / "services" / "vault-adapter",
-        _ROOT / "mock-backend" / "src" / "mock_backend",
+        _ROOT / "apps/mock-backend" / "src" / "mock_backend",
         _ROOT / "docker-compose.yml",
     ]
     missing = [str(p) for p in required if not p.exists()]
@@ -90,7 +90,7 @@ def test_e2e_smoke_mock_backend_has_all_endpoints() -> None:
     required endpoint paths.
     """
     rest_main = (
-        _ROOT / "mock-backend" / "src" / "mock_backend" / "rest" / "main.py"
+        _ROOT / "apps/mock-backend" / "src" / "mock_backend" / "rest" / "main.py"
     )
     assert rest_main.exists(), f"rest/main.py not found at {rest_main}"
 
@@ -120,7 +120,7 @@ def test_e2e_smoke_audit_chain_initialized() -> None:
 
     Source: ADR-0014.7; T-1.13.2.
     """
-    verify_py = _ROOT / "audit-verify-job" / "verify.py"
+    verify_py = _ROOT / "apps/audit-verify-job" / "verify.py"
     assert verify_py.exists(), f"verify.py not found at {verify_py}"
 
     # Add the audit-verify-job directory to sys.path temporarily so we can

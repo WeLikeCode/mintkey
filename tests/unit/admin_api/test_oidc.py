@@ -37,7 +37,7 @@ def app():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
     for p in (
         os.path.join(repo_root, "apps/admin-api", "src"),
-        os.path.join(repo_root, "mintkey-models"),
+        os.path.join(repo_root, "packages/python/mintkey-models"),
     ):
         if p not in sys.path:
             sys.path.insert(0, p)

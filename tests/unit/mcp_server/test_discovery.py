@@ -29,7 +29,7 @@ from httpx import ASGITransport, AsyncClient
 # Ensure mcp-server src and mintkey-models are importable
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 MCP_SERVER_SRC = os.path.join(REPO_ROOT, "apps/mcp-server", "src")
-MINTKEY_MODELS_SRC = os.path.join(REPO_ROOT, "mintkey-models")
+MINTKEY_MODELS_SRC = os.path.join(REPO_ROOT, "packages/python/mintkey-models")
 for _p in (MCP_SERVER_SRC, MINTKEY_MODELS_SRC):
     if _p not in sys.path:
         sys.path.insert(0, _p)

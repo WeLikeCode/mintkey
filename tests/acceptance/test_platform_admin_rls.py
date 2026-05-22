@@ -31,7 +31,7 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHANGELOG_DIR = _REPO_ROOT / "apps/admin-api" / "db" / "changelog"
-_MODELS_SRC = _REPO_ROOT / "mintkey-models"
+_MODELS_SRC = _REPO_ROOT / "packages/python/mintkey-models"
 _ADMIN_API_SRC = _REPO_ROOT / "apps/admin-api" / "src"
 
 for _p in [str(_ADMIN_API_SRC), str(_MODELS_SRC)]:

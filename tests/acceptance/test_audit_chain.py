@@ -36,7 +36,7 @@ from testcontainers.postgres import PostgresContainer
 # Make mintkey_models importable when running from the repo root.
 # ---------------------------------------------------------------------------
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-_MODELS_DIR = os.path.join(_REPO_ROOT, "mintkey-models")
+_MODELS_DIR = os.path.join(_REPO_ROOT, "packages/python/mintkey-models")
 if _MODELS_DIR not in sys.path:
     sys.path.insert(0, _MODELS_DIR)
 

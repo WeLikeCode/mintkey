@@ -36,7 +36,7 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ADMIN_API_SRC = _REPO_ROOT / "apps/admin-api" / "src"
-_MODELS_SRC = _REPO_ROOT / "mintkey-models"
+_MODELS_SRC = _REPO_ROOT / "packages/python/mintkey-models"
 
 for _p in [str(_ADMIN_API_SRC), str(_MODELS_SRC)]:
     if _p not in sys.path:

@@ -36,7 +36,7 @@ from testcontainers.postgres import PostgresContainer
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 for _src in (
     _REPO_ROOT / "apps/admin-api" / "src",
-    _REPO_ROOT / "mintkey-models",
+    _REPO_ROOT / "packages/python/mintkey-models",
 ):
     _str = str(_src)
     if _str not in sys.path:

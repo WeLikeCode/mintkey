@@ -44,7 +44,7 @@ from starlette.testclient import TestClient
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 for _src in (
     os.path.join(_REPO_ROOT, "apps/admin-api", "src"),
-    os.path.join(_REPO_ROOT, "mintkey-models"),
+    os.path.join(_REPO_ROOT, "packages/python/mintkey-models"),
 ):
     if _src not in sys.path:
         sys.path.insert(0, _src)

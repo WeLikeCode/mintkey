@@ -164,7 +164,7 @@ def test_golden_path_chain_components_exist() -> None:
         "broker issuer (JWT signing)": _ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go",
         "proxy-plugin main (JWT verify + credential inject)": _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
         "vault-adapter server (GetCredential)": _ROOT / "services" / "vault-adapter" / "internal" / "server" / "vault.go",
-        "mock-backend api-key-header endpoint": _ROOT / "mock-backend" / "src" / "mock_backend" / "rest" / "main.py",
+        "mock-backend api-key-header endpoint": _ROOT / "apps/mock-backend" / "src" / "mock_backend" / "rest" / "main.py",
         "agent-bootstrap skill markdown": _ROOT / "apps/mcp-server" / "skills" / "agent-bootstrap.md",
         "docker-compose": _ROOT / "docker-compose.yml",
     }
