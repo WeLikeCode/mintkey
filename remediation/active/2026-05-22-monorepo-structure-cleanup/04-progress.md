@@ -85,7 +85,7 @@ Breakdown by substitution category:
 - `python3 -m pytest tests/ --collect-only` → 738 tests collected, exit=0 ✅
 - No ADR files modified ✅
 
-**Commit:** TBD (next step)
+**Commit:** 5f51301
 
 ---
 
