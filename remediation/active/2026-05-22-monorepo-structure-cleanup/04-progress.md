@@ -7,6 +7,49 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-5 STRIKE-2 IMPLEMENTER (Sonnet)
+
+### Chunk C-5 strike-2: Fix 6 stale-path misses from strike-1 reviewer
+
+**Trigger:** C-5 strike-1 reviewer FAIL — 6 mechanical path misses not caught during original C-5 sweep.
+
+**Fixes applied (all runtime-breaking or silently-wrong paths):**
+
+1. `Makefile:115` — `cd mintkey-models && $(UV) run pytest tests/` → `cd packages/python/mintkey-models && $(UV) run pytest tests/` (`make test-unit` was broken)
+2. `Makefile:214` — `cd mintkey-models && $(UV) run ruff check mintkey_models/` → `cd packages/python/mintkey-models && $(UV) run ruff check mintkey_models/` (`make lint-python` was broken)
+3. `Makefile:217` — `cd mintkey-models && $(UV) run mypy --strict mintkey_models/` → `cd packages/python/mintkey-models && $(UV) run mypy --strict mintkey_models/` (`make lint-python` was broken)
+4. `.github/workflows/ci.yml:36` — `working-directory: mintkey-models` → `working-directory: packages/python/mintkey-models` (CI lint job was broken)
+5. `.github/workflows/ci.yml:128` — `working-directory: mintkey-models` → `working-directory: packages/python/mintkey-models` (CI test job was broken)
+6. `.github/dependabot.yml:110` — `directory: /jaeger-auth` → `directory: /apps/jaeger-auth` (dependabot silently no-oping on Docker updates)
+7. `.github/dependabot.yml:141` — `directory: /mintkey-models` → `directory: /packages/python/mintkey-models` (dependabot silently no-oping on pip updates)
+8. `QUICKSTART.md:171` — `cd mintkey-models` → `cd packages/python/mintkey-models` (operator setup step was broken)
+9. `QUICKSTART.md:179` — `cd admin-ui` → `cd apps/admin-ui` (operator setup step was broken)
+10. `docs/guides/github-quickstart.md:49` — `admin-ui/e2e/.env.local` → `apps/admin-ui/e2e/.env.local`
+11. `docs/operations/backup-before-reset.md:38` — `admin-ui/e2e/.env.local` → `apps/admin-ui/e2e/.env.local`
+12. `.gitignore:23` — `admin-ui/screenshots-*/` → `apps/admin-ui/screenshots-*/` (Playwright screenshots were silently not gitignored)
+
+Note: items 1-3 count as 3 Makefile occurrences (reviewer listed as R-6.8); items 4-5 as 2 CI occurrences (R-6.9); items 6-7 as 2 dependabot occurrences (R-6.9); items 8-9 as 2 QUICKSTART occurrences (R-6.1); items 10-11 as 2 docs occurrences (R-6.6); item 12 as 1 .gitignore occurrence (R-6.11). Total: 6 reviewer findings, 12 individual line changes.
+
+**Impact of these misses:** `make test-unit` and `make lint-python` would have exited non-zero with "No such file or directory"; CI lint-mintkey-models and test-mintkey-models jobs would have failed; dependabot would have silently skipped jaeger-auth Docker and mintkey-models pip updates; QUICKSTART operator setup steps would have failed; Playwright screenshots generated under `apps/admin-ui/screenshots-*/` would not have been gitignored (risking accidental commit of large binary artifacts).
+
+**No additional similar misses found** in the files touched during strike-2 review.
+
+**Verification (all clean):**
+- `grep -nE 'cd mintkey-models|cd admin-ui[^/]' Makefile` → no hits ✅
+- `grep -nE 'working-directory: mintkey-models|working-directory: admin-' .github/workflows/ci.yml` → no hits ✅
+- `grep -nE '^[[:space:]]*directory: /(jaeger-auth|mintkey-models|...)' .github/dependabot.yml` → no hits ✅
+- `grep -n 'cd mintkey-models\|cd admin-ui[^/]' QUICKSTART.md` → no hits ✅
+- `grep -n '[^s]/admin-ui/e2e/' docs/guides/github-quickstart.md docs/operations/backup-before-reset.md` → no hits ✅
+- `grep -n '^admin-ui/' .gitignore` → no hits ✅
+- `make help` → pre-existing line-18 warning only; exit=0 ✅
+- `make -n test-unit` → exit=0 ✅
+- `make -n lint-python` → exit=0 ✅
+- `git diff --stat HEAD~1..HEAD -- docs/architecture/01-architecture/adr/ docs/architecture/adrs/` → empty (no ADR edits) ✅
+
+**Commit:** _see 02-matrix.md_
+
+---
+
 ## 2026-05-22 — C-5.5 IMPLEMENTER (Sonnet)
 
 ### Chunk C-5.5: Root go.mod workspace MVS sync

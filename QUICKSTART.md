@@ -168,7 +168,7 @@ go test ./... -v
 ### mintkey-models (shared Python library)
 
 ```bash
-cd mintkey-models
+cd packages/python/mintkey-models
 uv sync
 uv run pytest tests/ -v
 ```
@@ -176,7 +176,7 @@ uv run pytest tests/ -v
 ### Admin UI (TypeScript/AdminJS)
 
 ```bash
-cd admin-ui
+cd apps/admin-ui
 pnpm install
 pnpm dev    # development server on :3001
 pnpm test   # vitest unit tests

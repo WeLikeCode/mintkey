@@ -46,7 +46,7 @@ docker run --rm -v mintkey_bootstrap_secrets:/secrets alpine \
 docker compose logs seed-job | grep "Bootstrap admin password"
 ```
 
-For Playwright-based local dev the password is in `admin-ui/e2e/.env.local` as `PLAYWRIGHT_PASS`.
+For Playwright-based local dev the password is in `apps/admin-ui/e2e/.env.local` as `PLAYWRIGHT_PASS`.
 
 ---
 

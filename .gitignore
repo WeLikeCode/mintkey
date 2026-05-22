@@ -20,7 +20,7 @@ apps/vault-adapter/vault-adapter
 install-*.log
 
 # admin-ui Playwright/test screenshot output
-admin-ui/screenshots-*/
+apps/admin-ui/screenshots-*/
 
 # pnpm content-addressable store (local cache; created by pnpm install)
 **/.pnpm-store/

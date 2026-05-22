@@ -112,7 +112,7 @@ test-unit:
 	@echo "── Python unit tests ──"
 	cd apps/admin-api && $(UV) run pytest $(REPO_ROOT)/tests/unit/admin_api/ -v
 	@echo "── mintkey-models unit tests ──"
-	cd mintkey-models && $(UV) run pytest tests/ -v
+	cd packages/python/mintkey-models && $(UV) run pytest tests/ -v
 	@echo "── Go unit tests ──"
 	$(GO) test ./... -v -short 2>&1 | tail -20
 
@@ -211,10 +211,10 @@ lint-python:
 	# failures now exit non-zero and are visible to contributors.
 	cd apps/admin-api && $(UV) run ruff check src/
 	cd apps/mcp-server && $(UV) run ruff check src/
-	cd mintkey-models && $(UV) run ruff check mintkey_models/
+	cd packages/python/mintkey-models && $(UV) run ruff check mintkey_models/
 	@echo "── Python: mypy ──"
 	cd apps/admin-api && $(UV) run mypy --strict src/admin_api/
-	cd mintkey-models && $(UV) run mypy --strict mintkey_models/
+	cd packages/python/mintkey-models && $(UV) run mypy --strict mintkey_models/
 
 lint-go:
 	@echo "── Go: vet ──"

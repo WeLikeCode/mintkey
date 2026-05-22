@@ -107,7 +107,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: docker
-    directory: /jaeger-auth
+    directory: /apps/jaeger-auth
     schedule:
       interval: weekly
       day: monday
@@ -138,7 +138,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: pip
-    directory: /mintkey-models
+    directory: /packages/python/mintkey-models
     schedule:
       interval: weekly
       day: monday

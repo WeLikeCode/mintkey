@@ -33,7 +33,7 @@ jobs:
           uv run ruff check src/
           uv run mypy --strict src/admin_api/
       - name: Lint mintkey-models
-        working-directory: mintkey-models
+        working-directory: packages/python/mintkey-models
         run: |
           uv sync
           uv run ruff check mintkey_models/
@@ -125,7 +125,7 @@ jobs:
           uv sync
           uv run pytest ../tests/unit/admin_api/ -v --tb=short
       - name: Test mintkey-models
-        working-directory: mintkey-models
+        working-directory: packages/python/mintkey-models
         run: |
           uv sync
           uv run pytest tests/ -v --tb=short

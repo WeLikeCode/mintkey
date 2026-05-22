@@ -35,7 +35,7 @@ bash scripts/dev-backup.sh
 What it does in three lines:
 1. Dumps `postgres_data` (agents, services, permissions, audit, credentials) to a
    compressed `.sql.gz` archive, and snapshots `vault_data` + `vault_kek`.
-2. Copies `.env` and `admin-ui/e2e/.env.local` with all secret values **redacted
+2. Copies `.env` and `apps/admin-ui/e2e/.env.local` with all secret values **redacted
    by default** (keys only; no plaintext values).
 3. Writes a `manifest.json` enumerating every captured item with size, sha256, and
    `redacted: true|false`, then prints a summary to stderr.
