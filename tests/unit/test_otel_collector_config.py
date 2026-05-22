@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-CONFIG_PATH = REPO_ROOT / "otel-collector-config.yaml"
+CONFIG_PATH = REPO_ROOT / "infra" / "observability" / "otel-collector-config.yaml"
 
 
 def _load_config() -> dict:

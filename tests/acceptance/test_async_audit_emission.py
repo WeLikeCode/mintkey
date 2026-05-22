@@ -30,7 +30,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AUDITQ_PKG = REPO_ROOT / "internal" / "auditq"
+AUDITQ_PKG = REPO_ROOT / "packages" / "go" / "auditq"
 BROKER_DIR = REPO_ROOT / "services" / "broker"
 PROXY_DIR = REPO_ROOT / "services" / "proxy-plugin"
 ADMIN_API_INTERNAL = REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py"

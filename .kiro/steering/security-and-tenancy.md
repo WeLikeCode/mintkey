@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: "admin-api/**,mcp-server/**,services/**,admin-ui/**,docs/architecture/**"
+fileMatchPattern: "apps/admin-api/**,apps/mcp-server/**,apps/broker/**,apps/proxy-plugin/**,apps/kong-syncer/**,apps/vault-adapter/**,apps/admin-ui/**,docs/architecture/**"
 ---
 
 # Security and Tenancy

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DASHBOARD_PATH = REPO_ROOT / "grafana" / "provisioning" / "dashboards" / "request-monitoring.json"
+DASHBOARD_PATH = REPO_ROOT / "infra" / "observability" / "grafana" / "provisioning" / "dashboards" / "request-monitoring.json"
 
 
 @pytest.fixture()

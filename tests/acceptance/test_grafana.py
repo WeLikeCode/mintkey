@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DASHBOARDS_DIR = REPO_ROOT / "grafana" / "provisioning" / "dashboards"
+DASHBOARDS_DIR = REPO_ROOT / "infra" / "observability" / "grafana" / "provisioning" / "dashboards"
 
 REQUIRED_DASHBOARDS = {
     "mintkey-overview": {
@@ -106,7 +106,7 @@ def test_provider_yaml_exists():
 
 def test_datasource_yaml_exists():
     """grafana/provisioning/datasources/prometheus.yaml exists."""
-    path = REPO_ROOT / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
+    path = REPO_ROOT / "infra" / "observability" / "grafana" / "provisioning" / "datasources" / "prometheus.yaml"
     assert path.exists(), f"Missing {path}"
 
 

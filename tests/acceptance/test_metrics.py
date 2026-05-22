@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROMETHEUS_YML = REPO_ROOT / "prometheus.yml"
+PROMETHEUS_YML = REPO_ROOT / "infra" / "observability" / "prometheus.yml"
 
 # Expected metric names per component (T-1.10.2)
 REQUIRED_METRICS = {
