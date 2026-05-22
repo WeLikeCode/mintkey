@@ -7,6 +7,37 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-2 STRIKE-2 IMPLEMENTER (Sonnet)
+
+### Chunk C-2 strike-2: Revert root go.mod + go.sum to pre-restructure pinning
+
+**Trigger:** C-2 strike-1 reviewer FAIL — root `go.mod`/`go.sum` were modified with dep bumps not in C-2 owner-file allowlist.
+
+**Reverted (root `go.mod` and `go.sum` restored to `b9b3733` state):**
+- `google.golang.org/grpc v1.81.0 → v1.80.0` (direct dep)
+- `golang.org/x/net v0.53.0 → v0.52.0` (indirect)
+- `golang.org/x/sys v0.44.0 → v0.42.0` (indirect)
+- `golang.org/x/text v0.37.0 → v0.35.0` (indirect)
+- `github.com/davecgh/go-spew v1.1.2-pre` — removed (was not present in b9b3733 go.mod)
+- `github.com/pmezard/go-difflib v1.0.1-pre` — removed (was not present in b9b3733 go.mod)
+
+**`go work sync` outcome after revert:**
+- Exit code: `0`
+- Diff on go.mod/go.sum after `go work sync`: NON-EMPTY — `go work sync` re-introduces the exact same bumps.
+- Root cause: `apps/proxy-plugin/go.mod` and `apps/vault-adapter/go.mod` (moved from `services/` by C-2) already require grpc v1.81.0 and x/net v0.53.0. The MVS workspace resolution propagates these to the root go.mod when `go work sync` is run.
+- Decision: revert committed WITHOUT running `go work sync` on root. The workspace is structurally consistent — Go workspace mode does not use root `go.mod` deps when building sub-modules; each sub-module uses its own go.mod. Running `go work sync` will be a natural follow-up during C-3 work.
+- `go work sync` was NOT re-run before committing the revert, to avoid immediately re-introducing the bumps.
+
+**`docker compose config` verification (C-2 task 2.12 requirement — unaffected by go.mod):**
+- `docker compose -f docker-compose.yml config` → exit 0 ✅
+- `docker compose -f docker-compose.test.yml config` → exit 0 ✅ (warning: otel-collector has no image/build — pre-existing, not introduced by C-2)
+
+**Root go.mod vs `b9b3733:go.mod`:** byte-identical (restored via `git checkout b9b3733 -- go.mod go.sum`).
+
+**Note for C-3 IMPLEMENTER:** When running `go work sync` during C-3 work, expect root go.mod to be updated by MVS to grpc v1.81.0, x/net v0.53.0, x/sys v0.44.0, x/text v0.37.0 — this is correct behavior driven by the workspace sub-modules, not a bug.
+
+---
+
 ## 2026-05-22 — C-2 IMPLEMENTER (Sonnet)
 
 ### Chunk C-2: Apps move executed

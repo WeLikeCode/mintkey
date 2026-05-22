@@ -41,7 +41,7 @@
 - [x] 2.10 — Update Python workspace path assumptions (R-2.10)
 - [x] 2.11 — Update tests that hardcoded paths (R-2.11)
 - [x] 2.12 — Verification: `docker compose -f docker-compose.yml config` and `-f docker-compose.test.yml config` exit 0 (R-2.12)
-- [ ] **12 — CHECKPOINT C-2 reviewer PASS** (R-7.1)
+- [x] **12 — CHECKPOINT C-2 reviewer PASS** (R-7.1) — passed strike-2 2026-05-22
 
 ## Wave 2 — Packages move (C-3) — gated on C-2
 
