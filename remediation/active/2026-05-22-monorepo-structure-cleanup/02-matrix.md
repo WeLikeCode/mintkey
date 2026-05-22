@@ -12,7 +12,8 @@
 | C-4 | 2 | IMPLEMENTER (Sonnet) | `docker-compose*`, observability files, `grafana/`, `infra/`, scripts | 4.1..4.11 | ✅ | ✅ | 0e0de41 |
 | C-5 | 3 | IMPLEMENTER (Sonnet) | README/KIRO/AGENTS/CLAUDE/docs/.kiro/.github/CODEOWNERS/Makefile | 6.1..6.12 | ✅ | ❌ strike-1 (6 stale-path misses) → ✅ strike-2, ❌ strike-2 (C-6 caught R-0.1 regression in ~38 test files) → ✅ strike-3 | 3a1a420 + 296a0d8 + 5f51301 |
 | C-5.5 | 3 | IMPLEMENTER (Sonnet) | `go.mod`, `go.sum` | 6.5.1 | ✅ | n/a | 4fa8819 |
-| C-6 | 4 | REVIEWER (Opus, fresh) | full session audit | 17 | n/a | ⬜ pending | _no commits_ |
+| C-7 | 4 | ORCHESTRATOR (residual cleanup) | 5 test runtime paths + 1 Kiro fileMatchPattern + apps/mcp-server/tests/conftest.py | (orchestrator-applied) | ✅ | n/a | abac09b + (this commit) |
+| C-6 | 4 | REVIEWER (Opus, fresh) | full session audit | 17 | n/a | ✅ round-3 PASS_ALL | _no commits — read-only_ |
 
 ## Legend
 | Symbol | Meaning |

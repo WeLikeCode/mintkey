@@ -14,11 +14,14 @@ _src_str = str(_MCP_SRC)
 if _src_str not in sys.path:
     sys.path.insert(0, _src_str)
 
-# Also add mintkey-models to path since mcp_server imports from it
-_REPO_ROOT = Path(__file__).resolve().parents[2]  # mintkey/
+# Also add mintkey-models to path since mcp_server imports from it.
+# Post-monorepo-restructure (2026-05-22): this conftest sits at
+# apps/mcp-server/tests/conftest.py, so parents[3] is the repo root
+# (was parents[2] when the file lived at mcp-server/tests/conftest.py).
+_REPO_ROOT = Path(__file__).resolve().parents[3]  # mintkey/
 for _extra in (
-    _REPO_ROOT / "mintkey-models",
-    _REPO_ROOT / "admin-api" / "src",
+    _REPO_ROOT / "packages" / "python" / "mintkey-models",
+    _REPO_ROOT / "apps" / "admin-api" / "src",
 ):
     s = str(_extra)
     if s not in sys.path:
