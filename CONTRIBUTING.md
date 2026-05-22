@@ -49,14 +49,14 @@ The canonical example of this pipeline executed end-to-end is the Mintkey MVP it
 
 Mintkey has two workflows for code changes:
 
-- **Remediation** — fixing something broken or risky. Use `team/remediation/YYYY-MM-DD-<topic>/` sessions with issue intake, orchestrator pattern, and independent review. See [`team/remediation/README.md`](team/remediation/README.md).
+- **Remediation** — fixing something broken or risky. Use `remediation/active/YYYY-MM-DD-<topic>/` sessions with issue intake, orchestrator pattern, and independent review. See [`remediation/README.md`](remediation/README.md).
 - **Spec-driven (Kiro)** — building new capabilities. Use `.kiro/specs/` with requirements → design → tasks → ADR/proposal. See [`docs/SDD.md`](docs/SDD.md).
 
-The decision table below — identical in `team/remediation/README.md`, `AGENTS.md`, and `CLAUDE.md` — codifies which path your change requires.
+The decision table below — identical in `remediation/README.md`, `AGENTS.md`, and `CLAUDE.md` — codifies which path your change requires.
 
 | Request Type | Required Path | Issue Intake | Reviewer |
 |---|---|---|---|
-| "Fix this bug" with clear evidence | `team/remediation/YYYY-MM-DD-<topic>/` | Full intake file (`ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
+| "Fix this bug" with clear evidence | `remediation/active/YYYY-MM-DD-<topic>/` | Full intake file (`remediation/ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
 | "Fix this bug" without clear evidence | Ask for issue intake first; **do not start** | Required BEFORE any chunk dispatch | After intake lands |
 | Multi-file remediation | Orchestrator pattern required (`remediation-orchestrator` skill) | Full intake file | Independent REVIEWER per chunk |
 | Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
@@ -72,7 +72,7 @@ Per the F4 owner decision: **every PR has an Issue Definition section in the tem
 
 Even doc typos and dependency bumps include a brief intake stub in the PR body's `## Issue Definition` section. The Issue Definition fields are: Problem, Expected behavior, Evidence, Scope, Out of scope. See `.github/pull_request_template.md`.
 
-For multi-file or risky changes, file the full intake at `team/remediation/<session>/ISSUE_INTAKE.md` BEFORE any code change.
+For multi-file or risky changes, file the full intake at `remediation/active/<session>/ISSUE_INTAKE.md` BEFORE any code change.
 
 ---
 

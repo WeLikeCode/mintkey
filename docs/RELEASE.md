@@ -4,7 +4,7 @@
 > container images automatically. This document describes the manual procedure
 > a maintainer follows to cut a release of Mintkey for evaluation by self-hosters.
 > Automated publishing to `ghcr.io/welikecode/mintkey-*` is deferred to a
-> future session — see `team/remediation/2026-05-16-oss-readiness/03-escalations.md` E-5.
+> future session — see `remediation/archive/2026/05/2026-05-16-oss-readiness/03-escalations.md` E-5.
 
 ---
 
@@ -227,7 +227,7 @@ release. Pre-alpha previews ship without them.
 | Scorecard badge | 0.1.0-alpha.1 | `ossf/scorecard-action` |
 
 Tracking: OSS-4 deferred list in
-`team/remediation/2026-05-16-oss-readiness/03-escalations.md` (E-5).
+`remediation/archive/2026/05/2026-05-16-oss-readiness/03-escalations.md` (E-5).
 
 ---
 

@@ -116,7 +116,7 @@ bash scripts/dev-restore.sh .mintkey-backups/<timestamp> --dry-run   # see what 
 bash scripts/dev-restore.sh .mintkey-backups/<timestamp> --apply     # actually restore
 ```
 
-Full workflow: [team/remediation/HOWTO-backup-before-reset.md](team/remediation/HOWTO-backup-before-reset.md).
+Full workflow: [docs/operations/backup-before-reset.md](docs/operations/backup-before-reset.md).
 EvidenceRefs (source of truth): see that doc's appendix.
 
 ---

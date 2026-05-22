@@ -493,7 +493,7 @@ failure.
    rm data/bootstrap-secrets/.admin_password_synced
    docker compose up -d
    ```
-4. See [`team/remediation/HOWTO-backup-before-reset.md`](../team/remediation/HOWTO-backup-before-reset.md)
+4. See [`docs/operations/backup-before-reset.md`](../docs/operations/backup-before-reset.md)
    for the full backup/restore guide.
 
 ---
@@ -629,7 +629,7 @@ For the full backup/restore guide, including the restore command, KEK considerat
 and cron automation, see:
 
 ```
-team/remediation/HOWTO-backup-before-reset.md
+docs/operations/backup-before-reset.md
 ```
 
 Key rules:

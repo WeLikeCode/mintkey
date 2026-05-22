@@ -19,14 +19,14 @@ Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders an
 - The PAT-free 10-minute mock demo (`docs/guides/10min-mock-demo.md`) runs end-to-end: service registration, agent creation, JWT issuance, brokered proxy call, audit chain verification. (EvidenceRef: OSS-6 commit `9705c16`)
 - Four MCP client setup guides exist (`docs/guides/mcp-clients/`): Claude Desktop, Claude Code, Cursor, mcp-cli. (EvidenceRef: OSS-6 commit `9705c16`)
 - GitHub PAT demo (`docs/guides/github-quickstart.md`) runs with a real external API key. (EvidenceRef: OSS-6 commit `9705c16`)
-- Test suites green as of WS-8 (2026-05-12): 244 Python unit/integration; 17 architecture; 23 Go packages; 139 admin-ui vitest. Subsequent remediation (PRs #33–#53, 2026-05-16/17) changed the test surface; see `team/remediation/` for per-session verification snapshots. (EvidenceRef: `team/remediation/` session 99-report.md files)
+- Test suites green as of WS-8 (2026-05-12): 244 Python unit/integration; 17 architecture; 23 Go packages; 139 admin-ui vitest. Subsequent remediation (PRs #33–#53, 2026-05-16/17) changed the test surface; see `remediation/archive/2026/05/` for per-session verification snapshots. (EvidenceRef: `remediation/archive/2026/05/` session 99-report.md files)
 - Apache-2.0 license, governance documents, contribution rules, security contact, and CodeQL/Dependabot/container-scan CI gates are all in place (OSS-readiness session, 2026-05-16). Pre-release tag `v0.1.0-prealpha` published 2026-05-17. (EvidenceRef: OSS-1 through OSS-7 commits; `LICENSE`, `SECURITY.md`, `.github/workflows/`)
 
 **What is not yet in place:**
 - No published container images (deferred; see `docs/RELEASE.md`). (EvidenceRef: `docs/RELEASE.md` documents manual-only path; GHCR workflow deferred per E-5)
 - No high-availability topology. The state store is in-process (ADR-0020); single-replica only. (EvidenceRef: `docs/architecture/01-architecture/adr/0020-*.md`)
 - No TLS ingress documentation; operators provide their own reverse proxy. (EvidenceRef: `docs/DEPLOYMENT.md` §"TLS not documented")
-- Dev-workflow backup/restore scripts are present (`scripts/dev-backup.sh` 526 lines, `scripts/dev-restore.sh` 483 lines — PR #72; `scripts/dev-backup-cron.example.sh` 171 lines — PR #75; HOWTO at `team/remediation/HOWTO-backup-before-reset.md`). Production DR procedure (tested restore drill, Helm-backed PV snapshots) is **not yet documented**. (EvidenceRef: PR #72 commit `4de9631`, PR #75 commit `80717f6`)
+- Dev-workflow backup/restore scripts are present (`scripts/dev-backup.sh` 526 lines, `scripts/dev-restore.sh` 483 lines — PR #72; `scripts/dev-backup-cron.example.sh` 171 lines — PR #75; HOWTO at `docs/operations/backup-before-reset.md`). Production DR procedure (tested restore drill, Helm-backed PV snapshots) is **not yet documented**. (EvidenceRef: PR #72 commit `4de9631`, PR #75 commit `80717f6`)
 - No third-party security audit or fuzzing campaign. (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals` — Fuzzing accepted as post-v1 goal)
 - No compliance attestations (SOC2, ISO 27001, FedRAMP). (EvidenceRef: `SECURITY.md` — pre-alpha; no assessment started)
 - Container hardening: all 15 Dockerfile `FROM` directives SHA-pinned to upstream registry digests (PR #35 commit `373221f`); 9 of 9 external images in `docker-compose.yml` @sha256-pinned (PRs #70 + #74); long-running Python/Node containers run as non-root with `HEALTHCHECK` (PR #33). One-shot init containers (`seed-job`, `liquibase`) deliberately run as root for bootstrap volume operations (PR #47). (EvidenceRef: `docker-compose.yml` lines 36/60/91/342/465/484/562/581/604; Dockerfiles for all 10 built images)
@@ -62,7 +62,7 @@ Mintkey is **pre-alpha**. It is suitable for technical evaluation by builders an
 ## Section 3 — Phase 1.5 — Public Technical Preview Readiness
 
 The OSS-readiness session (2026-05-16) shipped the bulk of the public technical preview work.
-Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
+Full record: `remediation/archive/2026/05/2026-05-16-oss-readiness/99-report.md`.
 
 **Status: mostly complete. Residuals listed below are explicitly deferred.**
 
@@ -93,7 +93,7 @@ Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`.
 | GHCR publish workflow / image release | Operator convenience | ⛔ Deferred (E-5) | Manual path in `docs/RELEASE.md`; needs owner decision on release cadence (EvidenceRef: `docs/RELEASE.md` §"Publishing images") |
 | `make lint` GNU Make 3.81 colon-target exit=2 on macOS | Local DX | 🟦 Local only; CI (ubuntu, GNU Make 4.x) is unaffected (EvidenceRef: `Makefile` — CI runs ubuntu-latest) |
 | Service REST `DELETE /v1/.../services/:id` 500 | Operator UX | ⬜ Pre-existing bug; unrelated to OSS work (EvidenceRef: pre-existing; no issue filed yet) |
-| `otel-collector` restart loop | Observability reliability | ✅ FIXED | PR #48 — spanmetrics connector config repaired for v0.104+ (session 2026-05-17-otel-collector-config) (EvidenceRef: `otel-collector-config.yaml`; `team/remediation/2026-05-17-otel-collector-config/`) |
+| `otel-collector` restart loop | Observability reliability | ✅ FIXED | PR #48 — spanmetrics connector config repaired for v0.104+ (session 2026-05-17-otel-collector-config) (EvidenceRef: `otel-collector-config.yaml`; `remediation/archive/2026/05/2026-05-17-otel-collector-config/`) |
 
 **Acceptance criteria for "Public Technical Preview launched" (TP-1):** repo pushed to `https://github.com/WeLikeCode/mintkey`, GitHub Discussions enabled, launch announcement posted. Operator action pending.
 
@@ -109,7 +109,7 @@ The following OpenSSF Scorecard alerts were reviewed on 2026-05-18 and accepted 
 | CII-Best-Practices | LOW | Accepted — badge groundwork in place; formal attestation is a v1.0 goal (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`) | Pre-v1.0 stable release |
 | Vulnerabilities (GO-2026-XXXX) | HIGH | Deferred pending upstream patch — owner must confirm advisory ID + patch status in GitHub Security tab (EvidenceRef: `SECURITY.md §Accepted Scorecard Residuals`; PR #64 commit `c2b37a0`; extended PR #77) | When upstream Go dep patch is published |
 
-Session record: `team/remediation/2026-05-18-s11-scorecard-residuals/` (EvidenceRef: `team/remediation/2026-05-18-s11-scorecard-residuals/`).
+Session record: `remediation/archive/2026/05/2026-05-18-s11-scorecard-residuals/` (EvidenceRef: `remediation/archive/2026/05/2026-05-18-s11-scorecard-residuals/`).
 
 ---
 
@@ -222,7 +222,7 @@ None of the Phase E items exist today. All are NEW or DEFERRED.
 
 | Milestone | Audience | Exit criteria |
 |---|---|---|
-| **TP-0** — Public hygiene complete | All | ✅ DONE 2026-05-16. Apache-2.0 license, governance templates, security contact, CI gates strict, Docker hardening partial, deployment docs, mock demo, MCP client guides, marketing with CTAs and comparison table, no production-readiness overclaims. Full record: `team/remediation/2026-05-16-oss-readiness/99-report.md`. |
+| **TP-0** — Public hygiene complete | All | ✅ DONE 2026-05-16. Apache-2.0 license, governance templates, security contact, CI gates strict, Docker hardening partial, deployment docs, mock demo, MCP client guides, marketing with CTAs and comparison table, no production-readiness overclaims. Full record: `remediation/archive/2026/05/2026-05-16-oss-readiness/99-report.md`. |
 | **TP-1** — Technical preview launch | Builder / AI engineer | Push to `https://github.com/WeLikeCode/mintkey`, enable GitHub Discussions, post launch announcement. `v0.1.0-prealpha` pre-release tag published 2026-05-17; launch announcement still pending owner action. |
 | **B-1** — Builder-friendly local demo | Builder / AI engineer | 5 example integrations live (4 NEW: Slack, Stripe, OpenAI-compatible, generic HTTP; + 1 EXISTING: GitHub PAT quickstart at `docs/guides/github-quickstart.md`), `make demo` wrapper, SDK snippets (Python + TypeScript + Go), "agent never sees the secret" proof walkthrough, expanded troubleshooting. |
 | **F-1** — Founder-ready packaging | Founder / startup CTO | GHCR images published; release cadence stable and documented; upgrade/migration guide exists; comparison page deepened; hosted/commercial direction decided. |

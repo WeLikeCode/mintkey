@@ -350,7 +350,7 @@ docker compose start      # resume where you left off
 To tear everything down (data lost):
 
 ```bash
-docker compose down -v    # WARNING: deletes all volumes including vault data; back up first with bash scripts/dev-backup.sh — see team/remediation/HOWTO-backup-before-reset.md (EV-DESTRUCTIVE-009)
+docker compose down -v    # WARNING: deletes all volumes including vault data; back up first with bash scripts/dev-backup.sh — see docs/operations/backup-before-reset.md (EV-DESTRUCTIVE-009)
 ```
 
 ---

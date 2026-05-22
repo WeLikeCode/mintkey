@@ -208,7 +208,7 @@ Fixtures are versioned with the contracts. A breaking contract change requires a
 
 | Language / area | Tool / config | Status |
 |---|---|---|
-| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ✅ ruff + mypy --strict configured and green on admin-api, mintkey-models, mcp-server (last verified 2026-05-16 by `team/remediation/2026-05-16-python-code-quality/99-report.md`) |
+| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ✅ ruff + mypy --strict configured and green on admin-api, mintkey-models, mcp-server (last verified 2026-05-16 by `remediation/archive/2026/05/2026-05-16-python-code-quality/99-report.md`) |
 | Go | `gofmt` + `golangci-lint` config; `errcheck`, `goimports`, `revive` | ✅ golangci-lint v8 + go vet configured and green in CI Lint Go (last verified on tag v0.1.0-prealpha 2026-05-17) |
 | AdminJS / TypeScript | `eslint` + `prettier` config; strict TS | ⏳ |
 | SQL | `sqlfluff` config (Postgres dialect) | ⏳ |

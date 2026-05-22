@@ -1,12 +1,14 @@
-# team/remediation/
+# remediation/
 
 A structured workspace for multi-step code remediation sessions. Each session
-is a dated directory; completed or superseded sessions are moved to `_archive/`.
+is a dated directory; completed sessions are archived under `archive/2026/05/`;
+the current active session lives under `active/`.
 
 ## Folder pattern
 
-- `YYYY-MM-DD-<kebab-slug>/` — an active or completed session
-- `_archive/YYYY-MM-DD-<kebab-slug>/` — a closed / superseded session
+- `active/YYYY-MM-DD-<kebab-slug>/` — an in-progress session
+- `archive/YYYY/MM/YYYY-MM-DD-<kebab-slug>/` — a closed / completed session
+- `SESSION_TEMPLATE/` — scaffold for new sessions
 
 ### Role-numbered files inside a session
 
@@ -35,11 +37,11 @@ and lives in the `remediation-orchestrator` skill:
 Invoke it by saying "use the orchestrator pattern", "dispatch subagents to fix
 this", or "orchestrate this remediation". Original Mintkey-specific prompt
 artifacts that inspired the skill are archived at
-`_archive/2026-05-12-mintkey-mvp/`.
+`archive/2026/05/2026-05-12-mintkey-mvp/`.
 
 ## When to use remediation vs Kiro/spec-driven work
 
-**Use a `team/remediation/` session** when the work is *fixing something concrete that exists*: a broken behavior, a missing piece of OSS hygiene, a regression, an audit finding, a release blocker, a security gap. Remediation work has an issue intake, surgical scope, and ends with a closing report.
+**Use a `remediation/active/` session** when the work is *fixing something concrete that exists*: a broken behavior, a missing piece of OSS hygiene, a regression, an audit finding, a release blocker, a security gap. Remediation work has an issue intake, surgical scope, and ends with a closing report.
 
 **Use the Kiro spec-driven flow (`.kiro/specs/`)** when the work introduces a new capability, a new wire surface, a new ADR-worthy decision, or any greenfield feature. Spec-driven work has requirements → design → tasks → implementation, with ADRs for architectural decisions.
 
@@ -47,7 +49,7 @@ The decision table below codifies which path applies.
 
 ## Issue intake (required before remediation starts)
 
-Every `team/remediation/` session opens with the 9 intake fields (see [`ISSUE_INTAKE_TEMPLATE.md`](ISSUE_INTAKE_TEMPLATE.md)):
+Every `remediation/active/` session opens with the 9 intake fields (see [`ISSUE_INTAKE_TEMPLATE.md`](ISSUE_INTAKE_TEMPLATE.md)):
 
 1. Problem statement
 2. User-visible symptom
@@ -64,7 +66,7 @@ Every `team/remediation/` session opens with the 9 intake fields (see [`ISSUE_IN
 For convenience, a new session can be scaffolded with:
 
 ```bash
-cp -r team/remediation/SESSION_TEMPLATE/ team/remediation/$(date +%F)-<slug>/
+cp -r remediation/SESSION_TEMPLATE/ remediation/active/$(date +%F)-<slug>/
 # Then fill in ISSUE_INTAKE.md (or 00-issue-intake.md) before any other file.
 ```
 
@@ -72,7 +74,7 @@ cp -r team/remediation/SESSION_TEMPLATE/ team/remediation/$(date +%F)-<slug>/
 
 | Request Type | Required Path | Issue Intake | Reviewer |
 |---|---|---|---|
-| "Fix this bug" with clear evidence | `team/remediation/YYYY-MM-DD-<topic>/` | Full intake file (`ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
+| "Fix this bug" with clear evidence | `remediation/active/YYYY-MM-DD-<topic>/` | Full intake file (`remediation/ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
 | "Fix this bug" without clear evidence | Ask for issue intake first; **do not start** | Required BEFORE any chunk dispatch | After intake lands |
 | Multi-file remediation | Orchestrator pattern required (`remediation-orchestrator` skill) | Full intake file | Independent REVIEWER per chunk |
 | Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
@@ -97,7 +99,7 @@ The 3-strike rule prevents indefinite IMPLEMENTER thrashing. A chunk that fails 
 ## Starting a new session
 
 ```bash
-cp -r team/remediation/SESSION_TEMPLATE/ team/remediation/$(date +%F)-<topic>/
+cp -r remediation/SESSION_TEMPLATE/ remediation/active/$(date +%F)-<topic>/
 # Then fill in ISSUE_INTAKE.md before any other file.
 ```
 
@@ -108,15 +110,22 @@ solo via the prompt).
 
 | Session | Contents |
 |---|---|
-| [`2026-05-12-admin-ui-rework/`](2026-05-12-admin-ui-rework/) | AdminJS boot + full per-screen UX rework (00-plan, 01-spec) |
-| [`2026-05-13-admin-ui-action-grid/`](2026-05-13-admin-ui-action-grid/) | Action-grid completion: inventory + fix every AdminJS action cell (00-plan, 01-orchestrator-chunks, 02-matrix, 03-escalations) |
-| [`2026-05-16-oss-readiness/`](2026-05-16-oss-readiness/) | OSS hygiene: CONTRIBUTING.md, no-Co-Authored-By, governance files (closed) |
-| [`2026-05-16-public-github-release-readiness/`](2026-05-16-public-github-release-readiness/) | Public release blockers: secrets scan, license, CI hardening (closed) |
-| [`2026-05-16-pattern-enforcement/`](2026-05-16-pattern-enforcement/) | Governance: enforce remediation pattern, intake gate, decision table, PR template |
+| [`active/2026-05-22-monorepo-structure-cleanup/`](active/2026-05-22-monorepo-structure-cleanup/) | Monorepo structural migration: archive remediation sessions, move apps/packages/infra (in progress) |
 
-## Archive
+## Archive (2026/05)
 
-| Archive | Contents |
+| Session | Contents |
 |---|---|
-| [`_archive/2026-05-12-mintkey-mvp/`](_archive/2026-05-12-mintkey-mvp/) | Original Mintkey MVP remediation plan + solo + orchestrator prompts |
-| [`_archive/2026-05-13-playwright-extension/`](_archive/2026-05-13-playwright-extension/) | Playwright W0–W8 extension plan + solo + orchestrator prompts |
+| [`archive/2026/05/2026-05-12-admin-ui-rework/`](archive/2026/05/2026-05-12-admin-ui-rework/) | AdminJS boot + full per-screen UX rework |
+| [`archive/2026/05/2026-05-13-admin-ui-action-grid/`](archive/2026/05/2026-05-13-admin-ui-action-grid/) | Action-grid completion |
+| [`archive/2026/05/2026-05-16-oss-readiness/`](archive/2026/05/2026-05-16-oss-readiness/) | OSS hygiene: CONTRIBUTING.md, governance (closed) |
+| [`archive/2026/05/2026-05-16-pattern-enforcement/`](archive/2026/05/2026-05-16-pattern-enforcement/) | Governance: enforce remediation pattern |
+| [`archive/2026/05/2026-05-19-post-prealpha-readiness/`](archive/2026/05/2026-05-19-post-prealpha-readiness/) | Post-prealpha readiness (closed) |
+| _43 additional archived sessions_ | See [`archive/2026/05/`](archive/2026/05/) for full list |
+
+## Historical archive (_archive/)
+
+| Session | Contents |
+|---|---|
+| [`archive/2026/05/2026-05-12-mintkey-mvp/`](archive/2026/05/2026-05-12-mintkey-mvp/) | Original Mintkey MVP remediation plan + solo + orchestrator prompts |
+| [`archive/2026/05/2026-05-13-playwright-extension/`](archive/2026/05/2026-05-13-playwright-extension/) | Playwright W0–W8 extension plan + solo + orchestrator prompts |

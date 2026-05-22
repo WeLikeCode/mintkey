@@ -1,7 +1,7 @@
 # Weak-Hash Migration Strategy
 
 **Status**: Accepted-for-prealpha -- accept current SHA-256 fingerprint usage; revisit before v1.0 GA.
-**Source session**: `team/remediation/2026-05-18-s5-codeql-weak-hashing/`
+**Source session**: `remediation/archive/2026/05/2026-05-18-s5-codeql-weak-hashing/`
 
 ## Current state
 
@@ -38,7 +38,7 @@ Changing site 3 without these steps would silently break audit chain continuity 
 
 ## Migration plan for sites 1 and 2 (when trigger fires)
 
-Per `team/remediation/2026-05-18-s5-codeql-weak-hashing/99-report.md`:
+Per `remediation/archive/2026/05/2026-05-18-s5-codeql-weak-hashing/99-report.md`:
 
 1. Add env var `MINTKEY_FINGERPRINT_HMAC_KEY` (32-byte random secret, project-static, loaded from secrets manager).
 2. Update `admin-api/src/admin_api/api/agents.py:_generate_agent_api_key()` and `admin-api/src/admin_api/api/api_keys.py:_fingerprint()` to use `hmac.new(HMAC_KEY, plaintext.encode(), hashlib.sha256).digest()[:8].hex()`.
@@ -57,6 +57,6 @@ Per `team/remediation/2026-05-18-s5-codeql-weak-hashing/99-report.md`:
 ## References
 
 - ADR-0014.7: audit-chain hash algorithm (`docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md`)
-- Session report: `team/remediation/2026-05-18-s5-codeql-weak-hashing/99-report.md`
+- Session report: `remediation/archive/2026/05/2026-05-18-s5-codeql-weak-hashing/99-report.md`
 - CodeQL rule: `py/weak-sensitive-data-hashing`
 - SECURITY.md sections: "Audit hash chain integrity (SHA-256 invariant)", "Weak-hash acceptance"

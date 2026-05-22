@@ -1,9 +1,8 @@
 # PROGRESS.md — Mintkey implementation drive
 
-> Companion to `team/remediation/MEGA_PROMPT.md`.
 > Last updated: 2026-05-17. WS-7a through WS-8 milestones (2026-05-12 snapshot — see §WS-8 below) remain the Phase 1 baseline. OSS-readiness session (2026-05-16-oss-readiness) complete — 9 commits, 13/13 ACs met, 99-report.md closed.
 >
-> **2026-05-16 / 2026-05-17 remediation cascade:** 22 PRs (#33 through #53) addressed security hardening (Dockerfile USER + HEALTHCHECK directives, SHA-pinned base images), CI reliability (integration-test wait timeout, build/start split), Jaeger oauth2-proxy cookie-secret cascade (PRs #49–#52), seed-job idempotency and Keycloak redirectUris patcher (PR #53), and SSO wiring. The cascade culminated in tag `v0.1.0-prealpha`. Full details in the remediation 99-reports under `team/remediation/`; see `team/remediation/2026-05-17-seed-job-idempotency-and-sso/99-report.md` as the final anchor. Test counts below reflect the WS-8 (2026-05-12) snapshot — no test suite was rerun in the remediation sessions.
+> **2026-05-16 / 2026-05-17 remediation cascade:** 22 PRs (#33 through #53) addressed security hardening (Dockerfile USER + HEALTHCHECK directives, SHA-pinned base images), CI reliability (integration-test wait timeout, build/start split), Jaeger oauth2-proxy cookie-secret cascade (PRs #49–#52), seed-job idempotency and Keycloak redirectUris patcher (PR #53), and SSO wiring. The cascade culminated in tag `v0.1.0-prealpha`. Full details in the remediation 99-reports under `remediation/archive/2026/05/`; see `remediation/archive/2026/05/2026-05-17-seed-job-idempotency-and-sso/99-report.md` as the final anchor. Test counts below reflect the WS-8 (2026-05-12) snapshot — no test suite was rerun in the remediation sessions.
 
 ## §1 Checklist (MEGA_PROMPT Definition of Done)
 
@@ -81,7 +80,7 @@ test_ops_hardening.py: 12 structural assertions passed.
 
 ### WS-8 final verification snapshot (2026-05-12)
 
-_(Snapshot from 2026-05-12; subsequent remediation in 2026-05-16/17 changed parts of the test surface — see remediation 99-reports under `team/remediation/`. Numbers below have not been freshly rerun.)_
+_(Snapshot from 2026-05-12; subsequent remediation in 2026-05-16/17 changed parts of the test surface — see remediation 99-reports under `remediation/archive/2026/05/`. Numbers below have not been freshly rerun.)_
 
 Final verification summary:
 - `pytest tests/architecture/ -q` → **17 passed**

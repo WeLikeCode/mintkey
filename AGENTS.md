@@ -54,7 +54,7 @@ When a tool is missing or unfamiliar, **install or learn it**, then run it. Do n
 - When the task crosses a boundary not covered by an existing ADR or contract, **stop and surface the question** rather than improvise. Add it to [`docs/architecture/01-architecture/open-questions.md`](docs/architecture/01-architecture/open-questions.md) as `OQ-NNN`.
 - Do not invent contract surfaces. If the OpenAPI doesn't have an endpoint and you think it should, propose it (write a small proposal under `docs/architecture/proposal/` or, for tiny additions, a TODO in the relevant ADR's open follow-ups).
 
-Before any concrete-fix work begins: confirm the 9 intake fields are filled (`team/remediation/ISSUE_INTAKE_TEMPLATE.md`). If they aren't, ask the user — do NOT start.
+Before any concrete-fix work begins: confirm the 9 intake fields are filled (`remediation/ISSUE_INTAKE_TEMPLATE.md`). If they aren't, ask the user — do NOT start.
 
 ### Principle 3 — When working autonomously, follow the loop
 
@@ -227,7 +227,7 @@ docker compose up -d
 #   postgres_data (agents, services, audit, credentials, permission_grants, …),
 #   vault_data + vault_kek, bootstrap_secrets, grafana_data, broker_wal, proxy_wal.
 # ALWAYS run `bash scripts/dev-backup.sh` first.
-# See team/remediation/HOWTO-backup-before-reset.md (EV-DESTRUCTIVE-007).
+# See docs/operations/backup-before-reset.md (EV-DESTRUCTIVE-007).
 docker compose down -v
 
 # Plaintext-in-logs red team
@@ -302,11 +302,11 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 
 For agents without skills (Codex, opencode, etc.), this section is the entire routing — there is no separate skill file to read.
 
-When a user asks you to make a code change, route the work using this table. **Same table appears in `team/remediation/README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `CLAUDE.md` — they must stay in lock-step.**
+When a user asks you to make a code change, route the work using this table. **Same table appears in `remediation/README.md`, `CONTRIBUTING.md`, `AGENTS.md`, and `CLAUDE.md` — they must stay in lock-step.**
 
 | Request Type | Required Path | Issue Intake | Reviewer |
 |---|---|---|---|
-| "Fix this bug" with clear evidence | `team/remediation/YYYY-MM-DD-<topic>/` | Full intake file (`ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
+| "Fix this bug" with clear evidence | `remediation/active/YYYY-MM-DD-<topic>/` | Full intake file (`remediation/ISSUE_INTAKE_TEMPLATE.md`) | Independent REVIEWER subagent |
 | "Fix this bug" without clear evidence | Ask for issue intake first; **do not start** | Required BEFORE any chunk dispatch | After intake lands |
 | Multi-file remediation | Orchestrator pattern required (`remediation-orchestrator` skill) | Full intake file | Independent REVIEWER per chunk |
 | Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
@@ -346,7 +346,7 @@ For rows 3-4 (multi-file / security / release / auth / audit / credential / tena
 - Fresh REVIEWER agents independently verify each chunk.
 - PASS / FAIL / ESCALATE — 3-strike hard-stop per chunk.
 
-Full protocol in `~/.claude/skills/remediation-orchestrator/SKILL.md` (Claude Code) and `team/remediation/README.md` (project-level).
+Full protocol in `~/.claude/skills/remediation-orchestrator/SKILL.md` (Claude Code) and `remediation/README.md` (project-level).
 
 ---
 

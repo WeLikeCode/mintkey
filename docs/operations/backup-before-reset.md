@@ -249,7 +249,7 @@ contributor is surprised.
 > below are advisory; run them only if you want recurring automated backups.
 >
 > **EV-GAP-005 closed** by `scripts/dev-backup-cron.example.sh` +
-> `team/remediation/2026-05-18-r5-pg-dump-cron-docs/`.
+> `remediation/archive/2026/05/2026-05-18-r5-pg-dump-cron-docs/`.
 
 ### Why periodic backups
 
@@ -345,7 +345,7 @@ tail -50 .mintkey-backups/cron.log
 ## Source / EvidenceRef map
 
 Every claim in this document traces to a row in
-[`team/remediation/2026-05-18-dev-settings-backup-recovery/EVIDENCE_LEDGER.md`](2026-05-18-dev-settings-backup-recovery/EVIDENCE_LEDGER.md).
+[`remediation/archive/2026/05/2026-05-18-dev-settings-backup-recovery/EVIDENCE_LEDGER.md`](../remediation/archive/2026/05/2026-05-18-dev-settings-backup-recovery/EVIDENCE_LEDGER.md).
 
 | Section | EvidenceRefs cited |
 |---|---|

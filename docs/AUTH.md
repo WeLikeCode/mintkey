@@ -186,7 +186,7 @@ docker compose start keycloak
 > ```bash
 > bash scripts/dev-backup.sh --write --with-secrets
 > ```
-> Full workflow: [team/remediation/HOWTO-backup-before-reset.md](../team/remediation/HOWTO-backup-before-reset.md).
+> Full workflow: [docs/operations/backup-before-reset.md](../docs/operations/backup-before-reset.md).
 > (EvidenceRef: DSBR session `EV-DESTRUCTIVE-011`.)
 
 ```bash

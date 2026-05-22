@@ -5,7 +5,7 @@
 docker compose up -d                        # start all 15 services
 docker compose up -d --build                # rebuild and start
 docker compose logs -f admin-api            # tail specific service logs
-docker compose down -v                      # ⚠ DESTRUCTIVE — removes ALL 7 named volumes (postgres_data, vault_data, vault_kek, bootstrap_secrets, grafana_data, broker_wal, proxy_wal). Run `bash scripts/dev-backup.sh` first. See team/remediation/HOWTO-backup-before-reset.md (EV-DESTRUCTIVE-008).
+docker compose down -v                      # ⚠ DESTRUCTIVE — removes ALL 7 named volumes (postgres_data, vault_data, vault_kek, bootstrap_secrets, grafana_data, broker_wal, proxy_wal). Run `bash scripts/dev-backup.sh` first. See docs/operations/backup-before-reset.md (EV-DESTRUCTIVE-008).
 docker compose run --rm liquibase           # run DB migrations manually
 ```
 

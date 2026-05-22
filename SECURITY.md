@@ -313,4 +313,4 @@ For `v0.1.0-prealpha`, **option 1 is the policy**. Expect ~800-900 open Trivy al
 
 ---
 
-**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security -> Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.
+**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security -> Code scanning alerts UI with a rationale comment referencing this section. See `remediation/archive/2026/05/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.

@@ -17,14 +17,14 @@
 
 ## Wave 1 — Remediation archive (C-1)
 
-- [ ] 1.1 — Create `remediation/{SESSION_TEMPLATE,active,archive/2026/05}` directory tree (R-1.1)
-- [ ] 1.2 — `git mv team/remediation/SESSION_TEMPLATE/ remediation/SESSION_TEMPLATE/` (R-1.2; skip if not present)
-- [ ] 1.3 — `git mv team/remediation/<each-dated-session>/ remediation/archive/2026/05/<session>/` for all 43 archived sessions (R-1.3)
-- [ ] 1.4 — Active session at `remediation/active/2026-05-22-monorepo-structure-cleanup/` already in place from C-0 (R-1.4) — verify only
-- [ ] 1.5 — `git mv team/remediation/README.md remediation/README.md` if present; move any `HOWTO-backup-before-reset.md` to `docs/operations/backup-before-reset.md` if operator-facing (R-1.5)
-- [ ] 1.6 — Remove `team/.gitkeep` and `team/` directory if empty post-move (R-1.6)
-- [ ] 1.7 — Sweep references to `team/remediation/` in non-session tracked files (README, KIRO, AGENTS, CLAUDE, Makefile, docs, .kiro, .github/workflows) → update to `remediation/{archive/2026/05,active,…}/` paths (R-1.7)
-- [ ] 1.8 — Path-reference verification: `git ls-files | xargs grep -l "team/remediation" | grep -v archive/2026/05/` must be empty (or each remaining hit documented as historical) (R-1.8, R-7.1)
+- [x] 1.1 — Create `remediation/{SESSION_TEMPLATE,active,archive/2026/05}` directory tree (R-1.1)
+- [x] 1.2 — `git mv team/remediation/SESSION_TEMPLATE/ remediation/SESSION_TEMPLATE/` (R-1.2; skip if not present)
+- [x] 1.3 — `git mv team/remediation/<each-dated-session>/ remediation/archive/2026/05/<session>/` for all 43 archived sessions (R-1.3)
+- [x] 1.4 — Active session at `remediation/active/2026-05-22-monorepo-structure-cleanup/` already in place from C-0 (R-1.4) — verify only
+- [x] 1.5 — `git mv team/remediation/README.md remediation/README.md` if present; move any `HOWTO-backup-before-reset.md` to `docs/operations/backup-before-reset.md` if operator-facing (R-1.5)
+- [x] 1.6 — Remove `team/.gitkeep` and `team/` directory if empty post-move (R-1.6)
+- [x] 1.7 — Sweep references to `team/remediation/` in non-session tracked files (README, KIRO, AGENTS, CLAUDE, Makefile, docs, .kiro, .github/workflows) → update to `remediation/{archive/2026/05,active,…}/` paths (R-1.7)
+- [x] 1.8 — Path-reference verification: `git ls-files | xargs grep -l "team/remediation" | grep -v archive/2026/05/` must be empty (or each remaining hit documented as historical) (R-1.8, R-7.1)
 - [ ] **5 — CHECKPOINT C-1 reviewer PASS** (R-7.1)
 
 ## Wave 1 (parallel) — Apps move (C-2)
