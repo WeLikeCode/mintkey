@@ -25,7 +25,7 @@
 - [x] 1.6 — Remove `team/.gitkeep` and `team/` directory if empty post-move (R-1.6)
 - [x] 1.7 — Sweep references to `team/remediation/` in non-session tracked files (README, KIRO, AGENTS, CLAUDE, Makefile, docs, .kiro, .github/workflows) → update to `remediation/{archive/2026/05,active,…}/` paths (R-1.7)
 - [x] 1.8 — Path-reference verification: `git ls-files | xargs grep -l "team/remediation" | grep -v archive/2026/05/` must be empty (or each remaining hit documented as historical) (R-1.8, R-7.1)
-- [ ] **5 — CHECKPOINT C-1 reviewer PASS** (R-7.1)
+- [x] **5 — CHECKPOINT C-1 reviewer PASS** (R-7.1) — passed 2026-05-22 by fresh Opus reviewer; one nit (matrix SHA placeholder) fixed in this commit
 
 ## Wave 1 (parallel) — Apps move (C-2)
 
