@@ -4,8 +4,8 @@
 
 This feature adds a pre-baked Grafana dashboard that visualizes proxied request traffic using metrics derived from existing OTel spans. The implementation requires two artifacts:
 
-1. **OTel Collector spanmetrics connector** — added to `otel-collector-config.yaml` to derive Prometheus counter and histogram metrics from `mintkey.proxy.handle_request` spans.
-2. **Grafana dashboard JSON** — provisioned at `grafana/provisioning/dashboards/request-monitoring.json`, auto-loaded by the existing dashboard provider.
+1. **OTel Collector spanmetrics connector** — added to `infra/observability/otel-collector-config.yaml` to derive Prometheus counter and histogram metrics from `mintkey.proxy.handle_request` spans.
+2. **Grafana dashboard JSON** — provisioned at `infra/observability/infra/observability/grafana/provisioning/dashboards/request-monitoring.json`, auto-loaded by the existing dashboard provider.
 
 No proxy plugin code changes are required. The spanmetrics connector extracts dimensions (`mintkey_actor_id`, `mintkey_service_id`, `mintkey_outcome`) from span attributes already emitted by the proxy plugin.
 
@@ -59,7 +59,7 @@ The `spanmetrics` connector appears as an exporter in the traces pipeline and as
 
 ### 1. Spanmetrics Connector Configuration
 
-Added to `otel-collector-config.yaml` under the `connectors:` top-level key:
+Added to `infra/observability/otel-collector-config.yaml` under the `connectors:` top-level key:
 
 ```yaml
 connectors:
@@ -113,7 +113,7 @@ service:
 
 ### 3. Grafana Dashboard Structure
 
-The dashboard JSON at `grafana/provisioning/dashboards/request-monitoring.json` contains:
+The dashboard JSON at `infra/observability/infra/observability/grafana/provisioning/dashboards/request-monitoring.json` contains:
 
 | Element | Type | Purpose |
 |---------|------|---------|
@@ -153,12 +153,12 @@ The dashboard JSON at `grafana/provisioning/dashboards/request-monitoring.json` 
 }
 ```
 
-**Datasource UID:** The provisioned datasource at `grafana/provisioning/datasources/prometheus.yaml` does not set an explicit UID. Grafana auto-assigns one. The dashboard uses `"uid": "${DS_PROMETHEUS}"` — a Grafana built-in variable that resolves to the default datasource. Since Prometheus is configured as `isDefault: true`, this works without hardcoding a UID.
+**Datasource UID:** The provisioned datasource at `infra/observability/infra/observability/grafana/provisioning/datasources/prometheus.yaml` does not set an explicit UID. Grafana auto-assigns one. The dashboard uses `"uid": "${DS_PROMETHEUS}"` — a Grafana built-in variable that resolves to the default datasource. Since Prometheus is configured as `isDefault: true`, this works without hardcoding a UID.
 
 Alternatively, we add `uid: prometheus` to the datasource provisioning YAML and reference it directly. This is more robust. The design chooses this approach:
 
 ```yaml
-# grafana/provisioning/datasources/prometheus.yaml (addition)
+# infra/observability/grafana/provisioning/datasources/prometheus.yaml (addition)
 datasources:
   - name: Prometheus
     type: prometheus
@@ -301,7 +301,7 @@ Although this feature produces declarative configuration files (not pure functio
 
 ### Testing Approach
 
-1. **YAML validation** — Verify `otel-collector-config.yaml` is valid YAML and contains the expected `connectors.spanmetrics` key with correct structure.
+1. **YAML validation** — Verify `infra/observability/otel-collector-config.yaml` is valid YAML and contains the expected `connectors.spanmetrics` key with correct structure.
 
 2. **Dashboard JSON validation** — Verify `request-monitoring.json` is valid JSON, has the expected panels, template variables, and datasource references.
 

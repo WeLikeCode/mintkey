@@ -57,8 +57,8 @@ Use extended thinking before further tool use. Then output a plan with these sec
 1. **Scope** — bullet list of behavior to ship; bullet list of what's explicitly out (defer to a later task or another T-ID).
 2. **Work units** — atomic deliverables sized for the **Sonnet hint** in the task. Each unit names the file(s) it will touch. Example:
    - U1: Write `tests/unit/admin_api/test_health.py` with the 4 assertions from REQ-1 AC7.
-   - U2: Implement `admin-api/src/admin_api/api/health.py` `/v1/health` endpoint.
-   - U3: Implement `admin-api/src/admin_api/api/health.py` `/v1/ready` endpoint with the 4 dependency checks.
+   - U2: Implement `apps/admin-api/src/admin_api/api/health.py` `/v1/health` endpoint.
+   - U3: Implement `apps/admin-api/src/admin_api/api/health.py` `/v1/ready` endpoint with the 4 dependency checks.
 3. **Dependency graph** — for each unit, list which other units must finish first. Mark units with no upstream as `[parallelizable]`. (For most Mintkey tasks, units are sequential because of the TDD `test → impl → verify` cadence; parallelism appears mostly inside Phase 4 cohorts when independent test files are being written.)
 4. **Milestones** — group units into 1–4 milestones following the Sonnet hint's session boundaries (e.g. M1 schema + RLS template; M2 architecture test). Each milestone ends with a Phase-5 review/test gate.
 5. **Validators that will run** — list the specific commands from `AGENTS.md` § "Verification commands" that this task's Acceptance criteria require (e.g. `pytest tests/architecture/test_rls_coverage.py`, `mmdc` if Mermaid touched, `sqlacodegen` if schema touched, etc.).
@@ -79,8 +79,8 @@ Before any code is written, ALL must hold:
    - Proto: `docs/architecture/contracts/vault-adapter/vault.proto` (run `protoc --descriptor_set_out=/dev/null`).
 4. Every ADR cited in `Refs` exists at `docs/architecture/01-architecture/adr/NNNN-*.md` with status `Accepted` (not `Superseded` unless the task knowingly targets the new one).
 5. No `OQ-NNN` in `docs/architecture/01-architecture/open-questions.md` is marked as blocking the requirement IDs this task touches.
-6. The Liquibase changelogs the task depends on are present at `admin-api/db/changelog/` (or, if the task itself adds them, the parent migration that sets up `databasechangelog` is present).
-7. The `mintkey-models` shared package has the schemas/models the task imports (or the task itself adds them per Liquibase-then-mirror discipline; never the other way around).
+6. The Liquibase changelogs the task depends on are present at `apps/admin-api/db/changelog/` (or, if the task itself adds them, the parent migration that sets up `databasechangelog` is present).
+7. The `packages/python/mintkey-models` shared package has the schemas/models the task imports (or the task itself adds them per Liquibase-then-mirror discipline; never the other way around).
 
 If ANY check fails: STOP. Output the missing artifact, the steering rule that requires it (`AGENTS.md` Principle 2 — "Do not invent contract surfaces"), and the recommended next action (e.g. "ask the architect to add §4.3 to design.md", "open OQ-NNN", "add Liquibase changelog 002 first as task T-1.0.1.a"). Do NOT silently invent design content.
 
@@ -107,7 +107,7 @@ For each milestone in turn, execute its work units. The default cadence per unit
 **File-ownership boundaries (enforced — do not cross):**
 
 - **You may touch:**
-  - `admin-api/`, `mcp-server/`, `services/<name>/` (Go services), `mintkey-models/`, `admin-ui/`, `mock-backend/`, `seed-job/`, `audit-verify-job/`.
+  - `apps/admin-api/`, `apps/mcp-server/`, `apps/broker/`, `apps/vault-adapter/`, `apps/kong-syncer/`, `apps/proxy-plugin/`, `apps/admin-ui/`, `apps/mock-backend/`, `apps/seed-job/`, `apps/audit-verify-job/`, `packages/python/mintkey-models/`, `packages/go/`.
   - `tests/unit/`, `tests/acceptance/`, `tests/architecture/`.
   - The task's own line in `.kiro/specs/mintkey-mvp/tasks.md` (Phase 6 close-out only).
   - `docker-compose.yml` (only if the task explicitly touches it, e.g. T-1.0.10).
@@ -182,7 +182,7 @@ If the gate returns BLOCKERS: address them (loop back into Phase 4 with a tighte
 
 1. **Update `tasks.md`**: change the task's status marker (if the task body has a `- [ ]` line in the Phase 1 Exit Criteria Checklist, change it to `- [x]`). Append a parenthetical with key artifact paths, e.g.:
    ```
-   - [x] T-1.0.1: Liquibase changelogs — initial schema (impl: admin-api/db/changelog/001-initial-schema.yaml..010-indexes.yaml; test: tests/architecture/test_rls_coverage.py; review: PASS at M1, M2)
+   - [x] T-1.0.1: Liquibase changelogs — initial schema (impl: apps/admin-api/db/changelog/001-initial-schema.yaml..010-indexes.yaml; test: tests/architecture/test_rls_coverage.py; review: PASS at M1, M2)
    ```
 2. **Surface deferred sub-items** as new entries in `tasks.md` — never bury them in chat. Use the next-available sub-numeric (e.g. `T-1.0.1.a`).
 3. **Run the Phase-1 Exit-Criteria-Checklist sweep** at the bottom of `tasks.md` and tick any rows your task fully satisfies.

@@ -43,7 +43,7 @@ for the manual release procedure.
 ### Changed (OSS readiness pass)
 
 - Canonical version `0.1.0-preview.1` applied across `admin-ui/package.json`,
-  `mintkey-models/pyproject.toml`, `docs/architecture/contracts/rest/openapi.yaml`,
+  `packages/python/mintkey-models/pyproject.toml`, `docs/architecture/contracts/rest/openapi.yaml`,
   and README status table — replacing the inconsistent mix of `1.0.0`,
   `0.1.0-experimental`, and `0.1.0`.
 - `docs/RELEASE.md` added: manual release procedure, versioning policy, GHCR
@@ -121,14 +121,14 @@ for the manual release procedure.
 ## [1.0.1] — 2026-05-11
 
 ### Added
-- **admin-api** (`admin-api/`) — FastAPI service: health/ready endpoints, tenant-context middleware, CSRF, OTel, Liquibase changelogs (`db/changelog/001–010.yaml`), full CRUD for services/credentials/agents/permissions/audit, rotation + revocation endpoints, admin settings, audit chain verify/acknowledge, PlatformAdmin tenant management
-- **mintkey-models** (`mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification
-- **mcp-server** — FastAPI MCP service: agent auth, `list_services` / `describe_service` / `get_openapi` / `request_token` tools, change-channel subscriber
-- **services/broker** — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter, multi-tenant token claims
-- **services/kong-syncer** — LISTEN/NOTIFY subscriber, Kong declarative YAML push, reconciliation on startup
-- **services/proxy-plugin** — full Kong Go plugin: JWT verify → permissions → Vault gRPC → credential injection (7 auth schemes) → response scrub → audit; revocation sets, egress allowlist
-- **services/vault-adapter** — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server (Put/Get/Revoke/ListVersions/ValidateServiceIdentity/RotateCredential), encrypted-DEK cache
-- **internal** — shared Go packages: `audit`, `changes`, `ulid`, `otelinit`, `svcid`, `cfg`, `models`
+- **admin-api** (`apps/admin-api/`) — FastAPI service: health/ready endpoints, tenant-context middleware, CSRF, OTel, Liquibase changelogs (`db/changelog/001–010.yaml`), full CRUD for services/credentials/agents/permissions/audit, rotation + revocation endpoints, admin settings, audit chain verify/acknowledge, PlatformAdmin tenant management
+- **mintkey-models** (`packages/python/mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification
+- **mcp-server** (`apps/mcp-server/`) — FastAPI MCP service: agent auth, `list_services` / `describe_service` / `get_openapi` / `request_token` tools, change-channel subscriber
+- **apps/broker** — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter, multi-tenant token claims
+- **apps/kong-syncer** — LISTEN/NOTIFY subscriber, Kong declarative YAML push, reconciliation on startup
+- **apps/proxy-plugin** — full Kong Go plugin: JWT verify → permissions → Vault gRPC → credential injection (7 auth schemes) → response scrub → audit; revocation sets, egress allowlist
+- **apps/vault-adapter** — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server (Put/Get/Revoke/ListVersions/ValidateServiceIdentity/RotateCredential), encrypted-DEK cache
+- **packages/go** — shared Go packages: `audit`, `changes`, `ulid`, `otelinit`, `svcid`, `cfg`, `models`
 - **audit-verify-job** — standalone hash-chain verification job
 - **mock-backend** — 11 FastAPI endpoints covering all 7 auth schemes plus utility endpoints (timeout, 5xx, redirects, echo)
 - **docker-compose.yml** + `go.work` — full local stack wiring all services
@@ -139,14 +139,14 @@ for the manual release procedure.
 First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks are implemented and tested.
 
 ### Foundation (M1.0)
-- **Liquibase changelogs** (`admin-api/db/changelog/001–010.yaml`) — 10 domain tables, RLS policies with PlatformAdmin escape, 3 DB roles, indexes
-- **mintkey-models** (`mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification, Pydantic `ConstraintsSchema`
-- **Shared Go packages** (`internal/`) — `audit`, `changes`, `ulid`, `otelinit`, `svcid` packages
-- **Admin API skeleton** (`admin-api/`) — FastAPI with `/v1/health`, `/v1/ready`, tenant-context middleware, CSRF middleware, OTel instrumentation
-- **Vault Adapter** (`services/vault-adapter/`) — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server with `ValidateServiceIdentity`, encrypted-DEK cache with change-channel invalidation
-- **Credential Broker** (`services/broker/`) — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter
-- **Kong-syncer** (`services/kong-syncer/`) — LISTEN/NOTIFY subscriber, Kong declarative YAML push
-- **Proxy Plugin** (`services/proxy-plugin/`) — JWT verification, credential injection (7 auth schemes), Vault gRPC client, response scrubber, audit emission, revocation sets, JWKS cache with TTL
+- **Liquibase changelogs** (`apps/admin-api/db/changelog/001–010.yaml`) — 10 domain tables, RLS policies with PlatformAdmin escape, 3 DB roles, indexes
+- **mintkey-models** (`packages/python/mintkey-models/`) — SQLAlchemy 2.x async Mapped types, `audit_emit()` with per-tenant advisory lock + hash chain, `set_tenant_context()`, OTel `RedactingSpanProcessor`, `AdminUiSignedRequest` verification, Pydantic `ConstraintsSchema`
+- **Shared Go packages** (`packages/go/`) — `audit`, `changes`, `ulid`, `otelinit`, `svcid` packages
+- **Admin API skeleton** (`apps/admin-api/`) — FastAPI with `/v1/health`, `/v1/ready`, tenant-context middleware, CSRF middleware, OTel instrumentation
+- **Vault Adapter** (`apps/vault-adapter/`) — AES-256-GCM envelope encryption, SQLite DEK store, gRPC server with `ValidateServiceIdentity`, encrypted-DEK cache with change-channel invalidation
+- **Credential Broker** (`apps/broker/`) — Ed25519 JWT issuance, JWKS endpoint, force-refresh rate limiter
+- **Kong-syncer** (`apps/kong-syncer/`) — LISTEN/NOTIFY subscriber, Kong declarative YAML push
+- **Proxy Plugin** (`apps/proxy-plugin/`) — JWT verification, credential injection (7 auth schemes), Vault gRPC client, response scrubber, audit emission, revocation sets, JWKS cache with TTL
 
 ### Auth (M1.1)
 - Internal Argon2id login with identical-body timing equalization and DUMMY_HASH
@@ -185,7 +185,7 @@ First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks
 ### Observability (M1.10)
 - Two-layer OTel redaction: `RedactingSpanProcessor` (SDK) + `attributes/redact` + `redaction` processors (Collector)
 - Jaeger integration with trace propagation through all services
-- `prometheus.yml` configured; `/metrics` scrape targets for all containers
+- `infra/observability/prometheus.yml` configured; `/metrics` scrape targets for all containers
 
 ### Multi-tenancy (M1.12)
 - `POST /v1/tenants` (PlatformAdmin only) with genesis hash + `audit_chain_state` init
@@ -238,7 +238,7 @@ First complete implementation of the Mintkey MVP. All Phase 1 core backend tasks
 
 ### Added
 
-- **Grafana Request Monitoring dashboard** — pre-baked dashboard at `grafana/provisioning/dashboards/request-monitoring.json` with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix) and agent/service template variables
+- **Grafana Request Monitoring dashboard** — pre-baked dashboard at `infra/observability/grafana/provisioning/dashboards/request-monitoring.json` with 4 panels (Request Rate, Request Count, Outcome Breakdown, Agent-Service Matrix) and agent/service template variables
 - **OTel Collector spanmetrics connector** — derives `mintkey_proxy_calls_total` and `mintkey_proxy_duration_milliseconds_*` from `mintkey.proxy.handle_request` spans with actor, service, and outcome dimensions
 - **Explicit Prometheus datasource UID** — `uid: prometheus` added to provisioning for stable dashboard references
 - **Validation tests** — unit tests for OTel config structure and dashboard JSON correctness

@@ -170,7 +170,7 @@ A vanilla MCP client can connect to Mintkey at `http://<MINTKEY_MCP_PUBLIC_URL>/
 
 This means operators probing the server with curl get useful 200 JSON instead of a 404 wall, and vanilla MCP clients can configure `http://<host>:8082/mcp` without needing source-code inspection.
 
-See [AUTH.md](AUTH.md) for which header to send (Bearer preferred). See [mcp-server/skills/agent-bootstrap.md](../mcp-server/skills/agent-bootstrap.md) for the full agent onboarding flow.
+See [AUTH.md](AUTH.md) for which header to send (Bearer preferred). See [apps/mcp-server/skills/agent-bootstrap.md](../apps/mcp-server/skills/agent-bootstrap.md) for the full agent onboarding flow.
 
 ## See also
 

@@ -77,7 +77,7 @@ Kiro generates server stubs, client SDKs, test fixtures, and validation logic fr
 | REST OpenAPI 3.1 | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/rest/openapi.yaml`](../contracts/rest/) | Admin REST API + MCP server emit it |
 | MCP tool schemas | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/mcp/tools.yaml`](../contracts/mcp/) | MCP Server |
 | Event schemas (audit + OTel attributes) | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/events/`](../contracts/events/) | Audit Service |
-| DB schema (Liquibase changelog) | ✅ 16 changelogs in `admin-api/db/changelog/` | `/admin-api/db/changelog/` | Admin REST API |
+| DB schema (Liquibase changelog) | ✅ 16 changelogs in `apps/admin-api/db/changelog/` | `/apps/admin-api/db/changelog/` | Admin REST API |
 | JWT claim schema | ✅ in [ADR‑0006](../01-architecture/adr/0006-token-format-and-binding.md) | inline | Credential Broker |
 | Vault Adapter gRPC IDL | ✅ `vault.proto` in `docs/architecture/contracts/vault-adapter/` | [`/docs/architecture/contracts/vault-adapter/`](../contracts/vault-adapter/) | Vault Adapter |
 

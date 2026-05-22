@@ -98,23 +98,23 @@ flowchart LR
 
 ---
 
-## 1. Shared infrastructure (`internal/` + `mintkey-models/`)
+## 1. Shared infrastructure (`packages/go/` + `packages/python/mintkey-models/`)
 
 **Purpose:** shared Go packages and Python package used by every service in their respective language.
 
-### Go: `internal/`
+### Go: `packages/go/`
 
 | Package | Responsibility |
 |---|---|
-| `internal/changes` | Postgres `LISTEN/NOTIFY` client over `pgx`. **Mandatory tenant‑scope configuration at startup**: callers pass either an explicit tenant list or the `[ALL_TENANTS]` sentinel; the wrapper **panics on startup** if no scope is configured ([REQ‑MT‑4](requirements.md), [ADR‑0014.1](../../../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md)). Reconnect + heartbeat (60 s timeout) + reconciliation via `GET /v1/changes?since=<event_id>` on disconnect. |
-| `internal/audit` | `audit.Emit(ctx, event)` — the **single audit chokepoint**. Emits to Postgres inside the caller's transaction; computes and stores `prev_hash` + `hash` per ADR‑0014.7 + REQ‑AUD‑3/4; takes a per‑tenant Postgres advisory lock for in‑order chain insertion. |
-| `internal/ulid` | ULID generation with type prefix. Recognized prefixes: `tenant_`, `operator_`, `agent_`, `svc_`, `cred_`, `perm_`, `audit_`, `change_`, `session_`, `system_`, `jti_`, `kid_`. |
-| `internal/otelinit` | OTel SDK bootstrap (tracer + meter + logger). **SDK‑level redaction filter** runs against the [forbidden span attribute patterns](../../../docs/architecture/contracts/events/span-attributes.md): exact names, suffix patterns (`*_token`, `*_secret`, `*_password`, `*_passphrase`), credential‑signature regex. Per ADR‑0017.6 / REQ‑11.6. |
-| `internal/cfg` | Env‑based config loader using `caarlos0/env/v10`. |
-| `internal/models` | Shared Go structs **mirroring** the Liquibase schema. Per [REQ‑SCHEMA‑1](requirements.md) / [ADR‑0015](../../../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md), structs **never** add a column not present in Liquibase. CI mirror‑diff test (REQ‑12.6.6) enforces this. |
-| `internal/svcid` | Service‑identity boot‑secret client. Reads token from `/run/secrets/mintkey_service_token` at startup; presents it as `X-Mintkey-Service-Token` on every gRPC/HTTP call to the Vault Adapter (REQ‑SEC‑8 / ADR‑0014.2). |
+| `packages/go/changes` | Postgres `LISTEN/NOTIFY` client over `pgx`. **Mandatory tenant‑scope configuration at startup**: callers pass either an explicit tenant list or the `[ALL_TENANTS]` sentinel; the wrapper **panics on startup** if no scope is configured ([REQ‑MT‑4](requirements.md), [ADR‑0014.1](../../../docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md)). Reconnect + heartbeat (60 s timeout) + reconciliation via `GET /v1/changes?since=<event_id>` on disconnect. |
+| `packages/go/audit` | `audit.Emit(ctx, event)` — the **single audit chokepoint**. Emits to Postgres inside the caller's transaction; computes and stores `prev_hash` + `hash` per ADR‑0014.7 + REQ‑AUD‑3/4; takes a per‑tenant Postgres advisory lock for in‑order chain insertion. |
+| `packages/go/ulid` | ULID generation with type prefix. Recognized prefixes: `tenant_`, `operator_`, `agent_`, `svc_`, `cred_`, `perm_`, `audit_`, `change_`, `session_`, `system_`, `jti_`, `kid_`. |
+| `packages/go/otelinit` | OTel SDK bootstrap (tracer + meter + logger). **SDK‑level redaction filter** runs against the [forbidden span attribute patterns](../../../docs/architecture/contracts/events/span-attributes.md): exact names, suffix patterns (`*_token`, `*_secret`, `*_password`, `*_passphrase`), credential‑signature regex. Per ADR‑0017.6 / REQ‑11.6. |
+| `packages/go/cfg` (deleted — empty placeholder) | Env‑based config loader using `caarlos0/env/v10`. |
+| `packages/go/models` (deleted — empty placeholder) | Shared Go structs **mirroring** the Liquibase schema. Per [REQ‑SCHEMA‑1](requirements.md) / [ADR‑0015](../../../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md), structs **never** add a column not present in Liquibase. CI mirror‑diff test (REQ‑12.6.6) enforces this. |
+| `packages/go/svcid` | Service‑identity boot‑secret client. Reads token from `/run/secrets/mintkey_service_token` at startup; presents it as `X-Mintkey-Service-Token` on every gRPC/HTTP call to the Vault Adapter (REQ‑SEC‑8 / ADR‑0014.2). |
 
-### Python: `mintkey-models/`
+### Python: `packages/python/mintkey-models/`
 
 | Module | Responsibility |
 |---|---|
@@ -129,7 +129,7 @@ flowchart LR
 
 ## 2. Database schema (Liquibase = source of truth)
 
-Schema lives in `admin-api/db/changelog/`. Per [REQ‑SCHEMA‑1](requirements.md) / [ADR‑0015](../../../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md), Liquibase YAML changelogs are authoritative. SQLAlchemy and Go `internal/models` mirror this schema; the CI mirror‑diff fails the build on any drift.
+Schema lives in `apps/admin-api/db/changelog/`. Per [REQ‑SCHEMA‑1](requirements.md) / [ADR‑0015](../../../docs/architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md), Liquibase YAML changelogs are authoritative. SQLAlchemy and Go `packages/go/models` (deleted — empty placeholder) mirror this schema; the CI mirror‑diff fails the build on any drift.
 
 ### Tenant‑scoped tables (RLS enforced)
 
@@ -226,14 +226,14 @@ Re‑runs steps 6–9 with new secrets; the Vault Adapter accepts the new and ol
 
 ---
 
-## 4. Admin REST API (`admin-api/`)
+## 4. Admin REST API (`apps/admin-api/`)
 
 **Language:** Python 3.12, FastAPI, SQLAlchemy 2.x async, Pydantic v2, `asyncpg`, `authlib`, `argon2-cffi`, `structlog`, `ruff` + `mypy --strict`, `uv`.
 
 ### Internal structure
 
 ```
-admin-api/src/admin_api/
+apps/admin-api/src/admin_api/
   main.py                    # FastAPI app factory, lifespan, middleware registration
   api/
     auth.py                  # POST /v1/auth/internal-login, /logout, /oidc/login, /oidc/callback, /me
@@ -399,7 +399,7 @@ Every call carries the `X-Mintkey-Service-Token` metadata field with `svcid_admi
 
 ---
 
-## 5. Admin UI (`admin-ui/`)
+## 5. Admin UI (`apps/admin-ui/`)
 
 **Language:** Node 20, AdminJS 7.x, Express, `passport-openidconnect`, `pino`, `vitest`, `pnpm`. (ADR‑0019: no `@adminjs/sql`, `pg`, or `connect-pg-simple` — AdminJS holds no DB connection.)
 
@@ -447,7 +447,7 @@ The corresponding state‑changing JWT carries `tnt: null`; `admin-api` verifies
 
 ---
 
-## 6. MCP Server (`mcp-server/`)
+## 6. MCP Server (`apps/mcp-server/`)
 
 **Language:** Python 3.12, Anthropic `mcp` SDK, FastAPI (for `/v1/health`, `/v1/ready`).
 
@@ -472,7 +472,7 @@ async def authenticate_agent(authorization: str) -> AgentSession:
     return AgentSession(agent_id=data["agent_id"], tenant_id=data["tenant_id"])
 ```
 
-The internal endpoint `POST /v1/internal/validate-agent-key` is **not** part of the public OpenAPI surface; it's documented in `admin-api/internal-contracts.md` (a sibling spec document). It accepts only callers presenting a valid `ServiceIdentity` boot secret.
+The internal endpoint `POST /v1/internal/validate-agent-key` is **not** part of the public OpenAPI surface; it's documented in `apps/admin-api/internal-contracts.md` (a sibling spec document). It accepts only callers presenting a valid `ServiceIdentity` boot secret.
 
 ### Tenant context
 
@@ -498,7 +498,7 @@ On `agent.revoked` for an agent with an active session: terminate the connection
 
 ---
 
-## 7. Credential Broker (`services/broker/`)
+## 7. Credential Broker (`apps/broker/`)
 
 **Language:** Go 1.22, `chi/v5`, `go-jose/v4`, `pgx/v5`.
 
@@ -572,7 +572,7 @@ func (b *Broker) Issue(ctx context.Context, req IssueRequest) (*IssueResponse, e
 
 ---
 
-## 8. Vault Adapter (`services/vault-adapter/`)
+## 8. Vault Adapter (`apps/vault-adapter/`)
 
 **Language:** Go 1.22, gRPC, `modernc.org/sqlite` (pure‑Go, no CGO), AES‑256‑GCM (stdlib `crypto/cipher`), Argon2id (`golang.org/x/crypto/argon2`).
 
@@ -643,7 +643,7 @@ This cache reduces the Vault Adapter's per‑request work from "DB read + KEK un
 
 ---
 
-## 9. Kong‑Syncer (`services/kong-syncer/`)
+## 9. Kong‑Syncer (`apps/kong-syncer/`)
 
 **Language:** Go 1.22, `chi/v5` (for `/v1/health`), `pgx/v5` (LISTEN/NOTIFY), Kong Admin API client.
 
@@ -703,7 +703,7 @@ On startup, fetch all services from `admin-api` (presenting `svcid_proxy`'s read
 
 ---
 
-## 10. Proxy Plugin (`services/proxy-plugin/`)
+## 10. Proxy Plugin (`apps/proxy-plugin/`)
 
 **Language:** Go 1.22, Kong `go-pdk`. Runs as a sidecar process to Kong, communicating via Unix socket.
 
@@ -751,7 +751,7 @@ var forbiddenBodyPatterns = []*regexp.Regexp{
 
 #### `log` phase
 
-1. Emit `proxy.hit` audit event via `POST /v1/internal/audit/emit` to `admin-api` (presenting `svcid_proxy`).
+1. Emit `proxy.hit` audit event via `POST /v1/internal/audit/emit` to `apps/admin-api` (presenting `svcid_proxy`).
 2. Best‑effort zero plaintext credential bytes from request context.
 
 ### In‑memory state
@@ -912,10 +912,10 @@ The Phase 1 file structure pre‑accommodates this: `mock-backend/src/mock_backe
 
 ### OTel Collector configuration
 
-The collector is the **second** layer of redaction. The **first** layer is the SDK‑level filter in `internal/otelinit` (Go) and the OTel SDK custom processor in Python — applied **before** spans leave each service. This two‑layer approach (per [REQ‑OBS‑2](requirements.md) / [ADR‑0017.6](../../../docs/architecture/01-architecture/adr/0017-round-3-corrections.md)) ensures redaction can't fail silently.
+The collector is the **second** layer of redaction. The **first** layer is the SDK‑level filter in `packages/go/otelinit` (Go) and the OTel SDK custom processor in Python — applied **before** spans leave each service. This two‑layer approach (per [REQ‑OBS‑2](requirements.md) / [ADR‑0017.6](../../../docs/architecture/01-architecture/adr/0017-round-3-corrections.md)) ensures redaction can't fail silently.
 
 ```yaml
-# otel-collector-config.yaml
+# infra/observability/otel-collector-config.yaml
 receivers:
   otlp:
     protocols:
@@ -990,7 +990,7 @@ mintkey.audit.emit
 mintkey.audit.chain_verify
 ```
 
-### Grafana dashboards (provisioned from `grafana/dashboards/`)
+### Grafana dashboards (provisioned from `infra/observability/grafana/dashboards/`)
 
 | Dashboard | Panels |
 |---|---|
@@ -1003,7 +1003,7 @@ mintkey.audit.chain_verify
 
 ## 14. Admin Settings Endpoint (REQ‑14)
 
-**Implementation surface in `admin-api/src/admin_api/api/settings.py`**:
+**Implementation surface in `apps/admin-api/src/admin_api/api/settings.py`**:
 
 ```python
 @router.get("/v1/admin/settings")
@@ -1130,7 +1130,7 @@ Per the test posture in [REQ‑12.6](requirements.md), every component has invar
 
 ## 17. Security design decisions (summary)
 
-1. **Credential never in plaintext outside Vault Adapter + proxy request scope.** Enforced by the SDK‑level redaction filter in `internal/otelinit`, the collector‑level redaction config, and the CI red‑team grep (REQ‑12.4).
+1. **Credential never in plaintext outside Vault Adapter + proxy request scope.** Enforced by the SDK‑level redaction filter in `packages/go/otelinit`, the collector‑level redaction config, and the CI red‑team grep (REQ‑12.4).
 2. **Audit is a chokepoint.** `audit.Emit` / `audit_emit` are the only paths. Architecture test asserts no state‑change handler bypasses (REQ‑12.6.8).
 3. **Audit hash chain is mandatory.** Per‑tenant chain with advisory‑lock‑enforced ordering. Verification job + on‑demand endpoint per REQ‑15.
 4. **RLS is the safety net.** Every tenant‑scoped table has the `tenant_isolation` policy with the `OR platform_admin_view='on'` escape. Architecture test asserts coverage and rejects no‑op policies (REQ‑12.6.7).

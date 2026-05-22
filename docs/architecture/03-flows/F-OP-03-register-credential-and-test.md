@@ -122,7 +122,7 @@ sequenceDiagram
 - Replay: re‑POST the same `jti` AdminJS→FastAPI signed envelope; assert 401 due to denylist ([ADR‑0016.1](../01-architecture/adr/0016-round-2-corrections.md)).
 
 ## Kiro spec inputs
-- **Components**: `vault-adapter` (Go), `admin-api/services/credentials_handlers.py`, `admin-api/services/test_run_handler.py`.
+- **Components**: `apps/vault-adapter` (Go), `apps/admin-api/services/credentials_handlers.py`, `apps/admin-api/services/test_run_handler.py`.
 - **Contract additions**: noted above.
 - **Tasks** (TDD):
   1. Write Vault Adapter integration test asserting envelope encryption + roundtrip.

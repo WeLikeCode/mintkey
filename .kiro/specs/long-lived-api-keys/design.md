@@ -70,7 +70,7 @@ sequenceDiagram
 
 ## 1. Schema Changes (Liquibase)
 
-New changeset: `admin-api/db/changelog/012-service-api-keys.yaml`. Liquibase is the source of truth (ADR-0015); the SQLAlchemy mirror is regenerated from the post-migration schema (§7). Explicit `rollback` block included (R7.5).
+New changeset: `apps/admin-api/db/changelog/012-service-api-keys.yaml`. Liquibase is the source of truth (ADR-0015); the SQLAlchemy mirror is regenerated from the post-migration schema (§7). Explicit `rollback` block included (R7.5).
 
 ### 1.1 `service_api_keys` table
 
@@ -128,7 +128,7 @@ ADR-0016.6's `AdminSettings` schema gains an `api_key` sub-object; mirrored in t
 
 ---
 
-## 2. Proxy Plugin Changes (`services/proxy-plugin/`)
+## 2. Proxy Plugin Changes (`apps/proxy-plugin/`)
 
 The plugin holds no DB connection (ADR-0014.4). It already has, on the `/v1/call/...` route: JWT verification, the JWKS cache, the `jti`/`sub` revocation sets, the Vault Adapter gRPC client, credential injection per auth scheme, the response scrubber, and the `mintkey:agent` change-channel subscriber. This feature adds a parallel "classical-key" branch.
 
@@ -201,7 +201,7 @@ A background goroutine sweeps the resolution cache every 60 s, dropping entries 
 
 ---
 
-## 3. Broker — Resolution Endpoint (`services/broker/`)
+## 3. Broker — Resolution Endpoint (`apps/broker/`)
 
 The Broker already runs an HTTP server (JWKS at `/.well-known/jwks.json`, `POST /v1/issue`). Add:
 
@@ -306,7 +306,7 @@ Every wire surface this feature touches, and the order (the OpenAPI-parity and S
 2. **Audit-event schema** (`docs/architecture/contracts/events/audit-event.schema.json`): add event types `api_key.created`, `api_key.revoked`, `api_key.rotated`; add `auth_method` (enum `brokered_jwt`/`api_key`), `api_key_id`, `key_fingerprint`, `reason_code` as fields on `proxy.hit`.
 3. **Change-event schema** (`docs/architecture/contracts/events/change-event.schema.json`): add `api_key.revoked` on `mintkey:agent`.
 4. **OTel allowlist** (`docs/architecture/contracts/events/span-attributes.md`): add `mintkey.auth_method` (enum value only — never the key or fingerprint).
-5. **SQLAlchemy mirror** (`mintkey-models/mintkey_models/db.py`): regenerate from the post-migration schema; CI mirror-diff gate must pass. Add the Pydantic models `ServiceApiKeyCreate`, `ServiceApiKey`, `ServiceApiKeyCreated`, and the `Constraints` reuse, to `mintkey-models`.
+5. **SQLAlchemy mirror** (`packages/python/mintkey-models/mintkey_models/db.py`): regenerate from the post-migration schema; CI mirror-diff gate must pass. Add the Pydantic models `ServiceApiKeyCreate`, `ServiceApiKey`, `ServiceApiKeyCreated`, and the `Constraints` reuse, to `mintkey-models`.
 6. **ADR notes**: a Status-line corrigendum on ADR-0016.6 pointing to the `AdminSettings.api_key` addition; ADR-0017.10's closed `mintkey:code` enum gains the new codes; ADR-0006 is untouched (the proxy distinguishes credential types by prefix; nothing about brokered JWTs changes).
 7. **CI gates**: OpenAPI parity, SQLAlchemy mirror diff, JSON-Schema validity, `protoc` compile (no `.proto` change here, but the gate runs), Mermaid render — all green on the post-feature tree.
 
@@ -320,9 +320,9 @@ Every wire surface this feature touches, and the order (the OpenAPI-parity and S
 |---|---|
 | `admin-api/api/api_keys.py` | create: `allowed_actions ⊄ grants` → 422 `api_key_actions_exceed_grant`; policy violations → 422 `api_key_policy_violation`; happy path returns plaintext once; audit `api_key.created` has no plaintext; fingerprint-collision retry |
 | `admin-api/api/api_keys.py` | revoke: one transaction (UPDATE + audit + NOTIFY); idempotent; 404 on absent; rotate: clones binding, recomputes expiry, emits `api_key.rotated`, does not revoke old |
-| `services/broker/internal/api/resolve` | unknown fingerprint → constant-time `api_key_invalid` (timing within ±10% of a real verify); wrong key → `api_key_invalid`; revoked row → `api_key_revoked`; revoked agent → `api_key_revoked`; expired → `api_key_expired`; wrong service → `api_key_wrong_service`; happy path returns the binding; missing `svcid_proxy` → 401; rate limit → 429 |
-| `services/proxy-plugin/` | prefix dispatch (`mk_svckey_` vs `eyJ`); resolution-cache hit skips the Broker; cache miss calls resolve; 401 from resolve is relayed + backoff applied; resolver-down + no cache → 503 `api_key_resolution_unavailable`; per-request checks (wrong service / expired / action / each constraint kind) → correct code; `mintkey.auth_method` span attr; `proxy.hit` carries `auth_method`/`api_key_id`/`key_fingerprint`/`used_at` (coalesced); cache eviction on `api_key.revoked` and on `agent.revoked` by `agent_id` |
-| `admin-ui/` | API Keys tab renders; create form limits actions to the agent's grants; plaintext shown once; revoke/rotate actions POST signed requests |
+| `apps/broker/internal/api/resolve` | unknown fingerprint → constant-time `api_key_invalid` (timing within ±10% of a real verify); wrong key → `api_key_invalid`; revoked row → `api_key_revoked`; revoked agent → `api_key_revoked`; expired → `api_key_expired`; wrong service → `api_key_wrong_service`; happy path returns the binding; missing `svcid_proxy` → 401; rate limit → 429 |
+| `apps/proxy-plugin/` | prefix dispatch (`mk_svckey_` vs `eyJ`); resolution-cache hit skips the Broker; cache miss calls resolve; 401 from resolve is relayed + backoff applied; resolver-down + no cache → 503 `api_key_resolution_unavailable`; per-request checks (wrong service / expired / action / each constraint kind) → correct code; `mintkey.auth_method` span attr; `proxy.hit` carries `auth_method`/`api_key_id`/`key_fingerprint`/`used_at` (coalesced); cache eviction on `api_key.revoked` and on `agent.revoked` by `agent_id` |
+| `apps/admin-ui/` | API Keys tab renders; create form limits actions to the agent's grants; plaintext shown once; revoke/rotate actions POST signed requests |
 
 ### 8.2 Property-based tests
 

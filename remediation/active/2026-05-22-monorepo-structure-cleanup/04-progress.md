@@ -7,6 +7,61 @@ Running execution log. Newest entries at the top.
 
 ---
 
+## 2026-05-22 — C-5 IMPLEMENTER (Sonnet)
+
+### Chunk C-5: Docs/Kiro/CI sweep executed
+
+**Tasks completed:** 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12
+
+**Files updated (stale path sweep — docs, Kiro specs, CI, skills, serena memories):**
+
+Root docs: README.md, KIRO.md, AGENTS.md, CLAUDE.md, QUICKSTART.md, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, ORCHESTRATION_STATE.md
+
+`docs/`: AUTH.md, DEBUG.md, DEPLOYMENT.md, NETWORK.md, RELEASE.md, SDD.md, architecture/00-vision/06-roadmap.md, architecture/00-vision/07-kiro-readiness.md, architecture/01-architecture/open-questions.md, architecture/01-architecture/security-notes/weak-hash-migration.md, architecture/03-flows/F-AG-01*, F-OP-01*, F-OP-02*, F-OP-03*, F-OP-04*, architecture/proposal/P-006*, architecture/proposal/P-009*, architecture/risk-register.md, guides/agent-never-sees-secret.md, guides/github-quickstart.md, operations/backup-before-reset.md, patterns/add-audit-event.md, patterns/add-mcp-tool.md, patterns/add-rest-endpoint.md
+
+`.kiro/`: steering/structure.md, steering/architecture-principles.md, specs/grafana-request-monitoring/{design,requirements,tasks}.md, specs/long-lived-api-keys/{design,requirements,tasks}.md, specs/mintkey-mvp/{design,requirements,tasks}.md, specs/monorepo-structure-cleanup/tasks.md, specs/post-prealpha-readiness/design.md
+
+`.github/`: workflows/container-scan.yml (comment update), dependabot.yml (directory paths)
+
+CI/ignore: .dockerignore, .gitignore
+
+Skills: .agents/skills/task-implement/SKILL.md, .claude/skills/task-implement/SKILL.md
+
+Serena memories: codebase_structure.md, tech_stack.md, suggested_commands.md, task_completion_checklist.md, code_style_conventions.md, known_gaps_and_issues.md
+
+**Substitutions applied:**
+- `admin-api/` → `apps/admin-api/` (in filesystem path context)
+- `mcp-server/` → `apps/mcp-server/` (in filesystem path context)
+- `services/broker/` → `apps/broker/`
+- `services/proxy-plugin/` → `apps/proxy-plugin/`
+- `services/kong-syncer/` → `apps/kong-syncer/`
+- `services/vault-adapter/` → `apps/vault-adapter/`
+- `mintkey-models/` → `packages/python/mintkey-models/` (in filesystem path context)
+- `internal/audit` etc. → `packages/go/audit` etc. (Go package imports/paths)
+- `otel-collector-config.yaml` → `infra/observability/otel-collector-config.yaml`
+- `grafana/provisioning/` → `infra/observability/grafana/provisioning/`
+- `/services/broker` → `/apps/broker` (dependabot.yml directory entries)
+
+**Excluded per constraint:**
+- `docs/architecture/01-architecture/adr/**` — accepted ADRs, read-only (R-0.2)
+- `remediation/archive/**` — historical record
+- `.kiro/specs/monorepo-structure-cleanup/**` — own spec files (self-referential evidence)
+- HTTP API endpoint paths (`/v1/internal/audit/emit`, `/v1/tenants/.../services/...`) — not filesystem paths
+- `apps/proxy-plugin/internal/` refs — proxy plugin's own internal packages, NOT shared `packages/go/`
+
+**Verification (all final scans exit 0):**
+- `grep -rn "services/broker|services/proxy-plugin..." docs/ .kiro/ ...` → only accepted ADR hits
+- `grep -rn "mintkey-models/" ...` → only accepted ADR hits + own spec self-refs
+- `grep -rn "internal/audit|internal/changes..." ...` → only accepted ADR hits + HTTP endpoint paths
+- `git diff --stat HEAD -- docs/architecture/01-architecture/adr/` → empty (no ADR edits) ✅
+
+### Next
+- Commit this C-5 work: `chore(repo): C-5 — sweep docs/Kiro/CI for stale paths`
+- Dispatch fresh REVIEWER (Opus) for C-5.
+- C-6 REVIEWER can run after C-5 review passes.
+
+---
+
 ## 2026-05-22 — C-4 IMPLEMENTER (Sonnet)
 
 ### Chunk C-4: Infra grouping executed

@@ -133,7 +133,7 @@ Cohesion with the Egress Proxy plugin (ADR‑0004) and the Vault Adapter is the 
 ### Project layout for the Admin API + UI binary
 
 ```
-admin-api/
+apps/admin-api/
   cmd/admin-api/main.go
   internal/
     server/        # chi setup, middleware (auth, audit, OTel)

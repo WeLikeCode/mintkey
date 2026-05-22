@@ -18,27 +18,27 @@ SKIP_TWILIO=1 python3 scripts/e2e_smoke.py  # same via env var
 
 ## Python (admin-api / mcp-server)
 ```bash
-# From admin-api/ directory:
+# From apps/admin-api/ directory:
 pip install -r requirements.txt
 pytest tests/unit/admin_api/ -v             # unit tests
 pytest tests/architecture/ -v               # architecture tests (RLS, audit)
-ruff check admin-api/src/                   # lint
-ruff format admin-api/src/                  # format
-mypy --strict admin-api/src/admin_api/      # type check
+ruff check apps/admin-api/src/              # lint
+ruff format apps/admin-api/src/             # format
+mypy --strict apps/admin-api/src/admin_api/ # type check
 
 # Run admin-api locally:
-PYTHONPATH=admin-api/src:mintkey-models uvicorn admin_api.main:app --reload --port 8080
+PYTHONPATH=apps/admin-api/src:packages/python/mintkey-models uvicorn admin_api.main:app --reload --port 8080
 ```
 
 ## Go services
 ```bash
 # From repo root (go.work workspace):
-go test ./services/vault-adapter/...        # test vault-adapter
-go test ./services/broker/...               # test broker
+go test ./apps/vault-adapter/...            # test vault-adapter
+go test ./apps/broker/...                   # test broker
 go test ./...                               # test all Go modules
 
 # Build specific service:
-cd services/vault-adapter && go build ./cmd/vault-adapter
+cd apps/vault-adapter && go build ./cmd/vault-adapter
 ```
 
 ## Admin UI

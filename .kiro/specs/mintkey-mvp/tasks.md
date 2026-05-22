@@ -43,34 +43,34 @@ graph LR
   - [x] 1.4 Vault Adapter skeleton — startup + KEK loading
     - Implement Go service skeleton with KEK loading from `MINTKEY_VAULT_KEK_FILE` and gRPC server stub
     - Reject env-var fallback in production mode; keyfile on separate volume mount
-    - Write `services/vault-adapter/internal/kek/loader_test.go`
+    - Write `apps/vault-adapter/internal/kek/loader_test.go`
     - _Requirements: Req 4 AC3; ADR-0003_
   - [x] 1.5 Credential Broker skeleton — startup + JWKS endpoint
     - Implement Go service with Ed25519 key loading from Vault Adapter and `GET /.well-known/jwks.json`
     - JWKS publishes active + retiring keys during overlap window; `kid` in JWS protected header
-    - Write `services/broker/internal/keys/jwks_test.go`
+    - Write `apps/broker/internal/keys/jwks_test.go`
     - _Requirements: Req 6 AC9; ADR-0006; ADR-0016.2; ADR-0017.8_
   - [x] 1.6 Kong-syncer skeleton — startup + health
     - Scaffold Go service with health endpoint and Postgres LISTEN/NOTIFY subscriber stub
     - Subscriber must configure tenant scope via `WithTenantScope(...)` — panics if omitted
-    - Write `services/kong-syncer/internal/health/handler_test.go`
+    - Write `apps/kong-syncer/internal/health/handler_test.go`
     - _Requirements: Req MT-4; ADR-0014.1_
   - [x] 1.7 Proxy Plugin skeleton — startup + go-pdk registration
     - Scaffold Go service with go-pdk registration and JWT verifier stub
     - Plugin holds NO credential cache (ADR-0014.4); has JWKS cache, revoked-agent set, jti revocation set
-    - Write `services/proxy-plugin/internal/jwt/verifier_test.go`
+    - Write `apps/proxy-plugin/internal/jwt/verifier_test.go`
     - _Requirements: ADR-0004; ADR-0014.4_
   - [x] 1.8 Shared Go packages — changes, ulid, otelinit, audit, svcid
-    - Implement `internal/changes/subscriber.go` (reconnect + heartbeat + tenant scope enforcement)
-    - Implement `internal/ulid/ulid.go` (prefixed ULIDs for all entity types)
-    - Implement `internal/audit/emit.go` (single audit chokepoint with hash chain + advisory lock)
-    - Implement `internal/svcid/client.go` (service identity token loader with file watch)
-    - Implement `internal/otelinit/init.go` (with SDK-level redaction filter)
+    - Implement `packages/go/changes/subscriber.go` (reconnect + heartbeat + tenant scope enforcement)
+    - Implement `packages/go/ulid/ulid.go` (prefixed ULIDs for all entity types)
+    - Implement `packages/go/audit/emit.go` (single audit chokepoint with hash chain + advisory lock)
+    - Implement `packages/go/svcid/client.go` (service identity token loader with file watch)
+    - Implement `packages/go/otelinit/init.go` (with SDK-level redaction filter)
     - Write tests for each package
     - _Requirements: ADR-0010; ADR-0014.1; ADR-0014.2; ADR-0014.7; ADR-0017.6_
   - [x] 1.9 mintkey-models shared Python package
     - Implement Pydantic v2 schemas, SQLAlchemy 2.x async Mapped types, audit emission helper, change-channel client, service-identity client, tenant-context helper
-    - Write `mintkey-models/tests/test_models.py`, `test_audit.py`, `test_tenant_ctx.py`
+    - Write `packages/python/mintkey-models/tests/test_models.py`, `test_audit.py`, `test_tenant_ctx.py`
     - _Requirements: ADR-0012; ADR-0015_
   - [x] 1.10 docker-compose.yml — full stack definition
     - Write complete `docker-compose.yml` with 15 long-running containers + 2 one-shot jobs
@@ -81,7 +81,7 @@ graph LR
     - Write `tests/acceptance/test_rls_coverage.py` asserting 7 conditions: RLS on all tenant-scoped tables, no no-op policies, correct qual references, mintkey_app no BYPASSRLS, no UPDATE/DELETE on audit_events
     - _Requirements: Req 1 AC11; ADR-0008; ADR-0014.8; ADR-0016.3_
   - [x] 1.12 Service identity client library
-    - Implement Go (`internal/svcid/client.go`) and Python (`mintkey_models/svcid.py`) clients
+    - Implement Go (`packages/go/svcid/client.go`) and Python (`mintkey_models/svcid.py`) clients
     - Token loaded from `/run/secrets/mintkey_service_token`; presented as `X-Mintkey-Service-Token` gRPC metadata; reloads on file change
     - _Requirements: Req SEC-8; ADR-0014.2_
   - [x] 1.13 AdminUiSignedRequest middleware + jti denylist
@@ -119,7 +119,7 @@ graph LR
     - Configure AdminJS login page with "Login with Keycloak" primary button and "Break-glass (local password)" collapsed accordion
     - Login flow does NOT use AdminUiSignedRequest middleware (bootstrap surface)
     - Break-glass accordion only functional when `operators.internal_password_hash IS NOT NULL` per ADR-0020 D2-b
-    - Write `admin-ui/tests/test_login.test.ts`
+    - Write `apps/admin-ui/tests/test_login.test.ts`
     - _Requirements: Req 2 AC1, AC8; ADR-0020_
   - [x] 2.5 OIDC shadow table — operator link via oidc_sub (T-1.1.2)
     - admin-api resolves operator by `oidc_sub` on OIDC callback; email fallback if `link_by_email=true`; pre-linked at seed time (D1)
@@ -156,13 +156,13 @@ graph LR
     - Implement LISTEN/NOTIFY subscriber and Kong YAML push logic
     - Generate Kong declarative YAML with explicit path route + virtual-host route per ADR-0007
     - Subscriber tenant scope: `[ALL_TENANTS]`; also subscribes to `mintkey:agent` for revocation
-    - Write `services/kong-syncer/internal/kong/yaml_test.go` + integration test (NOTIFY → Kong push ≤ 5s)
+    - Write `apps/kong-syncer/internal/kong/yaml_test.go` + integration test (NOTIFY → Kong push ≤ 5s)
     - _Requirements: Req 3 AC4; ADR-0004; ADR-0007; ADR-0014.1_
   - [x] 3.3 AdminJS — Services resource (writes via FastAPI)
     - Configure AdminJS Services resource — all writes route through `admin-api` with AdminUiSignedRequest JWT
     - `@adminjs/sql` adapter in read-only mode; AdminJS does NOT INSERT/UPDATE/DELETE directly
-    - Implement `admin-ui/src/lib/signed-request.ts` (JWT signer using private key)
-    - Write `admin-ui/tests/test_services.test.ts`
+    - Implement `apps/admin-ui/src/lib/signed-request.ts` (JWT signer using private key)
+    - Write `apps/admin-ui/tests/test_services.test.ts`
     - _Requirements: Req 3; ADR-0013; ADR-0014.5; ADR-0014.6_
 
 - [x] 4. Milestone 1.3 — Credential Registration
@@ -184,13 +184,13 @@ graph LR
   - [x] 4.4 AdminJS — Credentials resource (writes via FastAPI)
     - Configure AdminJS Credentials resource — all writes routed to `admin-api`; plaintext never displayed
     - `value` field marked write-only; show view shows `***`
-    - Write `admin-ui/tests/test_credentials.test.ts`
+    - Write `apps/admin-ui/tests/test_credentials.test.ts`
     - _Requirements: Req 4 AC1, AC4; ADR-0014.5_
   - [x] 4.5 Vault Adapter — encrypted-DEK cache
     - Add encrypted-DEK cache keyed by `(tenant_id, service_id, key_version)` with 5-min TTL
     - Cache invalidation on `credential.rotated` event from change channel
     - Cache stores encrypted DEK only — never plaintext DEK or credential
-    - Write `services/vault-adapter/internal/cache/dek_cache_test.go`
+    - Write `apps/vault-adapter/internal/cache/dek_cache_test.go`
     - _Requirements: Req 9 AC3; ADR-0014.4_
 
 - [x] 5. Milestone 1.4 — Agent and Permission Management
@@ -210,7 +210,7 @@ graph LR
     - Configure AdminJS resources — all writes routed to `admin-api` with AdminUiSignedRequest
     - API key shown in copy box with "shown once" warning; subsequent views show fingerprint only
     - Constraints validation client-side via Zod schema generated from OpenAPI
-    - Write `admin-ui/tests/test_agents.test.ts`
+    - Write `apps/admin-ui/tests/test_agents.test.ts`
     - _Requirements: Req 5 AC1, AC2; ADR-0014.5; ADR-0016.4_
 
 - [x] 6. Milestone 1.5 — MCP Discovery and Token Issuance
@@ -229,7 +229,7 @@ graph LR
     - Implement JWT issuance: `tnt` = prefixed ULID (NOT slug); `kid` in JWS protected header
     - Claims: `iss`, `sub`, `aud`, `tnt`, `scope`, `jti`, `iat`, `exp`, optional `cnf.jkt`, `kid`
     - Caller must present `svcid_broker` or `svcid_mcp` service token
-    - Write `services/broker/internal/issuer/issuer_test.go`
+    - Write `apps/broker/internal/issuer/issuer_test.go`
     - _Requirements: Req 6 AC6, AC8; ADR-0006; ADR-0008; ADR-0017.8, ADR-0017.11_
   - [x] 6.4 MCP Server — request_token with constraint evaluation
     - Implement `request_token` with closed Constraints evaluation (rate_limit, time_window) before delegating to Broker
@@ -248,7 +248,7 @@ graph LR
   - [x] 6.7 JWKS force-refresh rate limiter
     - Rate-limit JWKS force-refresh to one per `(verifier_instance, kid)` per minute
     - Prevents JWKS hammering by malformed JWTs (DoS surface)
-    - Write `services/proxy-plugin/internal/jwt/jwks_refresh_test.go`
+    - Write `apps/proxy-plugin/internal/jwt/jwks_refresh_test.go`
     - _Requirements: Req SEC-10; ADR-0016.2_
 
 - [x] 7. Milestone 1.6 — Brokered Call End-to-End
@@ -256,29 +256,29 @@ graph LR
     - Implement full JWT verification: signature, exp (±30s skew), iss, aud, tnt (against service's tenant_id), scope, jti denylist, agent revocation set
     - Unknown `kid` triggers JWKS force-refresh (rate-limited per T-6.7)
     - `tnt` checked against registered service's `tenant_id` from in-memory service config map
-    - Write `services/proxy-plugin/internal/jwt/verifier_test.go` (one test per claim check)
+    - Write `apps/proxy-plugin/internal/jwt/verifier_test.go` (one test per claim check)
     - _Requirements: Req 7 AC1–AC3, AC12; ADR-0006; ADR-0008_
   - [x] 7.2 Proxy Plugin — credential injection per auth_scheme
     - Implement credential injection for all 7 auth schemes: `api_key_header`, `api_key_query`, `bearer_token`, `basic_auth`, `oauth2_client_credentials`, `oidc_client_secret`, `mtls`
     - Agent's `Authorization` header always stripped before forwarding
     - mTLS: load cert+key, configure TLS dialer, zero bytes after handshake
-    - Write `services/proxy-plugin/internal/credential/injector_test.go`
+    - Write `apps/proxy-plugin/internal/credential/injector_test.go`
     - _Requirements: Req 7 AC5; ADR-0016.5_
   - [x] 7.3 Proxy Plugin — Vault Adapter gRPC client
     - Implement gRPC client with `svcid_proxy` service identity; NO plaintext cache in plugin
     - Plaintext byte slice zeroed after use (best-effort given Go GC)
-    - Write `services/proxy-plugin/internal/vault/client_test.go`
+    - Write `apps/proxy-plugin/internal/vault/client_test.go`
     - _Requirements: Req 7 AC4; ADR-0014.2; ADR-0014.4_
   - [x] 7.4 Proxy Plugin — response scrubber
     - Strip credential echoes from response headers (`Authorization`, `Cookie`, `Set-Cookie`) and body (regex patterns)
     - Body scan bounded to first 256 KiB; emit `proxy.credential_echo_detected` audit event
     - Scrubber is idempotent: `scrub(scrub(r)) == scrub(r)`
-    - Write `services/proxy-plugin/internal/scrubber/response_test.go`
+    - Write `apps/proxy-plugin/internal/scrubber/response_test.go`
     - _Requirements: Req 7 AC6, AC7; ADR-0017.6_
   - [x] 7.5 Proxy Plugin — audit emission and OTel
-    - Implement `proxy.hit` audit emission via internal endpoint `POST /v1/internal/audit/emit` with `svcid_proxy`
+    - Implement `proxy.hit` audit emission via internal endpoint `POST /v1/packages/go/audit/emit` with `svcid_proxy`
     - OTel span `mintkey.proxy.handle_request` with allowlisted attributes only
-    - Write `services/proxy-plugin/internal/audit/emitter_test.go`
+    - Write `apps/proxy-plugin/packages/go/audit/emitter_test.go`
     - _Requirements: Req 7 AC8; S-OBS-1_
   - [x] 7.6 Proxy Plugin — egress allowlist
     - Prevent proxy from following cross-origin redirects; disable Kong's `follow_redirects` by default
@@ -315,7 +315,7 @@ graph LR
     - _Requirements: Req 8; Req AUD-1_
   - [x] 8.4 AdminJS — Audit Log resource
     - Configure AdminJS Audit Log resource with read-only list, filters, and pagination
-    - Write `admin-ui/tests/test_audit.test.ts`
+    - Write `apps/admin-ui/tests/test_audit.test.ts`
     - _Requirements: Req 8 AC1–AC5_
   - [x] 8.5 Audit hash chain + per-tenant advisory lock
     - Implement mandatory audit hash chain in `audit_emit()` (Go and Python)
@@ -328,7 +328,7 @@ graph LR
   - [x] 9.1 Vault Adapter — RotateCredential
     - Implement `RotateCredential` gRPC method: stores new value with `key_version + 1`; old versions remain readable
     - Atomic swap — no window where neither version is available
-    - Write `services/vault-adapter/internal/store/sqlite_test.go` (extend)
+    - Write `apps/vault-adapter/internal/store/sqlite_test.go` (extend)
     - _Requirements: Req 9 AC1, AC6_
   - [x] 9.2 Admin API — credential rotation endpoint
     - Implement rotation (same endpoint as create; detects `key_version > 1`)
@@ -340,7 +340,7 @@ graph LR
     - _Requirements: Req 9 AC3–AC5; ADR-0014.4_
   - [x] 9.4 AdminJS — Credential rotation action
     - Add "Rotate" action to Credentials resource; POSTs to `admin-api` with AdminUiSignedRequest
-    - Write `admin-ui/tests/test_rotation.test.ts`
+    - Write `apps/admin-ui/tests/test_rotation.test.ts`
     - _Requirements: Req 9; ADR-0014.5_
 
 - [x] 10. Milestone 1.9 — Agent Revocation
@@ -358,7 +358,7 @@ graph LR
     - _Requirements: Req 10 AC7; ADR-0010; ADR-0017.7_
   - [x] 10.4 AdminJS — Agent revocation action
     - Add "Revoke" action to Agents resource; POSTs to `admin-api` with AdminUiSignedRequest
-    - Write `admin-ui/tests/test_revocation.test.ts`
+    - Write `apps/admin-ui/tests/test_revocation.test.ts`
     - _Requirements: Req 10; ADR-0014.5_
 
 - [x] 11. Milestone 1.10 — Observability Dashboards
@@ -421,7 +421,7 @@ graph LR
   - [x] 13.4 AdminJS — Tenants resource (PlatformAdmin)
     - Configure AdminJS Tenants resource visible only to PlatformAdmin with cross-tenant view escape
     - When `platform_admin_view = true`, resources skip tenant filter; FastAPI sets `app.platform_admin_view='on'`
-    - Write `admin-ui/tests/test_tenants.test.ts`
+    - Write `apps/admin-ui/tests/test_tenants.test.ts`
     - _Requirements: Req 13 AC1, AC6; ADR-0016.3_
   - [x] 13.5 Multi-tenant CI smoke test
     - Write `tests/acceptance/test_multitenant_smoke.py` — create second tenant, register service, verify isolation, verify cross-tenant JWT rejected; all within ≤ 60s

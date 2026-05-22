@@ -154,7 +154,7 @@ sequenceDiagram
 Contracts touched:
 - OpenAPI: `POST /v1/auth/internal-login`, `GET /v1/auth/whoami`, `POST /v1/auth/logout` ([`docs/contracts/rest/openapi.yaml`](../contracts/rest/openapi.yaml)).
 - Audit events: `tenant.bootstrap_completed`, `auth.login.success`, `auth.login.failed.user_unknown`, `auth.login.failed.bad_password`, `auth.login.failed.account_locked`, `auth.logout` ([`docs/contracts/events/audit-event.schema.json`](../contracts/events/audit-event.schema.json)).
-- Internal: Liquibase changelogs at `admin-api/db/changelog/`; Keycloak realm export at `seed/keycloak/realm-mintkey.json`.
+- Internal: Liquibase changelogs at `apps/admin-api/db/changelog/`; Keycloak realm export at `apps/seed-job/realm-mintkey.json`.
 
 Components implementing this flow:
 - `seed-job` (Python or Go small one‑shot)

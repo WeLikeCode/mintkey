@@ -216,7 +216,7 @@ psql -c "SELECT tablename FROM pg_tables WHERE schemaname='public'
 
 # SQLAlchemy mirror diff (after Liquibase)
 sqlacodegen --generator declarative postgresql://... > /tmp/sql.py
-diff -u mintkey-models/src/mintkey_models/sql.py /tmp/sql.py
+diff -u packages/python/mintkey-models/src/mintkey_models/sql.py /tmp/sql.py
 
 # End-to-end smoke (Phase 1 milestone 1.11)
 docker compose up -d
@@ -285,7 +285,7 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 | A new MCP tool | `docs/architecture/contracts/mcp/tools.yaml`, [ADR‑0009](docs/architecture/01-architecture/adr/0009-mcp-server-stack-python.md) | tools.yaml; tool handler; tests |
 | A new audit event type | `docs/architecture/contracts/events/audit-event.schema.json`, [ADR‑0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md) | event schema; audit emission call site; tests |
 | A new auth scheme on a backend | `docs/architecture/contracts/vault-adapter/vault.proto` enum, [ADR‑0011](docs/architecture/01-architecture/adr/0011-shared-go-stack.md) | proto enum; OpenAPI enum; MCP tools enum; audit/change schemas; proxy plugin injection logic; **≤ 3 files in the proxy** per [S‑MOD‑1](docs/architecture/01-architecture/03-quality-attributes.md) |
-| A schema column | the relevant Liquibase changelog under `admin-api/db/changelog/` | new Liquibase changeset; regenerate SQLAlchemy mirror; update Pydantic model; update OpenAPI schema; CI diff must pass |
+| A schema column | the relevant Liquibase changelog under `apps/admin-api/db/changelog/` | new Liquibase changeset; regenerate SQLAlchemy mirror; update Pydantic model; update OpenAPI schema; CI diff must pass |
 | An ADR | `docs/architecture/01-architecture/adr/README.md`, [ADR‑0001](docs/architecture/01-architecture/adr/0001-record-architecture-decisions.md) | `0NNN-name.md` in the canonical adr/ dir AND a symlink in `adrs/` (per the dual-path setup) |
 | A flow | `docs/architecture/03-flows/00-overview.md` | new flow doc with sequence diagram + pre/post + quality-attributes + test plan + Kiro spec inputs |
 
@@ -305,7 +305,7 @@ When a user asks you to make a code change, route the work using this table. **S
 | Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
 | New feature | Kiro spec-driven flow (`.kiro/specs/`) | Use Kiro requirements + ADR/proposal | Per Kiro process |
 | Wire contract change | Proposal/ADR + contract-first flow | Full intake + ADR/proposal link | ADR review + contract review |
-| Database schema change | Liquibase-first flow (`admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
+| Database schema change | Liquibase-first flow (`apps/admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
 | Documentation typo | Direct small PR allowed | Brief intake stub (Problem + Evidence) in PR body | Standard PR review |
 | Dependency bump | Direct PR allowed if tests/verification included | Brief intake stub (Problem + Evidence + Verification) | Standard PR review |
 

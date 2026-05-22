@@ -156,10 +156,10 @@ uv run uvicorn mcp_server.main:app --reload --port 8082
 
 ```bash
 # From repo root (Go workspace)
-go build ./services/vault-adapter/...
-go build ./services/broker/...
-go build ./services/kong-syncer/...
-go build ./services/proxy-plugin/...
+go build ./apps/vault-adapter/...
+go build ./apps/broker/...
+go build ./apps/kong-syncer/...
+go build ./apps/proxy-plugin/...
 
 # Run all Go tests
 go test ./... -v
@@ -203,9 +203,9 @@ Runs:
 
 See `CLAUDE.md` → "How to add an X (pattern library)". The key files to touch:
 1. `docs/architecture/contracts/vault-adapter/vault.proto` — add enum value
-2. `services/proxy-plugin/internal/credential/injector.go` — add injection case (≤ 3 files per S-MOD-1)
+2. `apps/proxy-plugin/internal/credential/injector.go` — add injection case (≤ 3 files per S-MOD-1)
 3. `mintkey_models/schemas.py` — add enum value
-4. `admin-api/src/admin_api/api/services.py` — update validation
+4. `apps/admin-api/src/admin_api/api/services.py` — update validation
 5. Write test first for the injector
 
 ---
@@ -216,14 +216,14 @@ Liquibase is the source of truth (ADR-0015). **Never add a column in SQLAlchemy.
 
 ```bash
 # 1. Write a new Liquibase changeset
-vim admin-api/db/changelog/011-new-column.yaml
+vim apps/admin-api/db/changelog/011-new-column.yaml
 
 # 2. Apply migrations (local Postgres)
 docker compose run --rm liquibase update
 
 # 3. Regenerate SQLAlchemy mirror
 sqlacodegen --generator declarative postgresql://mintkey_app:...@localhost:5432/mintkey > /tmp/mirror.py
-diff mintkey-models/mintkey_models/db.py /tmp/mirror.py  # must be empty
+diff packages/python/mintkey-models/mintkey_models/db.py /tmp/mirror.py  # must be empty
 
 # 4. Update the Pydantic model if needed
 # 5. Run the RLS coverage test

@@ -62,7 +62,7 @@ The decision table below — identical in `remediation/README.md`, `AGENTS.md`, 
 | Security, release, auth, audit, credential, tenant isolation issue | Orchestrator pattern required | Full intake file | Independent REVIEWER per chunk |
 | New feature | Kiro spec-driven flow (`.kiro/specs/`) | Use Kiro requirements + ADR/proposal | Per Kiro process |
 | Wire contract change | Proposal/ADR + contract-first flow | Full intake + ADR/proposal link | ADR review + contract review |
-| Database schema change | Liquibase-first flow (`admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
+| Database schema change | Liquibase-first flow (`apps/admin-api/db/changelog/`) | Full intake + changeset link | Schema review + migration verify |
 | Documentation typo | Direct small PR allowed | Brief intake stub (Problem + Evidence) in PR body | Standard PR review |
 | Dependency bump | Direct PR allowed if tests/verification included | Brief intake stub (Problem + Evidence + Verification) | Standard PR review |
 
@@ -152,10 +152,10 @@ A worked example: adding the `oauth_token_basic_client` auth scheme.
    - `docs/architecture/contracts/events/audit-event.schema.json` and `change-event.schema.json` — add the enum where it appears.
    Validate each with the commands in [`CLAUDE.md`](CLAUDE.md) "Verification commands".
 5. **Spec entry.** Add a new milestone (or extend an existing one) in [`.kiro/specs/mintkey-mvp/tasks.md`](.kiro/specs/mintkey-mvp/tasks.md) with `WHEN/THEN` ACs in `requirements.md` and a matching `design.md` plan. Reference the new ADR in `_Requirements: ADR-0020; ..._` provenance.
-6. **Failing test.** Write `services/proxy-plugin/internal/credential/oauth_basic_client_test.go` with a table-test that asserts: given a service with `auth_scheme=oauth_token_basic_client` and the right configuration, the plugin injects the right `Authorization` header. Run it; it fails.
-7. **Implementation.** Add the injection case in `services/proxy-plugin/internal/credential/injector.go`. Touch ≤ 3 files in the proxy per [S-MOD-1](docs/architecture/01-architecture/03-quality-attributes.md). Run the test; it passes.
+6. **Failing test.** Write `apps/proxy-plugin/internal/credential/oauth_basic_client_test.go` with a table-test that asserts: given a service with `auth_scheme=oauth_token_basic_client` and the right configuration, the plugin injects the right `Authorization` header. Run it; it fails.
+7. **Implementation.** Add the injection case in `apps/proxy-plugin/internal/credential/injector.go`. Touch ≤ 3 files in the proxy per [S-MOD-1](docs/architecture/01-architecture/03-quality-attributes.md). Run the test; it passes.
 8. **Verification.** Paste:
-   - `go test ./services/proxy-plugin/... -v` → all passed, exit 0.
+   - `go test ./apps/proxy-plugin/... -v` → all passed, exit 0.
    - `pytest tests/architecture/ -q` → 17 passed.
    - `python3 -c "import yaml,openapi_spec_validator as v; v.validate(yaml.safe_load(open('docs/architecture/contracts/rest/openapi.yaml')))"` → no errors.
    - `protoc --proto_path=docs/architecture/contracts/vault-adapter --descriptor_set_out=/dev/null docs/architecture/contracts/vault-adapter/vault.proto` → exit 0.
@@ -206,7 +206,7 @@ feat(broker): add oauth_token_basic_client injection (ADR-0020)
 Satisfies: .kiro/specs/mintkey-mvp/requirements.md Req 12 AC 3
 ADRs touched: ADR-0020 (new), ADR-0011 (stack reference)
 Verification:
-  go test ./services/proxy-plugin/... -v  → 42 passed, exit 0
+  go test ./apps/proxy-plugin/... -v  → 42 passed, exit 0
   pytest tests/architecture/ -q          → 17 passed, exit 0
   openapi-spec-validator                  → exit 0
   protoc --descriptor_set_out=/dev/null  → exit 0

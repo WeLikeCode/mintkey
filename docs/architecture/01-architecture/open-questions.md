@@ -62,7 +62,7 @@ Operator opens a service‑edit form for tenant A, switches to B, submits. The s
 On a FastAPI restart, every change‑channel subscriber reconciles via `GET /v1/changes?since=`. N subscribers in flight = N concurrent identical‑shape queries. **Open**: add response cache with very short TTL (e.g., 1 s) keyed by `(tenant_filter, since, limit)`. Phase 1 implementation detail.
 
 ### OQ‑007 — Channel‑name documentation in wrappers 🟢
-[ADR‑0014.1](adr/0014-iter-1-2-corrections.md) changed the channels from per‑tenant to global. The `mintkey/internal/changes` (Go) and `mintkey.changes` (Python) wrapper packages need their READMEs updated to describe the global channel naming. **iteration 2 closeout** doc work.
+[ADR‑0014.1](adr/0014-iter-1-2-corrections.md) changed the channels from per‑tenant to global. The `mintkey/packages/go/changes` (Go) and `mintkey.changes` (Python) wrapper packages need their READMEs updated to describe the global channel naming. **iteration 2 closeout** doc work.
 
 ### OQ‑008 — JWT `iss` for per‑tenant signing keys 🟢
 v1 uses a shared signing key; `iss = mintkey/broker`; key rotation via `kid`. **Phase 2** opt‑in is per‑tenant signing keys. Open: does `iss` become `mintkey/broker/<tenant_slug>` (more explicit but breaks consumers expecting fixed `iss`) or stay constant with `kid` carrying tenant context? **Lean: stay constant; `kid` encodes both `(tenant_id, key_version)`**. Phase 2 follow‑up to [ADR‑0006](adr/0006-token-format-and-binding.md).

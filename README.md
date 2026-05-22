@@ -148,6 +148,32 @@ QUICKSTART.md                      local setup (steps, ports, smoke test)
 PORTS.md                           port map + service list
 PROGRESS.md                        milestone checklist + test counts
 BOOTSTRAP.md                       bootstrap notes
+apps/
+  admin-api/                       Admin REST API — Python + FastAPI
+  admin-ui/                        Admin Console — AdminJS (TypeScript)
+  mcp-server/                      MCP Server — Python + FastAPI
+  mock-backend/                    Demo backend (all auth schemes)
+  seed-job/                        One-shot bootstrap job
+  audit-verify-job/                Scheduled audit chain verification
+  broker/                          Credential Broker — EdDSA JWT issuer (Go)
+  vault-adapter/                   Vault Adapter — credential store (Go)
+  kong-syncer/                     Kong declarative YAML pusher (Go)
+  proxy-plugin/                    Kong go-pdk egress plugin (Go)
+  jaeger-auth/                     Jaeger OIDC auth proxy
+packages/
+  python/mintkey-models/           Shared Python package (Pydantic v2 + SQLAlchemy Mapped)
+  go/audit/                        Go audit emission helper
+  go/auditq/                       Go audit queue
+  go/changes/                      Postgres LISTEN/NOTIFY client
+  go/otelinit/                     OTel SDK bootstrap
+  go/svcid/                        Service identity boot-secret client
+  go/ulid/                         ULID helpers
+  go/vault/                        Vault proto + Go stubs
+infra/
+  compose/                         docker-compose.yml (primary), docker-compose.test.yml
+  observability/                   prometheus.yml, alert_rules.yml, otel-collector-config.yaml, grafana/
+  keycloak/                        Keycloak realm placeholders
+docker-compose.yml                 Root shim (includes infra/compose/docker-compose.yml)
 docs/
   architecture/                    SOURCE OF TRUTH for architectural design
     README.md                      reading order
@@ -165,6 +191,10 @@ docs/
   HOW-TO.md                        operator playbook index
   DEBUG.md                         layered troubleshooting
   REPORTING.md                     bug / feature / feedback routing
+remediation/
+  active/                          Ongoing remediation sessions
+  archive/2026/05/                 44 completed sessions (historical; read-only)
+  SESSION_TEMPLATE/                Scaffold for new sessions
 .kiro/
   specs/mintkey-mvp/               Phase 1: requirements, design, tasks (M1.0-M1.13)
   steering/                        project-wide steering rules

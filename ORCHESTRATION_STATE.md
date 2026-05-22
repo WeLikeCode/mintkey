@@ -29,7 +29,7 @@
 ### Phase 2 — Admin API: every endpoint, tested and working
 - P2/endpoint-integration-tests: one integration test per ENDPOINT_COVERAGE row — status: DONE (78 pass)
 - P2/openapi-parity: FastAPI /openapi.json == checked-in YAML — status: DONE (5 parity tests pass)
-- P2/sqlalchemy-mirror: sqlacodegen diff == mintkey-models/db.py — status: DONE (5 mirror tests pass)
+- P2/sqlalchemy-mirror: sqlacodegen diff == packages/python/mintkey-models/db.py — status: DONE (5 mirror tests pass)
 
 ### Phase 3 — Admin UI: boots, login works, journey walkable
 - P3/adminjs-adapter: @adminjs/sql adapter registration — status: DONE (container up)
@@ -46,7 +46,7 @@
 
 ### Phase 5 — Observability + audit
 - P5/otel-init: otelinit.Init() in all Go service mains — status: DONE (P5A, all 4 service mains)
-- P5/audit-emit-real: wire internal/audit.Emit to real pgx store — status: DEFERRED (Go Emit not called in any live production path; Python mintkey_models handles audit; proxy-plugin uses HTTP-based emitter)
+- P5/audit-emit-real: wire packages/go/audit.Emit to real pgx store — status: DEFERRED (Go Emit not called in any live production path; Python mintkey_models handles audit; proxy-plugin uses HTTP-based emitter)
 - P5/redaction: two-layer OTel redaction verified — status: DONE (otelinit tests pass; redaction filter wired via P5A)
 
 ### Phase 6 — E2E-01 smoke test

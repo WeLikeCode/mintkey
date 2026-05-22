@@ -2,7 +2,7 @@
 
 **Status**: Accepted (→ [ADR‑0010](../01-architecture/adr/0010-change-channel-postgres-listen-notify.md)) — 2026-05-10. Selected the recommended **Option A** (Postgres `LISTEN/NOTIFY`).
 
-> **Outcome**: Accepted as recommended. The change channel runs on Postgres `LISTEN/NOTIFY` — zero extra container, transactional with state changes, tenant‑scoped channel names (`mintkey:<tenant_slug>:{service,credential,agent}`). At‑most‑once delivery is acceptable because the reconciliation endpoint (`GET /v1/changes?since=...`) handles disconnects. **Redis is removed from the Phase 1 compose set** — one fewer container. Behind a small `mintkey/internal/changes` (Go) / `mintkey.changes` (Python) abstraction so a future swap to Redis or NATS is a one‑file change. See [ADR‑0010](../01-architecture/adr/0010-change-channel-postgres-listen-notify.md).
+> **Outcome**: Accepted as recommended. The change channel runs on Postgres `LISTEN/NOTIFY` — zero extra container, transactional with state changes, tenant‑scoped channel names (`mintkey:<tenant_slug>:{service,credential,agent}`). At‑most‑once delivery is acceptable because the reconciliation endpoint (`GET /v1/changes?since=...`) handles disconnects. **Redis is removed from the Phase 1 compose set** — one fewer container. Behind a small `mintkey/packages/go/changes` (Go) / `mintkey.changes` (Python) abstraction so a future swap to Redis or NATS is a one‑file change. See [ADR‑0010](../01-architecture/adr/0010-change-channel-postgres-listen-notify.md).
 
 ## Question
 What runtime carries the change channel — the cache‑invalidation / revocation pub/sub used by the Egress Proxy plugin, the Kong‑syncer, the MCP Server, and (potentially) the Admin REST API?
@@ -113,7 +113,7 @@ Reasoning:
 | Heartbeat              | A `mintkey:heartbeat` notification every 30 s so subscribers detect stale connections |
 
 ## Implications
-- The change channel client is **a small Go package** (`mintkey/internal/changes`) and **a small Python package** (`mintkey.changes`) — same wire format, same channel names.
+- The change channel client is **a small Go package** (`mintkey/packages/go/changes`) and **a small Python package** (`mintkey.changes`) — same wire format, same channel names.
 - The `mintkey/admin-api` is the **single publisher**: every state change goes through its handlers (or audit chokepoint), and each handler publishes from within the DB transaction.
 - The proxy plugin, the Kong‑syncer, and the MCP Server are **subscribers**.
 - **Multi‑tenant scoping** is in the channel name; subscribers can choose to listen to all tenants (Kong‑syncer) or to one tenant (an MCP Server instance dedicated to one tenant in the high‑isolation tier).

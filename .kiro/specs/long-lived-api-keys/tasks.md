@@ -8,9 +8,9 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
 
 ## Tasks
 
-- [x] 1. Schema migration and shared models (impl: admin-api/db/changelog/012-service-api-keys.yaml, admin-api/db/changelog/db.changelog-master.yaml, admin-api/src/admin_api/api/settings.py, mintkey-models/mintkey_models/db.py, mintkey-models/mintkey_models/schemas.py; tests: mintkey-models/tests/test_models.py, tests/unit/admin_api/test_admin_settings.py; review: PASS)
+- [x] 1. Schema migration and shared models (impl: apps/admin-api/db/changelog/012-service-api-keys.yaml, apps/admin-api/db/changelog/db.changelog-master.yaml, apps/admin-api/src/admin_api/api/settings.py, packages/python/mintkey-models/mintkey_models/db.py, packages/python/mintkey-models/mintkey_models/schemas.py; tests: mintkey-models/tests/test_models.py, tests/unit/admin_api/test_admin_settings.py; review: PASS)
   - [x] 1.1 Create Liquibase changeset `012-service-api-keys.yaml`
-    - Create `admin-api/db/changelog/012-service-api-keys.yaml`
+    - Create `apps/admin-api/db/changelog/012-service-api-keys.yaml`
     - Define `service_api_keys` table with all columns per design §1.1: `id`, `tenant_id`, `agent_id`, `service_id`, `key_hash`, `key_fingerprint`, `allowed_actions`, `constraints`, `expires_at`, `last_used_at`, `revoked_at`, `revoked_by`, `revoke_reason`, `created_at`, `created_by`
     - Add `UNIQUE (key_fingerprint)`, `CHECK (array_length(allowed_actions, 1) >= 1)`, `CHECK (expires_at IS NULL OR expires_at > created_at)`
     - Enable RLS with the byte-for-byte standard tenant-isolation policy (ADR-0014.8)
@@ -29,7 +29,7 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
     - _Requirements: 7.6, 10.4_
 
   - [x] 1.3 Regenerate SQLAlchemy mirror and add Pydantic models
-    - Regenerate `mintkey-models/mintkey_models/db.py` from the post-migration schema
+    - Regenerate `packages/python/mintkey-models/mintkey_models/db.py` from the post-migration schema
     - Add `ServiceApiKeyCreate` Pydantic model (request body)
     - Add `ServiceApiKey` Pydantic model (list/show element — no plaintext)
     - Add `ServiceApiKeyCreated` Pydantic model (201 body — with plaintext, flagged as shown-once)
@@ -59,9 +59,9 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
 - [ ] 3. Checkpoint — Schema and contracts
   - Ensure Liquibase migration applies cleanly, SQLAlchemy mirror diff passes, OpenAPI validates, JSON schemas validate. Ask the user if questions arise.
 
-- [x] 4. Broker resolution endpoint (Go) (impl: services/broker/internal/api/resolve/resolve.go, services/broker/internal/api/resolve/pgstore.go, services/broker/internal/config/config.go, services/broker/cmd/broker/main.go; tests: services/broker/internal/api/resolve/resolve_test.go; review: PASS 11/11)
+- [x] 4. Broker resolution endpoint (Go) (impl: apps/broker/internal/api/resolve/resolve.go, apps/broker/internal/api/resolve/pgstore.go, apps/broker/internal/config/config.go, apps/broker/cmd/broker/main.go; tests: apps/broker/internal/api/resolve/resolve_test.go; review: PASS 11/11)
   - [x] 4.1 Implement `POST /v1/api-keys/resolve` handler
-    - Add route to the Broker's chi router in `services/broker/`
+    - Add route to the Broker's chi router in `apps/broker/`
     - Authenticate with `X-Mintkey-Service-Token: <svcid_proxy>` — reject without valid token (401)
     - Validate `tenant_id` is a well-formed prefixed-ULID; `SET app.current_tenant` via `set_config` (never f-string SQL)
     - `SELECT` by `key_fingerprint` with RLS; if no row → constant-time path (verify against `DUMMY_HASH`) → 401 `api_key_invalid`
@@ -93,9 +93,9 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
     - Rate limit exceeded → 429
     - _Requirements: 3.1, 3.2, 3.3_
 
-- [x] 5. Proxy plugin — classical-key branch (Go) (impl: services/proxy-plugin/internal/classicalkey/handler.go, services/proxy-plugin/internal/changes/subscriber.go; tests: services/proxy-plugin/internal/classicalkey/handler_test.go 14/14 PASS, services/proxy-plugin/internal/changes/subscriber_test.go 7/7 PASS; review: PASS all ./... green)
+- [x] 5. Proxy plugin — classical-key branch (Go) (impl: apps/proxy-plugin/internal/classicalkey/handler.go, apps/proxy-plugin/internal/changes/subscriber.go; tests: apps/proxy-plugin/internal/classicalkey/handler_test.go 14/14 PASS, apps/proxy-plugin/internal/changes/subscriber_test.go 7/7 PASS; review: PASS all ./... green)
   - [x] 5.1 Implement credential-type dispatch
-    - In `services/proxy-plugin/`, on the `/v1/call/{service_id}/{path...}` route, add prefix detection
+    - In `apps/proxy-plugin/`, on the `/v1/call/{service_id}/{path...}` route, add prefix detection
     - `mk_svckey_` prefix → `handleClassicalKey` (new path)
     - `eyJ` prefix (or default) → `handleBrokeredJWT` (existing path, unchanged)
     - _Requirements: 2.1_
@@ -167,7 +167,7 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
 - [x] 6. Checkpoint — Broker and Proxy
   - All broker tests pass (5/5) and all proxy-plugin tests pass (7 packages, all green). Checkpoint satisfied.
 
-- [x] 7. Admin REST API endpoints (Python/FastAPI) (impl: admin-api/src/admin_api/api/api_keys.py, admin-api/src/admin_api/api/internal.py, admin-api/src/admin_api/main.py; tests: tests/unit/admin_api/test_api_keys.py 15/15 PASS; review: 85 passed, 12 pre-existing errors unrelated to this task)
+- [x] 7. Admin REST API endpoints (Python/FastAPI) (impl: apps/admin-api/src/admin_api/api/api_keys.py, apps/admin-api/src/admin_api/api/internal.py, apps/admin-api/src/admin_api/main.py; tests: tests/unit/admin_api/test_api_keys.py 15/15 PASS; review: 85 passed, 12 pre-existing errors unrelated to this task)
   - [x] 7.1 Implement create endpoint `POST /v1/tenants/{tid}/agents/{aid}/api-keys`
     - Load agent's permission grants for `body.service_id`; assert `allowed_actions ⊆ grants` → else 422 `api_key_actions_exceed_grant`
     - Validate `body.constraints` against closed `Constraints` Pydantic model
@@ -226,7 +226,7 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
 - [x] 8. Checkpoint — Admin REST API
   - All 15 api-key unit tests pass + no regressions in existing suite (85 passed). Checkpoint satisfied.
 
-- [x] 9. Admin Console (AdminJS) (impl: admin-ui/src/resources/api_keys.ts, admin-ui/src/index.ts; tests: admin-ui/tests/test_api_keys.test.ts 10/10 PASS; review: 47 tests pass)
+- [x] 9. Admin Console (AdminJS) (impl: apps/admin-ui/src/resources/api_keys.ts, apps/admin-ui/src/index.ts; tests: apps/admin-ui/tests/test_api_keys.test.ts 10/10 PASS; review: 47 tests pass)
   - [x] 9.1 Add "API Keys" tab to Agent detail page
     - New tab alongside existing Permissions / Audit tabs
     - List agent's keys: `key_fingerprint`, Service (joined `services.name`), `allowed_actions`, Constraints summary, `expires_at`, `last_used_at` (blank = never used), Status (`active`/`expired`/`revoked`)

@@ -44,7 +44,7 @@ flowchart TD
 
 ### Design Principles
 
-1. **No core service code changes** — this spec produces documentation, Makefile targets, shell scripts, and example code. It does not modify `admin-api/`, `mcp-server/`, `services/`, or `admin-ui/` source.
+1. **No core service code changes** — this spec produces documentation, Makefile targets, shell scripts, and example code. It does not modify `apps/admin-api/`, `apps/mcp-server/`, `apps/broker/`/`apps/proxy-plugin/`/etc, or `apps/admin-ui/` source.
 2. **Existing infrastructure reuse** — `make demo` wraps the existing `docker compose up -d` + health-check pattern already proven in `make dev`.
 3. **Thin hub pattern** — KIRO.md links to existing docs rather than duplicating content.
 4. **Evidence-backed claims** — every status sentence cites a file path, commit SHA, or tool output.
@@ -313,7 +313,7 @@ Each document follows the 6-section template from `docs/architecture/00-vision/0
 ##### `docs/patterns/add-rest-endpoint.md`
 
 1. **Goal** — Add a new REST endpoint to the Admin API.
-2. **Where the change lives** — `admin-api/src/admin_api/api/` (router), `admin-api/src/admin_api/services/` (business logic), `docs/architecture/contracts/rest/openapi.yaml` (contract), `tests/acceptance/` (tests).
+2. **Where the change lives** — `apps/admin-api/src/admin_api/api/` (router), `apps/admin-api/src/admin_api/services/` (business logic), `docs/architecture/contracts/rest/openapi.yaml` (contract), `tests/acceptance/` (tests).
 3. **Step-by-step** — (1) Add to OpenAPI YAML, (2) Create Pydantic request/response models, (3) Add FastAPI router, (4) Add service layer, (5) Add audit emission, (6) Write acceptance test, (7) Run `make lint && make test-arch`.
 4. **Tests to write** — Unit test for service logic, acceptance test for the endpoint, architecture test verifying audit emission.
 5. **Common pitfalls** — Forgetting audit emission (caught by `test_audit_coverage.py`), not updating OpenAPI (caught by CI parity check), using UUID instead of ULID with prefix.
@@ -322,7 +322,7 @@ Each document follows the 6-section template from `docs/architecture/00-vision/0
 ##### `docs/patterns/add-mcp-tool.md`
 
 1. **Goal** — Add a new MCP tool to the MCP Server.
-2. **Where the change lives** — `docs/architecture/contracts/mcp/tools.yaml` (schema), `mcp-server/src/mcp_server/tools/` (handler), `tests/unit/mcp_server/` (tests).
+2. **Where the change lives** — `docs/architecture/contracts/mcp/tools.yaml` (schema), `apps/mcp-server/src/mcp_server/tools/` (handler), `tests/unit/mcp_server/` (tests).
 3. **Step-by-step** — (1) Add tool schema to `tools.yaml`, (2) Create tool handler file, (3) Register in tool registry, (4) Add unit test, (5) Run `make lint-contracts && make test-unit`.
 4. **Tests to write** — Unit test for tool handler, contract validation test.
 5. **Common pitfalls** — Schema mismatch between `tools.yaml` and handler, missing auth check on agent API key.
@@ -331,7 +331,7 @@ Each document follows the 6-section template from `docs/architecture/00-vision/0
 ##### `docs/patterns/add-audit-event.md`
 
 1. **Goal** — Add a new audit event type.
-2. **Where the change lives** — `docs/architecture/contracts/events/audit-event.schema.json` (schema), `admin-api/src/admin_api/audit/` (emission), `tests/acceptance/test_audit_coverage.py` (test).
+2. **Where the change lives** — `docs/architecture/contracts/events/audit-event.schema.json` (schema), `apps/admin-api/src/admin_api/audit/` (emission), `tests/acceptance/test_audit_coverage.py` (test).
 3. **Step-by-step** — (1) Add event type to schema enum, (2) Add emission call in the state-change handler, (3) Update architecture test allowlist, (4) Run `make lint-contracts && make test-arch`.
 4. **Tests to write** — Architecture test verifying the new event type is emitted, unit test for the handler.
 5. **Common pitfalls** — Forgetting to add to the schema enum (caught by contract lint), emitting outside the audit chokepoint (caught by `test_audit_coverage.py`).

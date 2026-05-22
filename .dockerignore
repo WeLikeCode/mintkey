@@ -47,5 +47,5 @@ data/
 *.key
 
 # ─── Compiled binaries ───────────────────────────────────────────────────────
-services/vault-adapter/vault-adapter
+apps/vault-adapter/vault-adapter
 *.exe

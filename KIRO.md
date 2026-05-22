@@ -22,11 +22,11 @@ The agent never holds a usable credential. See [README.md](README.md) for the fu
 
 | Technology | Role | Where the code lives |
 |---|---|---|
-| Python 3.12 + FastAPI | Admin REST API + MCP Server (CRUD, broker, audit) | `admin-api/`, `mcp-server/` |
-| Go 1.22 | Security-critical services: Vault Adapter, Egress Proxy plugin, Kong-syncer, Broker | `services/`, internal Go modules |
-| TypeScript (AdminJS 7.x) | Admin UI — BFF over the admin-api REST API | `admin-ui/` |
-| PostgreSQL 16 + Liquibase | Primary data store; schema owned by Liquibase changelogs | `admin-api/db/changelog/` |
-| Kong DB-less + Go plugin | Egress proxy: injects credentials in-flight per request | `services/proxy-plugin/` |
+| Python 3.12 + FastAPI | Admin REST API + MCP Server (CRUD, broker, audit) | `apps/admin-api/`, `apps/mcp-server/` |
+| Go 1.22 | Security-critical services: Vault Adapter, Egress Proxy plugin, Kong-syncer, Broker | `apps/broker/`, `apps/proxy-plugin/`, `apps/kong-syncer/`, `apps/vault-adapter/`, `packages/go/` |
+| TypeScript (AdminJS 7.x) | Admin UI — BFF over the admin-api REST API | `apps/admin-ui/` |
+| PostgreSQL 16 + Liquibase | Primary data store; schema owned by Liquibase changelogs | `apps/admin-api/db/changelog/` |
+| Kong DB-less + Go plugin | Egress proxy: injects credentials in-flight per request | `apps/proxy-plugin/` |
 | Keycloak | Operator OIDC identity provider (canonical per ADR-0020) | `docker-compose.yml` |
 | Trivy + CodeQL | Container image scan + SAST; run in CI on every PR | `.github/workflows/` |
 

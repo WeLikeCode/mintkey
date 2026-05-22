@@ -46,7 +46,7 @@ Every container emits OTel traces, metrics, and structured JSON logs from day on
 
 ## P-8 — Schema is owned by Liquibase, mirrored by code
 
-The Liquibase YAML changelogs in `admin-api/db/changelog/` are the single source of truth for the database schema. SQLAlchemy `Mapped` types and Go `sqlc` queries mirror the schema; they do not define it. Breaking schema changes require a new changeset and a deprecation window.
+The Liquibase YAML changelogs in `apps/admin-api/db/changelog/` are the single source of truth for the database schema. SQLAlchemy `Mapped` types and Go `sqlc` queries mirror the schema; they do not define it. Breaking schema changes require a new changeset and a deprecation window.
 
 *Enforced by:* ADR-0015; CI diff between Liquibase-applied schema and SQLAlchemy introspection.
 

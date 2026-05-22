@@ -7,9 +7,9 @@
 
 Three CodeQL `py/weak-sensitive-data-hashing` alert sites were classified in session S5:
 
-- `admin-api/src/admin_api/api/internal.py:119` -- `hashlib.sha256(api_key.encode()).digest()[:8].hex()` for agent api_key fingerprint (DB lookup index, `agents.api_key_fingerprint` column)
-- `admin-api/src/admin_api/api/proxy.py:64` -- same pattern for service-key fingerprint (`service_api_keys.key_fingerprint` column)
-- `mintkey-models/mintkey_models/audit.py:85` -- SHA-256 on audit chain (`hashlib.sha256(canonical_bytes + prev_hash).digest()`), ADR-0014.7-mandated; NOT a credential hash
+- `apps/admin-api/src/admin_api/api/internal.py:119` -- `hashlib.sha256(api_key.encode()).digest()[:8].hex()` for agent api_key fingerprint (DB lookup index, `agents.api_key_fingerprint` column)
+- `apps/admin-api/src/admin_api/api/proxy.py:64` -- same pattern for service-key fingerprint (`service_api_keys.key_fingerprint` column)
+- `packages/python/mintkey-models/mintkey_models/audit.py:85` -- SHA-256 on audit chain (`hashlib.sha256(canonical_bytes + prev_hash).digest()`), ADR-0014.7-mandated; NOT a credential hash
 
 ## Risk assessment
 
@@ -41,7 +41,7 @@ Changing site 3 without these steps would silently break audit chain continuity 
 Per `remediation/archive/2026/05/2026-05-18-s5-codeql-weak-hashing/99-report.md`:
 
 1. Add env var `MINTKEY_FINGERPRINT_HMAC_KEY` (32-byte random secret, project-static, loaded from secrets manager).
-2. Update `admin-api/src/admin_api/api/agents.py:_generate_agent_api_key()` and `admin-api/src/admin_api/api/api_keys.py:_fingerprint()` to use `hmac.new(HMAC_KEY, plaintext.encode(), hashlib.sha256).digest()[:8].hex()`.
+2. Update `apps/admin-api/src/admin_api/api/agents.py:_generate_agent_api_key()` and `apps/admin-api/src/admin_api/api/api_keys.py:_fingerprint()` to use `hmac.new(HMAC_KEY, plaintext.encode(), hashlib.sha256).digest()[:8].hex()`.
 3. Update lookup sites `internal.py:119` and `proxy.py:64` to use the same HMAC computation.
 4. Handle existing rows: because the DB stores only the Argon2id hash (not plaintext), existing fingerprints CANNOT be recomputed. Choose one of:
    - **Maintenance-window reissue**: revoke and re-issue all agent/service API keys during a scheduled window.
@@ -49,9 +49,9 @@ Per `remediation/archive/2026/05/2026-05-18-s5-codeql-weak-hashing/99-report.md`
 
 ## Code citations
 
-- `admin-api/src/admin_api/api/internal.py:119`
-- `admin-api/src/admin_api/api/proxy.py:64`
-- `mintkey-models/mintkey_models/audit.py:85`
+- `apps/admin-api/src/admin_api/api/internal.py:119`
+- `apps/admin-api/src/admin_api/api/proxy.py:64`
+- `packages/python/mintkey-models/mintkey_models/audit.py:85`
 - `tests/acceptance/test_audit_append_only.py` -- enforces audit chain invariants
 
 ## References

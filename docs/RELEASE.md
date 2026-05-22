@@ -24,8 +24,8 @@ a P0 blocker for release.
 
 | File | Field |
 |---|---|
-| `admin-ui/package.json` | `version` |
-| `mintkey-models/pyproject.toml` | `[project] version` |
+| `apps/admin-ui/package.json` | `version` |
+| `packages/python/mintkey-models/pyproject.toml` | `[project] version` |
 | `docs/architecture/contracts/rest/openapi.yaml` | `info.version` |
 | `README.md` | status table wire-surface row |
 | `CHANGELOG.md` | top entry header |
@@ -39,8 +39,8 @@ a P0 blocker for release.
 Edit each file to the new version string (e.g. `0.1.0-preview.2`):
 
 ```bash
-# admin-ui/package.json  — "version" field
-# mintkey-models/pyproject.toml  — version = "..."
+# apps/admin-ui/package.json  — "version" field
+# packages/python/mintkey-models/pyproject.toml  — version = "..."
 # docs/architecture/contracts/rest/openapi.yaml  — info.version: "..."
 # README.md  — status table wire-surface row
 # CHANGELOG.md  — top entry header (change UNRELEASED → today's date)
@@ -51,8 +51,8 @@ Verify alignment:
 ```bash
 rg -n '0\.1\.0-preview\.' \
   README.md CHANGELOG.md \
-  admin-ui/package.json \
-  mintkey-models/pyproject.toml \
+  apps/admin-ui/package.json \
+  packages/python/mintkey-models/pyproject.toml \
   docs/architecture/contracts/rest/openapi.yaml
 ```
 
@@ -61,7 +61,7 @@ Expect at least 5 hits (one per file).
 Commit:
 
 ```bash
-git add admin-ui/package.json mintkey-models/pyproject.toml \
+git add apps/admin-ui/package.json packages/python/mintkey-models/pyproject.toml \
   docs/architecture/contracts/rest/openapi.yaml \
   README.md CHANGELOG.md
 git commit -m "chore: bump version to 0.1.0-preview.N"
@@ -161,18 +161,18 @@ Additional spot checks:
 # Version alignment — expect ≥5 hits, no mismatches
 rg -n '0\.1\.0-preview\.' \
   README.md CHANGELOG.md \
-  admin-ui/package.json \
-  mintkey-models/pyproject.toml \
+  apps/admin-ui/package.json \
+  packages/python/mintkey-models/pyproject.toml \
   docs/architecture/contracts/rest/openapi.yaml
 
 # Parse checks
-python3 -c "import json; json.load(open('admin-ui/package.json')); print('package.json OK')"
+python3 -c "import json; json.load(open('apps/admin-ui/package.json')); print('package.json OK')"
 python3 -c "import yaml; yaml.safe_load(open('docs/architecture/contracts/rest/openapi.yaml')); print('openapi OK')"
-python3 -c "import tomllib; tomllib.loads(open('mintkey-models/pyproject.toml').read()); print('pyproject OK')"
+python3 -c "import tomllib; tomllib.loads(open('packages/python/mintkey-models/pyproject.toml').read()); print('pyproject OK')"
 
 # No old version strings left
-rg '"version": "1\.0\.0"' admin-ui/package.json && echo FAIL || echo OK
-rg '^version = "0\.1\.0"$' mintkey-models/pyproject.toml && echo FAIL || echo OK
+rg '"version": "1\.0\.0"' apps/admin-ui/package.json && echo FAIL || echo OK
+rg '^version = "0\.1\.0"$' packages/python/mintkey-models/pyproject.toml && echo FAIL || echo OK
 rg '0\.1\.0-experimental' docs/architecture/contracts/rest/openapi.yaml && echo FAIL || echo OK
 
 # No placeholder strings

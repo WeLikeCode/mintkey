@@ -232,7 +232,7 @@ See [docs/NETWORK.md — Keycloak / SSO public URLs](NETWORK.md#keycloak--sso-pu
 
 ## Known gaps (pre-alpha)
 
-- **PKCE `state_store` is in-process memory.** `admin-api/src/admin_api/auth/oidc.py` keeps the OIDC state cache in a Python `dict` — single-replica only. A horizontally-scaled admin-api would lose state across pods and fail callbacks. Flagged in ADR-0020 open follow-ups; will switch to a shared store (Redis or postgres-backed table) before alpha.
+- **PKCE `state_store` is in-process memory.** `apps/admin-api/src/admin_api/auth/oidc.py` keeps the OIDC state cache in a Python `dict` — single-replica only. A horizontally-scaled admin-api would lose state across pods and fail callbacks. Flagged in ADR-0020 open follow-ups; will switch to a shared store (Redis or postgres-backed table) before alpha.
 - **`admin_ui_private.pem` not provisioned in dev.** The signed-request JWT pattern (admin-ui → admin-api, Ed25519-signed per ADR-0019) requires admin-ui to hold a private key. The current bootstrap does not generate this keypair, so admin-ui falls back to omitting the JWT header. admin-api accepts unsigned writes in dev — fine for local stack; **must be fixed before any deployment that runs admin-api without `cookie_secure=true`**.
 - **Existing sessions pre-016 show "Keycloak" badge.** The `sessions.auth_method` column was added in migration `016`. Sessions created before this point have `auth_method=NULL` and display as "Keycloak" regardless of how they were created. Acceptable for pre-alpha; refresh fixes.
 

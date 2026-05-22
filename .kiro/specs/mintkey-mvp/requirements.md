@@ -294,7 +294,7 @@ The MVP is complete when the **E2E‑01 builder happy path** runs in CI **after*
 
 ### Acceptance Criteria
 
-1. WHEN Grafana starts, THEN it loads pre‑provisioned dashboards from the repo (`./grafana/provisioning/dashboards/`) without manual import.
+1. WHEN Grafana starts, THEN it loads pre‑provisioned dashboards from the repo (`./infra/observability/grafana/provisioning/dashboards/`) without manual import.
 2. WHEN the system is running, THEN the **"Mintkey Overview"** dashboard shows: per‑service request rate (RPS), error rate (4xx/5xx), p50/p99 proxy latency, token issuance rate, active agent count, change‑channel subscriber lag.
 3. WHEN the system is running, THEN the **"Per‑Service"** dashboard shows: per‑service request rate, latency, error rate, top agents, top actions.
 4. WHEN the system is running, THEN the **"Credential Cache"** dashboard shows: Vault Adapter encrypted‑DEK cache hit rate, cache invalidation events, decrypt latency p50/p99.
@@ -325,7 +325,7 @@ The MVP is complete when the **E2E‑01 builder happy path** runs in CI **after*
    3. **OpenAPI parity**: the runtime `GET /openapi.json` from `admin-api` is byte‑identical (after canonical YAML/JSON sort) to the checked‑in `docs/architecture/contracts/rest/openapi.yaml` (per ADR‑0014.3).
    4. JSON Schemas (`audit-event.schema.json`, `change-event.schema.json`) pass `Draft202012Validator.check_schema`.
    5. `protoc --descriptor_set_out=/dev/null docs/architecture/contracts/vault-adapter/vault.proto` exits 0.
-   6. **SQLAlchemy mirror diff**: after Liquibase migrations against a temp DB, `sqlacodegen --generator declarative` output matches the checked‑in `mintkey-models/src/mintkey_models/sql.py` after canonical formatting (per ADR‑0015).
+   6. **SQLAlchemy mirror diff**: after Liquibase migrations against a temp DB, `sqlacodegen --generator declarative` output matches the checked‑in `packages/python/mintkey-models/src/mintkey_models/sql.py` after canonical formatting (per ADR‑0015).
    7. **RLS architecture test**: every tenant‑scoped table in `pg_policies`, no policy with `qual = 'true'`, the `tenant_isolation` clause references `current_setting('app.current_tenant')`.
    8. **Audit chokepoint architecture test**: every state‑change handler in the FastAPI source emits an audit event via the single `audit.emit()` helper (static analysis).
    9. **Mermaid render**: every fenced ` ```mermaid ` block in `docs/architecture/` renders via `mmdc` without error.
@@ -416,7 +416,7 @@ The MVP is complete when the **E2E‑01 builder happy path** runs in CI **after*
 
 ### Schema and Migrations
 
-- **REQ‑SCHEMA‑1** (ADR‑0015): Liquibase YAML changelogs in `admin-api/db/changelog/` are the **single source of truth** for the schema. SQLAlchemy `Mapped` types and Go `sqlc` queries mirror the schema; they MUST NOT add columns or types. The CI mirror‑diff (REQ‑12.6.6) enforces this.
+- **REQ‑SCHEMA‑1** (ADR‑0015): Liquibase YAML changelogs in `apps/admin-api/db/changelog/` are the **single source of truth** for the schema. SQLAlchemy `Mapped` types and Go `sqlc` queries mirror the schema; they MUST NOT add columns or types. The CI mirror‑diff (REQ‑12.6.6) enforces this.
 - **REQ‑SCHEMA‑2**: a new tenant‑scoped table MUST be created with its RLS policy in the **same** Liquibase changeset; never in a follow‑up changeset.
 
 ### Contracts
