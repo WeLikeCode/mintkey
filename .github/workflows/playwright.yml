@@ -55,9 +55,20 @@ jobs:
 
       - name: Start Mintkey stack
         run: |
-          docker compose up -d --wait --timeout 120
+          docker compose -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
-          COMPOSE_HTTP_TIMEOUT: 120
+          COMPOSE_HTTP_TIMEOUT: 180
+
+      - name: Debug — container status + grafana log on stack failure
+        if: failure()
+        run: |
+          docker compose -f infra/compose/docker-compose.yml ps -a
+          echo '─── grafana logs (tail 100) ───'
+          docker compose -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
+          echo '─── keycloak logs (tail 50) ───'
+          docker compose -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
+          echo '─── prometheus logs (tail 30) ───'
+          docker compose -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -93,7 +104,7 @@ jobs:
 
       - name: Tear down stack
         if: always()
-        run: docker compose down -v
+        run: docker compose -f infra/compose/docker-compose.yml down -v
 
   # ─────────────────────────────────────────────────────────────────────────
   # Nightly job: all three browsers
@@ -129,9 +140,20 @@ jobs:
 
       - name: Start Mintkey stack
         run: |
-          docker compose up -d --wait --timeout 120
+          docker compose -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
-          COMPOSE_HTTP_TIMEOUT: 120
+          COMPOSE_HTTP_TIMEOUT: 180
+
+      - name: Debug — container status + grafana log on stack failure
+        if: failure()
+        run: |
+          docker compose -f infra/compose/docker-compose.yml ps -a
+          echo '─── grafana logs (tail 100) ───'
+          docker compose -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
+          echo '─── keycloak logs (tail 50) ───'
+          docker compose -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
+          echo '─── prometheus logs (tail 30) ───'
+          docker compose -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -167,4 +189,4 @@ jobs:
 
       - name: Tear down stack
         if: always()
-        run: docker compose down -v
+        run: docker compose -f infra/compose/docker-compose.yml down -v
