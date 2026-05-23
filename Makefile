@@ -68,8 +68,18 @@ help:
 
 dev:
 	docker compose up -d
-	@echo "Stack started. Admin UI: http://localhost:3000"
-	@echo "Bootstrap password: $$(cat data/bootstrap-secrets/admin_password 2>/dev/null || echo 'not yet seeded')"
+	@echo "Stack started. Admin UI: http://localhost:8081"
+	@echo "Bootstrap password: $$($(MAKE) -s admin-password 2>/dev/null || echo 'not yet seeded')"
+
+## admin-password: Decrypt and print the current Fernet-encrypted
+##                 admin_password from data/bootstrap-secrets/. KEK reads
+##                 from $$MINTKEY_BOOTSTRAP_KEK (env or .env), falling back
+##                 to the compose default. This is the operator-facing
+##                 helper to find the bootstrap admin SSO password.
+admin-password:
+	@python3 -c "from cryptography.fernet import Fernet; import os; \
+		kek = os.environ.get('MINTKEY_BOOTSTRAP_KEK') or 'TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas='; \
+		print(Fernet(kek.encode()).decrypt(open('data/bootstrap-secrets/admin_password','rb').read()).decode())"
 
 dev-test-logs:
 	$(COMPOSE_TEST) logs -f
@@ -314,9 +324,9 @@ demo:
 	@echo "║  ✓ Mintkey stack is up.                                              ║"
 	@echo "║                                                                      ║"
 	@echo "║  Open the admin UI:    http://localhost:8081                         ║"
-	@echo "║  Bootstrap password:   cat data/bootstrap-secrets/admin_password     ║"
-	@echo "║                        (Fernet-encrypted; decrypt with              ║"
-	@echo "║                         scripts/dev-backup.sh logic if needed)       ║"
+	@echo "║  Bootstrap password:   make admin-password                           ║"
+	@echo "║                        (Fernet-decrypts data/bootstrap-secrets/      ║"
+	@echo "║                         admin_password via MINTKEY_BOOTSTRAP_KEK)    ║"
 	@echo "║                                                                      ║"
 	@echo "║  Next steps:                                                         ║"
 	@echo "║    make demo-mock   — run a PAT-free mock-backend demo               ║"
