@@ -30,15 +30,15 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AUDITQ_PKG = REPO_ROOT / "internal" / "auditq"
-BROKER_DIR = REPO_ROOT / "services" / "broker"
-PROXY_DIR = REPO_ROOT / "services" / "proxy-plugin"
-ADMIN_API_INTERNAL = REPO_ROOT / "admin-api" / "src" / "admin_api" / "api" / "internal.py"
-BROKER_CONFIG = REPO_ROOT / "services" / "broker" / "internal" / "config" / "config.go"
-PROXY_CONFIG = REPO_ROOT / "services" / "proxy-plugin" / "internal" / "config" / "config.go"
-BROKER_MAIN = REPO_ROOT / "services" / "broker" / "cmd" / "broker" / "main.go"
-PROXY_MAIN = REPO_ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
-BROKER_ISSUE = REPO_ROOT / "services" / "broker" / "internal" / "api" / "issue" / "issue.go"
+AUDITQ_PKG = REPO_ROOT / "packages" / "go" / "auditq"
+BROKER_DIR = REPO_ROOT / "apps" / "broker"
+PROXY_DIR = REPO_ROOT / "apps" / "proxy-plugin"
+ADMIN_API_INTERNAL = REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "internal.py"
+BROKER_CONFIG = REPO_ROOT / "apps" / "broker" / "internal" / "config" / "config.go"
+PROXY_CONFIG = REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "config" / "config.go"
+BROKER_MAIN = REPO_ROOT / "apps" / "broker" / "cmd" / "broker" / "main.go"
+PROXY_MAIN = REPO_ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
+BROKER_ISSUE = REPO_ROOT / "apps" / "broker" / "internal" / "api" / "issue" / "issue.go"
 
 INTEGRATION = pytest.mark.skipif(
     os.getenv("MINTKEY_INTEGRATION_TEST") != "true",
@@ -307,7 +307,7 @@ def test_auditq_unit_tests_pass() -> None:
       - No credential in Event payload.
     """
     result = subprocess.run(
-        ["go", "test", "./internal/auditq/...", "-v", "-timeout", "30s"],
+        ["go", "test", "./packages/go/auditq/...", "-v", "-timeout", "30s"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -357,7 +357,7 @@ def test_hash_chain_serialisation_comment_exists() -> None:
     intentional, not accidental.
     """
     from pathlib import Path
-    audit_py = REPO_ROOT / "mintkey-models" / "mintkey_models" / "audit.py"
+    audit_py = REPO_ROOT / "packages/python/mintkey-models" / "mintkey_models" / "audit.py"
     src = audit_py.read_text(encoding="utf-8")
 
     assert "pg_advisory_xact_lock" in src, (

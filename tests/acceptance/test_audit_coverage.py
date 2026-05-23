@@ -15,7 +15,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-API_DIR = Path(__file__).resolve().parents[2] / "admin-api" / "src" / "admin_api" / "api"
+API_DIR = Path(__file__).resolve().parents[2] / "apps/admin-api" / "src" / "admin_api" / "api"
 
 # Handlers that are intentionally exempt from the audit-emit requirement.
 # These are either read-only GET handlers or bootstrap/session surfaces where

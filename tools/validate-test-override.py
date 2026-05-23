@@ -27,8 +27,8 @@ PORT_OFFSET = 100
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-PRIMARY_COMPOSE = REPO_ROOT / "docker-compose.yml"
-TEST_COMPOSE = REPO_ROOT / "docker-compose.test.yml"
+PRIMARY_COMPOSE = REPO_ROOT / "infra" / "compose" / "docker-compose.yml"
+TEST_COMPOSE = REPO_ROOT / "infra" / "compose" / "docker-compose.test.yml"
 ENV_TEST = REPO_ROOT / ".env.test"
 
 # The 10 locally-built services that must have image: pins in the override.

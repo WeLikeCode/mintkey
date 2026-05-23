@@ -42,10 +42,11 @@
 - Docker Compose (15 long-running services + 2 one-shot jobs)
 
 ## Key package locations
-- Shared Python models: `mintkey-models/mintkey_models/`
-- Admin API: `admin-api/src/admin_api/`
-- MCP Server: `mcp-server/src/mcp_server/`
-- Mock backend: `mock-backend/src/mock_backend/rest/main.py`
+- Shared Python models: `packages/python/mintkey-models/mintkey_models/`
+- Admin API: `apps/admin-api/src/admin_api/`
+- MCP Server: `apps/mcp-server/src/mcp_server/`
+- Mock backend: `apps/mock-backend/src/mock_backend/rest/main.py`
 - Go workspace root: repo root (`go.work`)
-- Go services: `services/{vault-adapter,broker,kong-syncer,proxy-plugin}/`
-- DB changelogs: `admin-api/db/changelog/`
+- Go services: `apps/{vault-adapter,broker,kong-syncer,proxy-plugin}/`
+- Shared Go packages: `packages/go/{audit,auditq,changes,otelinit,svcid,ulid,vault}/`
+- DB changelogs: `apps/admin-api/db/changelog/`

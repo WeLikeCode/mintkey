@@ -14,7 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-ADMIN_API_SRC = os.path.join(REPO_ROOT, "admin-api", "src")
+ADMIN_API_SRC = os.path.join(REPO_ROOT, "apps/admin-api", "src")
 if ADMIN_API_SRC not in sys.path:
     sys.path.insert(0, ADMIN_API_SRC)
 

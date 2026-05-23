@@ -29,10 +29,10 @@ _ROOT = Path(__file__).parent.parent.parent
 def test_otel_init_in_all_go_services() -> None:
     """Every Go service main.go must call otelinit.Init."""
     mains = [
-        _ROOT / "services" / "broker" / "cmd" / "broker" / "main.go",
-        _ROOT / "services" / "vault-adapter" / "cmd" / "vault-adapter" / "main.go",
-        _ROOT / "services" / "kong-syncer" / "cmd" / "kong-syncer" / "main.go",
-        _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
+        _ROOT / "apps" / "broker" / "cmd" / "broker" / "main.go",
+        _ROOT / "apps" / "vault-adapter" / "cmd" / "vault-adapter" / "main.go",
+        _ROOT / "apps" / "kong-syncer" / "cmd" / "kong-syncer" / "main.go",
+        _ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go",
     ]
     for path in mains:
         assert path.exists(), f"Missing: {path}"
@@ -43,10 +43,10 @@ def test_otel_init_in_all_go_services() -> None:
 def test_metrics_endpoint_in_all_go_services() -> None:
     """Every Go service main.go must serve /metrics."""
     checks = {
-        _ROOT / "services" / "broker" / "cmd" / "broker" / "main.go": "/metrics",
-        _ROOT / "services" / "vault-adapter" / "cmd" / "vault-adapter" / "main.go": "/metrics",
-        _ROOT / "services" / "kong-syncer" / "cmd" / "kong-syncer" / "main.go": "/metrics",
-        _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go": "/metrics",
+        _ROOT / "apps" / "broker" / "cmd" / "broker" / "main.go": "/metrics",
+        _ROOT / "apps" / "vault-adapter" / "cmd" / "vault-adapter" / "main.go": "/metrics",
+        _ROOT / "apps" / "kong-syncer" / "cmd" / "kong-syncer" / "main.go": "/metrics",
+        _ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go": "/metrics",
     }
     for path, marker in checks.items():
         src = path.read_text()
@@ -55,7 +55,7 @@ def test_metrics_endpoint_in_all_go_services() -> None:
 
 def test_prometheus_scrapes_all_services() -> None:
     """prometheus.yml must scrape all Mintkey services."""
-    prom = _ROOT / "prometheus.yml"
+    prom = _ROOT / "infra" / "observability" / "prometheus.yml"
     assert prom.exists(), f"Missing: {prom}"
     src = prom.read_text()
     required_targets = [
@@ -72,7 +72,7 @@ def test_prometheus_scrapes_all_services() -> None:
 
 def test_otel_collector_config_has_redaction() -> None:
     """OTel collector config must have both attribute deletion and redaction processors."""
-    config = _ROOT / "otel-collector-config.yaml"
+    config = _ROOT / "infra" / "observability" / "otel-collector-config.yaml"
     assert config.exists(), f"Missing: {config}"
     src = config.read_text()
     assert "attributes/redact" in src, "attributes/redact processor missing"
@@ -84,7 +84,7 @@ def test_otel_collector_config_has_redaction() -> None:
 
 def test_audit_emit_implementation_exists() -> None:
     """mintkey_models/audit.py must have a real audit_emit implementation."""
-    audit_py = _ROOT / "mintkey-models" / "mintkey_models" / "audit.py"
+    audit_py = _ROOT / "packages/python/mintkey-models" / "mintkey_models" / "audit.py"
     assert audit_py.exists(), f"Missing: {audit_py}"
     src = audit_py.read_text()
     assert "pg_advisory_xact_lock" in src, "advisory lock missing in audit_emit"
@@ -95,7 +95,7 @@ def test_audit_emit_implementation_exists() -> None:
 
 def test_grafana_dashboards_exist() -> None:
     """Grafana dashboards must be provisioned."""
-    dashboard_dir = _ROOT / "grafana" / "provisioning" / "dashboards"
+    dashboard_dir = _ROOT / "infra" / "observability" / "grafana" / "provisioning" / "dashboards"
     assert dashboard_dir.exists(), f"Missing: {dashboard_dir}"
     dashboards = list(dashboard_dir.glob("*.json"))
     assert len(dashboards) >= 1, "No Grafana dashboard JSON files found"

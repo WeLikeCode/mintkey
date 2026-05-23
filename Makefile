@@ -9,15 +9,15 @@ PYTEST    := $(UV) run pytest
 GO        := go
 
 # Test namespace (parallel isolated environment on offset ports)
-COMPOSE_TEST := docker compose -f docker-compose.yml -f docker-compose.test.yml --env-file .env.test --project-name mintkey-test
+COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.test.yml --env-file .env.test --project-name mintkey-test
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mintkey development targets
 # ─────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
+.PHONY: help admin-password dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
         test test-unit test-arch test-integration test-acceptance \
-        test:e2e test:e2e:headed test:e2e:ci \
+        test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
@@ -68,8 +68,18 @@ help:
 
 dev:
 	docker compose up -d
-	@echo "Stack started. Admin UI: http://localhost:3000"
-	@echo "Bootstrap password: $$(cat data/bootstrap-secrets/admin_password 2>/dev/null || echo 'not yet seeded')"
+	@echo "Stack started. Admin UI: http://localhost:8081"
+	@echo "Bootstrap password: $$($(MAKE) -s admin-password 2>/dev/null || echo 'not yet seeded')"
+
+## admin-password: Decrypt and print the current Fernet-encrypted
+##                 admin_password from data/bootstrap-secrets/. KEK reads
+##                 from $$MINTKEY_BOOTSTRAP_KEK (env or .env), falling back
+##                 to the compose default. This is the operator-facing
+##                 helper to find the bootstrap admin SSO password.
+admin-password:
+	@python3 -c "from cryptography.fernet import Fernet; import os; \
+		kek = os.environ.get('MINTKEY_BOOTSTRAP_KEK') or 'TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas='; \
+		print(Fernet(kek.encode()).decrypt(open('data/bootstrap-secrets/admin_password','rb').read()).decode())"
 
 dev-test-logs:
 	$(COMPOSE_TEST) logs -f
@@ -110,15 +120,15 @@ test: test-unit test-arch test-acceptance
 
 test-unit:
 	@echo "── Python unit tests ──"
-	cd admin-api && $(UV) run pytest $(REPO_ROOT)/tests/unit/admin_api/ -v
+	cd apps/admin-api && $(UV) run pytest $(REPO_ROOT)/tests/unit/admin_api/ -v
 	@echo "── mintkey-models unit tests ──"
-	cd mintkey-models && $(UV) run pytest tests/ -v
+	cd packages/python/mintkey-models && $(UV) run pytest tests/ -v
 	@echo "── Go unit tests ──"
 	$(GO) test ./... -v -short 2>&1 | tail -20
 
 test-arch:
 	@echo "── Architecture tests ──"
-	cd admin-api && $(UV) run pytest \
+	cd apps/admin-api && $(UV) run pytest \
 		$(REPO_ROOT)/tests/acceptance/test_no_sql_injection.py \
 		$(REPO_ROOT)/tests/acceptance/test_audit_coverage.py \
 		$(REPO_ROOT)/tests/acceptance/test_audit_append_only.py \
@@ -128,7 +138,7 @@ test-arch:
 
 test-acceptance:
 	@echo "── Acceptance tests ──"
-	cd admin-api && $(UV) run pytest $(REPO_ROOT)/tests/acceptance/ -v \
+	cd apps/admin-api && $(UV) run pytest $(REPO_ROOT)/tests/acceptance/ -v \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_brokered_call.py \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_rotation_propagation.py \
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_revocation_timing.py \
@@ -143,7 +153,7 @@ test-acceptance:
 
 test-integration:
 	@echo "── Integration tests (requires Docker) ──"
-	MINTKEY_INTEGRATION_TEST=true cd admin-api && $(UV) run pytest \
+	MINTKEY_INTEGRATION_TEST=true cd apps/admin-api && $(UV) run pytest \
 		$(REPO_ROOT)/tests/acceptance/test_brokered_call.py \
 		$(REPO_ROOT)/tests/acceptance/test_rotation_propagation.py \
 		$(REPO_ROOT)/tests/acceptance/test_revocation_timing.py \
@@ -185,20 +195,26 @@ test-data-plane: test-data-plane-smoke test-data-plane-resilience
 
 # ── Playwright E2E UI tests ──────────────────────────────────────────────────
 
-test:e2e-setup:
+# NOTE: colons in target names are escaped (`\:`) for GNU Make 3.81
+# compatibility (macOS default). Without the escape, make fails with
+# "*** target pattern contains no '%'. Stop." before any target can run.
+# This pre-existed the monorepo restructure but blocked `make help`,
+# `make admin-password`, and similar discovery commands until escaped.
+
+test\:e2e-setup:
 	@bash $(TOOLS)/e2e-setup-env.sh
 
-test:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
+test\:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
 
-test:e2e:headed: ## Run Playwright E2E UI tests in headed mode (debug)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
+test\:e2e\:headed: ## Run Playwright E2E UI tests in headed mode (debug)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
 
-test:e2e:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
-	@test -f admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
-	cd admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
+test\:e2e\:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
+	cd apps/admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
 
 # ── Linting ───────────────────────────────────────────────────────────────────
 
@@ -209,12 +225,12 @@ lint-python:
 	@echo "── Python: ruff ──"
 	# Blocking linters: || true masks removed (OSS-3 remediation) so Python lint
 	# failures now exit non-zero and are visible to contributors.
-	cd admin-api && $(UV) run ruff check src/
-	cd mcp-server && $(UV) run ruff check src/
-	cd mintkey-models && $(UV) run ruff check mintkey_models/
+	cd apps/admin-api && $(UV) run ruff check src/
+	cd apps/mcp-server && $(UV) run ruff check src/
+	cd packages/python/mintkey-models && $(UV) run ruff check mintkey_models/
 	@echo "── Python: mypy ──"
-	cd admin-api && $(UV) run mypy --strict src/admin_api/
-	cd mintkey-models && $(UV) run mypy --strict mintkey_models/
+	cd apps/admin-api && $(UV) run mypy --strict src/admin_api/
+	cd packages/python/mintkey-models && $(UV) run mypy --strict mintkey_models/
 
 lint-go:
 	@echo "── Go: vet ──"
@@ -224,10 +240,10 @@ lint-go:
 
 lint-ts:
 	@echo "── TypeScript: eslint ──"
-	@if [ -d admin-ui/node_modules ]; then \
-		cd admin-ui && pnpm eslint src/ --max-warnings=0; \
+	@if [ -d apps/admin-ui/node_modules ]; then \
+		cd apps/admin-ui && pnpm eslint src/ --max-warnings=0; \
 	else \
-		echo "  (admin-ui not installed; run 'cd admin-ui && pnpm install')"; \
+		echo "  (admin-ui not installed; run 'cd apps/admin-ui && pnpm install')"; \
 	fi
 
 lint-contracts:
@@ -314,9 +330,9 @@ demo:
 	@echo "║  ✓ Mintkey stack is up.                                              ║"
 	@echo "║                                                                      ║"
 	@echo "║  Open the admin UI:    http://localhost:8081                         ║"
-	@echo "║  Bootstrap password:   cat data/bootstrap-secrets/admin_password     ║"
-	@echo "║                        (Fernet-encrypted; decrypt with              ║"
-	@echo "║                         scripts/dev-backup.sh logic if needed)       ║"
+	@echo "║  Bootstrap password:   make admin-password                           ║"
+	@echo "║                        (Fernet-decrypts data/bootstrap-secrets/      ║"
+	@echo "║                         admin_password via MINTKEY_BOOTSTRAP_KEK)    ║"
 	@echo "║                                                                      ║"
 	@echo "║  Next steps:                                                         ║"
 	@echo "║    make demo-mock   — run a PAT-free mock-backend demo               ║"

@@ -267,7 +267,7 @@ The one item with an actionable dep-bump -- GO-2026-4918 -- is tracked in the Vu
 
 ## Audit hash chain integrity (SHA-256 invariant)
 
-The audit-event chain in `mintkey-models/mintkey_models/audit.py` uses SHA-256 per [ADR-0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md). This is NOT a credential hash -- it is a tamper-evident chain where each event's `hash` incorporates the previous event's `prev_hash`. Changing the algorithm requires a new ADR superseding ADR-0014.7, a migration of all existing `hash`/`prev_hash` columns, and lockstep updates to `audit-verify-job/verify.py`.
+The audit-event chain in `packages/python/mintkey-models/mintkey_models/audit.py` uses SHA-256 per [ADR-0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md). This is NOT a credential hash -- it is a tamper-evident chain where each event's `hash` incorporates the previous event's `prev_hash`. Changing the algorithm requires a new ADR superseding ADR-0014.7, a migration of all existing `hash`/`prev_hash` columns, and lockstep updates to `apps/audit-verify-job/verify.py`.
 
 Enforced by:
 - `tests/acceptance/test_audit_append_only.py` -- verifies chain integrity invariants
@@ -283,9 +283,9 @@ See also: [`docs/architecture/01-architecture/security-notes/weak-hash-migration
 
 Three CodeQL `py/weak-sensitive-data-hashing` sites were classified in session `2026-05-18-s5-codeql-weak-hashing`:
 
-- `admin-api/src/admin_api/api/internal.py:119` -- SHA-256 fingerprint of a 32-byte CSPRNG agent API key; used as a DB lookup index before Argon2id verification. Brute-force infeasible at 2^256 keyspace.
-- `admin-api/src/admin_api/api/proxy.py:64` -- same pattern for service-key fingerprint.
-- `mintkey-models/mintkey_models/audit.py:85` -- SHA-256 audit chain (ADR-0014.7-mandated; see Audit hash chain integrity section above).
+- `apps/admin-api/src/admin_api/api/internal.py:119` -- SHA-256 fingerprint of a 32-byte CSPRNG agent API key; used as a DB lookup index before Argon2id verification. Brute-force infeasible at 2^256 keyspace.
+- `apps/admin-api/src/admin_api/api/proxy.py:64` -- same pattern for service-key fingerprint.
+- `packages/python/mintkey-models/mintkey_models/audit.py:85` -- SHA-256 audit chain (ADR-0014.7-mandated; see Audit hash chain integrity section above).
 
 **Acceptance rationale**: Accepted for prealpha. Sites 1+2 fingerprint high-entropy 32-byte CSPRNG keys; rainbow-table attacks require enumeration of 2^256 inputs, which is computationally infeasible. The CodeQL rule fires because it pattern-matches `hashlib.sha256(<sensitive>)` without context about input entropy. Real risk only exists for low-entropy inputs (e.g., user-set passwords), which is not the case here.
 
@@ -313,4 +313,4 @@ For `v0.1.0-prealpha`, **option 1 is the policy**. Expect ~800-900 open Trivy al
 
 ---
 
-**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security -> Code scanning alerts UI with a rationale comment referencing this section. See `team/remediation/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.
+**Manual dismissal required**: Scorecard (as of `ossf/scorecard-action@v2.4.3`) does not support per-check ignore overrides via a repo config file. Each alert above must be manually dismissed in the GitHub Security -> Code scanning alerts UI with a rationale comment referencing this section. See `remediation/archive/2026/05/2026-05-18-s11-scorecard-residuals/99-report.md` for the operator steps.

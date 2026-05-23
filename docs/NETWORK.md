@@ -170,7 +170,7 @@ A vanilla MCP client can connect to Mintkey at `http://<MINTKEY_MCP_PUBLIC_URL>/
 
 This means operators probing the server with curl get useful 200 JSON instead of a 404 wall, and vanilla MCP clients can configure `http://<host>:8082/mcp` without needing source-code inspection.
 
-See [AUTH.md](AUTH.md) for which header to send (Bearer preferred). See [mcp-server/skills/agent-bootstrap.md](../mcp-server/skills/agent-bootstrap.md) for the full agent onboarding flow.
+See [AUTH.md](AUTH.md) for which header to send (Bearer preferred). See [apps/mcp-server/skills/agent-bootstrap.md](../apps/mcp-server/skills/agent-bootstrap.md) for the full agent onboarding flow.
 
 ## See also
 
@@ -230,7 +230,7 @@ Rebuild and restart:
 > **Pre-flight**: if you also need to wipe volumes (e.g. to force a bootstrap re-seed),
 > run `bash scripts/dev-backup.sh --with-secrets` before `docker compose down -v`.
 > A `down` without `-v` preserves volumes. See
-> [team/remediation/HOWTO-backup-before-reset.md](../team/remediation/HOWTO-backup-before-reset.md)
+> [docs/operations/backup-before-reset.md](../docs/operations/backup-before-reset.md)
 > (EV-DESTRUCTIVE-011).
 
 ```bash

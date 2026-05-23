@@ -24,7 +24,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VAULT_CLIENT_GO = (
-    REPO_ROOT / "services" / "proxy-plugin" / "internal" / "vault" / "client.go"
+    REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "vault" / "client.go"
 )
 AGENT_SET_GO = (
     REPO_ROOT

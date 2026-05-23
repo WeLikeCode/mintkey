@@ -39,9 +39,9 @@ INTEGRATION = pytest.mark.skipif(
 
 
 def test_vault_adapter_has_credential_subscriber():
-    """services/vault-adapter/internal/changes/subscriber.go must exist and
+    """apps/vault-adapter/internal/changes/subscriber.go must exist and
     subscribe to the mintkey:credential channel (ADR-0014.1)."""
-    path = "services/vault-adapter/internal/changes/subscriber.go"
+    path = "apps/vault-adapter/internal/changes/subscriber.go"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "mintkey:credential" in content, (
@@ -50,9 +50,9 @@ def test_vault_adapter_has_credential_subscriber():
 
 
 def test_dek_cache_has_invalidate_by_service():
-    """services/vault-adapter/internal/cache/dek_cache.go must exist and
+    """apps/vault-adapter/internal/cache/dek_cache.go must exist and
     expose an InvalidateByService method (ADR-0014.1)."""
-    path = "services/vault-adapter/internal/cache/dek_cache.go"
+    path = "apps/vault-adapter/internal/cache/dek_cache.go"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "InvalidateByService" in content, (
@@ -61,9 +61,9 @@ def test_dek_cache_has_invalidate_by_service():
 
 
 def test_rotation_emits_credential_rotated_notify():
-    """admin-api/src/admin_api/api/credentials.py must call pg_notify with
+    """apps/admin-api/src/admin_api/api/credentials.py must call pg_notify with
     the mintkey:credential channel on rotation (ADR-0014.1, ADR-0008)."""
-    path = "admin-api/src/admin_api/api/credentials.py"
+    path = "apps/admin-api/src/admin_api/api/credentials.py"
     assert (ROOT / path).exists(), f"Missing: {path}"
     content = _read(path)
     assert "pg_notify" in content, (

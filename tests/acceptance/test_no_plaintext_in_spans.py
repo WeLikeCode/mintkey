@@ -17,9 +17,9 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).parent.parent.parent
 
 _SCAN_ROOTS = [
-    _REPO_ROOT / "admin-api" / "src" / "admin_api",
-    _REPO_ROOT / "mcp-server" / "src" / "mcp_server",
-    _REPO_ROOT / "mintkey-models" / "mintkey_models",
+    _REPO_ROOT / "apps/admin-api" / "src" / "admin_api",
+    _REPO_ROOT / "apps/mcp-server" / "src" / "mcp_server",
+    _REPO_ROOT / "packages/python/mintkey-models" / "mintkey_models",
 ]
 
 # String literal prefixes that signal a plaintext credential value.
@@ -116,7 +116,7 @@ def test_otel_redacting_processor_referenced_in_middleware() -> None:
     """
     # Confirm the class exists in the package — the file was already read above.
     otel_redaction_py = (
-        _REPO_ROOT / "mintkey-models" / "mintkey_models" / "otel_redaction.py"
+        _REPO_ROOT / "packages/python/mintkey-models" / "mintkey_models" / "otel_redaction.py"
     )
     assert otel_redaction_py.exists(), (
         f"otel_redaction.py not found at {otel_redaction_py}"
@@ -129,9 +129,9 @@ def test_otel_redacting_processor_referenced_in_middleware() -> None:
 
     # Check that at least one primary entry-point module references otel_redaction.
     candidate_files = [
-        _REPO_ROOT / "admin-api" / "src" / "admin_api" / "middleware" / "otel.py",
-        _REPO_ROOT / "admin-api" / "src" / "admin_api" / "main.py",
-        _REPO_ROOT / "mcp-server" / "src" / "mcp_server" / "main.py",
+        _REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "middleware" / "otel.py",
+        _REPO_ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py",
+        _REPO_ROOT / "apps/mcp-server" / "src" / "mcp_server" / "main.py",
     ]
 
     # Build the set of files that actually import otel_redaction.

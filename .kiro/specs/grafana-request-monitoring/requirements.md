@@ -91,7 +91,7 @@ A pre-baked Grafana dashboard that gives operators real-time visibility into pro
 
 1. THE Spanmetrics_Connector SHALL produce a histogram metric named `mintkey_proxy_duration` from `mintkey.proxy.handle_request` spans, with dimensions `mintkey_actor_id`, `mintkey_service_id`, `mintkey_outcome`, using explicit histogram bucket boundaries of `[5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 10000]` milliseconds.
 2. THE Spanmetrics_Connector SHALL produce a counter metric named `mintkey_proxy_calls_total` representing total span count with the same dimensions (`mintkey_actor_id`, `mintkey_service_id`, `mintkey_outcome`).
-3. THE Spanmetrics_Connector configuration SHALL be included in the OTel Collector config file `otel-collector-config.yaml` shipped with the repo, wired as a connector between the `traces` pipeline and the `metrics` pipeline so that spans flow through the connector and derived metrics are exported to Prometheus.
+3. THE Spanmetrics_Connector configuration SHALL be included in the OTel Collector config file `infra/observability/infra/observability/otel-collector-config.yaml` shipped with the repo, wired as a connector between the `traces` pipeline and the `metrics` pipeline so that spans flow through the connector and derived metrics are exported to Prometheus.
 4. IF the OTel Collector receives `mintkey.proxy.handle_request` spans without `mintkey.actor_id` (e.g., unauthenticated denials), THEN THE Spanmetrics_Connector SHALL label those metrics with a placeholder dimension value `unknown`.
 5. IF the OTel Collector receives `mintkey.proxy.handle_request` spans without `mintkey.service_id` or `mintkey.outcome`, THEN THE Spanmetrics_Connector SHALL label those metrics with a placeholder dimension value `unknown` for the missing attribute.
 6. THE Spanmetrics_Connector SHALL filter spans by name, processing only spans named `mintkey.proxy.handle_request` and ignoring all other span names.
@@ -102,7 +102,7 @@ A pre-baked Grafana dashboard that gives operators real-time visibility into pro
 
 #### Acceptance Criteria
 
-1. THE Request_Monitoring_Dashboard SHALL be defined as a Grafana JSON file located at `grafana/provisioning/dashboards/request-monitoring.json` in the repository.
-2. THE Request_Monitoring_Dashboard SHALL be provisioned via Grafana's file-based dashboard provisioning using the existing `grafana/provisioning/dashboards/provider.yaml` configuration in the Docker Compose setup.
+1. THE Request_Monitoring_Dashboard SHALL be defined as a Grafana JSON file located at `infra/observability/infra/observability/grafana/provisioning/dashboards/request-monitoring.json` in the repository.
+2. THE Request_Monitoring_Dashboard SHALL be provisioned via Grafana's file-based dashboard provisioning using the existing `infra/observability/infra/observability/grafana/provisioning/dashboards/provider.yaml` configuration in the Docker Compose setup.
 3. WHEN an operator starts the stack with `docker compose up`, THE Request_Monitoring_Dashboard SHALL be available in Grafana under the "Mintkey" folder without manual import.
 4. THE Request_Monitoring_Dashboard SHALL reference the Prometheus datasource by UID matching the provisioned datasource configuration.

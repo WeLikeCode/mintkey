@@ -57,7 +57,7 @@ def test_create_service_derives_uuid_from_ulid() -> None:
 
     Source: R12; services.py:214-226; ADR-0017.11.
     """
-    services_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "services.py"
+    services_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "services.py"
     assert services_py.exists(), f"services.py not found at {services_py}"
     src = services_py.read_text()
 
@@ -92,7 +92,7 @@ def test_create_api_key_decodes_svc_wire_form() -> None:
 
     Source: R12; api_keys.py create_api_key; ADR-0017.11.
     """
-    api_keys_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
+    api_keys_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "api_keys.py"
     assert api_keys_py.exists()
     src = api_keys_py.read_text()
 
@@ -118,7 +118,7 @@ def test_resolve_service_uuid_helper_exists() -> None:
 
     Source: R12; permissions.py; ADR-0017.11.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     assert permissions_py.exists()
     src = permissions_py.read_text()
 
@@ -146,7 +146,7 @@ def test_grant_permission_uses_resolve_helper() -> None:
 
     Source: R12; permissions.py grant_permission; ADR-0017.11.
     """
-    permissions_py = _ROOT / "admin-api" / "src" / "admin_api" / "api" / "permissions.py"
+    permissions_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "api" / "permissions.py"
     src = permissions_py.read_text()
 
     grant_fn_idx = src.find("async def grant_permission(")

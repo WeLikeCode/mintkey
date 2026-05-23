@@ -26,7 +26,7 @@ import pytest
 
 # Ensure admin-api/src is importable.
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-_ADMIN_SRC = os.path.join(_REPO_ROOT, "admin-api", "src")
+_ADMIN_SRC = os.path.join(_REPO_ROOT, "apps/admin-api", "src")
 if _ADMIN_SRC not in sys.path:
     sys.path.insert(0, _ADMIN_SRC)
 

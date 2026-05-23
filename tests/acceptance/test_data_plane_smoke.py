@@ -30,7 +30,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_ADMIN_API_SRC = _REPO_ROOT / "admin-api" / "src"
+_ADMIN_API_SRC = _REPO_ROOT / "apps/admin-api" / "src"
 if str(_ADMIN_API_SRC) not in sys.path:
     sys.path.insert(0, str(_ADMIN_API_SRC))
 

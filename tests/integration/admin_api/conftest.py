@@ -35,14 +35,14 @@ from testcontainers.postgres import PostgresContainer
 # Ensure the source trees are on sys.path (mirrors the top-level conftest.py).
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 for _src in (
-    _REPO_ROOT / "admin-api" / "src",
-    _REPO_ROOT / "mintkey-models",
+    _REPO_ROOT / "apps/admin-api" / "src",
+    _REPO_ROOT / "packages/python/mintkey-models",
 ):
     _str = str(_src)
     if _str not in sys.path:
         sys.path.insert(0, _str)
 
-_CHANGELOG_DIR = _REPO_ROOT / "admin-api" / "db" / "changelog"
+_CHANGELOG_DIR = _REPO_ROOT / "apps/admin-api" / "db" / "changelog"
 _POSTGRES_IMAGE = "postgres:16"
 _LIQUIBASE_IMAGE = "liquibase/liquibase:4.27.0"
 

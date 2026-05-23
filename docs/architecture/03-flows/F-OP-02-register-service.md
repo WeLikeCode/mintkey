@@ -87,7 +87,7 @@ sequenceDiagram
 - Part of E2E‑01 Phase 3.
 
 ## Kiro spec inputs
-- **Components**: `admin-api/services/services_handlers.py`, `kong-syncer/internal/syncer.go`, `mintkey-models/Service` schemas.
+- **Components**: `apps/admin-api/services/services_handlers.py`, `apps/kong-syncer/internal/syncer.go`, `packages/python/mintkey-models/` Service schemas.
 - **Contract**: `POST /v1/tenants/{tid}/services` in `docs/contracts/rest/openapi.yaml`; `service.registered` in `docs/contracts/events/audit-event.schema.json` and `change-event.schema.json`.
 - **Tasks**:
   1. Write integration test asserting the row + audit + NOTIFY pipeline.

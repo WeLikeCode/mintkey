@@ -27,8 +27,8 @@ import pytest
 
 # Ensure admin-api source is on path (mirrors other tests in this suite).
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-_ADMIN_API_SRC = os.path.join(_REPO_ROOT, "admin-api", "src")
-_MODELS_SRC = os.path.join(_REPO_ROOT, "mintkey-models")
+_ADMIN_API_SRC = os.path.join(_REPO_ROOT, "apps/admin-api", "src")
+_MODELS_SRC = os.path.join(_REPO_ROOT, "packages/python/mintkey-models")
 for _p in (_ADMIN_API_SRC, _MODELS_SRC):
     if _p not in sys.path:
         sys.path.insert(0, _p)

@@ -11,7 +11,7 @@ When completing any implementation task in Mintkey, verify ALL of the following 
 - [ ] `notify_change()` called on the global channel after state changes
 
 ## If schema changed
-- [ ] Liquibase changelog added in `admin-api/db/changelog/`
+- [ ] Liquibase changelog added in `apps/admin-api/db/changelog/`
 - [ ] New changelog included in `db.changelog-master.yaml`
 - [ ] RLS policy created in same changeset as new table
 - [ ] `GRANT SELECT,INSERT,UPDATE,DELETE ON <table> TO mintkey_app;` added
@@ -32,7 +32,7 @@ When completing any implementation task in Mintkey, verify ALL of the following 
 ```bash
 pytest tests/unit/admin_api/ -v
 pytest tests/architecture/ -v
-go test ./services/... (from repo root)
+go test ./apps/... (from repo root)
 python3 scripts/e2e_smoke.py --no-twilio
 ```
 

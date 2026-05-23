@@ -209,7 +209,7 @@ Relevant codes: `mintkey:code: unauthenticated`, `mintkey:code: token_expired`, 
 **Top-2 failure modes:**
 
 1. **Routes not yet published after service create** — kong-syncer listens for `mintkey:service` PostgreSQL NOTIFY events and publishes Kong declarative-config routes within ~300 ms. If a service was just created and Kong returns `404`, wait 30 s for the initial reconcile, then verify: `docker compose logs mintkey-kong-syncer-1 | grep routes_published`.
-2. **Wire-ID encoding mismatch** — if the `svc_` ULID from admin-api does not round-trip correctly through the Kong-syncer Go wire-ID encoder, routes will not match. The reference test is `services/kong-syncer/internal/wireids/encode_test.go`.
+2. **Wire-ID encoding mismatch** — if the `svc_` ULID from admin-api does not round-trip correctly through the Kong-syncer Go wire-ID encoder, routes will not match. The reference test is `apps/kong-syncer/internal/wireids/encode_test.go`.
 
 ```bash
 docker compose logs mintkey-kong-syncer-1 --tail 100
@@ -493,7 +493,7 @@ failure.
    rm data/bootstrap-secrets/.admin_password_synced
    docker compose up -d
    ```
-4. See [`team/remediation/HOWTO-backup-before-reset.md`](../team/remediation/HOWTO-backup-before-reset.md)
+4. See [`docs/operations/backup-before-reset.md`](../docs/operations/backup-before-reset.md)
    for the full backup/restore guide.
 
 ---
@@ -629,7 +629,7 @@ For the full backup/restore guide, including the restore command, KEK considerat
 and cron automation, see:
 
 ```
-team/remediation/HOWTO-backup-before-reset.md
+docs/operations/backup-before-reset.md
 ```
 
 Key rules:

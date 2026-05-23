@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ISSUER_GO = REPO_ROOT / "services" / "broker" / "internal" / "issuer" / "issuer.go"
+ISSUER_GO = REPO_ROOT / "apps" / "broker" / "internal" / "issuer" / "issuer.go"
 
 INTEGRATION = pytest.mark.skipif(
     os.getenv("MINTKEY_INTEGRATION_TEST") != "true",

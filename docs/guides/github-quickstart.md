@@ -46,7 +46,7 @@ docker run --rm -v mintkey_bootstrap_secrets:/secrets alpine \
 docker compose logs seed-job | grep "Bootstrap admin password"
 ```
 
-For Playwright-based local dev the password is in `admin-ui/e2e/.env.local` as `PLAYWRIGHT_PASS`.
+For Playwright-based local dev the password is in `apps/admin-ui/e2e/.env.local` as `PLAYWRIGHT_PASS`.
 
 ---
 
@@ -394,7 +394,7 @@ curl -s "http://localhost:8000/v1/call/$SID/user/repos?per_page=5" \
 | 429 rate-limited | `rate_limit_rps` exceeded on agent | Agent show page → **Rate Limit Rps** field | Raise the limit or wait for the window to reset |
 | 502 from proxy | Credential row missing or vault lookup failed | `docker compose logs mintkey-proxy-plugin-1 --tail 50` (502 surfaces here; `docker compose logs mintkey-vault-adapter-1` may help diagnose root cause) | Verify vault-adapter is up; verify credential was saved in Step 4 |
 | Token request returns 403 | Broker down or `MINTKEY_BROKER_SERVICE_TOKEN` mismatch | `docker compose logs mintkey-broker-1 --tail 50` | Restart broker; verify `MINTKEY_BROKER_SERVICE_TOKEN` env matches across services |
-| Kong 404 on proxy call | Routes not synced after service create | `docker compose logs mintkey-kong-syncer-1 --tail 50` | Kong-syncer publishes routes after each `mintkey:service` NOTIFY (~300ms). Wait or check `docker compose logs mintkey-kong-syncer-1 \| grep routes_published`. If still 404 with a known-good `svc_` ID, verify the wire-form encoder matches between Python and Go (`services/kong-syncer/internal/wireids/encode_test.go`). |
+| Kong 404 on proxy call | Routes not synced after service create | `docker compose logs mintkey-kong-syncer-1 --tail 50` | Kong-syncer publishes routes after each `mintkey:service` NOTIFY (~300ms). Wait or check `docker compose logs mintkey-kong-syncer-1 \| grep routes_published`. If still 404 with a known-good `svc_` ID, verify the wire-form encoder matches between Python and Go (`apps/kong-syncer/internal/wireids/encode_test.go`). |
 | `description`/`openapi_url` missing from describe_service | Service registered without these fields | `docker compose logs mintkey-admin-api-1 --tail 20` | Confirm service was registered with `description` and `openapi_url` fields — re-save if not |
 | Transient test returns `{"ok": false, "status_code": 401}` | PAT is invalid, revoked, or missing required scope | GitHub tokens page at `https://github.com/settings/tokens` | Generate a new PAT with correct scopes; re-run Step 3 |
 

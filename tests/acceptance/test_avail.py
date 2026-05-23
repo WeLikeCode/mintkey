@@ -25,10 +25,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 JWKS_CACHE_GO = (
-    REPO_ROOT / "services" / "proxy-plugin" / "internal" / "jwt" / "jwks_cache.go"
+    REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "jwt" / "jwks_cache.go"
 )
 VAULT_ADAPTER_INTERNAL = (
-    REPO_ROOT / "services" / "vault-adapter" / "internal"
+    REPO_ROOT / "apps" / "vault-adapter" / "internal"
 )
 
 INTEGRATION = pytest.mark.skipif(

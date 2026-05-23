@@ -279,8 +279,8 @@ enough to warrant one):
   - Read vault credential as (user, pass) tuple per ADR-0014.4 (no cache)
   - Inject as Authorization: Basic base64(user:pass) with OAuth2 token endpoint call
   - Zero plaintext from request scope after upstream returns
-  - Write services/proxy-plugin/internal/inject/oauth_token_basic_test.go
-  - Write services/proxy-plugin/internal/inject/oauth_token_basic.go (≤ 3 files per S-MOD-1)
+  - Write apps/proxy-plugin/internal/inject/oauth_token_basic_test.go
+  - Write apps/proxy-plugin/internal/inject/oauth_token_basic.go (≤ 3 files per S-MOD-1)
   - Verify: mmdc validates all Mermaid; protoc exit 0; openapi-spec-validator exit 0
   _Requirements: Req 7 AC4, AC5; ADR-0020; ADR-0014.4; S-MOD-1_
 ```
@@ -295,7 +295,7 @@ whether the approach is correct can read the cited ADRs.
 
 ### Step 6 — Failing test
 
-Write `services/proxy-plugin/internal/inject/oauth_token_basic_test.go` asserting:
+Write `apps/proxy-plugin/internal/inject/oauth_token_basic_test.go` asserting:
 
 - The correct `Authorization: Basic` header is set.
 - The upstream `Authorization: Bearer <JWT>` header is stripped.
@@ -329,7 +329,7 @@ openapi-spec-validator docs/architecture/contracts/rest/openapi.yaml
 protoc --descriptor_set_out=/dev/null docs/architecture/contracts/vault-adapter/vault.proto
 
 # Tests
-go test ./services/proxy-plugin/... -v   # show output; exit 0
+go test ./apps/proxy-plugin/... -v   # show output; exit 0
 
 # Mermaid (if any diagram was added or modified)
 npx --yes -p @mermaid-js/mermaid-cli@10 mmdc -i <file>.mmd -o /tmp/check.svg

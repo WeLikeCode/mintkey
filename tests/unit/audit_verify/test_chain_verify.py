@@ -18,7 +18,7 @@ import os
 import pytest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-VERIFY_JOB_DIR = os.path.join(REPO_ROOT, "audit-verify-job")
+VERIFY_JOB_DIR = os.path.join(REPO_ROOT, "apps/audit-verify-job")
 if VERIFY_JOB_DIR not in sys.path:
     sys.path.insert(0, VERIFY_JOB_DIR)
 

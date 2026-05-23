@@ -11,7 +11,7 @@ Mintkey is currently a **single-maintainer project**. The project owner holds
 full decision authority over architecture, roadmap, and merge rights.
 
 - **Project owner:** Ciprian Iacobescu (`the+security@ciprianiacobescu.com`)
-- **Roadmap source of truth:** `team/remediation/` session plans and
+- **Roadmap source of truth:** `remediation/` session plans and
   `.kiro/specs/` feature specs
 - **Architecture source of truth:** `docs/architecture/` (20 ADRs, 18
   Accepted; the ADR list is the settled architecture)

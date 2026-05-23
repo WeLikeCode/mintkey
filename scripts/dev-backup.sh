@@ -17,8 +17,8 @@
 # EvidenceRefs:
 #   EV-ENV-002     .env (local user config, must never commit)
 #   EV-ENV-003     .env.local (local user config, must never commit)
-#   EV-ENV-005     admin-ui/e2e/.env.local (generated secret, gitignore gap)
-#   EV-APP-002     admin-ui/e2e/.env.local alias for EV-ENV-005
+#   EV-ENV-005     apps/admin-ui/e2e/.env.local (generated secret, gitignore gap)
+#   EV-APP-002     apps/admin-ui/e2e/.env.local alias for EV-ENV-005
 #   EV-BOOTSTRAP-001..006  bootstrap-secrets directory contents
 #   EV-VOL-001     postgres_data / pg_dump
 #   EV-VOL-002     vault_data volume snapshot
@@ -74,7 +74,7 @@ DEFAULTS
 WHAT IS CAPTURED
   .env                               keys-only (REDACTED)     EV-ENV-002
   .env.local                         keys-only (REDACTED)     EV-ENV-003
-  admin-ui/e2e/.env.local            keys-only (REDACTED)     EV-ENV-005/EV-APP-002
+  apps/admin-ui/e2e/.env.local       keys-only (REDACTED)     EV-ENV-005/EV-APP-002
   data/bootstrap-secrets/*           existence+sha256 only    EV-BOOTSTRAP-001..006
   postgres mintkey pg_dump (gzip)    if postgres healthy       EV-VOL-001/EV-DB-001..008
   vault_data volume snapshot (tar)   if vault-adapter running  EV-VOL-002/EV-VOL-003
@@ -274,7 +274,7 @@ capture_env_file() {
 
 capture_env_file ".env"                   "env"           "local user config"  "EV-ENV-002"
 capture_env_file ".env.local"             "env_local"     "local user config"  "EV-ENV-003"
-capture_env_file "admin-ui/e2e/.env.local" "e2e_env_local" "local user config"  "EV-ENV-005/EV-APP-002"
+capture_env_file "apps/admin-ui/e2e/.env.local" "e2e_env_local" "local user config"  "EV-ENV-005/EV-APP-002"
 
 # ── Section 2: bootstrap-secrets ─────────────────────────────────────────────
 heading "2. bootstrap-secrets (data/bootstrap-secrets/)"
@@ -325,12 +325,16 @@ heading "3. Postgres pg_dump"
 # EvidenceRef: EV-VOL-001, EV-DB-001..008
 
 PG_HEALTHY=0
-if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json 2>/dev/null \
+if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
+# Fix: docker compose ps --format json returns Service='postgres' and
+# Name='mintkey-postgres-1'. The prior check used Name.endswith('postgres')
+# which never matched because Compose appends '-N' to container names.
+# Use the Service field instead — it's the stable compose service identifier.
 data = sys.stdin.read().strip()
 rows = json.loads(data) if data.startswith('[') else [json.loads(l) for l in data.splitlines() if l.strip()]
-healthy = any(str(r.get('Name','')).endswith('postgres') and r.get('Health','') in ('healthy','') and r.get('State','') == 'running' for r in rows)
+healthy = any(r.get('Service','') == 'postgres' and r.get('Health','') == 'healthy' and r.get('State','') == 'running' for r in rows)
 sys.exit(0 if healthy else 1)
 " 2>/dev/null; then
   PG_HEALTHY=1
@@ -359,8 +363,15 @@ else
   else
     DUMP_TMP="${BACKUP_DIR}/postgres_dump.sql.gz.tmp"
     info "Running pg_dump…"
-    if docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
-        pg_dump -U mintkey_migrate -d mintkey --no-owner --no-privileges 2>/dev/null \
+    # Bug #4 fix: --clean + --if-exists emit DROP TABLE / DROP INDEX
+    # statements at the head of the dump, so dev-restore.sh can apply the
+    # dump cleanly to a non-empty DB. Without these flags, every CREATE/
+    # INSERT in the dump fails with duplicate-key / already-exists errors
+    # against a freshly-seeded schema (and bug #5 silenced those errors).
+    # stderr is now SHOWN (not piped to /dev/null) so any pg_dump failure
+    # is visible at backup time.
+    if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
+        pg_dump -U mintkey_migrate -d mintkey --no-owner --clean --if-exists \
         | gzip > "$DUMP_TMP"; then
       if [[ $WITH_SECRETS -eq 1 ]]; then
         fernet_encrypt_file "$DUMP_TMP" "${BACKUP_DIR}/postgres_dump.sql.gz.fernet" "${MINTKEY_BOOTSTRAP_KEK}"
@@ -391,17 +402,27 @@ fi
 # ── Section 4: Docker volume snapshots ────────────────────────────────────────
 heading "4. Docker volume snapshots"
 
-# Check if vault-adapter is running
+# Check if vault-adapter is running (and healthy).
 # EvidenceRef: EV-VOL-002, EV-VOL-003, EV-VOL-004
+#
+# Same fix class as the postgres check above (was Name.endswith()/substring,
+# which silently mis-matched 'mintkey-vault-adapter-1' as either accidentally
+# true or accidentally false depending on naming. Substring 'vault' also
+# loosely matched anything containing 'vault'.). Use Service+Health like
+# the postgres check.
+#
+# Note: technically the volumes can be snapshotted regardless of whether
+# vault-adapter is running (docker volumes are independent of services
+# that mount them). We gate on running+healthy as a sanity proxy.
 VAULT_RUNNING=0
-if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json 2>/dev/null \
+if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
 data = sys.stdin.read().strip()
 rows = json.loads(data) if data.startswith('[') else [json.loads(l) for l in data.splitlines() if l.strip()]
-ok = any('vault' in str(r.get('Name','')).lower() and r.get('State','') == 'running' for r in rows)
+ok = any(r.get('Service','') == 'vault-adapter' and r.get('Health','') == 'healthy' and r.get('State','') == 'running' for r in rows)
 sys.exit(0 if ok else 1)
-" 2>/dev/null; then
+"; then
   VAULT_RUNNING=1
 fi
 
@@ -467,7 +488,7 @@ heading "5. Running services + image digests"
 if [[ $DRY_RUN -eq 1 ]]; then
   info "WOULD capture: docker compose ps --format json → services.json   [EV-COMPOSE-001..003]"
 else
-  if docker compose -f "${REPO_ROOT}/docker-compose.yml" ps --format json \
+  if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json \
       > "${BACKUP_DIR}/services.json" 2>/dev/null; then
     local_sz=$(wc -c < "${BACKUP_DIR}/services.json" | tr -d ' ')
     manifest_add "services.json" "$local_sz" "$(file_sha256 "${BACKUP_DIR}/services.json")" "repo-tracked default" "false"

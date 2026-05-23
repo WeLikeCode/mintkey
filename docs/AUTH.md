@@ -9,7 +9,7 @@
 
 Keycloak is the canonical IdP for admin-ui, Grafana, and Jaeger. Operators sign in once per service; sessions are independent per service today (no central SSO state shared across admin-ui, Grafana, and Jaeger — each service issues its own session).
 
-**Normal login:** Navigate to `http://localhost:8081`, click "Sign in with Keycloak", enter `admin@mintkey.internal` + the bootstrap password from `data/bootstrap-secrets/admin_password`.
+**Normal login:** Navigate to `http://localhost:8081`, click "Sign in with Keycloak", enter `admin@mintkey.internal` + the bootstrap password printed by `make admin-password` (Fernet-decrypts `data/bootstrap-secrets/admin_password` via `MINTKEY_BOOTSTRAP_KEK`).
 
 **Break-glass (Keycloak unreachable):**
 ```bash
@@ -105,9 +105,12 @@ Prerequisites: `docker compose up -d` completed successfully; all containers hea
 
 1. **Find the bootstrap password:**
    ```bash
-   cat data/bootstrap-secrets/admin_password
-   # or, if the file is inside the Docker volume:
-   docker run --rm -v mintkey_bootstrap_secrets:/s alpine cat /s/admin_password
+   make admin-password
+   # The file at data/bootstrap-secrets/admin_password is Fernet-encrypted
+   # ciphertext (closes CodeQL py/clear-text-storage). seed-job writes it
+   # both to the bootstrap_secrets named volume AND mirrors it to this host
+   # path so `make admin-password` always reflects the CURRENT seed (not a
+   # stale snapshot from dev-restore.sh).
    ```
 
 2. **Navigate to the admin console:**
@@ -186,7 +189,7 @@ docker compose start keycloak
 > ```bash
 > bash scripts/dev-backup.sh --write --with-secrets
 > ```
-> Full workflow: [team/remediation/HOWTO-backup-before-reset.md](../team/remediation/HOWTO-backup-before-reset.md).
+> Full workflow: [docs/operations/backup-before-reset.md](../docs/operations/backup-before-reset.md).
 > (EvidenceRef: DSBR session `EV-DESTRUCTIVE-011`.)
 
 ```bash
@@ -232,7 +235,7 @@ See [docs/NETWORK.md — Keycloak / SSO public URLs](NETWORK.md#keycloak--sso-pu
 
 ## Known gaps (pre-alpha)
 
-- **PKCE `state_store` is in-process memory.** `admin-api/src/admin_api/auth/oidc.py` keeps the OIDC state cache in a Python `dict` — single-replica only. A horizontally-scaled admin-api would lose state across pods and fail callbacks. Flagged in ADR-0020 open follow-ups; will switch to a shared store (Redis or postgres-backed table) before alpha.
+- **PKCE `state_store` is in-process memory.** `apps/admin-api/src/admin_api/auth/oidc.py` keeps the OIDC state cache in a Python `dict` — single-replica only. A horizontally-scaled admin-api would lose state across pods and fail callbacks. Flagged in ADR-0020 open follow-ups; will switch to a shared store (Redis or postgres-backed table) before alpha.
 - **`admin_ui_private.pem` not provisioned in dev.** The signed-request JWT pattern (admin-ui → admin-api, Ed25519-signed per ADR-0019) requires admin-ui to hold a private key. The current bootstrap does not generate this keypair, so admin-ui falls back to omitting the JWT header. admin-api accepts unsigned writes in dev — fine for local stack; **must be fixed before any deployment that runs admin-api without `cookie_secure=true`**.
 - **Existing sessions pre-016 show "Keycloak" badge.** The `sessions.auth_method` column was added in migration `016`. Sessions created before this point have `auth_method=NULL` and display as "Keycloak" regardless of how they were created. Acceptable for pre-alpha; refresh fixes.
 

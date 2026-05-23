@@ -3,7 +3,7 @@
 <!-- Mintkey PR template — every PR must complete every section below.
      Per F4 decision (2026-05-16-pattern-enforcement): even doc typos
      and dep bumps fill the Issue Definition (briefer is fine; empty is not).
-     See team/remediation/README.md and CONTRIBUTING.md for the routing table. -->
+     See remediation/README.md and CONTRIBUTING.md for the routing table. -->
 
 ## Change Type
 
@@ -17,8 +17,8 @@
 
 **For remediation:**
 
-- Session folder: <!-- e.g. team/remediation/2026-05-16-oss-readiness/ -->
-- Issue intake file: <!-- e.g. team/remediation/<session>/ISSUE_INTAKE.md -->
+- Session folder: <!-- e.g. remediation/active/2026-05-16-oss-readiness/ -->
+- Issue intake file: <!-- e.g. remediation/active/<session>/ISSUE_INTAKE.md -->
 - Matrix row(s): <!-- e.g. R-4, R-5 -->
 - Reviewer result: <!-- e.g. PASS_ALL 18/18 from REL-FINAL Opus review -->
 

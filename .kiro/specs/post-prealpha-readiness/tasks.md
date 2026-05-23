@@ -158,7 +158,7 @@ Four workstreams delivering documentation accuracy, security residual closure, B
     - Verified 2026-05-19 by ORCHESTRATOR C-7 audit: 19/19 deliverable files exist ✓; red-team grep returns 0 hits for new/modified files (1 pre-existing placeholder in `docs/architecture/contracts/rest/openapi.yaml:api_key` is on main, not introduced) ✓; `git diff --stat origin/main..HEAD -- docs/architecture/01-architecture/adr/` empty ✓; Kiro_Readiness_Doc 3 status rows updated by C-6 ✓; `.kiro/specs/post-prealpha-readiness/evidence.md` populated with 24 rows by C-2 ✓.
     - _Requirements: 8.1, 8.2, 9.1, 2.4, 10.2_
   - [x] 17.2 Produce final readiness report
-    - `team/remediation/2026-05-19-post-prealpha-readiness/99-report.md` (this session's closing report); summarises all 19 deliverables with paths + commit SHAs + per-requirement coverage.
+    - `remediation/archive/2026/05/2026-05-19-post-prealpha-readiness/99-report.md` (this session's closing report); summarises all 19 deliverables with paths + commit SHAs + per-requirement coverage.
     - _Requirements: all_
 
 ## Notes

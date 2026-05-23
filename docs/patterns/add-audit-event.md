@@ -14,7 +14,7 @@ hash-chain integrity.
 
 - `docs/architecture/contracts/events/audit-event.schema.json` — canonical event schema; add
   the new event type here first (P-4)
-- `admin-api/src/admin_api/api/<resource>.py` — the FastAPI handler that owns the state change
+- `apps/admin-api/src/admin_api/api/<resource>.py` — the FastAPI handler that owns the state change
   and must call `audit_emit()` (the audit chokepoint)
 - `mintkey_models/src/mintkey_models/audit.py` — `audit_emit()` helper (do not modify; call it)
 - `tests/acceptance/test_audit_coverage.py` — architecture test; update its event-type allowlist

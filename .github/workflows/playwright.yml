@@ -6,8 +6,8 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "admin-ui/**"
-      - "admin-api/**"
+      - "apps/admin-ui/**"
+      - "apps/admin-api/**"
       - "docker-compose.yml"
       - ".github/workflows/playwright.yml"
   schedule:
@@ -46,18 +46,29 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
 
       - name: Install admin-ui dependencies
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers (chromium only)
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Start Mintkey stack
         run: |
-          docker compose up -d --wait --timeout 120
+          docker compose -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
-          COMPOSE_HTTP_TIMEOUT: 120
+          COMPOSE_HTTP_TIMEOUT: 180
+
+      - name: Debug — container status + grafana log on stack failure
+        if: failure()
+        run: |
+          docker compose -f infra/compose/docker-compose.yml ps -a
+          echo '─── grafana logs (tail 100) ───'
+          docker compose -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
+          echo '─── keycloak logs (tail 50) ───'
+          docker compose -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
+          echo '─── prometheus logs (tail 30) ───'
+          docker compose -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -68,7 +79,7 @@ jobs:
           done
 
       - name: Run Playwright tests (chromium)
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm test:e2e --project=chromium
         env:
           PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
@@ -80,7 +91,7 @@ jobs:
         if: always()
         with:
           name: playwright-report-chromium-${{ github.run_id }}
-          path: admin-ui/e2e/playwright-report/
+          path: apps/admin-ui/e2e/playwright-report/
           retention-days: 14
 
       - name: Upload JUnit report
@@ -88,12 +99,12 @@ jobs:
         if: always()
         with:
           name: playwright-junit-chromium-${{ github.run_id }}
-          path: admin-ui/e2e/test-results/junit.xml
+          path: apps/admin-ui/e2e/test-results/junit.xml
           retention-days: 14
 
       - name: Tear down stack
         if: always()
-        run: docker compose down -v
+        run: docker compose -f infra/compose/docker-compose.yml down -v
 
   # ─────────────────────────────────────────────────────────────────────────
   # Nightly job: all three browsers
@@ -120,18 +131,29 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
 
       - name: Install admin-ui dependencies
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright browsers (${{ matrix.browser }})
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
 
       - name: Start Mintkey stack
         run: |
-          docker compose up -d --wait --timeout 120
+          docker compose -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
-          COMPOSE_HTTP_TIMEOUT: 120
+          COMPOSE_HTTP_TIMEOUT: 180
+
+      - name: Debug — container status + grafana log on stack failure
+        if: failure()
+        run: |
+          docker compose -f infra/compose/docker-compose.yml ps -a
+          echo '─── grafana logs (tail 100) ───'
+          docker compose -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
+          echo '─── keycloak logs (tail 50) ───'
+          docker compose -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
+          echo '─── prometheus logs (tail 30) ───'
+          docker compose -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -142,7 +164,7 @@ jobs:
           done
 
       - name: Run Playwright tests (${{ matrix.browser }})
-        working-directory: admin-ui
+        working-directory: apps/admin-ui
         run: pnpm test:e2e --project=${{ matrix.browser }}
         env:
           PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
@@ -154,7 +176,7 @@ jobs:
         if: always()
         with:
           name: playwright-report-${{ matrix.browser }}-nightly-${{ github.run_id }}
-          path: admin-ui/e2e/playwright-report/
+          path: apps/admin-ui/e2e/playwright-report/
           retention-days: 30
 
       - name: Upload JUnit report
@@ -162,9 +184,9 @@ jobs:
         if: always()
         with:
           name: playwright-junit-${{ matrix.browser }}-nightly-${{ github.run_id }}
-          path: admin-ui/e2e/test-results/junit.xml
+          path: apps/admin-ui/e2e/test-results/junit.xml
           retention-days: 30
 
       - name: Tear down stack
         if: always()
-        run: docker compose down -v
+        run: docker compose -f infra/compose/docker-compose.yml down -v

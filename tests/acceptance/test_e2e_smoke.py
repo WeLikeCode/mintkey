@@ -39,12 +39,12 @@ _ROOT = Path(__file__).parent.parent.parent
 def test_e2e_smoke_components_exist() -> None:
     """All required component directories / files must exist."""
     required = [
-        _ROOT / "admin-api" / "src" / "admin_api",
-        _ROOT / "mcp-server" / "src" / "mcp_server",
-        _ROOT / "services" / "broker",
-        _ROOT / "services" / "proxy-plugin",
-        _ROOT / "services" / "vault-adapter",
-        _ROOT / "mock-backend" / "src" / "mock_backend",
+        _ROOT / "apps/admin-api" / "src" / "admin_api",
+        _ROOT / "apps/mcp-server" / "src" / "mcp_server",
+        _ROOT / "apps" / "broker",
+        _ROOT / "apps" / "proxy-plugin",
+        _ROOT / "apps" / "vault-adapter",
+        _ROOT / "apps/mock-backend" / "src" / "mock_backend",
         _ROOT / "docker-compose.yml",
     ]
     missing = [str(p) for p in required if not p.exists()]
@@ -58,7 +58,7 @@ def test_e2e_smoke_all_routers_registered() -> None:
     Checked routers: health, auth, services, agents, changes, credentials,
     internal, permissions, audit, audit_admin, settings, tenants.
     """
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     assert main_py.exists(), f"main.py not found at {main_py}"
 
     src = main_py.read_text()
@@ -90,7 +90,7 @@ def test_e2e_smoke_mock_backend_has_all_endpoints() -> None:
     required endpoint paths.
     """
     rest_main = (
-        _ROOT / "mock-backend" / "src" / "mock_backend" / "rest" / "main.py"
+        _ROOT / "apps/mock-backend" / "src" / "mock_backend" / "rest" / "main.py"
     )
     assert rest_main.exists(), f"rest/main.py not found at {rest_main}"
 
@@ -120,7 +120,7 @@ def test_e2e_smoke_audit_chain_initialized() -> None:
 
     Source: ADR-0014.7; T-1.13.2.
     """
-    verify_py = _ROOT / "audit-verify-job" / "verify.py"
+    verify_py = _ROOT / "apps/audit-verify-job" / "verify.py"
     assert verify_py.exists(), f"verify.py not found at {verify_py}"
 
     # Add the audit-verify-job directory to sys.path temporarily so we can

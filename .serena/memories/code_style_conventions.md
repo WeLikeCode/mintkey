@@ -63,7 +63,7 @@ await notify_change(session, "mintkey:agent", {"event": "...", "tenant_id": ...}
 ```
 
 ## Liquibase discipline
-- Schema changes: new `.yaml` file in `admin-api/db/changelog/`
+- Schema changes: new `.yaml` file in `apps/admin-api/db/changelog/`
 - Include it in `db.changelog-master.yaml`
 - Every table needs RLS changeset in same file as table creation
 - SQLAlchemy models are mirrors only — generated from DB, not authoritative

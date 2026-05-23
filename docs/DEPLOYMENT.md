@@ -100,16 +100,16 @@ The table below is an audit snapshot reflecting the state after REL-3 (2026-05-1
 
 | Service | Dockerfile | Base image | USER directive | HEALTHCHECK | Base pinned by digest |
 |---|---|---|---|---|---|
-| admin-api | `admin-api/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8080/v1/health` | No (tag only) |
+| admin-api | `apps/admin-api/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8080/v1/health` | No (tag only) |
 | admin-ui | `admin-ui/Dockerfile` | `node:22-slim` | `node` user (UID 1000, pre-created by base image) | `node` http.get on `:8081/health` | No (tag only) |
 | jaeger-auth | `jaeger-auth/Dockerfile` | `quay.io/oauth2-proxy/oauth2-proxy:v7.6.0` (build) + `alpine:3.19` (runtime) | UID 65532 (`oauth2proxy`) | `wget -qO- http://localhost:4180/ping` | No (tag only) |
-| mcp-server | `mcp-server/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8082/health` | No (tag only) |
+| mcp-server | `apps/mcp-server/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8082/health` | No (tag only) |
 | mock-backend | `mock-backend/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | `python3` urllib fallback on `:8999/health` | No (tag only) |
 | seed-job | `seed-job/Dockerfile` | `python:3.12-slim` | UID 65532 (`nonroot`) | None (one-shot job — HEALTHCHECK deferred) | No (tag only) |
-| broker | `services/broker/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
-| kong-syncer | `services/kong-syncer/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
-| proxy-plugin | `services/proxy-plugin/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
-| vault-adapter | `services/vault-adapter/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | `grpc_health_probe` binary bundled but no HEALTHCHECK directive | No (tag only) |
+| broker | `apps/broker/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
+| kong-syncer | `apps/kong-syncer/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
+| proxy-plugin | `apps/proxy-plugin/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | None | No (tag only) |
+| vault-adapter | `apps/vault-adapter/Dockerfile` | `golang:1.26-alpine` (build) + `gcr.io/distroless/static-debian12` (runtime) | None — distroless default is non-root UID 65534 (nonroot), but no explicit USER | `grpc_health_probe` binary bundled but no HEALTHCHECK directive | No (tag only) |
 
 ### Summary
 

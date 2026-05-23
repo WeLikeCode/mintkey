@@ -215,7 +215,7 @@ curl -s -I -X POST \
 Then paste the trace ID into Jaeger → **Search** → **Trace ID** field.
 
 The span attribute allowlist for security-sensitive fields is enforced by the OTel
-collector config (`otel-collector-config.yaml`); any span attribute whose key matches
+collector config (`infra/observability/otel-collector-config.yaml`); any span attribute whose key matches
 `*credential*`, `*secret*`, or `*api_key*` is filtered out before export.
 
 ---

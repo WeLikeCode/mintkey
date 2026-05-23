@@ -31,13 +31,13 @@ _ROOT = Path(__file__).parent.parent.parent
 
 def test_classical_key_schema_exists() -> None:
     """Liquibase changeset 012-service-api-keys.yaml must exist."""
-    changelog = _ROOT / "admin-api" / "db" / "changelog" / "012-service-api-keys.yaml"
+    changelog = _ROOT / "apps/admin-api" / "db" / "changelog" / "012-service-api-keys.yaml"
     assert changelog.exists(), f"Missing: {changelog}"
 
 
 def test_classical_key_admin_api_routers_exist() -> None:
     """admin-api/main.py must import api_keys routers."""
-    main_py = _ROOT / "admin-api" / "src" / "admin_api" / "main.py"
+    main_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "main.py"
     src = main_py.read_text()
     assert "api_keys_router" in src, "api_keys_router not wired in main.py"
     assert "api_keys_shortcut_router" in src, "api_keys_shortcut_router not wired"
@@ -47,7 +47,7 @@ def test_classical_key_prefix() -> None:
     """classicalkey.IsClassicalKey must recognise mk_svckey_ prefix."""
     # Verify the Go code has the prefix check (structural)
     handler_go = (
-        _ROOT / "services" / "proxy-plugin" / "internal" / "classicalkey" / "handler.go"
+        _ROOT / "apps" / "proxy-plugin" / "internal" / "classicalkey" / "handler.go"
     )
     src = handler_go.read_text()
     assert 'HasPrefix(cred, "mk_svckey_")' in src, (
@@ -58,7 +58,7 @@ def test_classical_key_prefix() -> None:
 def test_classical_key_request_transformer_in_yaml_generator() -> None:
     """kong-syncer YAML generator must inject X-Mintkey-Service-ID header."""
     yaml_go = (
-        _ROOT / "services" / "kong-syncer" / "internal" / "kong" / "yaml.go"
+        _ROOT / "apps" / "kong-syncer" / "internal" / "kong" / "yaml.go"
     )
     src = yaml_go.read_text()
     assert "request-transformer" in src, "request-transformer plugin missing from yaml.go"
@@ -69,7 +69,7 @@ def test_classical_key_request_transformer_in_yaml_generator() -> None:
 def test_proxy_plugin_classical_key_dispatch() -> None:
     """proxy-plugin main.go must dispatch mk_svckey_ tokens to handleClassicalKey."""
     main_go = (
-        _ROOT / "services" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
+        _ROOT / "apps" / "proxy-plugin" / "cmd" / "proxy-plugin" / "main.go"
     )
     src = main_go.read_text()
     assert "IsClassicalKey" in src, "IsClassicalKey dispatch missing from main.go"

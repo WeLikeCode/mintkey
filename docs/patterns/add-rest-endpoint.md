@@ -12,10 +12,10 @@ and the OpenAPI parity gate that runs in CI.
 ## Where the change lives
 
 - `docs/architecture/contracts/rest/openapi.yaml` — canonical contract; edit this first (P-4)
-- `admin-api/src/admin_api/api/<resource>.py` — FastAPI router for the resource
-- `admin-api/src/admin_api/services/<resource>.py` — business logic layer (if new resource)
-- `mintkey-models/src/mintkey_models/audit.py` — `audit_emit()` helper (do not modify; call it)
-- `admin-api/db/changelog/` — Liquibase changelogs if a schema change is needed (ADR-0015)
+- `apps/admin-api/src/admin_api/api/<resource>.py` — FastAPI router for the resource
+- `apps/admin-api/src/admin_api/services/<resource>.py` — business logic layer (if new resource)
+- `packages/python/mintkey-models/src/mintkey_models/audit.py` — `audit_emit()` helper (do not modify; call it)
+- `apps/admin-api/db/changelog/` — Liquibase changelogs if a schema change is needed (ADR-0015)
 - `tests/acceptance/test_<resource>.py` — acceptance test asserting the full request/response cycle
 - `tests/acceptance/test_audit_coverage.py` — architecture test asserting audit emission
 
@@ -37,7 +37,7 @@ and the OpenAPI parity gate that runs in CI.
    `class XResponse(BaseModel)` in the API module. Use `str` for ULID wire IDs (never UUID on
    the wire — ADR-0017.11). All timestamps must be `datetime` with `timezone.utc`.
 
-4. **Add the FastAPI router function.** In `admin-api/src/admin_api/api/<resource>.py`, add:
+4. **Add the FastAPI router function.** In `apps/admin-api/src/admin_api/api/<resource>.py`, add:
    ```python
    @router.post("/<resources>", response_model=XResponse, status_code=201)
    async def create_x(body: CreateXRequest, ctx: RequestContext = Depends(get_context)):
@@ -46,7 +46,7 @@ and the OpenAPI parity gate that runs in CI.
    Pull the `tenant_id` from `ctx.tenant_id` — never from the request body (ADR-0008).
 
 5. **Call the business-logic layer.** Keep the router thin; put DB access in
-   `admin-api/src/admin_api/services/<resource>.py`. Use `ctx.db` (async SQLAlchemy session).
+   `apps/admin-api/src/admin_api/services/<resource>.py`. Use `ctx.db` (async SQLAlchemy session).
 
 6. **Emit the audit event.** Every state-changing handler must call `audit_emit()` (P-2):
    ```python
@@ -120,4 +120,4 @@ and the OpenAPI parity gate that runs in CI.
 - [ADR-0017 — Round-3 corrections (ULID prefixes, § 0017.11)](../architecture/01-architecture/adr/0017-round-3-corrections.md)
 - [REST OpenAPI contract](../architecture/contracts/rest/openapi.yaml)
 - [Audit event schema](../architecture/contracts/events/audit-event.schema.json)
-- Example endpoint to read: `admin-api/src/admin_api/api/services.py` (`create_service`)
+- Example endpoint to read: `apps/admin-api/src/admin_api/api/services.py` (`create_service`)

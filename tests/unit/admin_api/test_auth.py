@@ -47,7 +47,7 @@ def _make_operator(*, locked: bool = False, password_hash: str = VALID_HASH):
 def app():
     import sys, os
     from unittest.mock import MagicMock, AsyncMock
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../admin-api/src"))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../apps/admin-api/src"))
     from admin_api.main import create_app
     from admin_api.db.deps import get_db_session
 

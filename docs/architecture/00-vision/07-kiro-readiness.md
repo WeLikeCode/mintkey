@@ -77,7 +77,7 @@ Kiro generates server stubs, client SDKs, test fixtures, and validation logic fr
 | REST OpenAPI 3.1 | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/rest/openapi.yaml`](../contracts/rest/) | Admin REST API + MCP server emit it |
 | MCP tool schemas | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/mcp/tools.yaml`](../contracts/mcp/) | MCP Server |
 | Event schemas (audit + OTel attributes) | ✅ checked in; validated in CI Lint Contracts | [`/docs/architecture/contracts/events/`](../contracts/events/) | Audit Service |
-| DB schema (Liquibase changelog) | ✅ 16 changelogs in `admin-api/db/changelog/` | `/admin-api/db/changelog/` | Admin REST API |
+| DB schema (Liquibase changelog) | ✅ 16 changelogs in `apps/admin-api/db/changelog/` | `/apps/admin-api/db/changelog/` | Admin REST API |
 | JWT claim schema | ✅ in [ADR‑0006](../01-architecture/adr/0006-token-format-and-binding.md) | inline | Credential Broker |
 | Vault Adapter gRPC IDL | ✅ `vault.proto` in `docs/architecture/contracts/vault-adapter/` | [`/docs/architecture/contracts/vault-adapter/`](../contracts/vault-adapter/) | Vault Adapter |
 
@@ -208,7 +208,7 @@ Fixtures are versioned with the contracts. A breaking contract change requires a
 
 | Language / area | Tool / config | Status |
 |---|---|---|
-| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ✅ ruff + mypy --strict configured and green on admin-api, mintkey-models, mcp-server (last verified 2026-05-16 by `team/remediation/2026-05-16-python-code-quality/99-report.md`) |
+| Python | `ruff` config; `mypy` strict; line length 100; pep8 imports | ✅ ruff + mypy --strict configured and green on admin-api, mintkey-models, mcp-server (last verified 2026-05-16 by `remediation/archive/2026/05/2026-05-16-python-code-quality/99-report.md`) |
 | Go | `gofmt` + `golangci-lint` config; `errcheck`, `goimports`, `revive` | ✅ golangci-lint v8 + go vet configured and green in CI Lint Go (last verified on tag v0.1.0-prealpha 2026-05-17) |
 | AdminJS / TypeScript | `eslint` + `prettier` config; strict TS | ⏳ |
 | SQL | `sqlfluff` config (Postgres dialect) | ⏳ |

@@ -22,7 +22,7 @@ import pytest
 from mintkey_models.bootstrap_password import read_bootstrap_password
 
 # Make seed-job importable from tests
-SEED_DIR = Path(__file__).resolve().parents[2] / "seed-job"
+SEED_DIR = Path(__file__).resolve().parents[2] / "apps/seed-job"
 if str(SEED_DIR) not in sys.path:
     sys.path.insert(0, str(SEED_DIR))
 

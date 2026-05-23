@@ -11,12 +11,12 @@
 - Must use `CAST(:param AS type)` everywhere: jsonb, uuid, text[], timestamptz
 
 ## Services running as nginx placeholders
-- `mcp-server` — nginx placeholder; real Python implementation exists at `mcp-server/src/mcp_server/`
-- `mock-backend` — nginx placeholder; real Python implementation exists at `mock-backend/src/mock_backend/rest/`
+- `mcp-server` — nginx placeholder; real Python implementation exists at `apps/mcp-server/src/mcp_server/`
+- `mock-backend` — nginx placeholder; real Python implementation exists at `apps/mock-backend/src/mock_backend/rest/`
 - Both now have Dockerfiles (created 2026-05-11)
 
 ## Vault Adapter gRPC not wired
-- `admin-api/src/admin_api/services/vault_client.py` is in-memory stub
+- `apps/admin-api/src/admin_api/services/vault_client.py` is in-memory stub
 - Real vault-adapter gRPC runs at `vault-adapter:8084`
 - Need to generate Python stubs from `docs/architecture/contracts/vault-adapter/vault.proto`
 

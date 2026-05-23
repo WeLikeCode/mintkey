@@ -7,7 +7,7 @@ Add a pre-baked Grafana dashboard for proxied request traffic visibility by: (1)
 ## Tasks
 
 - [x] 1. Add explicit UID to Prometheus datasource provisioning
-  - [x] 1.1 Add `uid: prometheus` to the Prometheus datasource in `grafana/provisioning/datasources/prometheus.yaml`
+  - [x] 1.1 Add `uid: prometheus` to the Prometheus datasource in `infra/observability/infra/observability/grafana/provisioning/datasources/prometheus.yaml`
     - Add the `uid: prometheus` field to the existing datasource entry so the dashboard can reference it by stable UID
     - _Requirements: 8.4_
 
@@ -30,7 +30,7 @@ Add a pre-baked Grafana dashboard for proxied request traffic visibility by: (1)
   - Ensure the YAML is valid and parseable, ask the user if questions arise.
 
 - [x] 4. Create Grafana dashboard JSON
-  - [x] 4.1 Create `grafana/provisioning/dashboards/request-monitoring.json` with dashboard skeleton and template variables
+  - [x] 4.1 Create `infra/observability/infra/observability/grafana/provisioning/dashboards/request-monitoring.json` with dashboard skeleton and template variables
     - Create the dashboard JSON file with `uid: "mintkey-request-monitoring"`, `title: "Request Monitoring"`, `schemaVersion: 39`
     - Define template variable `agent` querying `label_values(mintkey_proxy_calls_total, mintkey_actor_id)` with `includeAll: true`, default "All"
     - Define template variable `service` querying `label_values(mintkey_proxy_calls_total, mintkey_service_id)` with `includeAll: true`, default "All"
@@ -91,7 +91,7 @@ Add a pre-baked Grafana dashboard for proxied request traffic visibility by: (1)
 - No proxy plugin code changes are required — the spanmetrics connector derives metrics from existing span attributes
 - The OTel Collector image `otel/opentelemetry-collector-contrib:0.104.0` already includes the spanmetrics connector
 - Prometheus already scrapes `otel-collector:8889`, so no Prometheus config changes are needed
-- The existing `grafana/provisioning/dashboards/provider.yaml` auto-loads all JSON files from the provisioning directory
+- The existing `infra/observability/infra/observability/grafana/provisioning/dashboards/provider.yaml` auto-loads all JSON files from the provisioning directory
 
 ## Task Dependency Graph
 

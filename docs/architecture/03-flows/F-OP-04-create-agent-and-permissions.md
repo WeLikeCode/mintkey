@@ -118,7 +118,7 @@ sequenceDiagram
 - Audit `agent.created` payload examined: only the fingerprint and last‑4 chars present, never the plaintext.
 
 ## Kiro spec inputs
-- **Components**: `admin-api/services/agents_handlers.py`, `admin-api/services/permissions_handlers.py`, `mintkey-models/Agent` and `PermissionGrant`.
+- **Components**: `apps/admin-api/services/agents_handlers.py`, `apps/admin-api/services/permissions_handlers.py`, `packages/python/mintkey-models/Agent` and `PermissionGrant`.
 - **Contracts**: `POST /v1/tenants/{tid}/agents`, `POST /v1/tenants/{tid}/agents/{aid}/permissions` in OpenAPI; `agent.created`, `agent.permission.granted` in audit‑event schema; `Constraints` object from [ADR‑0016.4](../01-architecture/adr/0016-round-2-corrections.md).
 - **Tasks** (TDD):
   1. Write integration test for agent creation including the "plaintext returned once" property.

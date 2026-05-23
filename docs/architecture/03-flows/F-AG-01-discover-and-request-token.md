@@ -107,7 +107,7 @@ sequenceDiagram
 - Part of E2E‑01 Phase 7.
 
 ## Kiro spec inputs
-- **Components**: `mcp-server/src/mcp_server/main.py`, `mcp-server/tools/list_services.py`, `mcp-server/tools/request_token.py`, `mcp-server/auth/api_key.py`, `broker/internal/issuer/*`, `admin-api/services/permissions_evaluator.py`.
+- **Components**: `apps/mcp-server/src/mcp_server/main.py`, `apps/mcp-server/tools/list_services.py`, `apps/mcp-server/tools/request_token.py`, `apps/mcp-server/auth/api_key.py`, `apps/broker/internal/issuer/*`, `apps/admin-api/services/permissions_evaluator.py`.
 - **Contracts**: MCP tools defined in `docs/contracts/mcp/tools.yaml`; JWT shape per [ADR‑0006](../01-architecture/adr/0006-token-format-and-binding.md) + [ADR‑0008](../01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md) (`tnt` claim).
 - **Tasks** (TDD):
   1. Write MCP authn integration test (real Postgres, real agent row); implement until pass.

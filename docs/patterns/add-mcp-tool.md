@@ -12,8 +12,8 @@ to. This guide covers schema authoring, handler implementation, auth validation,
 ## Where the change lives
 
 - `docs/architecture/contracts/mcp/tools.yaml` — canonical tool catalog; edit this first (P-4)
-- `mcp-server/src/mcp_server/tools/jsonrpc.py` — JSON-RPC dispatcher and tool-list builder
-- `mcp-server/src/mcp_server/tools/<handler_module>.py` — tool handler logic (new file or
+- `apps/mcp-server/src/mcp_server/tools/jsonrpc.py` — JSON-RPC dispatcher and tool-list builder
+- `apps/mcp-server/src/mcp_server/tools/<handler_module>.py` — tool handler logic (new file or
   extend an existing one; existing tools: `discovery.py`, `request_token.py`, `bootstrap.py`)
 - `tests/unit/mcp_server/test_<handler_module>.py` — unit tests for the handler
 - `tests/acceptance/test_mcp_auth_chain.py` — acceptance tests for auth + dispatch
@@ -35,7 +35,7 @@ to. This guide covers schema authoring, handler implementation, auth validation,
    fail until step 5.
 
 3. **Create the handler module** (or extend an existing one). In
-   `mcp-server/src/mcp_server/tools/<handler>.py`:
+   `apps/mcp-server/src/mcp_server/tools/<handler>.py`:
    ```python
    async def handle_mintkey_<tool_name>(params: dict, agent_ctx: AgentContext) -> dict:
        """
@@ -51,7 +51,7 @@ to. This guide covers schema authoring, handler implementation, auth validation,
    from the `Authorization: Bearer <Agent API Key>` header or the `MINTKEY_AGENT_API_KEY` env
    var. Never skip this check.
 
-5. **Register the tool in the dispatcher.** In `mcp-server/src/mcp_server/tools/jsonrpc.py`:
+5. **Register the tool in the dispatcher.** In `apps/mcp-server/src/mcp_server/tools/jsonrpc.py`:
    - Add the tool's input schema to the `_build_tools_list()` function.
    - Add an `if name == "mintkey_<tool_name>":` branch to `dispatch_tool()` that calls your
      handler.
@@ -104,5 +104,5 @@ to. This guide covers schema authoring, handler implementation, auth validation,
 - [ADR-0017 — Round-3 corrections (ULID prefixes, § 0017.11)](../architecture/01-architecture/adr/0017-round-3-corrections.md)
 - [MCP tool catalog contract](../architecture/contracts/mcp/tools.yaml)
 - Existing tools to read as examples:
-  - `mcp-server/src/mcp_server/tools/discovery.py` (`mintkey_list_services`, `mintkey_discover`)
-  - `mcp-server/src/mcp_server/tools/request_token.py` (`mintkey_request_token`)
+  - `apps/mcp-server/src/mcp_server/tools/discovery.py` (`mintkey_list_services`, `mintkey_discover`)
+  - `apps/mcp-server/src/mcp_server/tools/request_token.py` (`mintkey_request_token`)

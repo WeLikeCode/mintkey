@@ -274,7 +274,7 @@ while IFS='|' read -r rel_path classification redacted; do
       case "$rel_path" in
         env.redacted|env.fernet)         current_file="${REPO_ROOT}/.env" ;;
         env_local.redacted|env_local.fernet) current_file="${REPO_ROOT}/.env.local" ;;
-        e2e_env_local.redacted|e2e_env_local.fernet) current_file="${REPO_ROOT}/admin-ui/e2e/.env.local" ;;
+        e2e_env_local.redacted|e2e_env_local.fernet) current_file="${REPO_ROOT}/apps/admin-ui/e2e/.env.local" ;;
         *)
           warn "  Unknown user-config path mapping: ${rel_path} — skipping"
           SKIPPED=$((SKIPPED + 1))
@@ -422,11 +422,12 @@ while IFS='|' read -r rel_path classification redacted; do
       fi
       warn "════════════════════════════════════════════════════════════════"
       warn "DESTRUCTIVE DATABASE RESTORE"
-      warn "This will DROP and recreate tables in the mintkey database:"
-      warn "  agents, services, permissions, tenants, operators,"
-      warn "  credentials, audit_events, audit_chain_state,"
-      warn "  permission_grants, and all other tables in the dump."
+      warn "This will DROP and recreate ALL tables (Mintkey + Keycloak) in"
+      warn "the mintkey database using the dump's --clean --if-exists DROPs."
       warn "ALL EXISTING DATA WILL BE LOST."
+      warn "Services holding connections (keycloak, admin-api, mcp-server,"
+      warn "broker, kong-syncer) will be STOPPED for the restore and"
+      warn "restarted afterwards."
       warn "════════════════════════════════════════════════════════════════"
       if prompt_yn "Restore pg_dump to mintkey database from ${rel_path}?"; then
         # Handle encrypted dump
@@ -436,15 +437,39 @@ while IFS='|' read -r rel_path classification redacted; do
           tmp_decrypted="$(fernet_decrypt_to_tmp "$backup_file" "${MINTKEY_BOOTSTRAP_KEK}")"
           local_dump="$tmp_decrypted"
         fi
+
+        # Bug #6 fix: stop services that hold open postgres connections so
+        # the dump's DROP TABLE statements don't block on row locks. Keep
+        # postgres itself running; we restore INTO it.
+        # Bug #8 fix: also stop vault-adapter — it holds a SQLite file
+        # handle on /var/lib/vault/vault.db inside the vault_data volume.
+        # When the volume is restored from tar, vault-adapter retains the
+        # stale file handle and serves cached "not found" for credentials.
+        # Stopping it forces a clean re-open of the restored sqlite file.
+        # proxy-plugin caches DEKs in-memory keyed by service_id; stopping
+        # it ensures stale cache entries are dropped after the postgres
+        # service/credential rows are reset.
+        # Bug #5 fix: do NOT silence psql stderr. Surface every postgres
+        # error so silent partial restores can no longer pass as success.
+        info "Stopping services that hold postgres connections / volume files (bug #6 + #8)…"
+        docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" stop \
+            keycloak admin-api mcp-server broker kong-syncer admin-ui \
+            vault-adapter proxy-plugin >&2 || true
+
         if gunzip -c "$local_dump" \
-            | docker compose -f "${REPO_ROOT}/docker-compose.yml" exec -T postgres \
-              psql -U mintkey_migrate -d mintkey 2>/dev/null; then
+            | docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
+              psql -U mintkey_migrate -d mintkey --set ON_ERROR_STOP=on -v ON_ERROR_STOP=on; then
           ok "pg_dump restored to mintkey database   [EV-VOL-001/EV-DB-001..008]"
           RESTORED=$((RESTORED + 1))
         else
-          err "pg_dump restore failed"
+          err "pg_dump restore failed — see psql errors above"
           FAILED=$((FAILED + 1))
         fi
+
+        info "Restarting stopped services…"
+        docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" up -d --wait --timeout 180 >&2 || \
+            warn "Service restart did not complete cleanly — check 'docker compose ps'"
+
         [[ -n "$tmp_decrypted" ]] && rm -f "$tmp_decrypted"
       else
         info "  Skipped by user: ${rel_path}"
@@ -464,6 +489,36 @@ m = json.load(open('${MANIFEST_FILE}'))
 for f in m.get('files', []):
     print(f['path'] + '|' + f['classification'] + '|' + str(f.get('redacted', True)).lower())
 " 2>/dev/null)
+
+# ── Bug #9 fix: post-restore service restart (manifest-order independent) ────
+# The manifest is processed in file-listing order. The pg_dump iteration
+# stops services + restarts them (bugs #6/#8 fix). But "Docker volume state"
+# iterations restore volumes (vault_data, vault_kek, bootstrap_secrets)
+# WHILE services may already be running with stale file handles into those
+# volumes. Net effect: vault-adapter serves "GetCredential not found" from
+# the OLD inode even after the new inode is written to disk; proxy-plugin
+# caches DEKs against the stale view; HTTP 502 "vault error" follows.
+#
+# Final restart of every data-dependent service ensures all stale file
+# handles + in-memory caches are dropped after EVERY volume + DB restore
+# is complete, regardless of manifest entry ordering.
+if [[ $APPLY -eq 1 && $RESTORED -gt 0 ]]; then
+  heading "Post-restore service restart (bug #9 fix)"
+  info "Restarting data-dependent services to drop stale file handles + caches…"
+  docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" restart \
+      vault-adapter proxy-plugin admin-api mcp-server broker kong-syncer keycloak admin-ui >&2 \
+      || warn "Some services failed to restart cleanly — check 'docker compose ps'"
+
+  # Bug #10 fix: `docker compose restart` does NOT wait for healthchecks.
+  # Without this wait, callers that immediately hit /v1/tools/list_services
+  # get "Connection reset by peer" because uvicorn is still bootstrapping.
+  # Use `up -d --wait` which is a no-op for already-running containers but
+  # blocks until every service's healthcheck passes (timeout 180s).
+  info "Waiting for restarted services to pass healthchecks…"
+  docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" up -d --wait --timeout 180 >&2 \
+      || warn "Some services did not become healthy — check 'docker compose ps'"
+  ok "Services restarted + healthy post-restore"
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo "" >&2
