@@ -9,7 +9,7 @@
 
 Keycloak is the canonical IdP for admin-ui, Grafana, and Jaeger. Operators sign in once per service; sessions are independent per service today (no central SSO state shared across admin-ui, Grafana, and Jaeger — each service issues its own session).
 
-**Normal login:** Navigate to `http://localhost:8081`, click "Sign in with Keycloak", enter `admin@mintkey.internal` + the bootstrap password from `data/bootstrap-secrets/admin_password`.
+**Normal login:** Navigate to `http://localhost:8081`, click "Sign in with Keycloak", enter `admin@mintkey.internal` + the bootstrap password printed by `make admin-password` (Fernet-decrypts `data/bootstrap-secrets/admin_password` via `MINTKEY_BOOTSTRAP_KEK`).
 
 **Break-glass (Keycloak unreachable):**
 ```bash
@@ -105,9 +105,12 @@ Prerequisites: `docker compose up -d` completed successfully; all containers hea
 
 1. **Find the bootstrap password:**
    ```bash
-   cat data/bootstrap-secrets/admin_password
-   # or, if the file is inside the Docker volume:
-   docker run --rm -v mintkey_bootstrap_secrets:/s alpine cat /s/admin_password
+   make admin-password
+   # The file at data/bootstrap-secrets/admin_password is Fernet-encrypted
+   # ciphertext (closes CodeQL py/clear-text-storage). seed-job writes it
+   # both to the bootstrap_secrets named volume AND mirrors it to this host
+   # path so `make admin-password` always reflects the CURRENT seed (not a
+   # stale snapshot from dev-restore.sh).
    ```
 
 2. **Navigate to the admin console:**

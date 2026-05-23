@@ -15,9 +15,9 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
 # Mintkey development targets
 # ─────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
+.PHONY: help admin-password dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
         test test-unit test-arch test-integration test-acceptance \
-        test:e2e test:e2e:headed test:e2e:ci \
+        test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
@@ -195,19 +195,25 @@ test-data-plane: test-data-plane-smoke test-data-plane-resilience
 
 # ── Playwright E2E UI tests ──────────────────────────────────────────────────
 
-test:e2e-setup:
+# NOTE: colons in target names are escaped (`\:`) for GNU Make 3.81
+# compatibility (macOS default). Without the escape, make fails with
+# "*** target pattern contains no '%'. Stop." before any target can run.
+# This pre-existed the monorepo restructure but blocked `make help`,
+# `make admin-password`, and similar discovery commands until escaped.
+
+test\:e2e-setup:
 	@bash $(TOOLS)/e2e-setup-env.sh
 
-test:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
-	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+test\:e2e: ## Run Playwright E2E UI tests (headless, all browsers)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
 	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --reporter=list,html
 
-test:e2e:headed: ## Run Playwright E2E UI tests in headed mode (debug)
-	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+test\:e2e\:headed: ## Run Playwright E2E UI tests in headed mode (debug)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
 	cd apps/admin-ui && npx playwright test --config e2e/playwright.config.ts --headed --reporter=list,html
 
-test:e2e:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
-	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test:e2e-setup' first" && exit 1)
+test\:e2e\:ci: ## Run Playwright E2E UI tests in CI mode (Chromium only, retries)
+	@test -f apps/admin-ui/e2e/.env.local || (echo "ERROR: run 'make test\:e2e-setup' first" && exit 1)
 	cd apps/admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts --reporter=junit,html
 
 # ── Linting ───────────────────────────────────────────────────────────────────
