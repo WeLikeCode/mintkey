@@ -395,17 +395,27 @@ fi
 # ── Section 4: Docker volume snapshots ────────────────────────────────────────
 heading "4. Docker volume snapshots"
 
-# Check if vault-adapter is running
+# Check if vault-adapter is running (and healthy).
 # EvidenceRef: EV-VOL-002, EV-VOL-003, EV-VOL-004
+#
+# Same fix class as the postgres check above (was Name.endswith()/substring,
+# which silently mis-matched 'mintkey-vault-adapter-1' as either accidentally
+# true or accidentally false depending on naming. Substring 'vault' also
+# loosely matched anything containing 'vault'.). Use Service+Health like
+# the postgres check.
+#
+# Note: technically the volumes can be snapshotted regardless of whether
+# vault-adapter is running (docker volumes are independent of services
+# that mount them). We gate on running+healthy as a sanity proxy.
 VAULT_RUNNING=0
 if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
 data = sys.stdin.read().strip()
 rows = json.loads(data) if data.startswith('[') else [json.loads(l) for l in data.splitlines() if l.strip()]
-ok = any('vault' in str(r.get('Name','')).lower() and r.get('State','') == 'running' for r in rows)
+ok = any(r.get('Service','') == 'vault-adapter' and r.get('Health','') == 'healthy' and r.get('State','') == 'running' for r in rows)
 sys.exit(0 if ok else 1)
-" 2>/dev/null; then
+"; then
   VAULT_RUNNING=1
 fi
 
