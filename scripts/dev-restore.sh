@@ -490,6 +490,36 @@ for f in m.get('files', []):
     print(f['path'] + '|' + f['classification'] + '|' + str(f.get('redacted', True)).lower())
 " 2>/dev/null)
 
+# ── Bug #9 fix: post-restore service restart (manifest-order independent) ────
+# The manifest is processed in file-listing order. The pg_dump iteration
+# stops services + restarts them (bugs #6/#8 fix). But "Docker volume state"
+# iterations restore volumes (vault_data, vault_kek, bootstrap_secrets)
+# WHILE services may already be running with stale file handles into those
+# volumes. Net effect: vault-adapter serves "GetCredential not found" from
+# the OLD inode even after the new inode is written to disk; proxy-plugin
+# caches DEKs against the stale view; HTTP 502 "vault error" follows.
+#
+# Final restart of every data-dependent service ensures all stale file
+# handles + in-memory caches are dropped after EVERY volume + DB restore
+# is complete, regardless of manifest entry ordering.
+if [[ $APPLY -eq 1 && $RESTORED -gt 0 ]]; then
+  heading "Post-restore service restart (bug #9 fix)"
+  info "Restarting data-dependent services to drop stale file handles + caches…"
+  docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" restart \
+      vault-adapter proxy-plugin admin-api mcp-server broker kong-syncer keycloak admin-ui >&2 \
+      || warn "Some services failed to restart cleanly — check 'docker compose ps'"
+
+  # Bug #10 fix: `docker compose restart` does NOT wait for healthchecks.
+  # Without this wait, callers that immediately hit /v1/tools/list_services
+  # get "Connection reset by peer" because uvicorn is still bootstrapping.
+  # Use `up -d --wait` which is a no-op for already-running containers but
+  # blocks until every service's healthcheck passes (timeout 180s).
+  info "Waiting for restarted services to pass healthchecks…"
+  docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" up -d --wait --timeout 180 >&2 \
+      || warn "Some services did not become healthy — check 'docker compose ps'"
+  ok "Services restarted + healthy post-restore"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo "" >&2
 if [[ $DRY_RUN -eq 1 ]]; then
