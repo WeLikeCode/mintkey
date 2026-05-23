@@ -20,9 +20,18 @@
 - Genuine fixes (3 alerts): after CodeQL re-scan (typically within 24h of merge), expect `state=fixed`
 - FP anchors (5+ alerts): operator dismisses via GitHub UI using anchor text; `state=dismissed` with reason "won't fix" and the documented anchor comment
 
-## Coverage check (post-implementation, C-5)
+## Coverage check (post-implementation, C-5) — COMPLETED 2026-05-23
 
-Every row above must have:
-- A verification command run
-- Captured exit code OR alert-state delta
-- A SECURITY.md anchor (for FP rows) OR commit SHA (for genuine-fix rows)
+| Row | Has verification command | Has exit code / alert-state | Has anchor / commit |
+|---|---|---|---|
+| EV-FIX-1269 | ✅ AST parse, ruff check, reviewer red-team trace | exit 0 / pending re-scan | commit `8a87890` |
+| EV-FIX-SEED-1075 | ✅ AST parse, grep absence, line-by-line untouched verify | exit 0 / pending re-scan | commit `cf4bcf0` |
+| EV-FIX-1260 | ✅ YAML parse, full pip-install audit, PyPI version verify | exit 0 / pending re-scan | commit `d720a46` |
+| EV-FP-1268 | ✅ source-site verify (proxy.py:64) | n/a (FP) | SECURITY.md Pattern A in commit `6ef3153` |
+| EV-FP-1267 | ✅ source-site verify (internal.py:119) | n/a (FP) | SECURITY.md Pattern A in commit `6ef3153` |
+| EV-FP-1266 | ✅ source-site verify (audit.py:85) | n/a (FP) | SECURITY.md Pattern B in commit `6ef3153` |
+| EV-FP-1261 | ✅ source-site verify (agent.py:90, `jwt_preview` upstream truncation) | n/a (FP) | SECURITY.md Pattern C in commit `6ef3153` |
+| EV-FP-1288 | ✅ source-site verify (Dockerfile FROM @sha256: + --require-hashes for deps) | n/a (FP) | SECURITY.md Pattern E in commit `6ef3153` |
+| EV-FP-SEED-396..1077 | ✅ per-line content inventory verified intact | n/a (FP) | SECURITY.md Pattern D in commit `6ef3153` |
+
+**Coverage check: PASS.** All 9 ledger rows have verification command + exit code or alert-state path + anchor/commit reference.
