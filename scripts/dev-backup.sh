@@ -371,7 +371,7 @@ else
     # stderr is now SHOWN (not piped to /dev/null) so any pg_dump failure
     # is visible at backup time.
     if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
-        pg_dump -U mintkey_migrate -d mintkey --no-owner --no-privileges --clean --if-exists \
+        pg_dump -U mintkey_migrate -d mintkey --no-owner --clean --if-exists \
         | gzip > "$DUMP_TMP"; then
       if [[ $WITH_SECRETS -eq 1 ]]; then
         fernet_encrypt_file "$DUMP_TMP" "${BACKUP_DIR}/postgres_dump.sql.gz.fernet" "${MINTKEY_BOOTSTRAP_KEK}"

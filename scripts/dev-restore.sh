@@ -441,11 +441,20 @@ while IFS='|' read -r rel_path classification redacted; do
         # Bug #6 fix: stop services that hold open postgres connections so
         # the dump's DROP TABLE statements don't block on row locks. Keep
         # postgres itself running; we restore INTO it.
+        # Bug #8 fix: also stop vault-adapter — it holds a SQLite file
+        # handle on /var/lib/vault/vault.db inside the vault_data volume.
+        # When the volume is restored from tar, vault-adapter retains the
+        # stale file handle and serves cached "not found" for credentials.
+        # Stopping it forces a clean re-open of the restored sqlite file.
+        # proxy-plugin caches DEKs in-memory keyed by service_id; stopping
+        # it ensures stale cache entries are dropped after the postgres
+        # service/credential rows are reset.
         # Bug #5 fix: do NOT silence psql stderr. Surface every postgres
         # error so silent partial restores can no longer pass as success.
-        info "Stopping services that hold postgres connections (bug #6 fix)…"
+        info "Stopping services that hold postgres connections / volume files (bug #6 + #8)…"
         docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" stop \
-            keycloak admin-api mcp-server broker kong-syncer admin-ui >&2 || true
+            keycloak admin-api mcp-server broker kong-syncer admin-ui \
+            vault-adapter proxy-plugin >&2 || true
 
         if gunzip -c "$local_dump" \
             | docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
