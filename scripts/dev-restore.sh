@@ -422,11 +422,12 @@ while IFS='|' read -r rel_path classification redacted; do
       fi
       warn "════════════════════════════════════════════════════════════════"
       warn "DESTRUCTIVE DATABASE RESTORE"
-      warn "This will DROP and recreate tables in the mintkey database:"
-      warn "  agents, services, permissions, tenants, operators,"
-      warn "  credentials, audit_events, audit_chain_state,"
-      warn "  permission_grants, and all other tables in the dump."
+      warn "This will DROP and recreate ALL tables (Mintkey + Keycloak) in"
+      warn "the mintkey database using the dump's --clean --if-exists DROPs."
       warn "ALL EXISTING DATA WILL BE LOST."
+      warn "Services holding connections (keycloak, admin-api, mcp-server,"
+      warn "broker, kong-syncer) will be STOPPED for the restore and"
+      warn "restarted afterwards."
       warn "════════════════════════════════════════════════════════════════"
       if prompt_yn "Restore pg_dump to mintkey database from ${rel_path}?"; then
         # Handle encrypted dump
@@ -436,15 +437,30 @@ while IFS='|' read -r rel_path classification redacted; do
           tmp_decrypted="$(fernet_decrypt_to_tmp "$backup_file" "${MINTKEY_BOOTSTRAP_KEK}")"
           local_dump="$tmp_decrypted"
         fi
+
+        # Bug #6 fix: stop services that hold open postgres connections so
+        # the dump's DROP TABLE statements don't block on row locks. Keep
+        # postgres itself running; we restore INTO it.
+        # Bug #5 fix: do NOT silence psql stderr. Surface every postgres
+        # error so silent partial restores can no longer pass as success.
+        info "Stopping services that hold postgres connections (bug #6 fix)…"
+        docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" stop \
+            keycloak admin-api mcp-server broker kong-syncer admin-ui >&2 || true
+
         if gunzip -c "$local_dump" \
             | docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" exec -T postgres \
-              psql -U mintkey_migrate -d mintkey 2>/dev/null; then
+              psql -U mintkey_migrate -d mintkey --set ON_ERROR_STOP=on -v ON_ERROR_STOP=on; then
           ok "pg_dump restored to mintkey database   [EV-VOL-001/EV-DB-001..008]"
           RESTORED=$((RESTORED + 1))
         else
-          err "pg_dump restore failed"
+          err "pg_dump restore failed — see psql errors above"
           FAILED=$((FAILED + 1))
         fi
+
+        info "Restarting stopped services…"
+        docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" up -d --wait --timeout 180 >&2 || \
+            warn "Service restart did not complete cleanly — check 'docker compose ps'"
+
         [[ -n "$tmp_decrypted" ]] && rm -f "$tmp_decrypted"
       else
         info "  Skipped by user: ${rel_path}"
