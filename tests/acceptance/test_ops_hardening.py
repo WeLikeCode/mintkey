@@ -93,8 +93,8 @@ def test_prometheus_scrapes_cadvisor() -> None:
 
 
 def test_cadvisor_in_compose() -> None:
-    """docker-compose.yml must include a cadvisor service."""
-    compose = _ROOT / "docker-compose.yml"
+    """infra/compose/docker-compose.yml must include a cadvisor service."""
+    compose = _ROOT / "infra" / "compose" / "docker-compose.yml"
     src = compose.read_text()
     assert "cadvisor" in src, "docker-compose.yml missing cAdvisor service"
     assert "container_memory" in src or "gcr.io/cadvisor" in src, (

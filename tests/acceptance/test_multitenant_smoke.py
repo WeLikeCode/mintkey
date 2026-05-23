@@ -38,7 +38,7 @@ _MODELS_SRC = _REPO_ROOT / "packages/python/mintkey-models"
 _API_DIR = _ADMIN_API_SRC / "admin_api" / "api"
 _VERIFIER_GO = (
     _REPO_ROOT
-    / "services"
+    / "apps"
     / "proxy-plugin"
     / "internal"
     / "jwt"

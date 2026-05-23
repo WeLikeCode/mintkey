@@ -67,8 +67,8 @@ def _get_compose_config(test_namespace: bool) -> dict:
     if test_namespace:
         cmd = [
             "docker", "compose",
-            "-f", "docker-compose.yml",
-            "-f", "docker-compose.test.yml",
+            "-f", "infra/compose/docker-compose.yml",
+            "-f", "infra/compose/docker-compose.test.yml",
             "--env-file", ".env.test",
             "config",
         ]

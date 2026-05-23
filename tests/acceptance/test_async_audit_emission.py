@@ -307,7 +307,7 @@ def test_auditq_unit_tests_pass() -> None:
       - No credential in Event payload.
     """
     result = subprocess.run(
-        ["go", "test", "./internal/auditq/...", "-v", "-timeout", "30s"],
+        ["go", "test", "./packages/go/auditq/...", "-v", "-timeout", "30s"],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,

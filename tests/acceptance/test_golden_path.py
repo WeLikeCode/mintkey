@@ -207,7 +207,7 @@ def test_golden_path_admin_api_vault_client_is_grpc() -> None:
 
     Source: WS-9; ADR-0011; T-1.3.1.
     """
-    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "apps" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")
@@ -710,7 +710,7 @@ def test_ws10_vault_client_list_versions_parses_metadata() -> None:
 
     Source: WS-10; vault.proto; T-1.3.1.
     """
-    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "apps" / "vault_client.py"
+    vault_client_py = _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "vault_client.py"
     assert vault_client_py.exists(), f"vault_client.py not found: {vault_client_py}"
 
     src = vault_client_py.read_text(encoding="utf-8")
