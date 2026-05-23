@@ -641,6 +641,12 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      # Grafana reads grafana_oidc_client_secret from the bootstrap_secrets
+      # volume that seed-job populates. Without this dep, Grafana races
+      # seed-job in cold-start (CI Playwright) and crashes "No such file".
+      # Pre-existing latent bug; surfaced by post-restructure cold-start.
+      seed-job:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 10s
