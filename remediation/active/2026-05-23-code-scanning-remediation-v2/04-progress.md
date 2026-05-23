@@ -7,6 +7,15 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-23 — C-4 IMPLEMENTER (SECURITY.md FP-pattern docs)
+- Commit: `6ef3153`
+- Files changed: SECURITY.md (+125 -0)
+- Patterns added: A (fingerprint), B (Merkle), C (JWT preview), D (taint scope), E (local-pkg)
+- markdownlint: not_found
+- Pattern-headings sanity: PASS — Python script confirmed 5 ### Pattern X headings
+
+---
+
 ## 2026-05-23 — C-3 IMPLEMENTER (ci.yml pyyaml pin)
 - Commit: `d720a46`
 - Files changed: .github/workflows/ci.yml (+1 -1)
