@@ -42,7 +42,7 @@ REQUIRED_ENV_VARS = validate_mod.REQUIRED_ENV_VARS
 def primary_ports():
     """Minimal primary port mappings for testing."""
     return {
-        "apps/admin-api": [(None, 8080, 8080)],
+        "admin-api": [(None, 8080, 8080)],
         "admin-ui": [(None, 8081, 8081)],
         "keycloak": [(None, 8443, 8443)],
         "kong": [(None, 8000, 8000), ("127.0.0.1", 8001, 8001)],
@@ -53,7 +53,7 @@ def primary_ports():
 def correct_test_ports():
     """Test port mappings with correct +100 offset."""
     return {
-        "apps/admin-api": [(None, 8180, 8080)],
+        "admin-api": [(None, 8180, 8080)],
         "admin-ui": [(None, 8181, 8081)],
         "keycloak": [(None, 8543, 8443)],
         "kong": [(None, 8100, 8000), ("127.0.0.1", 8101, 8001)],
@@ -108,12 +108,12 @@ class TestIncorrectPortArithmetic:
     def test_detects_wrong_offset(self, primary_ports, correct_test_ports):
         """A test port that is not primary + 100 triggers an error."""
         # Set admin-api test port to 8190 instead of 8180
-        correct_test_ports["apps/admin-api"] = [(None, 8190, 8080)]
+        correct_test_ports["admin-api"] = [(None, 8190, 8080)]
 
         errors = validate_port_offsets(primary_ports, correct_test_ports)
 
         assert len(errors) == 1
-        assert "apps/admin-api" in errors[0]
+        assert "admin-api" in errors[0]
         assert "8180" in errors[0]  # expected port
         assert "8190" in errors[0]  # actual port
 
@@ -133,7 +133,7 @@ class TestIncorrectPortArithmetic:
         """A container port present in primary but missing from test triggers an error."""
         # Kong primary has two ports, test only has one
         test_ports = {
-            "apps/admin-api": [(None, 8180, 8080)],
+            "admin-api": [(None, 8180, 8080)],
             "admin-ui": [(None, 8181, 8081)],
             "keycloak": [(None, 8543, 8443)],
             "kong": [(None, 8100, 8000)],  # missing 8001 container port
@@ -159,9 +159,9 @@ class TestMissingImagePin:
         test_services = {
             "seed-job": {"image": "mintkey-seed-job"},
             "vault-adapter": {"image": "mintkey-vault-adapter"},
-            "apps/admin-api": {"ports": ["8180:8080"]},  # missing image key
+            "admin-api": {"ports": ["8180:8080"]},  # missing image key
             "admin-ui": {"image": "mintkey-admin-ui"},
-            "apps/mcp-server": {"image": "mintkey-mcp-server"},
+            "mcp-server": {"image": "mintkey-mcp-server"},
             "broker": {"image": "mintkey-broker"},
             "kong-syncer": {"image": "mintkey-kong-syncer"},
             "proxy-plugin": {"image": "mintkey-proxy-plugin"},
@@ -172,7 +172,7 @@ class TestMissingImagePin:
         errors = validate_image_pins(test_services)
 
         assert len(errors) == 1
-        assert "apps/admin-api" in errors[0]
+        assert "admin-api" in errors[0]
         assert "image" in errors[0].lower()
 
     def test_detects_service_missing_from_override(self):
@@ -180,9 +180,9 @@ class TestMissingImagePin:
         test_services = {
             "seed-job": {"image": "mintkey-seed-job"},
             "vault-adapter": {"image": "mintkey-vault-adapter"},
-            "apps/admin-api": {"image": "mintkey-admin-api"},
+            "admin-api": {"image": "mintkey-admin-api"},
             "admin-ui": {"image": "mintkey-admin-ui"},
-            "apps/mcp-server": {"image": "mintkey-mcp-server"},
+            "mcp-server": {"image": "mintkey-mcp-server"},
             "broker": {"image": "mintkey-broker"},
             "kong-syncer": {"image": "mintkey-kong-syncer"},
             "proxy-plugin": {"image": "mintkey-proxy-plugin"},
@@ -200,9 +200,9 @@ class TestMissingImagePin:
         test_services = {
             "seed-job": {"image": "mintkey-seed-job"},
             "vault-adapter": {"image": "mintkey-vault-adapter"},
-            "apps/admin-api": {"image": "mintkey-admin-api"},
+            "admin-api": {"image": "mintkey-admin-api"},
             "admin-ui": None,  # empty config
-            "apps/mcp-server": {"image": "mintkey-mcp-server"},
+            "mcp-server": {"image": "mintkey-mcp-server"},
             "broker": {"image": "mintkey-broker"},
             "kong-syncer": {"image": "mintkey-kong-syncer"},
             "proxy-plugin": {"image": "mintkey-proxy-plugin"},
@@ -220,9 +220,9 @@ class TestMissingImagePin:
         test_services = {
             "seed-job": {"image": "mintkey-seed-job"},
             "vault-adapter": {"image": "mintkey-vault-adapter"},
-            "apps/admin-api": {"image": "mintkey-admin-api"},
+            "admin-api": {"image": "mintkey-admin-api"},
             "admin-ui": {"image": "mintkey-admin-ui"},
-            "apps/mcp-server": {"image": "mintkey-mcp-server"},
+            "mcp-server": {"image": "mintkey-mcp-server"},
             "broker": {"image": "mintkey-broker"},
             "kong-syncer": {"image": "mintkey-kong-syncer"},
             "proxy-plugin": {"image": "mintkey-proxy-plugin"},
