@@ -7,6 +7,16 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-23 — C-3 IMPLEMENTER (ci.yml pyyaml pin)
+- Commit: `d720a46`
+- Files changed: .github/workflows/ci.yml (+1 -1)
+- Pinned: pyyaml==6.0.2 (line 109)
+- Audit result: none — only other pip install (line 73) uses --require-hashes with -r requirements file (out of scope)
+- YAML parse: exit 0
+- actionlint: not_found
+
+---
+
 ## 2026-05-23 — C-2 IMPLEMENTER (seed-job line 1075 leak)
 - Commit: `cf4bcf0`
 - Files changed: apps/seed-job/main.py (+4 -1)
