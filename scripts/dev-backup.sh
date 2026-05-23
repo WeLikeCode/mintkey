@@ -328,9 +328,13 @@ PG_HEALTHY=0
 if docker compose -f "${REPO_ROOT}/infra/compose/docker-compose.yml" ps --format json 2>/dev/null \
     | python3 -c "
 import sys, json
+# Fix: docker compose ps --format json returns Service='postgres' and
+# Name='mintkey-postgres-1'. The prior check used Name.endswith('postgres')
+# which never matched because Compose appends '-N' to container names.
+# Use the Service field instead — it's the stable compose service identifier.
 data = sys.stdin.read().strip()
 rows = json.loads(data) if data.startswith('[') else [json.loads(l) for l in data.splitlines() if l.strip()]
-healthy = any(str(r.get('Name','')).endswith('postgres') and r.get('Health','') in ('healthy','') and r.get('State','') == 'running' for r in rows)
+healthy = any(r.get('Service','') == 'postgres' and r.get('Health','') == 'healthy' and r.get('State','') == 'running' for r in rows)
 sys.exit(0 if healthy else 1)
 " 2>/dev/null; then
   PG_HEALTHY=1
