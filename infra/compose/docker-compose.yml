@@ -132,8 +132,17 @@ services:
       # real key here.  Generate a fresh key with:
       #   python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
+      # Tells seed-job to mirror admin_password to the host bind below so
+      # `cat data/bootstrap-secrets/admin_password` from the repo reflects the
+      # CURRENT value (not a stale dev-restore.sh snapshot). Fixes a footgun
+      # where the host file drifted after `docker compose down -v` + `up`.
+      HOST_BOOTSTRAP_SECRETS_DIR: /host-bootstrap-secrets
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
+      # Host bind so seed-job can write admin_password to data/bootstrap-secrets/
+      # for operator convenience. The named volume above is the canonical store
+      # other services mount; this bind is operator-facing only.
+      - ../../data/bootstrap-secrets:/host-bootstrap-secrets:rw
     networks:
       - mintkey
     depends_on:

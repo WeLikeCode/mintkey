@@ -30,6 +30,17 @@ from tenacity import retry, stop_after_delay, wait_exponential
 DEFAULT_TENANT_SLUG = "t_default"
 DEFAULT_ADMIN_EMAIL = os.getenv("MINTKEY_BOOTSTRAP_EMAIL", "admin@mintkey.internal")
 BOOTSTRAP_SECRETS_DIR = Path(os.getenv("BOOTSTRAP_SECRETS_DIR", "./data/bootstrap-secrets"))
+# Optional host-visible mirror of admin_password. When set (compose binds the
+# host's data/bootstrap-secrets into the container at this path), seed-job
+# writes a copy of admin_password here so operators can `cat
+# data/bootstrap-secrets/admin_password` from the repo and get the CURRENT
+# value (not a backup-time snapshot from dev-restore.sh). Fixes a footgun
+# where the host file drifted from the live volume after `down -v` + `up`.
+HOST_BOOTSTRAP_SECRETS_DIR = (
+    Path(os.environ["HOST_BOOTSTRAP_SECRETS_DIR"])
+    if os.getenv("HOST_BOOTSTRAP_SECRETS_DIR")
+    else None
+)
 
 # ---------------------------------------------------------------------------
 # Bootstrap KEK — Fernet key for encrypting the admin password on disk.
@@ -993,6 +1004,33 @@ def _ensure_admin_password_file(
         chmod_mode=0o400,
         label="admin_password",
     )
+
+    # Mirror admin_password to the host-visible path when bound (operator UX).
+    # Without this, the host file at data/bootstrap-secrets/admin_password
+    # would only ever be populated by dev-restore.sh and would drift from the
+    # live volume after `docker compose down -v` + `up`. Same bytes
+    # (Fernet-encrypted) so dev-backup's fingerprint matches.
+    if HOST_BOOTSTRAP_SECRETS_DIR is not None:
+        try:
+            HOST_BOOTSTRAP_SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+            host_file = HOST_BOOTSTRAP_SECRETS_DIR / "admin_password"
+            host_file.write_bytes((secrets_dir / "admin_password").read_bytes())
+            try:
+                host_file.chmod(0o400)
+            except OSError:
+                # Some bind-mount filesystems (esp. macOS Docker Desktop)
+                # do not allow chmod; mode is whatever the host gives us.
+                pass
+            print(
+                f"Mirrored admin_password to host bind: {host_file}"
+            )
+        except OSError as exc:
+            # Non-fatal: container path may not exist if compose bind is
+            # missing. Log + continue so seed completes for other secrets.
+            print(
+                f"WARN: could not mirror admin_password to "
+                f"{HOST_BOOTSTRAP_SECRETS_DIR}: {exc}"
+            )
 
 
 # ---------------------------------------------------------------------------
