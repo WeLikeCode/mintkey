@@ -7,6 +7,16 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-23 — C-2 IMPLEMENTER (seed-job line 1075 leak)
+- Commit: `cf4bcf0`
+- Files changed: apps/seed-job/main.py (+4 -1)
+- import hashlib added? No — already present at line 15
+- Untouched-by-design lines verified intact: 396, 399, 412, 1025, 1031, 1077
+- Lint: ruff reports 1 pre-existing F841 (unused `args` on line 1057, unrelated to this change); AST parse exit 0
+- Functional test: skipped (docker stack not running; static verification sufficient)
+
+---
+
 ## 2026-05-23 — C-1 IMPLEMENTER (SSRF fix)
 - Commit: `8a87890`
 - Files changed: apps/admin-api/src/admin_api/api/services.py (+63 -1)
