@@ -7,6 +7,15 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-23 — C-1 IMPLEMENTER (SSRF fix)
+- Commit: `8a87890`
+- Files changed: apps/admin-api/src/admin_api/api/services.py (+63 -1)
+- Lint: ruff exit 0 (All checks passed)
+- Type: mypy not installed in project venv; AST parse exit 0
+- Functional test: skipped (docker stack not running; parse + lint confirmed)
+
+---
+
 ## 2026-05-23 — C-0 ORCHESTRATOR
 
 ### Bootstrap

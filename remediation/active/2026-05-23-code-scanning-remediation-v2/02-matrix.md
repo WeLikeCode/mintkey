@@ -5,8 +5,8 @@
 
 | ID | Wave | Owner | Files | Alerts addressed | Impl | Reviewer | Commit |
 |---|---|---|---|---|---|---|---|
-| C-0 | 0 | ORCHESTRATOR | session scaffold + branch | — | 🔵 in-flight | n/a | _this commit_ |
-| C-1 | 1 | IMPLEMENTER (Sonnet) | apps/admin-api/src/admin_api/api/services.py | #1269 SSRF | ⬜ pending | ⬜ pending | _pending_ |
+| C-0 | 0 | ORCHESTRATOR | session scaffold + branch | — | ✅ PASS | n/a | `85b596a` |
+| C-1 | 1 | IMPLEMENTER (Sonnet) | apps/admin-api/src/admin_api/api/services.py | #1269 SSRF | ✅ commit | ⬜ pending | `8a87890` |
 | C-2 | 1 | IMPLEMENTER (Sonnet) | apps/seed-job/main.py:1075 | seed-job plaintext password print (subset of #1276/#1287) | ⬜ pending | ⬜ pending | _pending_ |
 | C-3 | 1 | IMPLEMENTER (Sonnet) | .github/workflows/ci.yml:109 | #1260 PinnedDependenciesID | ⬜ pending | ⬜ pending | _pending_ |
 | C-4 | 1 | IMPLEMENTER (Sonnet) | SECURITY.md | #1266, #1267, #1268, #1261, #1288 + seed-job FPs (#1286, #1287 ex-line-1075, etc.) | ⬜ pending | ⬜ pending | _pending_ |
