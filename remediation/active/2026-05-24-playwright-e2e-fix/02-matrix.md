@@ -9,8 +9,8 @@
 | C-1 | 1 | INVESTIGATOR (Opus) | `03-investigation-report.md` (read-only on code) | root-cause + fix proposal | ✅ PASS | n/a | _no commits — report-only_ |
 | C-2 | 2 | ORCHESTRATOR | 01-orchestrator-chunks.md + 02-matrix.md + 04-progress.md | C-3/C-4 plan written | 🔵 in-flight | n/a | _this commit_ |
 | C-3 | 3 | IMPLEMENTER (Sonnet) | `apps/admin-ui/e2e/global-setup.ts` | OIDC fixture rewrite | ✅ commit | ✅ PASS | `eed01a1` |
-| C-4 | 3 | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | decrypt bootstrap password | ✅ commit | ⬜ pending | `1fb48c3` |
-| C-Final | Final | REVIEWER (Opus, fresh) | full-session audit | green light to open PR | n/a | ⬜ pending | _no commits — read-only_ |
+| C-4 | 3 | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | decrypt bootstrap password | ✅ commit | ✅ PASS | `1fb48c3` |
+| C-Final | Final | REVIEWER (Opus, fresh) | full-session audit | green light to open PR | n/a | ✅ PASS | _no commits — read-only_ |
 
 ## Legend
 | Symbol | Meaning |
