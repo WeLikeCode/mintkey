@@ -7,6 +7,17 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-7 IMPLEMENTER (fix C-4 decrypt step bugs)
+- Commit: `5f699b2`
+- Files changed: .github/workflows/playwright.yml (+4 -2)
+- Bug 1 fixed: cryptography==45.0.8 → 48.0.0 (45.0.8 doesn't exist; 48.0.0 verified in pip error output's version list)
+- Bug 2 fixed: added `sudo chmod 0644 "${BOOTSTRAP_PW_FILE}"` so runner can read seed-job's root-mode-0400 file
+- Both jobs (chromium PR + nightly) received identical treatment
+- YAML parse: exit 0
+- Reference: PR #124 CI run 26357598275 (decrypt step exit code 1)
+
+---
+
 ## 2026-05-24 — ORCHESTRATOR finalization
 
 ### Per-chunk reviewer verdicts (fresh Opus, read-only)

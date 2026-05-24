@@ -11,6 +11,7 @@
 | C-3 | 3 | IMPLEMENTER (Sonnet) | `apps/admin-ui/e2e/global-setup.ts` | OIDC fixture rewrite | ✅ commit | ✅ PASS | `eed01a1` |
 | C-4 | 3 | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | decrypt bootstrap password | ✅ commit | ✅ PASS | `1fb48c3` |
 | C-Final | Final | REVIEWER (Opus, fresh) | full-session audit | green light to open PR | n/a | ✅ PASS | _no commits — read-only_ |
+| C-7 | post-PR | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | fix C-4 fabricated version + file permission | ✅ commit | ⬜ pending | `5f699b2` |
 
 ## Legend
 | Symbol | Meaning |
