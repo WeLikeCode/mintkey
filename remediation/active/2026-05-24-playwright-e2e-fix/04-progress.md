@@ -7,6 +7,44 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — ORCHESTRATOR finalization
+
+### Per-chunk reviewer verdicts (fresh Opus, read-only)
+
+| Chunk | Reviewer verdict | Key checks confirmed |
+|---|---|---|
+| C-3 (OIDC fixture) | ✅ PASS | Scope=1 file (global-setup.ts +113 -26); navigates `${baseURL}/auth/start` not `/admin/login`; defensive CSS password locator (avoids PatternFly "Show password" strict-mode trap); storageState path matches playwright.config.ts; try/catch with stale-state cleanup; diagnostic logging at every step; no Co-Authored-By; no secrets. |
+| C-4 (workflow decrypt) | ✅ PASS | Scope=1 file (playwright.yml +62 -2); `secrets.PLAYWRIGHT_PASS` reference dropped from both jobs; decrypt step in BOTH chromium PR + nightly all-browsers jobs; positioned after `docker compose up --wait` and before `Run Playwright tests`; `::add-mask::` precedes `$GITHUB_ENV` write; graceful no-op when bootstrap file missing; pinned cryptography==45.0.8; `set -euo pipefail`; KEK matches public dev value in infra/compose/docker-compose.yml. |
+
+### C-Final full-session review (fresh Opus)
+
+- Commit log shape: PASS (6 commits in order at review time; 7 with this finalization)
+- File-level scope: PASS (10 files: 2 code + 8 session)
+- ADR directory: untouched
+- Co-Authored-By: absent
+- Real secrets: none (dev KEK acceptable; not a real secret)
+- Per-commit owner-file scope: PASS for both fix commits + both bookkeeping commits
+- C-3 OIDC fixture: 6/6 beats present
+- C-4 workflow decrypt: 9/9 beats present in both jobs
+- YAML parse + TS transpile: clean
+- Live CI sanity: confirmed baseline still red (dependabot runs on pre-fix main); branch not pushed yet at review time
+- Bookkeeping: matrix + progress consistent
+
+### Decisions during execution
+
+- **Live-stack functional verification by the C-3 implementer** caught a Keycloak selector issue (`getByLabel(/password/i)` matched both the input AND the "Show password" toggle button → strict-mode error). Implementer switched to CSS-only locator. Saved an entire strike loop.
+- **Cookie scope verified by reading admin-ui/admin-api source**: `mintkey_session` is host-only on `localhost`, port-agnostic per RFC 6265. Admin-ui validates via internal HTTP call to admin-api/whoami.
+- **One-shot first-strike PASS** for both C-3 and C-4. Zero strikes used total.
+- **Out of scope (deferred)**: `apps/admin-ui/e2e/pages/login.ts` accordion expansion for `01-login.spec.ts` sub-suite; `PLAYWRIGHT_TENANT_ID`/`OPERATOR_ID`/`API_JWT` env wiring; push-to-main Playwright trigger.
+
+### Next
+
+- Push branch
+- Open PR via Mintkey proxy
+- Monitor Playwright CI on the new PR; verify ≥55 of 56 previously-failing tests now pass
+
+---
+
 ## 2026-05-24 — C-4 IMPLEMENTER (workflow decrypt step)
 - Commit: `1fb48c3`
 - Files changed: .github/workflows/playwright.yml (+62 -2)
