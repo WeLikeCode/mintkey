@@ -7,6 +7,16 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-3 IMPLEMENTER (global-setup.ts OIDC rewrite)
+- Commit: `eed01a1`
+- Files changed: apps/admin-ui/e2e/global-setup.ts (+113 -26)
+- tsc: Pre-existing error (`import.meta` without tsconfig; errors in `--noEmit` without project config because root tsconfig.json excludes e2e/). The original file had the same issue. Node transpile check (module=ESNext, target=ES2020) exits 0, output length=6546.
+- Functional test against live stack: PASS. Global-setup logged `✅ saved storageState to .../state.json`. Diagnose test (chromium) passed in 6.4s showing AdminJS dashboard text instead of login page.
+- Cookie scope verification: storageState captured `mintkey_session@localhost/` and `csrf_token@localhost/` (no explicit Domain → host-only for `localhost`, port-agnostic per RFC 6265). Admin-ui validates sessions via internal HTTP call to admin-api:8080/v1/auth/whoami forwarding the browser's cookies — so the cookie only needs to be present for `localhost`. Verified: post-login URL was `http://localhost:8081/admin`.
+- Selector fix applied: Keycloak's PatternFly theme renders a "Show password" toggle button with `aria-label="Show password"`, causing `getByLabel(/password/i)` strict-mode violation (2 matches). Fixed to use `input#password, input[name=password], input[type=password]` CSS locator.
+
+---
+
 ## 2026-05-24 — C-2 ORCHESTRATOR (plan implementation)
 
 Reviewed C-1 investigation report. Confidence HIGH on a 2-file MVP fix:
