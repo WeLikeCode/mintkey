@@ -89,8 +89,9 @@ jobs:
             echo "::warning::${BOOTSTRAP_PW_FILE} not found or empty; PLAYWRIGHT_PASS will be unset and global-setup will warn"
             exit 0
           fi
+          sudo chmod 0644 "${BOOTSTRAP_PW_FILE}"
           pip install --quiet --require-hashes -r .github/workflows/requirements-bootstrap-decrypt.txt 2>/dev/null \
-            || pip install --quiet 'cryptography==45.0.8'
+            || pip install --quiet 'cryptography==48.0.0'
           PW=$(python3 - <<'PY'
           import os, sys
           from cryptography.fernet import Fernet
@@ -204,8 +205,9 @@ jobs:
             echo "::warning::${BOOTSTRAP_PW_FILE} not found or empty; PLAYWRIGHT_PASS will be unset and global-setup will warn"
             exit 0
           fi
+          sudo chmod 0644 "${BOOTSTRAP_PW_FILE}"
           pip install --quiet --require-hashes -r .github/workflows/requirements-bootstrap-decrypt.txt 2>/dev/null \
-            || pip install --quiet 'cryptography==45.0.8'
+            || pip install --quiet 'cryptography==48.0.0'
           PW=$(python3 - <<'PY'
           import os, sys
           from cryptography.fernet import Fernet
