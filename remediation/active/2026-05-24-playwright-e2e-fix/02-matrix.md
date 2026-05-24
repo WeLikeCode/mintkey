@@ -12,6 +12,7 @@
 | C-4 | 3 | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | decrypt bootstrap password | ✅ commit | ✅ PASS | `1fb48c3` |
 | C-Final | Final | REVIEWER (Opus, fresh) | full-session audit | green light to open PR | n/a | ✅ PASS | _no commits — read-only_ |
 | C-7 | post-PR | IMPLEMENTER (Sonnet) | `.github/workflows/playwright.yml` | fix C-4 fabricated version + file permission | ✅ commit | ✅ PASS | `5f699b2` |
+| C-8 | post-PR | ORCHESTRATOR (trivial 1-line) | `.github/workflows/playwright.yml` | bump chromium timeout-minutes 30→60 (matches nightly; tests were succeeding when cancelled at 30min) | ✅ commit | n/a | _this commit_ |
 
 ## Legend
 | Symbol | Meaning |

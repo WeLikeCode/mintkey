@@ -7,6 +7,22 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-8 ORCHESTRATOR (chromium timeout bump 30→60)
+
+- 1-line trivial YAML change (no orchestrator-pattern subagent dispatch — risk is near-zero on a config bump)
+- File: `.github/workflows/playwright.yml` line 35
+- Change: `timeout-minutes: 30` → `timeout-minutes: 60`
+- Rationale: C-7 fix succeeded — the decrypt step now exports `PLAYWRIGHT_PASS`, global-setup OIDC completes, and tests actually execute. Wall-clock observed at 30.6 min covered ~89 unique tests (test #267 of ~633 attempts) when GitHub Actions cancelled the job at `timeout-minutes: 30`. Many of the tests in flight were PASSING (sample: tests 212-241 mostly ✓). Need a larger budget to let the full suite complete. Matching the nightly all-browsers job's 60-min budget is conservative.
+- YAML parse: exit 0
+- Diff: -timeout-minutes: 30 / +timeout-minutes: 60 (line 35)
+
+### Next
+
+- Commit + push C-8
+- Monitor PR #124's next CI run (re-triggered by push)
+
+---
+
 ## 2026-05-24 — C-7 IMPLEMENTER (fix C-4 decrypt step bugs)
 - Commit: `5f699b2`
 - Files changed: .github/workflows/playwright.yml (+4 -2)
