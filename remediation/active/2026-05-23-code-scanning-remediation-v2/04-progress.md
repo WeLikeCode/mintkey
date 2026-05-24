@@ -7,6 +7,15 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-6 IMPLEMENTER (Playwright runbook import fix)
+- Commit: `8467c41`
+- Files changed: apps/admin-ui/e2e/tests/99-runbook-ui-verify.spec.ts (+1 -1)
+- Root cause: pre-existing bug in ce3870d (PR #90) — runbook verifier imported only `test`, not `expect`, from @playwright/test; called expect(...) at line 96; CI didn't catch it because Playwright runs on pull_request only
+- Fix: switch import to project's `../fixtures/test.js` (which re-exports expect + adds console-error tracker, matching every other tests/*.spec.ts)
+- tsc / Playwright run: tsc skipped — pre-existing errors in src/resources/tenants.ts unrelated to e2e test; Playwright run skipped — stack not running; static grep checks all passed
+
+---
+
 ## 2026-05-23 — ORCHESTRATOR finalization
 
 ### Per-chunk reviewer verdicts (fresh Opus, read-only)
