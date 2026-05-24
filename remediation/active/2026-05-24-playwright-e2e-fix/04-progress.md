@@ -7,6 +7,18 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-4 IMPLEMENTER (workflow decrypt step)
+- Commit: `1fb48c3`
+- Files changed: .github/workflows/playwright.yml (+62 -2)
+- Jobs updated: chromium PR + nightly all-browsers
+- Pinned: cryptography==45.0.8
+- Graceful no-op confirmed: if data/bootstrap-secrets/admin_password missing → ::warning:: + exit 0
+- YAML parse: exit 0
+- actionlint: not_found
+- Functional decrypt test against live stack: PASS (decrypted length=43, >16)
+
+---
+
 ## 2026-05-24 — C-3 IMPLEMENTER (global-setup.ts OIDC rewrite)
 - Commit: `eed01a1`
 - Files changed: apps/admin-ui/e2e/global-setup.ts (+113 -26)
