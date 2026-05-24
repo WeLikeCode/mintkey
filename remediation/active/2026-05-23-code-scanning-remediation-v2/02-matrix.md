@@ -11,7 +11,7 @@
 | C-3 | 1 | IMPLEMENTER (Sonnet) | .github/workflows/ci.yml:109 | #1260 PinnedDependenciesID | ✅ commit | ✅ PASS | `d720a46` |
 | C-4 | 1 | IMPLEMENTER (Sonnet) | SECURITY.md | #1266, #1267, #1268, #1261, #1288 + seed-job FPs (#1286, #1287 ex-line-1075, etc.) | ✅ commit | ✅ PASS | `6ef3153` |
 | C-5 | 2 | REVIEWER (Opus, fresh) | full-session audit | — | n/a | ✅ PASS | _no commits — read-only_ |
-| C-6 | 3 | IMPLEMENTER (Sonnet) | apps/admin-ui/e2e/tests/99-runbook-ui-verify.spec.ts | CI-green (pre-existing Playwright import bug from PR #90 ce3870d) | ✅ commit | ⬜ pending | `8467c41` |
+| C-6 | 3 | IMPLEMENTER (Sonnet) | apps/admin-ui/e2e/tests/99-runbook-ui-verify.spec.ts | CI-green (pre-existing Playwright import bug from PR #90 ce3870d) | ✅ commit | ✅ PASS | `8467c41` |
 
 ## Legend
 | Symbol | Meaning |
