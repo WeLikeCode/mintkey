@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
+import socket
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional, cast
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from uuid import UUID
 
 import httpx
@@ -245,6 +247,44 @@ def _check_ssrf_hostname(final_url: str, base_url: str) -> str:
             },
         )
     return final_url
+
+
+def _validate_test_url(url: str) -> tuple[bool, str | None]:
+    """Validate URL is safe for outbound test calls.
+
+    Returns (is_safe, reason_if_unsafe).
+    Rejects:
+      - non-http(s) schemes
+      - URLs without a host
+      - hostnames that resolve to private, loopback, link-local, multicast,
+        reserved, or unspecified IP ranges (v4 OR v6)
+
+    Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the
+    private-IP block (e.g. dev workflows hitting a private mock backend).
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        return (False, "scheme_not_allowed")
+    if not parts.hostname:
+        return (False, "missing_host")
+    try:
+        resolved = socket.getaddrinfo(parts.hostname, None)
+    except socket.gaierror:
+        return (False, "dns_resolution_failed")
+    if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") != "1":
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            addr = sockaddr[0]
+            ip = ipaddress.ip_address(addr)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return (False, "private_or_special_ip_blocked")
+    return (True, None)
 
 
 def _wire_id_to_db_uuid(wire_id: str) -> str:
@@ -558,6 +598,17 @@ async def test_service_transient(
     merged_headers = {**headers, **(test.headers or {})}
     timeout_s = test.timeout_ms / 1000.0
 
+    is_safe, reason = _validate_test_url(final_url)
+    if not is_safe:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "mintkey:ssrf_rejected",
+                "reason": reason,
+                "host_redacted": (urlsplit(final_url).hostname or "")[:4] + "***",
+            },
+        )
+
     # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
     start = _time.monotonic()
@@ -718,6 +769,17 @@ async def test_service(
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(req.headers or {})}
     timeout_s = (req.timeout_ms or 5000) / 1000.0
+
+    is_safe, reason = _validate_test_url(final_url)
+    if not is_safe:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "mintkey:ssrf_rejected",
+                "reason": reason,
+                "host_redacted": (urlsplit(final_url).hostname or "")[:4] + "***",
+            },
+        )
 
     # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
