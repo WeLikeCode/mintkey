@@ -7,6 +7,40 @@ Newest entries at the top.
 
 ---
 
+## 2026-05-24 — C-9 ORCHESTRATOR (parallelize Playwright)
+
+**The auth fix is verifiably working.** PR #124 CI run after C-7+C-8 reported:
+- ✅ 135 tests passing (vs 36 before this PR)
+- ✘ 44 tests failing (still need work but unblocked)
+- ⌚ 32 tests unreached when chromium job hit `timeout-minutes: 60`
+- Total wall-clock: 60.5 min — cancelled at 60-min boundary
+
+**Why so slow** (per `playwright.config.ts:25-26`):
+- `workers: process.env.CI ? 1 : undefined` — single worker in CI
+- `retries: process.env.CI ? 2 : 0` — 2 retries per failed test
+- Some tests genuinely take 3.1 min (e.g. `99-runbook-ui-verify` Step 6 walking through full create-service UI flow) × 3 attempts = ~10 min per slow-failing test
+
+**C-9 change** (1 file, 2 lines):
+- `retries: process.env.CI ? 2 : 0,` → `retries: process.env.CI ? 1 : 0,`
+- `workers: process.env.CI ? 1 : undefined,` → `workers: process.env.CI ? 2 : undefined,`
+
+**Risk assessment**:
+- `fullyParallel: true` is already set (line 23), so tests are DESIGNED for parallel execution within a file. The `workers: 1` in CI was a conservative ceiling, not a "tests can't run in parallel" statement.
+- Race conditions on shared DB state: unlikely because each test creates+deletes its own resources via the API; tenant isolation provides natural sharding.
+- Reducing retries from 2 to 1 still recovers genuinely flaky tests but cuts worst-case wall-clock by ~50%.
+
+**Expected outcome**:
+- Suite runtime: ~30 min (2× parallel; 0.5× retry overhead)
+- Tests passing: ≥135 (no regression in test logic)
+- All 211 unique tests should run to completion within `timeout-minutes: 60`
+
+### Next
+
+- Commit + push C-9
+- Final CI monitor
+
+---
+
 ## 2026-05-24 — C-8 ORCHESTRATOR (chromium timeout bump 30→60)
 
 - 1-line trivial YAML change (no orchestrator-pattern subagent dispatch — risk is near-zero on a config bump)
