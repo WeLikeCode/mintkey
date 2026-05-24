@@ -78,11 +78,41 @@ jobs:
             sleep 5
           done
 
+      - name: Decrypt bootstrap admin password and export PLAYWRIGHT_PASS
+        env:
+          MINTKEY_BOOTSTRAP_KEK: "TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas="
+          BOOTSTRAP_PW_FILE: "data/bootstrap-secrets/admin_password"
+        run: |
+          set -euo pipefail
+          ls -la data/bootstrap-secrets/ || echo "bootstrap-secrets dir missing — will run unauthenticated"
+          if [ ! -s "${BOOTSTRAP_PW_FILE}" ]; then
+            echo "::warning::${BOOTSTRAP_PW_FILE} not found or empty; PLAYWRIGHT_PASS will be unset and global-setup will warn"
+            exit 0
+          fi
+          pip install --quiet --require-hashes -r .github/workflows/requirements-bootstrap-decrypt.txt 2>/dev/null \
+            || pip install --quiet 'cryptography==45.0.8'
+          PW=$(python3 - <<'PY'
+          import os, sys
+          from cryptography.fernet import Fernet
+          kek = os.environ["MINTKEY_BOOTSTRAP_KEK"].encode()
+          with open(os.environ["BOOTSTRAP_PW_FILE"], "rb") as f:
+              ct = f.read()
+          pt = Fernet(kek).decrypt(ct).decode()
+          # Refuse to print plaintext; just emit length sanity-check.
+          print(len(pt), file=sys.stderr)
+          # Mask the actual password before it lands in the action log.
+          sys.stdout.write(pt)
+          PY
+          )
+          echo "[decrypt] PLAYWRIGHT_PASS length=${#PW}"
+          # Mask the secret so it doesn't appear in any future ::set-env / debug echo.
+          echo "::add-mask::${PW}"
+          echo "PLAYWRIGHT_PASS=${PW}" >> "$GITHUB_ENV"
+
       - name: Run Playwright tests (chromium)
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=chromium
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 
@@ -163,11 +193,41 @@ jobs:
             sleep 5
           done
 
+      - name: Decrypt bootstrap admin password and export PLAYWRIGHT_PASS
+        env:
+          MINTKEY_BOOTSTRAP_KEK: "TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas="
+          BOOTSTRAP_PW_FILE: "data/bootstrap-secrets/admin_password"
+        run: |
+          set -euo pipefail
+          ls -la data/bootstrap-secrets/ || echo "bootstrap-secrets dir missing — will run unauthenticated"
+          if [ ! -s "${BOOTSTRAP_PW_FILE}" ]; then
+            echo "::warning::${BOOTSTRAP_PW_FILE} not found or empty; PLAYWRIGHT_PASS will be unset and global-setup will warn"
+            exit 0
+          fi
+          pip install --quiet --require-hashes -r .github/workflows/requirements-bootstrap-decrypt.txt 2>/dev/null \
+            || pip install --quiet 'cryptography==45.0.8'
+          PW=$(python3 - <<'PY'
+          import os, sys
+          from cryptography.fernet import Fernet
+          kek = os.environ["MINTKEY_BOOTSTRAP_KEK"].encode()
+          with open(os.environ["BOOTSTRAP_PW_FILE"], "rb") as f:
+              ct = f.read()
+          pt = Fernet(kek).decrypt(ct).decode()
+          # Refuse to print plaintext; just emit length sanity-check.
+          print(len(pt), file=sys.stderr)
+          # Mask the actual password before it lands in the action log.
+          sys.stdout.write(pt)
+          PY
+          )
+          echo "[decrypt] PLAYWRIGHT_PASS length=${#PW}"
+          # Mask the secret so it doesn't appear in any future ::set-env / debug echo.
+          echo "::add-mask::${PW}"
+          echo "PLAYWRIGHT_PASS=${PW}" >> "$GITHUB_ENV"
+
       - name: Run Playwright tests (${{ matrix.browser }})
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=${{ matrix.browser }}
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 
