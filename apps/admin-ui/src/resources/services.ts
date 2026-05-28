@@ -358,9 +358,9 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
 
           // BUG-7a: resp.json() must not swallow all errors — only catch parse failures
           // so that the real error body still surfaces for non-ok responses.
-          let body: { id?: string; title?: string; detail?: string } = {};
+          let body: { id?: string; title?: string; detail?: string; credential_hint?: Record<string, unknown> | null } = {};
           try {
-            body = await resp.json() as { id?: string; title?: string; detail?: string };
+            body = await resp.json() as { id?: string; title?: string; detail?: string; credential_hint?: Record<string, unknown> | null };
           } catch {
             // unparseable body — treat as empty
           }
@@ -387,7 +387,11 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           return {
             record: {
               ...baseRecord,
-              params: { ...baseRecord.params, service_id: body.id },
+              params: {
+                ...baseRecord.params,
+                service_id: body.id,
+                credential_hint: body.credential_hint ?? null,
+              },
             },
             service: body,
             redirectUrl: `/admin/resources/services/records/${body.id}/show`,

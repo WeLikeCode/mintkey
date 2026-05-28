@@ -596,6 +596,58 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
                 </Box>
               )}
 
+              {/* Credential hint — Req 23.5: shown for oauth2_password_grant templates
+                  so the operator sees the required credential structure before supplying values */}
+              {selectedTemplate.credential_hint &&
+                typeof selectedTemplate.credential_hint === "object" &&
+                (selectedTemplate.credential_hint as Record<string, unknown>).token_url && (
+                <Box
+                  mb="default"
+                  p="default"
+                  style={{
+                    background: "#e8f4fd",
+                    border: "1px solid #90caf9",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: "#0d47a1",
+                  }}
+                  data-testid="credential-hint-panel"
+                >
+                  <Text style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>
+                    Credential Structure Required
+                  </Text>
+                  <Text style={{ fontSize: 12, marginBottom: 4 }}>
+                    Token URL:{" "}
+                    <span style={{ fontFamily: "monospace", wordBreak: "break-all" }}>
+                      {String((selectedTemplate.credential_hint as Record<string, unknown>).token_url)}
+                    </span>
+                  </Text>
+                  {(selectedTemplate.credential_hint as Record<string, unknown>).credential_fields &&
+                    typeof (selectedTemplate.credential_hint as Record<string, unknown>).credential_fields === "object" && (
+                    <Box mb="sm">
+                      <Text style={{ fontSize: 12, marginBottom: 2 }}>Fields to supply:</Text>
+                      <Box style={{ fontFamily: "monospace", fontSize: 12, paddingLeft: 8 }}>
+                        {Object.keys(
+                          (selectedTemplate.credential_hint as Record<string, unknown>).credential_fields as Record<string, string>
+                        ).map((fieldName) => (
+                          <Text key={fieldName} style={{ fontSize: 12 }}>
+                            • {fieldName}
+                          </Text>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                  {(selectedTemplate.credential_hint as Record<string, unknown>).token_response_path && (
+                    <Text style={{ fontSize: 12 }}>
+                      Token path:{" "}
+                      <span style={{ fontFamily: "monospace" }}>
+                        {String((selectedTemplate.credential_hint as Record<string, unknown>).token_response_path)}
+                      </span>
+                    </Text>
+                  )}
+                </Box>
+              )}
+
               {/* Base URL */}
               {selectedTemplate.base_url && (
                 <Text

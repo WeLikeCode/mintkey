@@ -604,6 +604,31 @@ async def create_service_from_template(
         },
     )
 
+    # Build credential_hint payload — Req 23.5.
+    # The hint exposes the expected credential structure (field names, token_url,
+    # token_response_path) so the operator knows what to supply.  No secret value
+    # is stored or returned; placeholder strings from the YAML are included as-is
+    # so the operator can see the field names only.
+    credential_hint_payload: dict | None = None
+    if template.credential_hint is not None:
+        hint = template.credential_hint
+        # For oauth2_password_grant templates the hint carries token_url, etc.
+        if hint.token_url is not None:
+            credential_hint_payload = {
+                "token_url": hint.token_url,
+                "credential_fields": hint.credential_fields,
+                "token_response_path": hint.token_response_path,
+            }
+        else:
+            # Simple auth types (bearer_token, api_key_header, etc.) — include field/help/format
+            credential_hint_payload = {
+                k: v for k, v in {
+                    "field": hint.field,
+                    "help": hint.help,
+                    "format": hint.format,
+                }.items() if v is not None
+            } or None
+
     return JSONResponse(
         status_code=201,
         content={
@@ -620,6 +645,7 @@ async def create_service_from_template(
             "template_id": template.template_id,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
+            "credential_hint": credential_hint_payload,
         },
     )
 
