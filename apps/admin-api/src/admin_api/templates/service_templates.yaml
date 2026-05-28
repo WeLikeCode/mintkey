@@ -10,7 +10,7 @@ templates:
     version: "1.0.0"
     config_notes: null
     credential_hint:
-      field: value
+      field: token
       help: "Personal Access Token or Project/Group Access Token"
       format: "glpat-..."
     test_path: /version
@@ -26,7 +26,7 @@ templates:
     version: "1.0.0"
     config_notes: "Authentication requires a JWT signed with an App Store Connect API key (ES256)."
     credential_hint:
-      field: value
+      field: token
       help: "JWT signed with your App Store Connect API key (ES256 algorithm)"
       format: "eyJhbGciOiJFUzI1NiIs..."
     test_path: /apps
@@ -42,7 +42,7 @@ templates:
     version: "1.0.0"
     config_notes: "Authentication uses OAuth 2.0 service account credentials."
     credential_hint:
-      field: value
+      field: service_account_json
       help: "OAuth 2.0 service account JSON key file contents"
       format: '{"type": "service_account", ...}'
     test_path: /androidpublisher/v3/applications
@@ -58,7 +58,7 @@ templates:
     version: "1.0.0"
     config_notes: "The base URL requires an organization name appended (e.g., https://dev.azure.com/{organization})."
     credential_hint:
-      field: value
+      field: token
       help: "Personal Access Token (PAT) with appropriate scopes"
       format: "Base64-encoded PAT"
     test_path: /_apis/projects?api-version=7.0
@@ -74,7 +74,7 @@ templates:
     version: "1.0.0"
     config_notes: "The API uses JSON Schema (not OpenAPI) as its machine-readable spec format, and requires Accept: application/vnd.heroku+json; version=3 header."
     credential_hint:
-      field: value
+      field: token
       help: "Heroku API Key or OAuth token"
       format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     test_path: /account
@@ -90,7 +90,7 @@ templates:
     version: "1.0.0"
     config_notes: "The API key is passed via the X-Subscription-Token header."
     credential_hint:
-      field: value
+      field: api_key
       help: "Brave Search API subscription token"
       format: "BSA..."
     test_path: /web/search?q=test&count=1
@@ -106,7 +106,7 @@ templates:
     version: "1.0.0"
     config_notes: null
     credential_hint:
-      field: value
+      field: api_key
       help: "SendGrid API Key"
       format: "SG...."
     test_path: /user/profile
@@ -122,7 +122,7 @@ templates:
     version: "1.0.0"
     config_notes: "Authentication uses Account SID as username and Auth Token as password (HTTP Basic Auth)."
     credential_hint:
-      field: value
+      field: credentials
       help: "Account SID:Auth Token (colon-separated)"
       format: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     test_path: /Accounts.json
@@ -138,7 +138,7 @@ templates:
     version: "1.0.0"
     config_notes: null
     credential_hint:
-      field: value
+      field: secret_key
       help: "Use a restricted key for production; test keys start with sk_test_"
       format: "sk_live_... or sk_test_..."
     test_path: /charges?limit=1
@@ -154,7 +154,7 @@ templates:
     version: "1.0.0"
     config_notes: null
     credential_hint:
-      field: value
+      field: token
       help: "Cloudflare API Token (not Global API Key)"
       format: "Bearer token from dashboard"
     test_path: /user/tokens/verify
@@ -170,7 +170,7 @@ templates:
     version: "1.0.0"
     config_notes: "Authentication requires both DD-API-KEY and DD-APPLICATION-KEY headers, and the base URL varies by region (e.g., api.us5.datadoghq.com)."
     credential_hint:
-      field: value
+      field: api_key
       help: "DD-API-KEY and DD-APPLICATION-KEY (comma-separated or structured)"
       format: "api_key,application_key"
     test_path: /api/v2/validate
@@ -186,7 +186,7 @@ templates:
     version: "1.0.0"
     config_notes: null
     credential_hint:
-      field: value
+      field: api_key
       help: "PagerDuty REST API Key (v2)"
       format: "u+xxxxxxxxxxxxxxxx"
     test_path: /abilities

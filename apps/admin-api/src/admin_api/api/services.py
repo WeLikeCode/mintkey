@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.auth.sessions import require_tenant_session
@@ -103,17 +104,55 @@ def _is_forbidden_destination(base_url: str) -> bool:
     Forbidden: RFC1918, loopback (127/8, ::1), link-local (169.254/16, fe80::/10),
     and unique-local (fc00::/7).
 
-    DNS names are allowed (not resolved here); only IP literals are checked.
+    Both IP literals AND DNS-resolved hostnames are checked so that a hostname
+    that resolves to a private/loopback address is also rejected (BUG-13).
+
+    Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the private-IP
+    block (e.g. dev workflows hitting a private mock backend) — mirrors the
+    SSRF policy in credential_service.py.
     """
     try:
         parsed = urlparse(base_url)
         host = parsed.hostname
         if not host:
             return False
-        ip = ipaddress.ip_address(host)
-        return any(ip in net for net in _FORBIDDEN_NETWORKS)
-    except ValueError:
-        return False  # not an IP literal — DNS resolution happens at request time
+
+        # Opt-out for dev environments (mirrors credential_service.validate_token_url_ssrf)
+        if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") == "1":
+            return False
+
+        # Check IP literals directly — fast path
+        try:
+            ip = ipaddress.ip_address(host)
+            return any(ip in net for net in _FORBIDDEN_NETWORKS)
+        except ValueError:
+            pass  # Not an IP literal — resolve via DNS
+
+        # DNS resolution check (BUG-13 fix): resolve and reject if any address is private
+        try:
+            resolved = socket.getaddrinfo(host, None)
+        except socket.gaierror:
+            # DNS resolution failed — allow through; a non-resolvable hostname is not a
+            # forbidden destination (connection will fail at request time anyway).
+            return False
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            addr = sockaddr[0]
+            try:
+                ip = ipaddress.ip_address(addr)
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_multicast
+                    or ip.is_reserved
+                    or ip.is_unspecified
+                ):
+                    return True
+            except ValueError:
+                continue
+        return False
+    except Exception:  # noqa: BLE001
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -519,22 +558,8 @@ async def create_service_from_template(
     # Set tenant context — bound parameters, ADR-0008
     await set_tenant_context(session, tenant_id)
 
-    # Check for duplicate name — Req 4.5
+    # Derive slug from name — used in uq_services_tenant_slug unique constraint
     slug = name.lower().replace(" ", "-")
-    dup_check = await session.execute(
-        text(
-            "SELECT id FROM services WHERE tenant_id = :tid AND slug = :slug"
-        ),
-        {"tid": str(tenant_id), "slug": slug},
-    )
-    if dup_check.fetchone() is not None:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "mintkey:code": "service_name_taken",
-                "title": f"A service with name '{name}' already exists in this tenant",
-            },
-        )
 
     # Generate ULID ID with svc_ prefix — ADR-0017.11
     svc_id = _new_svc_id()
@@ -547,33 +572,45 @@ async def create_service_from_template(
     now = datetime.now(timezone.utc)
 
     # INSERT service with template_id metadata — Req 4.1, 4.4
-    await session.execute(
-        text(
-            "INSERT INTO services"
-            " (id, tenant_id, name, slug, display_name, description,"
-            "  base_url, auth_scheme, openapi_url, status, template_id,"
-            "  created_at, updated_at)"
-            " VALUES"
-            " (:id, :tenant_id, :name, :slug, :display_name, :description,"
-            "  :base_url, :auth_scheme, :openapi_url, :status, :template_id,"
-            "  :created_at, :updated_at)"
-        ),
-        {
-            "id": str(internal_id),
-            "tenant_id": str(tenant_id),
-            "name": name,
-            "slug": slug,
-            "display_name": display_name,
-            "description": description,
-            "base_url": base_url,
-            "auth_scheme": template.auth_type,
-            "openapi_url": template.openapi_spec_url,
-            "status": "active",
-            "template_id": template.template_id,
-            "created_at": now,
-            "updated_at": now,
-        },
-    )
+    # Duplicate-name 409 comes from catching the IntegrityError on INSERT (atomic,
+    # no TOCTOU race window) — BUG-18 fix.
+    try:
+        await session.execute(
+            text(
+                "INSERT INTO services"
+                " (id, tenant_id, name, slug, display_name, description,"
+                "  base_url, auth_scheme, openapi_url, status, template_id,"
+                "  created_at, updated_at)"
+                " VALUES"
+                " (:id, :tenant_id, :name, :slug, :display_name, :description,"
+                "  :base_url, :auth_scheme, :openapi_url, :status, :template_id,"
+                "  :created_at, :updated_at)"
+            ),
+            {
+                "id": str(internal_id),
+                "tenant_id": str(tenant_id),
+                "name": name,
+                "slug": slug,
+                "display_name": display_name,
+                "description": description,
+                "base_url": base_url,
+                "auth_scheme": template.auth_type,
+                "openapi_url": template.openapi_spec_url,
+                "status": "active",
+                "template_id": template.template_id,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+    except IntegrityError:
+        # uq_services_tenant_slug unique constraint violation — Req 4.5
+        return JSONResponse(
+            status_code=409,
+            content={
+                "mintkey:code": "service_name_taken",
+                "title": f"A service with name '{name}' already exists in this tenant",
+            },
+        )
 
     # Emit audit event — ADR-0014.7, Req 4.3
     await audit_emit(
