@@ -439,6 +439,22 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// newOAuth2Deps builds the egress.OAuth2HandlerDeps used by every
+// handleOAuth2PasswordGrant call.  It is a separate method so that tests can
+// assert that the production construction site wires every required field
+// (including the singleflight group) without needing to hand-build a
+// divergent copy of the struct.
+func (h *proxyHandler) newOAuth2Deps() egress.OAuth2HandlerDeps {
+	return egress.OAuth2HandlerDeps{
+		Cache:     h.tokenCache,
+		Exchanger: h.tokenExchanger,
+		// SF must remain h.sfGroup — dropping this line re-introduces the
+		// thundering-herd regression (FIX-5).  The test
+		// TestProductionPath_NewOAuth2Deps_SFIsWired catches that.
+		SF: h.sfGroup,
+	}
+}
+
 // handleOAuth2PasswordGrant handles the OAuth2 password grant egress flow.
 // Orchestrates: parse credential → cache check → exchange → graceful degradation → inject → audit.
 //
@@ -450,14 +466,9 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	pluginStart time.Time,
 ) {
 	// Run the OAuth2 orchestration (cache → exchange → graceful degradation).
-	// h.sfGroup is a shared *singleflight.Group initialised once at startup so
-	// concurrent cache misses for the same (tenant_id, service_id) key fire
-	// exactly ONE upstream token exchange (Req 20/21 thundering-herd protection).
-	deps := egress.OAuth2HandlerDeps{
-		Cache:     h.tokenCache,
-		Exchanger: h.tokenExchanger,
-		SF:        h.sfGroup,
-	}
+	// newOAuth2Deps builds deps from the shared handler fields (including
+	// h.sfGroup for thundering-herd protection).
+	deps := h.newOAuth2Deps()
 
 	oauthResult, err := egress.HandleOAuth2PasswordGrant(
 		r.Context(), deps, tenantID, serviceID, credResp.Plaintext,

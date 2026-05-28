@@ -548,13 +548,33 @@ func TestNewProxyHandler_SFGroupIsReused(t *testing.T) {
 	}
 }
 
-// TestProductionPath_SFCoalescesOnConcurrentMiss is the make-or-break regression
-// guard for FIX-5.  It builds deps exactly as handleOAuth2PasswordGrant does in
-// production (using h.sfGroup), fires N concurrent cache misses for the same
-// (tenant, service) key, and asserts exactly 1 upstream exchange — not N.
+// TestProductionPath_NewOAuth2Deps_SFIsWired is the make-or-break regression
+// guard for FIX-5.  It calls the real production construction method
+// h.newOAuth2Deps() and asserts that the returned deps.SF is non-nil AND is
+// the same pointer as h.sfGroup.
 //
-// If someone later sets SF: nil (or removes the field from deps), the exchanger
-// call count will be >1 and this test fails with a clear message.
+// FLIP: if someone removes `SF: h.sfGroup` from newOAuth2Deps (re-introducing
+// the attempt-1 regression), this test fails with a clear message because
+// deps.SF will be nil even though h.sfGroup is non-nil.
+func TestProductionPath_NewOAuth2Deps_SFIsWired(t *testing.T) {
+	h := testHandler()
+	if h.sfGroup == nil {
+		t.Fatal("sfGroup is nil — singleflight not wired in production constructor")
+	}
+
+	deps := h.newOAuth2Deps()
+
+	if deps.SF == nil {
+		t.Fatal("newOAuth2Deps().SF is nil — SF field dropped from production construction site; thundering-herd protection is INACTIVE")
+	}
+	if deps.SF != h.sfGroup {
+		t.Fatalf("newOAuth2Deps().SF (%p) != h.sfGroup (%p) — production construction site is not using the shared singleflight group", deps.SF, h.sfGroup)
+	}
+}
+
+// TestProductionPath_SFCoalescesOnConcurrentMiss drives N concurrent cache
+// misses through the real production construction path (via newOAuth2Deps)
+// and asserts exactly 1 upstream exchange — not N.
 func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 	const N = 50
 
@@ -563,9 +583,14 @@ func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 		t.Fatal("sfGroup is nil — singleflight not wired in production constructor")
 	}
 
-	// Replace the handler's tokenExchanger with a counting fake.
+	// Swap in counting fake exchanger and a fresh cache so all N are misses.
 	ex := &countingExchangerForProd{token: "prod-coalesced-token", delay: 20 * time.Millisecond}
-	tc := cache.NewTokenCache() // fresh cache — all requests are misses
+	tc := cache.NewTokenCache()
+
+	// Point the handler at the fake exchanger and cache; obtain deps via the
+	// real production construction method so SF comes from the production site.
+	h.tokenExchanger = credential.NewTokenExchanger() // keep field valid; deps override below
+	h.tokenCache = tc
 
 	payload, err := json.Marshal(credential.OAuth2PasswordGrantCredential{
 		TokenURL:          "https://dummy.example.com/token",
@@ -574,6 +599,16 @@ func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
+	}
+
+	// Build deps from the real construction site, then override Exchanger with
+	// the counting fake.  This keeps Cache and SF from the production path while
+	// allowing the fake exchanger for call counting.
+	baseDeps := h.newOAuth2Deps()
+	deps := egress.OAuth2HandlerDeps{
+		Cache:     tc,
+		Exchanger: ex,
+		SF:        baseDeps.SF, // sourced from production site — not hand-built
 	}
 
 	var wg sync.WaitGroup
@@ -587,13 +622,7 @@ func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			<-started // barrier: all goroutines enter the handler simultaneously
-			// Build deps the same way handleOAuth2PasswordGrant does in production.
-			deps := egress.OAuth2HandlerDeps{
-				Cache:     tc,
-				Exchanger: ex,
-				SF:        h.sfGroup, // ← the production wiring under test
-			}
+			<-started
 			results[i], errs[i] = egress.HandleOAuth2PasswordGrant(
 				context.Background(), deps, "tenant-prod", "svc-prod", payload,
 			)
@@ -611,4 +640,5 @@ func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("production singleflight coalescing broken: expected exactly 1 exchange call, got %d — SF field not wired", calls)
 	}
+	_ = results
 }
