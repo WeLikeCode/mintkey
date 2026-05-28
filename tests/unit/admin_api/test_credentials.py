@@ -743,3 +743,96 @@ async def test_oauth2_password_grant_empty_credential_fields_rejected(app, mock_
     assert resp.status_code == 422, (
         f"Expected 422 for empty credential_fields, got {resp.status_code}: {resp.text}"
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /rotate with oauth2_password_grant — SSRF validation on rotate path
+# BUG-2/BUG-9: rotate must validate the NEW value the same way create does.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_oauth2_password_grant_non_https_token_url_rejected(
+    rotate_app, mock_audit_rotate
+) -> None:
+    """
+    POST .../credentials/rotate with auth_scheme=oauth2_password_grant and a
+    non-HTTPS token_url in the new value → 422.
+
+    Without rotate-path validation this returns 200 (persists unvalidated).
+    This test FAILS before the fix and PASSES after.
+    Requirement 19.4 / S-SEC-1 / BUG-2/BUG-9.
+    """
+    payload = _valid_oauth2_payload()
+    payload["token_url"] = "http://auth.example.com/token"  # non-HTTPS — must be rejected
+    async with AsyncClient(transport=ASGITransport(app=rotate_app), base_url="http://test") as client:
+        resp = await client.post(
+            ROTATE_URL_PATH,
+            json={
+                "auth_scheme": "oauth2_password_grant",
+                "value": _json.dumps(payload),
+            },
+        )
+
+    assert resp.status_code == 422, (
+        f"Expected 422 for non-HTTPS token_url on rotate path, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rotate_oauth2_password_grant_loopback_token_url_rejected(
+    rotate_app, mock_audit_rotate
+) -> None:
+    """
+    POST .../credentials/rotate with loopback token_url → 422 (SSRF block on rotate path).
+    Without rotate-path validation this returns 200.
+    This test FAILS before the fix and PASSES after.
+    Requirement 19.4 / S-SEC-1 / BUG-2/BUG-9.
+    """
+    payload = _valid_oauth2_payload()
+    payload["token_url"] = "https://127.0.0.1/token"
+    async with AsyncClient(transport=ASGITransport(app=rotate_app), base_url="http://test") as client:
+        resp = await client.post(
+            ROTATE_URL_PATH,
+            json={
+                "auth_scheme": "oauth2_password_grant",
+                "value": _json.dumps(payload),
+            },
+        )
+
+    assert resp.status_code == 422, (
+        f"Expected 422 for loopback token_url on rotate path, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rotate_oauth2_password_grant_valid_accepted(
+    rotate_app, mock_audit_rotate
+) -> None:
+    """
+    POST .../credentials/rotate with auth_scheme=oauth2_password_grant and a
+    valid public HTTPS token_url → 200.
+    DNS resolution is mocked so the SSRF validator sees a public (non-forbidden) IP.
+    Requirement 19.6.
+    """
+    payload = _valid_oauth2_payload()
+    with patch(
+        "admin_api.services.credential_service.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("8.8.8.8", 0))],
+    ):
+        async with AsyncClient(transport=ASGITransport(app=rotate_app), base_url="http://test") as client:
+            resp = await client.post(
+                ROTATE_URL_PATH,
+                json={
+                    "auth_scheme": "oauth2_password_grant",
+                    "value": _json.dumps(payload),
+                },
+            )
+
+    assert resp.status_code == 200, (
+        f"Expected 200 for valid oauth2 rotate, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body["auth_scheme"] == "oauth2_password_grant"
