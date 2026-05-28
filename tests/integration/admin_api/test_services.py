@@ -1314,3 +1314,133 @@ def test_create_service_cross_tenant_rejected_403(
     assert resp.status_code == 403, (
         f"Expected 403 (cross-tenant rejected on direct create); got {resp.status_code}: {resp.text}"
     )
+
+
+# ---------------------------------------------------------------------------
+# FIX-AUTH2: cross-tenant authz guard on /{sid}/test and /test-transient
+# (SCOPE-A — the two remaining test endpoints)
+# ---------------------------------------------------------------------------
+
+
+def test_test_endpoint_cross_tenant_rejected_403(
+    admin_app: TestClient,
+    authz_tenant_b_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST /{sid}/test with tid=B → 403.
+
+    The guard fires before the endpoint body, so no SSRF/DNS issues are hit.
+
+    SCOPE-A HIGH cross-tenant authz fix (FIX-AUTH2).
+    """
+    # Use a fake service ID — auth fires before the service lookup so we never
+    # reach the DB/network; any syntactically valid svc_ ID suffices.
+    fake_svc_id = "svc_" + "0" * 32
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_b_uuid}/services/{fake_svc_id}/test",
+        json={"method": "GET", "path": "/health"},
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": authz_session_for_a},
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejected on /test); got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied", (
+        f"Expected mintkey:code=permission_denied; got {body}"
+    )
+
+
+def test_test_endpoint_same_tenant_not_403(
+    admin_app: TestClient,
+    authz_tenant_a_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST /{sid}/test with tid=A must NOT be
+    rejected by the authz guard (404 from DB lookup is fine — it means we
+    reached the body past the guard).
+
+    SCOPE-A FIX-AUTH2 — same-tenant access allowed.
+    """
+    fake_svc_id = "svc_" + "0" * 32
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_a_uuid}/services/{fake_svc_id}/test",
+        json={"method": "GET", "path": "/health"},
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": authz_session_for_a},
+    )
+    # Must NOT be 403 — any other status means we passed the authz guard.
+    assert resp.status_code != 403, (
+        f"Expected non-403 (same-tenant allowed past guard); got {resp.status_code}: {resp.text}"
+    )
+
+
+def test_test_transient_cross_tenant_rejected_403(
+    admin_app: TestClient,
+    authz_tenant_b_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST /test-transient with tid=B → 403.
+
+    The guard fires before the body (before SSRF check, before DB, before vault).
+
+    SCOPE-A HIGH cross-tenant authz fix (FIX-AUTH2).
+    """
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_b_uuid}/services/test-transient",
+        json={
+            "service": {
+                "name": "cross-tenant-transient",
+                "base_url": "https://evil.example.com",
+                "auth_scheme": "bearer_token",
+            },
+            "credential": {"value": "tok"},
+            "test": {"method": "GET", "path": "/"},
+        },
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": authz_session_for_a},
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejected on /test-transient); got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied", (
+        f"Expected mintkey:code=permission_denied; got {body}"
+    )
+
+
+def test_test_transient_same_tenant_not_403(
+    admin_app: TestClient,
+    authz_tenant_a_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST /test-transient with tid=A must NOT
+    be rejected by the authz guard (SSRF/DNS failure is fine — it means we
+    reached the body past the guard).
+
+    SCOPE-A FIX-AUTH2 — same-tenant access allowed.
+    """
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_a_uuid}/services/test-transient",
+        json={
+            "service": {
+                "name": "same-tenant-transient",
+                "base_url": "https://example.com",
+                "auth_scheme": "bearer_token",
+            },
+            "credential": {"value": "tok"},
+            "test": {"method": "GET", "path": "/"},
+        },
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": authz_session_for_a},
+    )
+    # Must NOT be 403 — the guard must not fire for a same-tenant caller.
+    assert resp.status_code != 403, (
+        f"Expected non-403 (same-tenant allowed past guard); got {resp.status_code}: {resp.text}"
+    )

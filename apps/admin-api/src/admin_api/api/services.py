@@ -724,6 +724,7 @@ async def test_service_transient(
     tenant_id: UUID,
     body: TransientTestRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Validate a candidate service config + credential WITHOUT persisting to DB or vault.
@@ -872,6 +873,7 @@ async def test_service(
     service_id: str,
     req: Optional[TestRunRequest] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Test the registered service using its stored base_url + the request body's path/method.
