@@ -258,7 +258,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Call `POST /v1/tenants/{tid}/services/from-template` on submit
     - _Requirements: 17.1, 17.2, 17.3, 17.4_
 
-  - [ ]* 12.2 Write vitest tests for Admin UI template browser
+  - [x]* 12.2 Write vitest tests for Admin UI template browser
     - Test template browser renders category groups
     - Test search input filters templates
     - Test template selection pre-fills service form
