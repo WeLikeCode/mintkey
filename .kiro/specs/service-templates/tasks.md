@@ -118,28 +118,28 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Return typed errors: ErrTokenExchangeFailed, ErrTokenEndpointUnreachable, ErrTokenParseFailed
     - _Requirements: 20.1, 20.2, 20.3, 20.5, 20.6, 20.7_
 
-  - [ ]* 6.2 Write property test for token exchange request construction (Property 4)
+  - [x]* 6.2 Write property test for token exchange request construction (Property 4)
     - **Property 4: Token exchange request construction**
     - Generate arbitrary credential_fields and token_request_headers
     - Verify POST body is JSON encoding of credential_fields and all headers are present
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 20.2**
 
-  - [ ]* 6.3 Write property test for JSONPath token extraction (Property 5)
+  - [x]* 6.3 Write property test for JSONPath token extraction (Property 5)
     - **Property 5: JSONPath token extraction**
     - Generate arbitrary JSON response bodies with known string values at known paths
     - Verify extraction returns exactly that string value
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 20.3**
 
-  - [ ]* 6.4 Write property test for non-2xx error mapping (Property 6)
+  - [x]* 6.4 Write property test for non-2xx error mapping (Property 6)
     - **Property 6: Non-2xx status maps to 502**
     - Generate arbitrary HTTP status codes outside 2xx range
     - Verify ErrTokenExchangeFailed is returned
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 20.5**
 
-  - [ ]* 6.5 Write unit tests for TokenExchanger
+  - [x]* 6.5 Write unit tests for TokenExchanger
     - Test ErrTokenEndpointUnreachable on connection timeout
     - Test ErrTokenEndpointUnreachable on DNS failure
     - Test HTTP client has 10-second timeout configured
@@ -238,7 +238,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Enforce gRPC scope `vault.read` for credential retrieval
     - _Requirements: 19.3, 22.5_
 
-  - [ ]* 10.2 Write property test for credential storage round-trip (Property 2)
+  - [x]* 10.2 Write property test for credential storage round-trip (Property 2)
     - **Property 2: Credential storage round-trip**
     - Generate arbitrary valid OAuth2PasswordGrantCredential payloads
     - Store via PutCredential, retrieve via GetCredential, verify JSON-decoded structure is identical
