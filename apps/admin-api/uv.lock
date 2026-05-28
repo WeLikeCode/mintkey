@@ -10,7 +10,7 @@ resolution-markers = [
 
 [[package]]
 name = "admin-api"
-version = "0.1.0.dev0"
+version = "0.1.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },

@@ -324,6 +324,53 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         },
       },
 
+      // (OPS-S) BFF passthrough: POST /v1/tenants/{tid}/services/from-template
+      // Req 17.4: Submit calls the from-template endpoint to create a service from a template.
+      "from-template": {
+        actionType: "resource",
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context, {}) };
+          }
+
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/services/from-template`,
+            "POST",
+            request.payload,
+            operatorOpts
+          );
+
+          const body = await resp.json().catch(() => ({})) as {
+            id?: string;
+            title?: string;
+            detail?: string;
+          };
+
+          if (!resp.ok) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: baseRecord,
+              notice: { message: body.title ?? body.detail ?? "Failed to create service from template", type: "error" },
+            };
+          }
+
+          const baseRecord = await recordJSON(context, {});
+          return {
+            record: {
+              ...baseRecord,
+              params: { ...baseRecord.params, service_id: body.id },
+            },
+            service: body,
+            redirectUrl: body.id ? `/admin/resources/services/records/${body.id}/show` : undefined,
+          };
+        },
+      },
+
       // (OPS-U) BFF passthrough: POST /v1/tenants/{tenantId}/services/test-transient
       "test-transient": {
         actionType: "resource",

@@ -1,0 +1,210 @@
+templates:
+  - template_id: gitlab
+    name: gitlab
+    display_name: GitLab
+    description: "CI/CD pipelines, repository management, merge requests, and project administration."
+    base_url: https://gitlab.com/api/v4
+    auth_type: bearer_token
+    openapi_spec_url: https://gitlab.com/gitlab-org/gitlab/-/raw/master/doc/api/openapi/openapi.yaml
+    category: ci_cd
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: value
+      help: "Personal Access Token or Project/Group Access Token"
+      format: "glpat-..."
+    test_path: /version
+
+  - template_id: apple-app-store-connect
+    name: apple-app-store-connect
+    display_name: Apple App Store Connect
+    description: "App management, TestFlight, provisioning profiles, and sales reporting."
+    base_url: https://api.appstoreconnect.apple.com/v1
+    auth_type: bearer_token
+    openapi_spec_url: https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip
+    category: app_store
+    version: "1.0.0"
+    config_notes: "Authentication requires a JWT signed with an App Store Connect API key (ES256)."
+    credential_hint:
+      field: value
+      help: "JWT signed with your App Store Connect API key (ES256 algorithm)"
+      format: "eyJhbGciOiJFUzI1NiIs..."
+    test_path: /apps
+
+  - template_id: google-play-developer
+    name: google-play-developer
+    display_name: Google Play Developer API
+    description: "App publishing, in-app purchases, subscriptions, and review management."
+    base_url: https://androidpublisher.googleapis.com
+    auth_type: oauth2_client_credentials
+    openapi_spec_url: https://androidpublisher.googleapis.com/$discovery/rest?version=v3
+    category: app_store
+    version: "1.0.0"
+    config_notes: "Authentication uses OAuth 2.0 service account credentials."
+    credential_hint:
+      field: value
+      help: "OAuth 2.0 service account JSON key file contents"
+      format: '{"type": "service_account", ...}'
+    test_path: /androidpublisher/v3/applications
+
+  - template_id: azure-devops
+    name: azure-devops
+    display_name: Azure DevOps
+    description: "CI/CD pipelines, Git repositories, work items, and artifact management."
+    base_url: https://dev.azure.com
+    auth_type: bearer_token
+    openapi_spec_url: https://github.com/Azure/azure-rest-api-specs/tree/main/specification/devops
+    category: ci_cd
+    version: "1.0.0"
+    config_notes: "The base URL requires an organization name appended (e.g., https://dev.azure.com/{organization})."
+    credential_hint:
+      field: value
+      help: "Personal Access Token (PAT) with appropriate scopes"
+      format: "Base64-encoded PAT"
+    test_path: /_apis/projects?api-version=7.0
+
+  - template_id: heroku
+    name: heroku
+    display_name: Heroku
+    description: "App deployment, dynos, add-ons, and platform configuration."
+    base_url: https://api.heroku.com
+    auth_type: bearer_token
+    openapi_spec_url: https://devcenter.heroku.com/articles/platform-api-reference
+    category: platform
+    version: "1.0.0"
+    config_notes: "The API uses JSON Schema (not OpenAPI) as its machine-readable spec format, and requires Accept: application/vnd.heroku+json; version=3 header."
+    credential_hint:
+      field: value
+      help: "Heroku API Key or OAuth token"
+      format: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    test_path: /account
+
+  - template_id: brave-search
+    name: brave-search
+    display_name: Brave Search
+    description: "Web search, news search, image search, and AI-powered summarization."
+    base_url: https://api.search.brave.com/res/v1
+    auth_type: api_key_header
+    openapi_spec_url: https://api.search.brave.com/app/documentation/web-search/get-started
+    category: search
+    version: "1.0.0"
+    config_notes: "The API key is passed via the X-Subscription-Token header."
+    credential_hint:
+      field: value
+      help: "Brave Search API subscription token"
+      format: "BSA..."
+    test_path: /web/search?q=test&count=1
+
+  - template_id: sendgrid
+    name: sendgrid
+    display_name: SendGrid
+    description: "Email sending, templates, contacts, and analytics."
+    base_url: https://api.sendgrid.com/v3
+    auth_type: bearer_token
+    openapi_spec_url: https://raw.githubusercontent.com/sendgrid/sendgrid-oai/main/oai.json
+    category: communications
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: value
+      help: "SendGrid API Key"
+      format: "SG...."
+    test_path: /user/profile
+
+  - template_id: twilio
+    name: twilio
+    display_name: Twilio
+    description: "SMS, voice calls, video, and messaging APIs."
+    base_url: https://api.twilio.com/2010-04-01
+    auth_type: basic_auth
+    openapi_spec_url: https://github.com/twilio/twilio-oai/tree/main/spec/json
+    category: communications
+    version: "1.0.0"
+    config_notes: "Authentication uses Account SID as username and Auth Token as password (HTTP Basic Auth)."
+    credential_hint:
+      field: value
+      help: "Account SID:Auth Token (colon-separated)"
+      format: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    test_path: /Accounts.json
+
+  - template_id: stripe
+    name: stripe
+    display_name: Stripe
+    description: "Payments, subscriptions, invoicing, and financial reporting."
+    base_url: https://api.stripe.com/v1
+    auth_type: bearer_token
+    openapi_spec_url: https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json
+    category: payments
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: value
+      help: "Use a restricted key for production; test keys start with sk_test_"
+      format: "sk_live_... or sk_test_..."
+    test_path: /charges?limit=1
+
+  - template_id: cloudflare
+    name: cloudflare
+    display_name: Cloudflare
+    description: "DNS management, CDN configuration, security rules, and Workers deployment."
+    base_url: https://api.cloudflare.com/client/v4
+    auth_type: bearer_token
+    openapi_spec_url: https://github.com/cloudflare/api-schemas/tree/main/openapi.json
+    category: infrastructure
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: value
+      help: "Cloudflare API Token (not Global API Key)"
+      format: "Bearer token from dashboard"
+    test_path: /user/tokens/verify
+
+  - template_id: datadog
+    name: datadog
+    display_name: Datadog
+    description: "Metrics, traces, logs, dashboards, and alerting."
+    base_url: https://api.datadoghq.com/api/v2
+    auth_type: api_key_header
+    openapi_spec_url: https://docs.datadoghq.com/api/latest/
+    category: observability
+    version: "1.0.0"
+    config_notes: "Authentication requires both DD-API-KEY and DD-APPLICATION-KEY headers, and the base URL varies by region (e.g., api.us5.datadoghq.com)."
+    credential_hint:
+      field: value
+      help: "DD-API-KEY and DD-APPLICATION-KEY (comma-separated or structured)"
+      format: "api_key,application_key"
+    test_path: /api/v2/validate
+
+  - template_id: pagerduty
+    name: pagerduty
+    display_name: PagerDuty
+    description: "Incident management, on-call scheduling, escalation policies, and service health."
+    base_url: https://api.pagerduty.com
+    auth_type: bearer_token
+    openapi_spec_url: https://github.com/PagerDuty/api-schema/tree/main/reference
+    category: incident_management
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: value
+      help: "PagerDuty REST API Key (v2)"
+      format: "u+xxxxxxxxxxxxxxxx"
+    test_path: /abilities
+
+  - template_id: azure-dashboard-api
+    name: azure-dashboard-api
+    display_name: Azure Dashboard API
+    description: "Dashboard management, user administration, and reporting via username/password JWT authentication."
+    base_url: https://dashboard-api-ps-prod.azurewebsites.net/api
+    auth_type: oauth2_password_grant
+    openapi_spec_url: https://dashboard-api-ps-prod.azurewebsites.net/swagger/v1/swagger.json
+    category: platform
+    version: "1.0.0"
+    config_notes: "The login endpoint (POST /api/auth/login) accepts {username, password} as JSON body and returns {token} containing a JWT. The proxy automatically exchanges credentials for a bearer token on each request."
+    credential_hint:
+      token_url: https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login
+      credential_fields:
+        username: "(your username)"
+        password: "(your password)"
+      token_response_path: "$.token"
+    test_path: /health

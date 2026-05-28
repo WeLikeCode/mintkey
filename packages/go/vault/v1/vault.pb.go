@@ -56,6 +56,7 @@ const (
 	AuthScheme_AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS AuthScheme = 5
 	AuthScheme_AUTH_SCHEME_OIDC_CLIENT_SECRET        AuthScheme = 6
 	AuthScheme_AUTH_SCHEME_MTLS                      AuthScheme = 7
+	AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT     AuthScheme = 8
 )
 
 // Enum value maps for AuthScheme.
@@ -69,6 +70,7 @@ var (
 		5: "AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS",
 		6: "AUTH_SCHEME_OIDC_CLIENT_SECRET",
 		7: "AUTH_SCHEME_MTLS",
+		8: "AUTH_SCHEME_OAUTH2_PASSWORD_GRANT",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -79,6 +81,7 @@ var (
 		"AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS": 5,
 		"AUTH_SCHEME_OIDC_CLIENT_SECRET":        6,
 		"AUTH_SCHEME_MTLS":                      7,
+		"AUTH_SCHEME_OAUTH2_PASSWORD_GRANT":     8,
 	}
 )
 
