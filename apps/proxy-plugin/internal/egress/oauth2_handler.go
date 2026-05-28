@@ -1,13 +1,16 @@
 // Package egress implements the egress handler orchestration for the proxy plugin.
 //
 // This file implements the OAuth2 Password Grant egress handler which orchestrates:
-//   1. Parse structured credential from Vault response
-//   2. Check TokenCache for a valid cached token
-//   3. If cache miss or near-expiry: exchange credentials for a new token
-//   4. On exchange failure: graceful degradation (use cached token if not fully expired)
-//   5. Cache the new token
-//   6. Return the token for injection
-//   7. Emit token.exchanged audit event
+//  1. Parse structured credential from Vault response
+//  2. Check TokenCache for a valid cached token
+//  3. If cache miss or near-expiry: exchange credentials for a new token, with
+//     per-(tenant,service) singleflight coalescing so concurrent misses for the
+//     same key trigger exactly ONE upstream token exchange (Req 20/21 thundering-herd
+//     protection).
+//  4. On exchange failure: graceful degradation (use cached token if not fully expired)
+//  5. Cache the new token
+//  6. Return the token for injection
+//  7. Emit token.exchanged audit event
 //
 // Design constraints (Requirements 20.1, 20.4, 21.3, 21.4, 21.7):
 //   - Use cached token if expiry > 30s in the future (no exchange needed).
@@ -16,6 +19,10 @@
 //   - Return 502 only after cached token has fully expired.
 //   - Emit token.exchanged audit event after every exchange attempt.
 //   - NEVER log credential_fields values or token values (P-1, S-SEC-1).
+//   - Concurrent misses for the same (tenant_id, service_id) are coalesced via
+//     singleflight: exactly ONE exchange fires; others wait and share the result.
+//     A failed exchange propagates to in-flight waiters for that round only — the
+//     next request after the flight completes will retry normally.
 //
 // Source: design.md §Egress Handler Orchestration; Requirements 20.1, 20.4, 21.3, 21.4, 21.7.
 package egress
@@ -31,7 +38,15 @@ import (
 
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
+	"golang.org/x/sync/singleflight"
 )
+
+// TokenExchangerIface is the minimal interface satisfied by *credential.TokenExchanger.
+// Declaring it here (accept interfaces, return concretes) lets tests supply counting
+// fakes without touching the credential package.
+type TokenExchangerIface interface {
+	Exchange(ctx context.Context, req credential.ExchangeRequest) (*credential.ExchangeResult, error)
+}
 
 // OAuth2HandlerResult holds the outcome of the OAuth2 password grant orchestration.
 type OAuth2HandlerResult struct {
@@ -50,7 +65,12 @@ type OAuth2HandlerResult struct {
 // OAuth2HandlerDeps holds the dependencies for the OAuth2 egress handler.
 type OAuth2HandlerDeps struct {
 	Cache     *cache.TokenCache
-	Exchanger *credential.TokenExchanger
+	Exchanger TokenExchangerIface
+	// SF is a singleflight.Group for per-(tenant_id, service_id) coalescing of
+	// concurrent token-exchange calls on a cache miss. If nil, no coalescing is
+	// applied (useful for unit tests that pre-date coalescing, though a non-nil SF
+	// is expected in production).
+	SF *singleflight.Group
 }
 
 // HandleOAuth2PasswordGrant orchestrates the OAuth2 password grant flow:
@@ -97,6 +117,11 @@ func HandleOAuth2PasswordGrant(
 	}
 
 	// Step 3: Cache miss or near-expiry — perform token exchange.
+	// Coalesce concurrent misses for the same (tenant_id, service_id) via
+	// singleflight so exactly ONE upstream exchange fires per key per flight.
+	// A failed exchange is shared with in-flight waiters for that round;
+	// singleflight forgets the key when the call returns, so the next request
+	// after the flight will retry and will NOT see a permanently-poisoned entry.
 	exchangeReq := credential.ExchangeRequest{
 		TokenURL:            cred.TokenURL,
 		CredentialFields:    cred.CredentialFields,
@@ -104,12 +129,38 @@ func HandleOAuth2PasswordGrant(
 		TokenRequestHeaders: cred.TokenRequestHeaders,
 	}
 
-	exchangeStart := time.Now()
-	exchangeResult, exchangeErr := deps.Exchanger.Exchange(ctx, exchangeReq)
-	exchangeLatency := time.Since(exchangeStart).Milliseconds()
+	type exchangeOutcome struct {
+		result      *credential.ExchangeResult
+		latencyMS   int64
+	}
+
+	sfKey := tenantID + "/" + serviceID
+
+	doExchange := func() (exchangeOutcome, error) {
+		start := time.Now()
+		res, err := deps.Exchanger.Exchange(ctx, exchangeReq)
+		return exchangeOutcome{result: res, latencyMS: time.Since(start).Milliseconds()}, err
+	}
+
+	var outcome exchangeOutcome
+	var exchangeErr error
+
+	if deps.SF != nil {
+		// Use singleflight: concurrent misses for this key share one exchange call.
+		v, err, _ := deps.SF.Do(sfKey, func() (any, error) {
+			o, e := doExchange()
+			return o, e
+		})
+		if err == nil {
+			outcome = v.(exchangeOutcome)
+		}
+		exchangeErr = err
+	} else {
+		outcome, exchangeErr = doExchange()
+	}
 
 	result.Exchanged = true
-	result.ExchangeLatencyMS = exchangeLatency
+	result.ExchangeLatencyMS = outcome.latencyMS
 
 	if exchangeErr != nil {
 		// Exchange failed — attempt graceful degradation.
@@ -141,10 +192,10 @@ func HandleOAuth2PasswordGrant(
 
 	// Step 4: Exchange succeeded — determine expiry and cache the token.
 	result.ExchangeSuccess = true
-	result.Token = exchangeResult.Token
+	result.Token = outcome.result.Token
 
-	expiresAt := cache.DetermineExpiry(exchangeResult.Token, exchangeResult.RawBody)
-	deps.Cache.Put(tenantID, serviceID, exchangeResult.Token, expiresAt)
+	expiresAt := cache.DetermineExpiry(outcome.result.Token, outcome.result.RawBody)
+	deps.Cache.Put(tenantID, serviceID, outcome.result.Token, expiresAt)
 
 	return result, nil
 }
