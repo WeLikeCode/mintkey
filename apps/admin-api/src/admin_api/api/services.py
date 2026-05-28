@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
@@ -357,6 +358,7 @@ async def create_service(
     tenant_id: UUID,
     body: ServiceCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Register a new backend service under a tenant.
@@ -466,6 +468,7 @@ async def create_service_from_template(
     tenant_id: UUID,
     body: FromTemplateRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Create a service from a template, merging template values with optional overrides.
@@ -1103,6 +1106,7 @@ async def update_service(
     service_id: str,
     body: ServiceUpdate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Update mutable fields of a service.
@@ -1197,6 +1201,7 @@ async def delete_service(
     tenant_id: UUID,
     service_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
     Delete (hard-delete) a service.

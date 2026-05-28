@@ -21,6 +21,8 @@ Architecture constraints honoured:
 from __future__ import annotations
 
 import json
+import uuid as _uuid_mod
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import psycopg2
@@ -38,23 +40,37 @@ _CSRF_HEADERS = {"x-mintkey-csrf": _CSRF_TOKEN}
 _CSRF_COOKIES = {"csrf_token": _CSRF_TOKEN}
 _PLATFORM_ADMIN_HEADER = {"X-Platform-Admin": "true"}
 
+# Module-level session ID injected by the `module_session_id` fixture (FIX-AUTH).
+# The session is scoped to `tenant_uuid` so that existing write-endpoint tests
+# continue to pass after the session→tenant authz guard was added.
+_MODULE_SESSION_ID: str | None = None
+
 
 def _post(client: TestClient, url: str, **kwargs):
-    """POST with CSRF cookie + header injected."""
+    """POST with CSRF cookie + header injected (+ module session if set)."""
     headers = {**kwargs.pop("headers", {}), **_CSRF_HEADERS}
-    cookies = {**kwargs.pop("cookies", {}), **_CSRF_COOKIES}
+    base_cookies: dict = {**_CSRF_COOKIES}
+    if _MODULE_SESSION_ID is not None:
+        base_cookies["mintkey_session"] = _MODULE_SESSION_ID
+    cookies = {**base_cookies, **kwargs.pop("cookies", {})}
     return client.post(url, headers=headers, cookies=cookies, **kwargs)
 
 
 def _patch(client: TestClient, url: str, **kwargs):
     headers = {**kwargs.pop("headers", {}), **_CSRF_HEADERS}
-    cookies = {**kwargs.pop("cookies", {}), **_CSRF_COOKIES}
+    base_cookies: dict = {**_CSRF_COOKIES}
+    if _MODULE_SESSION_ID is not None:
+        base_cookies["mintkey_session"] = _MODULE_SESSION_ID
+    cookies = {**base_cookies, **kwargs.pop("cookies", {})}
     return client.patch(url, headers=headers, cookies=cookies, **kwargs)
 
 
 def _delete(client: TestClient, url: str, **kwargs):
     headers = {**kwargs.pop("headers", {}), **_CSRF_HEADERS}
-    cookies = {**kwargs.pop("cookies", {}), **_CSRF_COOKIES}
+    base_cookies: dict = {**_CSRF_COOKIES}
+    if _MODULE_SESSION_ID is not None:
+        base_cookies["mintkey_session"] = _MODULE_SESSION_ID
+    cookies = {**base_cookies, **kwargs.pop("cookies", {})}
     return client.delete(url, headers=headers, cookies=cookies, **kwargs)
 
 
@@ -104,6 +120,23 @@ def tenant_uuid(admin_app: TestClient, postgres_container) -> str:
 def tenant_b_uuid(admin_app: TestClient, postgres_container) -> str:
     """A second tenant for cross-tenant isolation tests."""
     return _insert_tenant(postgres_container, "test-svc-tenant-b")
+
+
+@pytest.fixture(scope="module", autouse=True)
+def module_session_id(admin_app: TestClient, postgres_container, tenant_uuid: str) -> str:
+    """
+    Create an operator + session scoped to `tenant_uuid` and inject it into
+    the module-level `_MODULE_SESSION_ID` variable so that all `_post`/`_patch`/
+    `_delete` helpers in this module carry a valid session cookie.
+
+    Required after the session→tenant authz guard (FIX-AUTH / SCOPE-A) was
+    added to write endpoints.
+    """
+    global _MODULE_SESSION_ID
+    _, session_id = _seed_authz_operator_and_session(postgres_container, tenant_uuid)
+    _MODULE_SESSION_ID = session_id
+    yield session_id
+    _MODULE_SESSION_ID = None
 
 
 @pytest.fixture(scope="module")
@@ -1015,4 +1048,269 @@ def test_list_services_filters_only_active_credentials(
     assert match["current_key_version"] == 1, (
         f"Expected current_key_version=1 (active only); got {match['current_key_version']} "
         f"(revoked cred at kv=5 must not inflate the result)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Session→tenant authorization on write endpoints (SCOPE-A / FIX-AUTH)
+# ---------------------------------------------------------------------------
+#
+# These tests verify that POST /v1/tenants/{tid}/services and
+# POST /v1/tenants/{tid}/services/from-template check the caller's session
+# tenant against the path tenant_id.
+#
+# A session scoped to tenant A calling with tid=B → 403.
+# A session scoped to tenant A calling with tid=A → 201.
+# A platform-admin session calling with any tid → 201.
+#
+# Architecture: ADR-SCOPE-A; SCOPE-A (HIGH, cross-tenant authz).
+# ---------------------------------------------------------------------------
+
+def _seed_authz_tenant(postgres_container, slug: str) -> str:
+    """Insert a tenant row and return its UUID string."""
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    conn.autocommit = False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_tenant', %s, false)", ("00000000-0000-0000-0000-000000000000",))
+            cur.execute("SELECT set_config('app.platform_admin_view', 'on', false)")
+            cur.execute(
+                "INSERT INTO tenants (slug, display_name, isolation_mode, status)"
+                " VALUES (%s, %s, 'row', 'active') ON CONFLICT (slug) DO NOTHING RETURNING id",
+                (slug, slug),
+            )
+            row = cur.fetchone()
+            if row is None:
+                cur.execute("SELECT id FROM tenants WHERE slug = %s", (slug,))
+                row = cur.fetchone()
+        conn.commit()
+    finally:
+        conn.close()
+    assert row is not None
+    return str(row[0])
+
+
+def _seed_authz_operator_and_session(
+    postgres_container,
+    tenant_id: str,
+    is_platform_admin: bool = False,
+) -> tuple[str, str]:
+    """
+    Insert an operator + session row for the given tenant.
+    Returns (operator_id_str, session_id_str).
+    The session_id is the mintkey_session cookie value.
+    """
+    host = postgres_container.get_container_host_ip()
+    port = postgres_container.get_exposed_port(5432)
+    conn = psycopg2.connect(
+        host=host, port=port,
+        dbname=postgres_container.dbname,
+        user=postgres_container.username,
+        password=postgres_container.password,
+    )
+    conn.autocommit = False
+
+    operator_id = str(_uuid_mod.uuid4())
+    session_id = str(_uuid_mod.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=8)
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.current_tenant', %s, false)", (tenant_id,))
+            cur.execute("SELECT set_config('app.platform_admin_view', 'on', false)")
+            cur.execute(
+                "INSERT INTO operators"
+                " (id, tenant_id, email, display_name, internal_password_hash,"
+                " is_platform_admin, status, created_at)"
+                " VALUES (%s, %s, %s, %s, NULL, %s, 'active', now())"
+                " ON CONFLICT (id) DO NOTHING",
+                (
+                    operator_id,
+                    tenant_id,
+                    f"authz-test-{operator_id[:8]}@mintkey.internal",
+                    f"authz-test-{operator_id[:8]}",
+                    is_platform_admin,
+                ),
+            )
+            cur.execute(
+                "INSERT INTO sessions"
+                " (id, tenant_id, operator_id, expires_at, last_used_at, created_at, auth_method)"
+                " VALUES (%s, %s, %s, %s, now(), now(), 'internal')"
+                " ON CONFLICT (id) DO NOTHING",
+                (session_id, tenant_id, operator_id, expires_at),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return operator_id, session_id
+
+
+@pytest.fixture(scope="module")
+def authz_tenant_a_uuid(admin_app: TestClient, postgres_container) -> str:
+    """Tenant A used for session→tenant authz tests."""
+    return _seed_authz_tenant(postgres_container, "authz-test-tenant-a")
+
+
+@pytest.fixture(scope="module")
+def authz_tenant_b_uuid(admin_app: TestClient, postgres_container) -> str:
+    """Tenant B — a different tenant for cross-tenant rejection tests."""
+    return _seed_authz_tenant(postgres_container, "authz-test-tenant-b")
+
+
+@pytest.fixture(scope="module")
+def authz_session_for_a(admin_app: TestClient, postgres_container, authz_tenant_a_uuid: str) -> str:
+    """Session scoped to tenant A. Returns the session_id (cookie value)."""
+    _, session_id = _seed_authz_operator_and_session(postgres_container, authz_tenant_a_uuid)
+    return session_id
+
+
+@pytest.fixture(scope="module")
+def authz_platform_admin_session(
+    admin_app: TestClient, postgres_container, authz_tenant_a_uuid: str
+) -> str:
+    """Platform-admin session (is_platform_admin=True). Returns session_id."""
+    _, session_id = _seed_authz_operator_and_session(
+        postgres_container, authz_tenant_a_uuid, is_platform_admin=True
+    )
+    return session_id
+
+
+def _post_from_template_with_session(
+    client: TestClient,
+    tenant_id: str,
+    session_id: str,
+    service_name: str = "authz-test-gitlab",
+) -> object:
+    """POST /from-template with the given session cookie and CSRF tokens."""
+    return client.post(
+        f"/v1/tenants/{tenant_id}/services/from-template",
+        json={"template_id": "stripe", "overrides": {"name": service_name}},
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": session_id},
+    )
+
+
+def test_from_template_cross_tenant_rejected_403(
+    admin_app: TestClient,
+    authz_tenant_b_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST from-template with tid=B → 403.
+
+    This is the failing test before FIX-AUTH is applied: without the guard
+    the endpoint returns 201 (cross-tenant write succeeds — the bug).
+
+    SCOPE-A HIGH cross-tenant authz fix.
+    """
+    resp = _post_from_template_with_session(
+        admin_app,
+        authz_tenant_b_uuid,
+        authz_session_for_a,
+        service_name="cross-tenant-evil",
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejected); got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    # FastAPI wraps HTTPException detail in {"detail": {...}}
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied", (
+        f"Expected mintkey:code=permission_denied; got {body}"
+    )
+
+
+def test_from_template_same_tenant_allowed_201(
+    admin_app: TestClient,
+    authz_tenant_a_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST from-template with tid=A → 201.
+
+    Same-tenant create must still succeed after the guard is applied.
+    """
+    resp = _post_from_template_with_session(
+        admin_app,
+        authz_tenant_a_uuid,
+        authz_session_for_a,
+        service_name="authz-same-tenant-ok",
+    )
+    assert resp.status_code == 201, (
+        f"Expected 201 (same-tenant allowed); got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body["name"] == "authz-same-tenant-ok"
+    assert body["template_id"] == "stripe"
+
+
+def test_from_template_platform_admin_cross_tenant_allowed(
+    admin_app: TestClient,
+    authz_tenant_b_uuid: str,
+    authz_platform_admin_session: str,
+) -> None:
+    """
+    Platform-admin session calling POST from-template with any tid → 201.
+
+    Platform admins bypass the tenant-scope guard.
+    """
+    resp = _post_from_template_with_session(
+        admin_app,
+        authz_tenant_b_uuid,
+        authz_platform_admin_session,
+        service_name="authz-platform-admin-ok",
+    )
+    assert resp.status_code == 201, (
+        f"Expected 201 (platform admin bypasses tenant guard); got {resp.status_code}: {resp.text}"
+    )
+
+
+def test_from_template_no_session_rejected_401(
+    admin_app: TestClient,
+    authz_tenant_a_uuid: str,
+) -> None:
+    """
+    POST from-template with no session cookie → 401 unauthenticated.
+    """
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_a_uuid}/services/from-template",
+        json={"template_id": "stripe", "overrides": {"name": "no-session-test"}},
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN},
+    )
+    assert resp.status_code == 401, (
+        f"Expected 401 (unauthenticated); got {resp.status_code}: {resp.text}"
+    )
+
+
+def test_create_service_cross_tenant_rejected_403(
+    admin_app: TestClient,
+    authz_tenant_b_uuid: str,
+    authz_session_for_a: str,
+) -> None:
+    """
+    Session scoped to tenant A calling POST /services (direct create) with tid=B → 403.
+
+    Sibling endpoint — same guard applied.
+    """
+    resp = admin_app.post(
+        f"/v1/tenants/{authz_tenant_b_uuid}/services",
+        json={
+            "name": "direct-cross-tenant-evil",
+            "base_url": "https://evil.example.com/api",
+            "auth_scheme": "bearer_token",
+        },
+        headers={"x-mintkey-csrf": _CSRF_TOKEN},
+        cookies={"csrf_token": _CSRF_TOKEN, "mintkey_session": authz_session_for_a},
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejected on direct create); got {resp.status_code}: {resp.text}"
     )
