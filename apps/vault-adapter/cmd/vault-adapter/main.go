@@ -64,6 +64,27 @@ func main() {
 	svc := server.NewVaultService(key, st, dekCache)
 	srv := server.New(key, dekCache)
 
+	// Register the proxy-plugin service identity so the scopeInterceptor allows
+	// it to call GetCredential (vault.read) and PutCredential (vault.put).
+	// MINTKEY_VAULT_PROXY_IDENTITY_ID defaults to "svcid_proxy"; must match the
+	// proxy-plugin's MINTKEY_VAULT_PROXY_IDENTITY_ID env var.
+	// MINTKEY_VAULT_PROXY_TOKEN must be a shared secret (≥ 32 bytes) provisioned
+	// via a Docker/Kubernetes secret and identical on both sides.
+	proxyIdentityID := os.Getenv("MINTKEY_VAULT_PROXY_IDENTITY_ID")
+	if proxyIdentityID == "" {
+		proxyIdentityID = "svcid_proxy"
+	}
+	proxyToken := []byte(os.Getenv("MINTKEY_VAULT_PROXY_TOKEN"))
+	if len(proxyToken) == 0 {
+		log.Printf("vault-adapter: WARNING: MINTKEY_VAULT_PROXY_TOKEN is not set; proxy-plugin credential fetches WILL fail with PERMISSION_DENIED")
+	} else {
+		if err := svc.RegisterServiceIdentity(proxyIdentityID, proxyToken, []string{"vault.read", "vault.put"}); err != nil {
+			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", proxyIdentityID, err)
+			os.Exit(1)
+		}
+		log.Printf("vault-adapter: registered proxy service identity %q with scopes [vault.read vault.put]", proxyIdentityID)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
