@@ -271,7 +271,9 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
       } else if (data?.redirectUrl) {
         navigate(data.redirectUrl);
       } else {
-        setSubmitSuccess({ serviceId: "" });
+        // BUG-7a: no id and no redirectUrl means the response was unexpected — show error
+        // instead of a false-success green banner.
+        setSubmitError("Service creation returned an unexpected response. Please retry or contact support.");
       }
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : "Failed to create service from template.");
@@ -446,8 +448,9 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
                       data-testid={`template-category-cards-${category}`}
                     >
                       {categoryTemplates.map((tpl: ServiceTemplate) => {
-                        const isSelected = selectedTemplate?.template_id === tpl.template_id
-                          || selectedTemplate?.name === tpl.name;
+                        // BUG-19: match on stable template_id only — name fallback caused
+                        // two templates with the same name to both highlight.
+                        const isSelected = selectedTemplate?.template_id === tpl.template_id;
                         return (
                           <Box
                             key={tpl.template_id ?? tpl.name}

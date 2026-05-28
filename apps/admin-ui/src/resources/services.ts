@@ -231,9 +231,14 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           try {
             const resp = await fetch(`${ADMIN_API_URL}/v1/service-templates`, { headers });
             if (!resp.ok) {
+              const errBody = await resp.json().catch(() => ({})) as { title?: string; detail?: string };
               const baseRecord = await recordJSON(context, {});
               return {
-                record: { ...baseRecord, params: { ...baseRecord.params, templates: [] } },
+                record: baseRecord,
+                notice: {
+                  message: errBody.title ?? errBody.detail ?? "Failed to load service templates",
+                  type: "error",
+                },
               };
             }
             const data = await resp.json() as { templates?: unknown[] };
@@ -243,10 +248,14 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
               record: { ...baseRecord, params: { ...baseRecord.params, templates } },
               templates,
             };
-          } catch {
+          } catch (err: unknown) {
             const baseRecord = await recordJSON(context, {});
             return {
-              record: { ...baseRecord, params: { ...baseRecord.params, templates: [] } },
+              record: baseRecord,
+              notice: {
+                message: err instanceof Error ? err.message : "Failed to load service templates",
+                type: "error",
+              },
             };
           }
         },
@@ -284,15 +293,17 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
               };
             }
             const raw = await resp.json() as Record<string, unknown>;
-            // Normalise: ensure all 5 expected fields are present (even if undefined)
+            // Normalise: ensure all expected fields are present (even if undefined).
+            // BUG-16: admin-api may return `auth_type` instead of `auth_scheme`, and
+            // `openapi_spec_url` instead of `openapi_url` — map both name variants.
             const template = {
               slug: raw.slug ?? "",
               name: raw.name ?? "",
               display_name: raw.display_name ?? "",
               description: raw.description ?? "",
               base_url: raw.base_url ?? "",
-              auth_scheme: raw.auth_scheme ?? "",
-              openapi_url: raw.openapi_url ?? "",
+              auth_scheme: raw.auth_type ?? raw.auth_scheme ?? "",
+              openapi_url: raw.openapi_spec_url ?? raw.openapi_url ?? "",
               test_path: raw.test_path ?? "/health",
             };
             const baseRecord = await recordJSON(context, {});
@@ -345,17 +356,30 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
             operatorOpts
           );
 
-          const body = await resp.json().catch(() => ({})) as {
-            id?: string;
-            title?: string;
-            detail?: string;
-          };
+          // BUG-7a: resp.json() must not swallow all errors — only catch parse failures
+          // so that the real error body still surfaces for non-ok responses.
+          let body: { id?: string; title?: string; detail?: string } = {};
+          try {
+            body = await resp.json() as { id?: string; title?: string; detail?: string };
+          } catch {
+            // unparseable body — treat as empty
+          }
 
           if (!resp.ok) {
             const baseRecord = await recordJSON(context, {});
             return {
               record: baseRecord,
               notice: { message: body.title ?? body.detail ?? "Failed to create service from template", type: "error" },
+            };
+          }
+
+          // BUG-7a: 2xx with no id is not a success — surface an error so the UI
+          // does not show a green banner for a malformed/unexpected response shape.
+          if (!body.id) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: baseRecord,
+              notice: { message: "Service creation returned an unexpected response (no service id). Please retry or contact support.", type: "error" },
             };
           }
 
@@ -366,7 +390,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
               params: { ...baseRecord.params, service_id: body.id },
             },
             service: body,
-            redirectUrl: body.id ? `/admin/resources/services/records/${body.id}/show` : undefined,
+            redirectUrl: `/admin/resources/services/records/${body.id}/show`,
           };
         },
       },
