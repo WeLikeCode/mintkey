@@ -402,22 +402,42 @@ def test_from_template_no_credential_hint_for_bearer_token_templates(
 def test_from_template_cross_tenant_still_403(
     admin_app: TestClient,
     tenant_23_5: str,
+    session_23_5: str,
 ) -> None:
     """
-    FIX-AUTH guard still rejects cross-tenant from-template after Req-23.5 changes.
-    Uses a random UUID that doesn't match any session's tenant.
+    CO-6 (tightened): Cross-tenant request with a REAL tenant-A session against
+    tenant-B path must return 403 permission_denied — NOT 401.
+
+    Tenant-A is tenant_23_5 (session_23_5 belongs to it).
+    Tenant-B is a random UUID that exists in no tenant row — so the auth guard
+    sees a valid session for tenant-A trying to touch tenant-B and must reject
+    it with 403, not fall back to 401 (which only means unauthenticated).
+
+    Previous version sent NO session and accepted 401, so it did NOT test
+    tenant scoping at all.
     """
-    random_tid = str(_uuid_mod.uuid4())
-    # Create a session for tenant_23_5 but call with a different UUID (random_tid)
+    # Use a random UUID as tenant-B — it exists in no tenant row
+    tenant_b = str(_uuid_mod.uuid4())
+
     resp = admin_app.post(
-        f"/v1/tenants/{random_tid}/services/from-template",
+        f"/v1/tenants/{tenant_b}/services/from-template",
         json={"template_id": "azure-dashboard-api"},
         headers={"x-mintkey-csrf": _CSRF_TOKEN_23_5},
-        cookies={"csrf_token": _CSRF_TOKEN_23_5},
-        # NOTE: no mintkey_session cookie → should 401, not 403
-        # (but using a session from tenant_23_5 against random_tid would be 403)
+        cookies={
+            "csrf_token": _CSRF_TOKEN_23_5,
+            "mintkey_session": session_23_5,  # tenant-A session
+        },
     )
-    # No session at all → 401
-    assert resp.status_code in (401, 403), (
-        f"Unauthenticated cross-tenant from-template must be rejected; got {resp.status_code}"
+    # Authenticated (tenant-A) but requesting tenant-B path → 403
+    assert resp.status_code == 403, (
+        f"Cross-tenant from-template with tenant-A session must return 403, "
+        f"got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    # FastAPI wraps HTTPException detail under a "detail" key — extract from either location.
+    code = body.get("mintkey:code") or (
+        body.get("detail", {}).get("mintkey:code") if isinstance(body.get("detail"), dict) else None
+    )
+    assert code == "permission_denied", (
+        f"Expected mintkey:code=permission_denied, got: {body}"
     )

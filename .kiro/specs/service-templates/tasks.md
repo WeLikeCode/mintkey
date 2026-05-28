@@ -35,7 +35,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Log warnings for malformed entries without failing startup
     - _Requirements: 1.1, 1.3, 1.4, 2.3, 2.4_
 
-  - [ ]* 2.4 Write unit tests for TemplateRegistry and ServiceTemplate model
+  - [x]* 2.4 Write unit tests for TemplateRegistry and ServiceTemplate model
     - Test loading valid YAML exposes all 13 templates
     - Test skipping malformed entries with warning log
     - Test category filtering
@@ -50,18 +50,18 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Integrate with existing SSRF allowlist check (S-SEC-1)
     - _Requirements: 19.2, 19.4, 19.5, 19.6_
 
-  - [ ]* 3.2 Write property test for credential payload validation (Property 1)
+  - [x]* 3.2 Write property test for credential payload validation (Property 1)
     - **Property 1: Credential payload validation**
     - Generate arbitrary payloads; verify acceptance iff token_url is HTTPS and credential_fields is non-empty
     - Use `hypothesis` for Python PBT
     - **Validates: Requirements 19.2, 19.5**
 
-  - [ ]* 3.3 Write property test for token_url HTTPS and SSRF validation (Property 3)
+  - [x]* 3.3 Write property test for token_url HTTPS and SSRF validation (Property 3)
     - **Property 3: token_url HTTPS and SSRF validation**
     - Generate arbitrary URL strings; verify acceptance iff HTTPS scheme and passes SSRF allowlist
     - **Validates: Requirements 19.4**
 
-  - [ ]* 3.4 Write unit tests for OAuth2PasswordGrantPayload
+  - [x]* 3.4 Write unit tests for OAuth2PasswordGrantPayload
     - Test rejects non-HTTPS token_url
     - Test rejects empty credential_fields
     - Test defaults token_response_path to $.access_token
@@ -93,7 +93,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Return 404 for unknown template_id, 409 for duplicate name, 422 for SSRF violation
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 23.5_
 
-  - [ ]* 5.4 Write integration tests for template API endpoints
+  - [x]* 5.4 Write integration tests for template API endpoints
     - Test GET /v1/service-templates returns all 13 templates
     - Test GET with category filter returns correct subset
     - Test GET with search filter (case-insensitive)
