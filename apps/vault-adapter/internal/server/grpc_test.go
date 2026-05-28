@@ -9,7 +9,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
+	"reflect"
 	"testing"
 
 	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
@@ -20,6 +23,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+	"pgregory.net/rapid"
 )
 
 const bufSize = 1024 * 1024
@@ -609,4 +613,168 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// -----------------------------------------------------------------------
+// Property-Based Tests — Feature: service-templates
+// -----------------------------------------------------------------------
+
+// oauth2PasswordGrantCredential mirrors the JSON structure stored in the Vault
+// for auth_scheme=8. It is defined here (not in production code) to keep the
+// test self-contained and to assert the round-trip at the struct level.
+//
+// TokenRequestHeaders is omitempty: when absent or empty-map it is omitted from
+// JSON, so generators MUST produce either nil (absent) or a non-empty map.
+type oauth2PasswordGrantCredential struct {
+	TokenURL            string            `json:"token_url"`
+	CredentialFields    map[string]string `json:"credential_fields"`
+	TokenResponsePath   string            `json:"token_response_path"`
+	TokenRequestHeaders map[string]string `json:"token_request_headers,omitempty"`
+}
+
+// drawStringMap generates a non-empty map[string]string with 1–4 entries.
+// Keys and values are drawn from a safe printable-ASCII alphabet to avoid
+// JSON encoding corner-cases unrelated to the storage round-trip.
+func drawStringMap(t *rapid.T, label string) map[string]string {
+	alphabet := rapid.StringMatching(`[a-zA-Z0-9_\-\.]{1,20}`)
+	size := rapid.IntRange(1, 4).Draw(t, label+"_size")
+	m := make(map[string]string, size)
+	for i := 0; i < size; i++ {
+		k := alphabet.Draw(t, fmt.Sprintf("%s_key_%d", label, i))
+		v := alphabet.Draw(t, fmt.Sprintf("%s_val_%d", label, i))
+		m[k] = v
+	}
+	return m
+}
+
+// drawOAuth2Credential generates an arbitrary valid OAuth2PasswordGrantCredential.
+//
+// Validity constraints (from design §4.2 / Property 2):
+//   - token_url: non-empty string (PBT does not enforce HTTPS here — that is
+//     Property 3's domain; vault storage is scheme-agnostic)
+//   - credential_fields: non-empty map
+//   - token_response_path: non-empty string
+//   - token_request_headers: nil OR a non-empty map (omitempty)
+//
+// Discriminating power: this generator will produce payloads where
+// token_request_headers is present about 50 % of iterations. A serialization
+// bug that drops token_request_headers (or any sub-key of credential_fields)
+// would cause deep-equal to differ, falsifying the property.
+func drawOAuth2Credential(t *rapid.T) oauth2PasswordGrantCredential {
+	urlSuffix := rapid.StringMatching(`[a-zA-Z0-9/\-_\.]{1,40}`).Draw(t, "url_suffix")
+	tokenURL := "https://auth.example.com/" + urlSuffix
+
+	responsePath := rapid.StringMatching(`\$\.[a-zA-Z0-9_\.]{1,20}`).Draw(t, "response_path")
+
+	credFields := drawStringMap(t, "cred_fields")
+
+	// ~50 % chance of having token_request_headers.
+	var headers map[string]string
+	if rapid.Bool().Draw(t, "has_headers") {
+		headers = drawStringMap(t, "headers")
+	}
+
+	return oauth2PasswordGrantCredential{
+		TokenURL:            tokenURL,
+		CredentialFields:    credFields,
+		TokenResponsePath:   responsePath,
+		TokenRequestHeaders: headers,
+	}
+}
+
+// TestCredentialStorageRoundTrip is the rapid PBT for Property 2.
+//
+// Feature: service-templates, Property 2: Credential storage round-trip
+//
+// For any valid OAuth2PasswordGrantCredential payload, storing via PutCredential
+// then retrieving via GetCredential yields a JSON-decoded structure IDENTICAL to
+// the original. The test exercises the REAL scoped gRPC path: PutCredential
+// requires vault.put; GetCredential requires vault.read.
+//
+// Discriminating power: the property would be falsified by (among others):
+//   - A serialization layer that drops token_request_headers (omitempty + empty
+//     map confusion — e.g., storing {} then retrieving nil would differ).
+//   - A layer that drops any credential_fields key.
+//   - Any field truncation, key re-ordering that produces a different decoded struct.
+//
+// Validates: Requirements 19.3.
+func TestCredentialStorageRoundTrip(t *testing.T) {
+	// Stand up a scoped gRPC server (with scopeInterceptor) once; reuse across
+	// all rapid iterations to avoid per-iteration setup overhead.
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	// Register a single service identity with both scopes.
+	const identityID = "pbt_identity_roundtrip"
+	token := []byte("pbt-roundtrip-token-32bytes-xxxxx")
+	if err := svc.RegisterServiceIdentity(identityID, token, []string{"vault.put", "vault.read"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity: %v", err)
+	}
+	md := metadata.Pairs(
+		"x-mintkey-service-token", string(token),
+		"x-mintkey-service-identity", identityID,
+	)
+	authCtx := metadata.NewOutgoingContext(context.Background(), md)
+
+	// Use a counter to give each iteration a unique (tenantID, serviceID) pair
+	// so credentials from different iterations don't collide inside the store.
+	var iteration int
+
+	rapid.Check(t, func(rt *rapid.T) {
+		iteration++
+		tenantID := fmt.Sprintf("pbt_tenant_%d", iteration)
+		serviceID := fmt.Sprintf("pbt_service_%d", iteration)
+
+		// Draw an arbitrary valid credential.
+		original := drawOAuth2Credential(rt)
+
+		// Encode to JSON — this is what the caller would send as the Value bytes.
+		payloadBytes, err := json.Marshal(original)
+		if err != nil {
+			rt.Fatalf("json.Marshal original: %v", err)
+		}
+
+		// PUT — requires vault.put scope.
+		putResp, err := client.PutCredential(authCtx, &vaultv1.PutCredentialRequest{
+			TenantId:   tenantID,
+			ServiceId:  serviceID,
+			AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT,
+			Value:      payloadBytes,
+		})
+		if err != nil {
+			rt.Fatalf("PutCredential: %v", err)
+		}
+		if putResp.KeyVersion == 0 {
+			rt.Fatalf("expected non-zero key_version from PutCredential")
+		}
+
+		// GET — requires vault.read scope.
+		getResp, err := client.GetCredential(authCtx, &vaultv1.GetCredentialRequest{
+			TenantId:   tenantID,
+			ServiceId:  serviceID,
+			KeyVersion: 0, // current
+		})
+		if err != nil {
+			rt.Fatalf("GetCredential: %v", err)
+		}
+
+		// Invariant: auth_scheme must be preserved.
+		if getResp.AuthScheme != vaultv1.AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT {
+			rt.Fatalf("auth_scheme mismatch: got %d, want %d",
+				getResp.AuthScheme, vaultv1.AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT)
+		}
+
+		// Decode the retrieved bytes back into the struct.
+		var retrieved oauth2PasswordGrantCredential
+		if err := json.Unmarshal(getResp.Value, &retrieved); err != nil {
+			rt.Fatalf("json.Unmarshal retrieved: %v (raw: %q)", err, getResp.Value)
+		}
+
+		// Deep-equal invariant: decoded retrieved == original stored.
+		// reflect.DeepEqual on map[string]string is order-independent.
+		if !reflect.DeepEqual(original, retrieved) {
+			rt.Fatalf("round-trip mismatch:\n  stored:    %+v\n  retrieved: %+v\n  raw bytes in: %s\n  raw bytes out: %s",
+				original, retrieved, payloadBytes, getResp.Value)
+		}
+	})
 }
