@@ -155,28 +155,28 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - No persistence — empty on restart
     - _Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6_
 
-  - [ ]* 7.2 Write property test for cache keyed retrieval (Property 7)
+  - [x]* 7.2 Write property test for cache keyed retrieval (Property 7)
     - **Property 7: Cache keyed retrieval**
     - Generate arbitrary (tenant_id, service_id) pairs with stored tokens
     - Verify retrieval by specific key returns only that key's token
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 21.1**
 
-  - [ ]* 7.3 Write property test for expiry detection priority chain (Property 8)
+  - [x]* 7.3 Write property test for expiry detection priority chain (Property 8)
     - **Property 8: Expiry detection priority chain**
     - Generate tokens (valid JWT with exp, non-JWT) and response bodies (with/without expires_in)
     - Verify priority: JWT exp → expires_in → 300s default
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 21.2**
 
-  - [ ]* 7.4 Write property test for cache hit/refresh threshold (Property 9)
+  - [x]* 7.4 Write property test for cache hit/refresh threshold (Property 9)
     - **Property 9: Cache hit/refresh threshold at 30 seconds**
     - Generate cached tokens with various expiry times
     - Verify Get returns token iff expiry > 30s in future, else signals miss
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 21.3, 21.4**
 
-  - [ ]* 7.5 Write unit tests for TokenCache
+  - [x]* 7.5 Write unit tests for TokenCache
     - Test cache is empty on construction
     - Test no persistence (memory-only)
     - _Requirements: 21.5, 21.6_

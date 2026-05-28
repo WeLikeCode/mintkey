@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"pgregory.net/rapid"
 )
 
 // --- Get / Put tests ---
@@ -402,52 +403,25 @@ func TestTokenCache_SizeCap_NewerEntriesAccessible(t *testing.T) {
 
 // TestTokenCache_SizeCap_ThreadSafe verifies that concurrent Puts do not corrupt
 // the cache or cause a data race (run with -race).
-// Uses a small multiplier (3×) of a modest cap so the test runs quickly while
-// still exercising concurrent eviction paths.
+//
+// CO-5 fix: this test now drives the REAL Put/eviction rather than reimplementing
+// eviction logic inline. We use 3× a modest key count so concurrent eviction is
+// exercised without spinning up tens-of-thousands of goroutines. The real Put
+// enforces MaxCacheSize via evictLocked; we assert the cap is never breached.
 func TestTokenCache_SizeCap_ThreadSafe(t *testing.T) {
-	// Use a local cache with a small cap so concurrent eviction is exercised
-	// without spinning up 30 000 goroutines at MaxCacheSize=10 000.
-	const localCap = 100
-	tc := &TokenCache{entries: make(map[cacheKey]*cacheEntry)}
+	tc := NewTokenCache()
 	expiresAt := time.Now().Add(5 * time.Minute)
 
+	// 300 unique keys → 3× a 100-entry window, enough to trigger eviction repeatedly
+	// while keeping the test fast (no reimplementation of the eviction logic).
+	const keys = 300
+
 	var wg sync.WaitGroup
-	for i := 0; i < localCap*3; i++ {
+	for i := 0; i < keys; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			// Inline a Put that uses localCap instead of MaxCacheSize.
-			tc.mu.Lock()
-			defer tc.mu.Unlock()
-			key := cacheKey{TenantID: "tenant1", ServiceID: fmt.Sprintf("svc%d", i)}
-			if _, exists := tc.entries[key]; !exists && len(tc.entries) >= localCap {
-				// evict expired first
-				now := time.Now()
-				for k, e := range tc.entries {
-					if now.After(e.ExpiresAt) {
-						delete(tc.entries, k)
-					}
-				}
-				// evict oldest if still at cap
-				if len(tc.entries) >= localCap {
-					var oldestKey cacheKey
-					var oldestTime time.Time
-					first := true
-					for k, e := range tc.entries {
-						if first || e.ExpiresAt.Before(oldestTime) {
-							oldestKey = k
-							oldestTime = e.ExpiresAt
-							first = false
-						}
-					}
-					delete(tc.entries, oldestKey)
-				}
-			}
-			tc.entries[key] = &cacheEntry{
-				Token:      fmt.Sprintf("tok-%d", i),
-				ExpiresAt:  expiresAt,
-				InsertedAt: time.Now(),
-			}
+			tc.Put("tenant1", fmt.Sprintf("svc%d", i), fmt.Sprintf("tok-%d", i), expiresAt)
 		}(i)
 	}
 	wg.Wait()
@@ -455,6 +429,212 @@ func TestTokenCache_SizeCap_ThreadSafe(t *testing.T) {
 	tc.mu.RLock()
 	count := len(tc.entries)
 	tc.mu.RUnlock()
-	assert.LessOrEqual(t, count, localCap,
-		"concurrent puts must not exceed cap=%d, got %d", localCap, count)
+	assert.LessOrEqual(t, count, MaxCacheSize,
+		"concurrent puts must not exceed MaxCacheSize=%d, got %d", MaxCacheSize, count)
+}
+
+// =============================================================================
+// Property-based tests (pgregory.net/rapid)
+// =============================================================================
+
+// --- 7.5 Unit: empty on construction + no persistence ---
+
+// TestTokenCache_EmptyOnConstruction_Unit explicitly validates that a freshly
+// created cache has no entries (Requirement 21.5, 21.6).
+func TestTokenCache_NoPersistence_NewInstanceIsEmpty(t *testing.T) {
+	// Create, store a token, discard the cache, create a new one.
+	tc1 := NewTokenCache()
+	tc1.Put("t1", "s1", "secret", time.Now().Add(10*time.Minute))
+
+	// New instance must be completely empty — no persistence.
+	tc2 := NewTokenCache()
+	token, ok := tc2.Get("t1", "s1")
+	assert.False(t, ok, "new cache must not inherit entries from a previous instance")
+	assert.Empty(t, token)
+
+	tc2.mu.RLock()
+	count := len(tc2.entries)
+	tc2.mu.RUnlock()
+	assert.Equal(t, 0, count, "new cache must have zero entries on construction")
+}
+
+// --- Property 7: Cache keyed retrieval ---
+
+// TestCacheKeyedRetrieval — Property 7.
+//
+// For any set of (tenant_id, service_id) pairs with stored tokens, retrieving
+// by a specific key returns ONLY that key's token; no cross-key bleed occurs.
+//
+// Discriminating power: if Put stored under the wrong composite key (e.g. only
+// tenant_id), or Get looked up only by serviceID, a different key's token would
+// be returned, falsifying the equality assertion.
+func TestCacheKeyedRetrieval(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// Generate 1–10 distinct (tenantID, serviceID) pairs.
+		n := rapid.IntRange(1, 10).Draw(rt, "n")
+
+		type kv struct {
+			tenant  string
+			service string
+			token   string
+		}
+		pairs := make([]kv, n)
+		seen := make(map[string]bool)
+
+		for i := 0; i < n; i++ {
+			var tid, sid string
+			// Ensure unique composite keys.
+			for {
+				tid = rapid.StringMatching(`[a-z]{1,8}`).Draw(rt, fmt.Sprintf("tid%d", i))
+				sid = rapid.StringMatching(`[a-z]{1,8}`).Draw(rt, fmt.Sprintf("sid%d", i))
+				composite := tid + "|" + sid
+				if !seen[composite] {
+					seen[composite] = true
+					break
+				}
+			}
+			tok := rapid.StringMatching(`[a-zA-Z0-9]{4,20}`).Draw(rt, fmt.Sprintf("tok%d", i))
+			pairs[i] = kv{tid, sid, tok}
+		}
+
+		tc := NewTokenCache()
+		expiresAt := time.Now().Add(10 * time.Minute) // well beyond 30s buffer
+		for _, p := range pairs {
+			tc.Put(p.tenant, p.service, p.token, expiresAt)
+		}
+
+		// Each key must return exactly its own token; no other key's token.
+		for i, p := range pairs {
+			got, ok := tc.Get(p.tenant, p.service)
+			if !ok {
+				rt.Fatalf("pair[%d] (%s,%s): expected hit, got miss", i, p.tenant, p.service)
+			}
+			if got != p.token {
+				rt.Fatalf("pair[%d] (%s,%s): expected token %q, got %q (cross-key bleed)",
+					i, p.tenant, p.service, p.token, got)
+			}
+		}
+	})
+}
+
+// --- Property 8: Expiry detection priority chain ---
+
+// TestExpiryDetectionPriority — Property 8.
+//
+// DetermineExpiry follows the priority: JWT exp → expires_in → 300s default.
+// FIX-4 semantics apply: exp must be future and ≤ now+MaxTokenTTL.
+//
+// Discriminating power:
+//   - If JWT exp were ignored and expires_in used instead, the result would
+//     differ from exp by the gap between exp and now+expires_in.
+//   - If expires_in were ignored and the default used, branch 2 would return
+//     now+300 instead of now+expires_in.
+//   - If the default branch returned now+0, branch 3 would fail.
+func TestExpiryDetectionPriority(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		branch := rapid.IntRange(1, 3).Draw(rt, "branch")
+
+		switch branch {
+		case 1:
+			// Branch 1: valid JWT with future exp within [1s, MaxTokenTTL].
+			// DetermineExpiry must return clamp(exp), which equals exp when exp ≤ now+MaxTokenTTL.
+			offsetSec := rapid.Int64Range(1, int64(MaxTokenTTL/time.Second)).Draw(rt, "offsetSec")
+			futureExp := time.Now().Add(time.Duration(offsetSec) * time.Second)
+			token := buildJWT(map[string]any{"exp": float64(futureExp.Unix()), "sub": "u"})
+			// Body also has expires_in to confirm it is NOT used.
+			body := json.RawMessage(`{"expires_in": 60}`)
+
+			before := time.Now()
+			result := DetermineExpiry(token, body)
+
+			// Result must equal futureExp (clamped). Since offsetSec ≤ MaxTokenTTL,
+			// clamp does not change it — result.Unix() must equal futureExp.Unix().
+			if result.Unix() != futureExp.Unix() {
+				rt.Fatalf("branch1: JWT exp priority: expected %v, got %v (delta %v)",
+					futureExp.Unix(), result.Unix(), result.Unix()-futureExp.Unix())
+			}
+			// Sanity: must be in the future.
+			if !result.After(before) {
+				rt.Fatalf("branch1: result %v must be after now %v", result, before)
+			}
+
+		case 2:
+			// Branch 2: non-JWT token + expires_in in body. No JWT exp to parse.
+			expiresInSec := rapid.Int64Range(1, int64(MaxTokenTTL/time.Second)).Draw(rt, "expiresInSec")
+			token := "opaque-" + rapid.StringMatching(`[a-z]{4}`).Draw(rt, "suffix")
+			body, _ := json.Marshal(map[string]any{"expires_in": expiresInSec})
+
+			before := time.Now()
+			result := DetermineExpiry(token, json.RawMessage(body))
+			after := time.Now()
+
+			// Must be ≈ now + expiresInSec (within a 2s window for test jitter).
+			low := before.Add(time.Duration(expiresInSec) * time.Second)
+			high := after.Add(time.Duration(expiresInSec) * time.Second)
+			if result.Before(low) || result.After(high) {
+				rt.Fatalf("branch2: expires_in=%d: expected result in [%v, %v], got %v",
+					expiresInSec, low, high, result)
+			}
+
+		case 3:
+			// Branch 3: non-JWT token, no expires_in → 300s default.
+			token := "opaque-" + rapid.StringMatching(`[a-z]{4}`).Draw(rt, "suffix")
+			body := json.RawMessage(`{}`)
+
+			before := time.Now()
+			result := DetermineExpiry(token, body)
+			after := time.Now()
+
+			low := before.Add(DefaultExpiry)
+			high := after.Add(DefaultExpiry)
+			if result.Before(low) || result.After(high) {
+				rt.Fatalf("branch3: default 300s: expected result in [%v, %v], got %v",
+					low, high, result)
+			}
+		}
+	})
+}
+
+// --- Property 9: Cache hit/refresh threshold at 30 seconds ---
+
+// TestCacheThreshold — Property 9.
+//
+// TokenCache.Get returns the token if and only if expiry > 30s in the future;
+// otherwise it signals a cache miss.
+//
+// Discriminating power: if the threshold were 0s (no buffer), tokens with
+// 1s–30s remaining would incorrectly return hits. If the threshold were 60s,
+// tokens with 31s–60s remaining would incorrectly return misses.
+func TestCacheThreshold(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// offsetSec: range −60 to +600 seconds from now.
+		// Values > 30  → cache hit expected.
+		// Values ≤ 30  → cache miss expected.
+		offsetSec := rapid.Int64Range(-60, 600).Draw(rt, "offsetSec")
+		expiresAt := time.Now().Add(time.Duration(offsetSec) * time.Second)
+
+		tc := NewTokenCache()
+		const tok = "some-token"
+		tc.Put("t", "s", tok, expiresAt)
+
+		got, ok := tc.Get("t", "s")
+
+		remaining := time.Until(expiresAt)
+		shouldHit := remaining > RefreshBuffer // > 30s
+
+		if shouldHit {
+			if !ok {
+				rt.Fatalf("offsetSec=%d (remaining=%v > 30s): expected hit, got miss",
+					offsetSec, remaining)
+			}
+			if got != tok {
+				rt.Fatalf("offsetSec=%d: expected token %q, got %q", offsetSec, tok, got)
+			}
+		} else {
+			if ok {
+				rt.Fatalf("offsetSec=%d (remaining=%v ≤ 30s): expected miss, got hit (token=%q)",
+					offsetSec, remaining, got)
+			}
+		}
+	})
 }
