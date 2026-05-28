@@ -35,8 +35,11 @@ import (
 
 const (
 	// devProxyToken is the shared secret provisioned in
-	// infra/compose/docker-compose.yml for both services.  32 bytes / 256 bits.
-	devProxyToken      = "mk_vault_proxy_dev_secret_32b!!!!"
+	// infra/compose/docker-compose.yml (MINTKEY_VAULT_PROXY_TOKEN) for both
+	// services.  Pinned here so a future compose token change is caught by the
+	// test — if compose changes its value and this constant is not updated, the
+	// "correct token succeeds" sub-test will fail.
+	devProxyToken      = "mk_vault_proxy_dev_shared_secret!"
 	devProxyIdentityID = "svcid_proxy"
 )
 
@@ -134,7 +137,7 @@ func TestBug1_CrossModule_CorrectTokenSucceeds(t *testing.T) {
 
 	// Fixed client: vault.NewClient with the dev token and identity ID that
 	// compose provisions via MINTKEY_VAULT_PROXY_TOKEN / MINTKEY_VAULT_PROXY_IDENTITY_ID.
-	// This is exactly what proxy-plugin/cmd/proxy-plugin/main.go:79 does:
+	// This is exactly what proxy-plugin/cmd/proxy-plugin/main.go does:
 	//   vault.NewClient(cfg.VaultAddrGRPC, cfg.VaultIdentityToken, cfg.VaultIdentityID)
 	fixedClient := vault.NewClient(srv.Addr, devProxyToken, devProxyIdentityID)
 

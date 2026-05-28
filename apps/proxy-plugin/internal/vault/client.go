@@ -73,15 +73,14 @@ type Client struct {
 // serviceIdentityID is sent as "x-mintkey-service-identity" metadata on every
 // call so the vault-adapter's scopeInterceptor can validate the caller against
 // its registered identities (Requirement 22.5 / BUG-1 fix).
-func NewClient(address, serviceToken string, serviceIdentityID ...string) *Client {
-	id := ""
-	if len(serviceIdentityID) > 0 {
-		id = serviceIdentityID[0]
-	}
+//
+// serviceIdentityID is required; an empty string will cause every call to fail
+// with PERMISSION_DENIED from the scopeInterceptor (the exact failure mode of BUG-1).
+func NewClient(address, serviceToken, serviceIdentityID string) *Client {
 	return &Client{
 		address:           address,
 		serviceToken:      serviceToken,
-		serviceIdentityID: id,
+		serviceIdentityID: serviceIdentityID,
 	}
 }
 

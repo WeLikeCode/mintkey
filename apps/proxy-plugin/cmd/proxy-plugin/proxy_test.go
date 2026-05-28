@@ -61,7 +61,7 @@ func testHandler() *proxyHandler {
 		AudEnforcement: config.AudEnforcementPermissive,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	return newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 }
 
 func testHandlerStrict() *proxyHandler {
@@ -73,7 +73,7 @@ func testHandlerStrict() *proxyHandler {
 		AudEnforcement: config.AudEnforcementStrict,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	return h
 }
 
@@ -256,7 +256,7 @@ func testHandlerStrictWithAudit(mock *mockAuditQueue) *proxyHandler {
 		AudEnforcement: config.AudEnforcementStrict,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	h.audit = mock
 	return h
 }
@@ -358,7 +358,7 @@ func TestAudEnforcement_Permissive_NoAuditEvent(t *testing.T) {
 		AudEnforcement: config.AudEnforcementPermissive,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	h.audit = mock
 
 	token, pub := buildTestJWT(t, testSvcUUIDA)
