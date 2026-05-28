@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.services.credential_service import OAuth2PasswordGrantPayload, validate_token_url_ssrf
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
@@ -168,6 +169,32 @@ async def create_credential(
             content={"mintkey:code": "not_found", "title": "Service not found"},
         )
     service_base_url: str = svc_row.base_url or ""
+
+    # Step 1c: For oauth2_password_grant, validate the structured payload — BUG-2/BUG-9.
+    # body.value is expected to be a JSON-encoded OAuth2PasswordGrantPayload.
+    # Rejects: non-HTTPS token_url, loopback/private/link-local token_url (S-SEC-1),
+    # empty credential_fields. Requirements 19.2, 19.4, 19.5, 19.6.
+    if body.auth_scheme == "oauth2_password_grant":
+        try:
+            import json as _json_mod
+            raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            OAuth2PasswordGrantPayload(**raw)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": "oauth2_password_grant value must be a valid JSON object",
+                },
+            )
+        except ValueError as exc:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": str(exc),
+                },
+            )
 
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
