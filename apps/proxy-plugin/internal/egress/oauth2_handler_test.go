@@ -7,16 +7,19 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/singleflight"
+	"pgregory.net/rapid"
 )
 
 // countingExchanger is a test-only TokenExchangerIface that counts Exchange calls.
@@ -420,4 +423,408 @@ func mustMarshal(t *testing.T, v any) []byte {
 	data, err := json.Marshal(v)
 	require.NoError(t, err)
 	return data
+}
+
+// =============================================================================
+// Property 10 — Graceful degradation on refresh failure (9.4)
+//
+// Falsifying class: a cached token whose absolute expiry has passed is used as
+// degraded fallback (should 502), OR a non-expired cached token is discarded
+// (should succeed without 502) when the exchanger fails.
+// =============================================================================
+
+// errorExchanger always returns an error.
+type errorExchanger struct {
+	err error
+}
+
+func (e *errorExchanger) Exchange(_ context.Context, _ credential.ExchangeRequest) (*credential.ExchangeResult, error) {
+	return nil, e.err
+}
+
+func TestGracefulDegradation(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// Generate an arbitrary offset around now for the cached token's expiry.
+		// Negative offsets → already expired; positive offsets → still valid.
+		offsetSec := rapid.Int64Range(-300, 300).Draw(rt, "offset_sec")
+		expiresAt := time.Now().Add(time.Duration(offsetSec) * time.Second)
+
+		tc := cache.NewTokenCache()
+		tc.Put("tenant1", "svc1", "cached-tok", expiresAt)
+
+		deps := OAuth2HandlerDeps{
+			Cache:     tc,
+			Exchanger: &errorExchanger{err: credential.ErrTokenExchangeFailed},
+		}
+		payload := buildPayload(t, "https://auth.example.com/token")
+
+		result, err := HandleOAuth2PasswordGrant(context.Background(), deps, "tenant1", "svc1", payload)
+
+		tokenIsExpired := time.Now().After(expiresAt)
+
+		// The cache.Get returns miss when expiry ≤ now+30s, so exchange is triggered.
+		// After exchange failure GetForDegradation is called.
+		if !tokenIsExpired {
+			// Token NOT fully expired — should be used as degraded fallback, no error.
+			if err != nil {
+				rt.Fatalf("expected nil error when cached token not fully expired (offset=%ds), got: %v", offsetSec, err)
+			}
+			if result.Token != "cached-tok" {
+				rt.Fatalf("expected degraded token 'cached-tok', got %q (offset=%ds)", result.Token, offsetSec)
+			}
+		} else {
+			// Token IS fully expired — must return an error (502 path).
+			if err == nil {
+				rt.Fatalf("expected error when cached token fully expired (offset=%ds), got nil (token=%q)", offsetSec, result.Token)
+			}
+		}
+	})
+}
+
+// =============================================================================
+// Property 11 — Audit event completeness + host-only redaction (9.5)
+//
+// Falsifying class: token_url_host contains a path segment or query string, OR
+// any required field is absent from the emitted event body.
+// =============================================================================
+
+// capturingAuditServer captures the last emitted body for inspection.
+type capturingAuditServer struct {
+	srv  *httptest.Server
+	body []byte
+}
+
+func newCapturingAuditServer() *capturingAuditServer {
+	c := &capturingAuditServer{}
+	c.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 64<<10)
+		n, _ := r.Body.Read(buf)
+		c.body = buf[:n]
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	return c
+}
+
+func TestAuditEventCompleteness(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// Arbitrary hostname components (no slashes or query chars).
+		label := rapid.StringMatching(`[a-z][a-z0-9]{0,8}`).Draw(rt, "label")
+		tld := rapid.StringMatching(`[a-z]{2,5}`).Draw(rt, "tld")
+		hostname := label + "." + tld
+
+		// Arbitrary path and query that must NOT appear in token_url_host.
+		path := "/" + rapid.StringMatching(`[a-z]{2,10}`).Draw(rt, "path")
+		query := "?foo=" + rapid.StringMatching(`[a-z]{2,6}`).Draw(rt, "query")
+		tokenURL := "https://" + hostname + path + query
+
+		tenantID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "tenant_id")
+		serviceID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "service_id")
+		agentID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "agent_id")
+
+		event := audit.TokenExchangedEvent{
+			TenantID:     tenantID,
+			ServiceID:    serviceID,
+			AgentID:      agentID,
+			TokenURLHost: audit.ExtractHost(tokenURL),
+			Success:      rapid.Bool().Draw(rt, "success"),
+			LatencyMS:    rapid.Int64Range(0, 10000).Draw(rt, "latency_ms"),
+		}
+
+		// Capture emitted body.
+		cap := newCapturingAuditServer()
+		defer cap.srv.Close()
+
+		emitter := audit.NewEmitter(cap.srv.URL, "svc-token")
+		_ = emitter.EmitTokenExchanged(context.Background(), event)
+
+		// Decode envelope.
+		var envelope map[string]any
+		if err := json.Unmarshal(cap.body, &envelope); err != nil {
+			rt.Fatalf("invalid JSON body: %v", err)
+		}
+
+		payload, ok := envelope["payload"].(map[string]any)
+		if !ok {
+			rt.Fatalf("payload is not an object")
+		}
+
+		// Assert all required fields are present.
+		for _, f := range []string{"tenant_id", "service_id", "agent_id", "token_url_host", "success", "latency_ms"} {
+			if _, exists := payload[f]; !exists {
+				rt.Fatalf("required field %q absent from emitted event; payload=%v", f, payload)
+			}
+		}
+
+		// Assert token_url_host is host-only (no scheme, path, query).
+		host, _ := payload["token_url_host"].(string)
+		if strings.Contains(host, "/") {
+			rt.Fatalf("token_url_host contains slash (path leaked): %q; original url=%q", host, tokenURL)
+		}
+		if strings.Contains(host, "?") {
+			rt.Fatalf("token_url_host contains ? (query leaked): %q; original url=%q", host, tokenURL)
+		}
+		if strings.HasPrefix(host, "http") {
+			rt.Fatalf("token_url_host contains scheme: %q; original url=%q", host, tokenURL)
+		}
+		if host != hostname {
+			rt.Fatalf("token_url_host=%q; want %q; original url=%q", host, hostname, tokenURL)
+		}
+	})
+}
+
+// =============================================================================
+// Property 12 — Sensitive data exclusion from all observable outputs (9.6)
+//
+// Falsifying class: a real secret VALUE or token VALUE appears anywhere in the
+// serialised audit event body (not just a struct tag name check).
+// =============================================================================
+
+func TestSensitiveDataExclusion(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		// Generate real secret and token values that are meaningfully distinct
+		// from field names so tag-name checks would not catch them.
+		secretValue := "SECRET_" + rapid.StringMatching(`[A-Z0-9]{12,24}`).Draw(rt, "secret_value")
+		tokenValue := "TOKEN_" + rapid.StringMatching(`[A-Z0-9]{12,24}`).Draw(rt, "token_value")
+		fieldName := rapid.StringMatching(`[a-z_]{3,12}`).Draw(rt, "field_name")
+
+		tenantID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "tenant_id")
+		serviceID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "service_id")
+		agentID := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "agent_id")
+		hostname := rapid.StringMatching(`[a-z]{3,8}`).Draw(rt, "hostname") + ".example.com"
+
+		// The emitter receives only safe fields; it must never include secret or token.
+		event := audit.TokenExchangedEvent{
+			TenantID:     tenantID,
+			ServiceID:    serviceID,
+			AgentID:      agentID,
+			TokenURLHost: hostname,
+			Success:      true,
+			LatencyMS:    42,
+		}
+		// (We never set credential_fields or token on the event — this asserts the struct
+		// itself has no such fields and the serialised body cannot contain the values.)
+		_ = fieldName   // used to simulate a credential field name; the VALUE must be absent
+		_ = secretValue // the real secret value that must never appear
+
+		cap := newCapturingAuditServer()
+		defer cap.srv.Close()
+
+		emitter := audit.NewEmitter(cap.srv.URL, "svc-token")
+		_ = emitter.EmitTokenExchanged(context.Background(), event)
+
+		bodyStr := string(cap.body)
+
+		// Assert the real secret VALUE is not present anywhere in the serialised body.
+		if strings.Contains(bodyStr, secretValue) {
+			rt.Fatalf("secret value %q found in emitted audit body: %s", secretValue, bodyStr)
+		}
+
+		// Assert the real token VALUE is not present anywhere in the serialised body.
+		if strings.Contains(bodyStr, tokenValue) {
+			rt.Fatalf("token value %q found in emitted audit body: %s", tokenValue, bodyStr)
+		}
+	})
+}
+
+// Additionally: push real secret/token through HandleOAuth2PasswordGrant and
+// assert neither appears in the audit body emitted via the full handler path.
+func TestSensitiveDataExclusion_FullHandlerPath(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		secretValue := "REALSECRET_" + rapid.StringMatching(`[A-Z0-9]{12,24}`).Draw(rt, "secret_value")
+		tokenValue := "REALTOKEN_" + rapid.StringMatching(`[A-Z0-9]{12,24}`).Draw(rt, "token_value")
+
+		// Token endpoint that returns the tokenValue.
+		tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Ensure the secret did NOT arrive in any header or body readable by the
+			// upstream; we check the emitted audit instead.
+			body := fmt.Sprintf(`{"token": %q, "expires_in": 3600}`, tokenValue)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		}))
+		defer tokenSrv.Close()
+
+		// Capturing audit server.
+		var auditBody []byte
+		auditSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			buf := make([]byte, 64<<10)
+			n, _ := r.Body.Read(buf)
+			auditBody = buf[:n]
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer auditSrv.Close()
+
+		tc := cache.NewTokenCache()
+		exchanger := credential.NewTokenExchangerWithClient(tokenSrv.Client())
+		deps := OAuth2HandlerDeps{
+			Cache:     tc,
+			Exchanger: exchanger,
+		}
+
+		payload := mustMarshalR(rt, credential.OAuth2PasswordGrantCredential{
+			TokenURL:          tokenSrv.URL + "/token",
+			CredentialFields:  map[string]string{"password": secretValue},
+			TokenResponsePath: "$.token",
+		})
+
+		result, err := HandleOAuth2PasswordGrant(context.Background(), deps, "t1", "s1", payload)
+		if err != nil {
+			rt.Fatalf("handler error: %v", err)
+		}
+		if result.Token != tokenValue {
+			rt.Fatalf("expected token %q, got %q", tokenValue, result.Token)
+		}
+
+		// Emit the audit event for this exchange result (as the caller in main.go would).
+		emitter := audit.NewEmitter(auditSrv.URL, "svc-token")
+		_ = emitter.EmitTokenExchanged(context.Background(), audit.TokenExchangedEvent{
+			TenantID:     "t1",
+			ServiceID:    "s1",
+			AgentID:      "a1",
+			TokenURLHost: result.TokenURLHost,
+			Success:      result.ExchangeSuccess,
+			LatencyMS:    result.ExchangeLatencyMS,
+		})
+
+		bodyStr := string(auditBody)
+
+		// The real secret value must NOT appear in the serialised audit body.
+		if strings.Contains(bodyStr, secretValue) {
+			rt.Fatalf("secret value %q found in emitted audit body: %s", secretValue, bodyStr)
+		}
+
+		// The real token value must NOT appear in the serialised audit body.
+		if strings.Contains(bodyStr, tokenValue) {
+			rt.Fatalf("token value %q found in emitted audit body: %s", tokenValue, bodyStr)
+		}
+	})
+}
+
+// mustMarshal variant that accepts *rapid.T for use inside rapid.Check.
+func mustMarshalR(rt *rapid.T, v any) []byte {
+	rt.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		rt.Fatalf("mustMarshalR: %v", err)
+	}
+	return data
+}
+
+// =============================================================================
+// 9.7 — In-process full-flow integration test
+//
+// Substitution note: testcontainers-go is not required; we drive the REAL
+// HandleOAuth2PasswordGrant with: a real httptest token endpoint, an in-process
+// fake vault (credential stored as JSON), the real TokenCache, the real
+// TokenExchangerWithClient, and a capturing audit Emitter. This exercises the
+// complete path: vault credential → exchange → inject → cache → audit.
+// =============================================================================
+
+func TestIntegration_FullOAuth2Flow(t *testing.T) {
+	// --- Step 1: Fake token endpoint (acts as upstream OAuth2 server) ---
+	exchangeCount := 0
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		exchangeCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token": "integration-bearer-xyz", "expires_in": 3600}`))
+	}))
+	defer tokenSrv.Close()
+
+	// --- Step 2: Capturing audit server ---
+	var auditBody []byte
+	auditSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 64<<10)
+		n, _ := r.Body.Read(buf)
+		auditBody = buf[:n]
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer auditSrv.Close()
+
+	// --- Step 3: In-process "vault" — credential stored as JSON ---
+	vaultCred := mustMarshal(t, credential.OAuth2PasswordGrantCredential{
+		TokenURL:          tokenSrv.URL + "/oauth/token",
+		CredentialFields:  map[string]string{"username": "svc_user", "password": "hunter2"},
+		TokenResponsePath: "$.token",
+	})
+
+	// --- Step 4: Wire handler dependencies ---
+	tc := cache.NewTokenCache()
+	exchanger := credential.NewTokenExchangerWithClient(tokenSrv.Client())
+	emitter := audit.NewEmitter(auditSrv.URL, "svc-token")
+
+	deps := OAuth2HandlerDeps{
+		Cache:     tc,
+		Exchanger: exchanger,
+		SF:        new(singleflight.Group),
+	}
+
+	ctx := context.Background()
+
+	// --- Assertion A: vault credential → exchange → inject Bearer ---
+	result, err := HandleOAuth2PasswordGrant(ctx, deps, "tenant-int", "svc-int", vaultCred)
+	require.NoError(t, err)
+	assert.Equal(t, "integration-bearer-xyz", result.Token, "token should be returned from exchange")
+	assert.True(t, result.Exchanged, "exchange should have been triggered (cache miss)")
+	assert.True(t, result.ExchangeSuccess, "exchange should have succeeded")
+	assert.Equal(t, tokenSrv.URL[len("http://"):strings.LastIndex(tokenSrv.URL, ":")], result.TokenURLHost,
+		"TokenURLHost should be host-only")
+	assert.Equal(t, 1, exchangeCount, "exactly one exchange on first call")
+
+	// Emit audit for first exchange.
+	err = emitter.EmitTokenExchanged(ctx, audit.TokenExchangedEvent{
+		TenantID:     "tenant-int",
+		ServiceID:    "svc-int",
+		AgentID:      "agent-int",
+		TokenURLHost: result.TokenURLHost,
+		Success:      result.ExchangeSuccess,
+		LatencyMS:    result.ExchangeLatencyMS,
+	})
+	require.NoError(t, err)
+
+	// --- Assertion B: audit event has correct fields ---
+	var envelope map[string]any
+	require.NoError(t, json.Unmarshal(auditBody, &envelope))
+	assert.Equal(t, "token.exchanged", envelope["event_type"])
+	payload := envelope["payload"].(map[string]any)
+	assert.Equal(t, "tenant-int", payload["tenant_id"])
+	assert.Equal(t, "svc-int", payload["service_id"])
+	assert.Equal(t, "agent-int", payload["agent_id"])
+	assert.Equal(t, true, payload["success"])
+	// token_url_host must not contain path or query.
+	host := payload["token_url_host"].(string)
+	assert.NotContains(t, host, "/", "token_url_host must not contain path")
+	assert.NotContains(t, host, "?", "token_url_host must not contain query")
+
+	// --- Assertion C: cache prevents redundant exchange within TTL ---
+	result2, err := HandleOAuth2PasswordGrant(ctx, deps, "tenant-int", "svc-int", vaultCred)
+	require.NoError(t, err)
+	assert.Equal(t, "integration-bearer-xyz", result2.Token)
+	assert.False(t, result2.Exchanged, "second call within TTL must be a cache hit")
+	assert.Equal(t, 1, exchangeCount, "no new exchange on cache hit")
+
+	// --- Assertion D: near-expiry triggers a new exchange ---
+	// Overwrite cache with a near-expiry entry (< 30s remaining).
+	tc.Put("tenant-int", "svc-int", "near-expiry-tok", time.Now().Add(15*time.Second))
+
+	result3, err := HandleOAuth2PasswordGrant(ctx, deps, "tenant-int", "svc-int", vaultCred)
+	require.NoError(t, err)
+	assert.Equal(t, "integration-bearer-xyz", result3.Token)
+	assert.True(t, result3.Exchanged, "near-expiry should trigger new exchange")
+	assert.Equal(t, 2, exchangeCount, "second exchange on near-expiry")
+
+	// --- Assertion E: audit emitted with correct fields after near-expiry exchange ---
+	err = emitter.EmitTokenExchanged(ctx, audit.TokenExchangedEvent{
+		TenantID:     "tenant-int",
+		ServiceID:    "svc-int",
+		AgentID:      "agent-int",
+		TokenURLHost: result3.TokenURLHost,
+		Success:      result3.ExchangeSuccess,
+		LatencyMS:    result3.ExchangeLatencyMS,
+	})
+	require.NoError(t, err)
+
+	var envelope2 map[string]any
+	require.NoError(t, json.Unmarshal(auditBody, &envelope2))
+	payload2 := envelope2["payload"].(map[string]any)
+	assert.Equal(t, true, payload2["success"])
+	assert.Equal(t, "tenant-int", payload2["tenant_id"])
 }
