@@ -44,6 +44,7 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
+	"golang.org/x/sync/singleflight"
 )
 
 func main() {
@@ -176,6 +177,10 @@ type proxyHandler struct {
 	tokenCache *cache.TokenCache
 	// tokenExchanger performs OAuth2 password grant token exchanges.
 	tokenExchanger *credential.TokenExchanger
+	// sfGroup is the shared singleflight.Group for per-(tenant_id, service_id)
+	// coalescing of concurrent token-cache-miss exchanges.  Initialised once at
+	// startup and reused across all requests (Req 20/21 thundering-herd protection).
+	sfGroup *singleflight.Group
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
@@ -197,6 +202,7 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		pubKeys:        make(map[string]ed25519.PublicKey),
 		tokenCache:     cache.NewTokenCache(),
 		tokenExchanger: credential.NewTokenExchanger(),
+		sfGroup:        new(singleflight.Group),
 	}
 }
 
@@ -444,9 +450,13 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	pluginStart time.Time,
 ) {
 	// Run the OAuth2 orchestration (cache → exchange → graceful degradation).
+	// h.sfGroup is a shared *singleflight.Group initialised once at startup so
+	// concurrent cache misses for the same (tenant_id, service_id) key fire
+	// exactly ONE upstream token exchange (Req 20/21 thundering-herd protection).
 	deps := egress.OAuth2HandlerDeps{
 		Cache:     h.tokenCache,
 		Exchanger: h.tokenExchanger,
+		SF:        h.sfGroup,
 	}
 
 	oauthResult, err := egress.HandleOAuth2PasswordGrant(
