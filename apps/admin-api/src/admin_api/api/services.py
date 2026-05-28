@@ -43,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.services.credential_service import resolve_hostname_is_private
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
@@ -52,18 +53,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/services")
 
 # ---------------------------------------------------------------------------
-# Forbidden destination networks — S-SEC-1 / ADR-0014.4
+# Forbidden destination check — S-SEC-1 / ADR-0014.4
+# The _FORBIDDEN_NETWORKS list and the DNS resolver live in credential_service
+# (single source of truth); we import resolve_hostname_is_private from there.
 # ---------------------------------------------------------------------------
-
-_FORBIDDEN_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("::1/128"),
-]
 
 # Crockford base32 alphabet (uppercase, no I/L/O/U)
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -107,9 +100,11 @@ def _is_forbidden_destination(base_url: str) -> bool:
     Both IP literals AND DNS-resolved hostnames are checked so that a hostname
     that resolves to a private/loopback address is also rejected (BUG-13).
 
+    DNS resolution is delegated to ``credential_service.resolve_hostname_is_private``
+    — the single shared SSRF helper (no third copy of the logic).
+
     Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the private-IP
-    block (e.g. dev workflows hitting a private mock backend) — mirrors the
-    SSRF policy in credential_service.py.
+    block (e.g. dev workflows hitting a private mock backend).
     """
     try:
         parsed = urlparse(base_url)
@@ -117,40 +112,11 @@ def _is_forbidden_destination(base_url: str) -> bool:
         if not host:
             return False
 
-        # Opt-out for dev environments (mirrors credential_service.validate_token_url_ssrf)
+        # Opt-out for dev environments
         if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") == "1":
             return False
 
-        # Check IP literals directly — fast path
-        try:
-            ip = ipaddress.ip_address(host)
-            return any(ip in net for net in _FORBIDDEN_NETWORKS)
-        except ValueError:
-            pass  # Not an IP literal — resolve via DNS
-
-        # DNS resolution check (BUG-13 fix): resolve and reject if any address is private
-        try:
-            resolved = socket.getaddrinfo(host, None)
-        except socket.gaierror:
-            # DNS resolution failed — allow through; a non-resolvable hostname is not a
-            # forbidden destination (connection will fail at request time anyway).
-            return False
-        for _family, _type, _proto, _canonname, sockaddr in resolved:
-            addr = sockaddr[0]
-            try:
-                ip = ipaddress.ip_address(addr)
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_link_local
-                    or ip.is_multicast
-                    or ip.is_reserved
-                    or ip.is_unspecified
-                ):
-                    return True
-            except ValueError:
-                continue
-        return False
+        return resolve_hostname_is_private(host)
     except Exception:  # noqa: BLE001
         return False
 

@@ -20,8 +20,9 @@ from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
-# SSRF forbidden networks — mirrors S-SEC-1 / ADR-0014.4
-# (same list as apps/admin-api/src/admin_api/api/services.py)
+# SSRF forbidden networks — S-SEC-1 / ADR-0014.4
+# Shared by both services.py (base_url / test-url checks) and this module
+# (token_url check). ONE authoritative list.
 # ---------------------------------------------------------------------------
 
 _FORBIDDEN_NETWORKS = [
@@ -35,6 +36,54 @@ _FORBIDDEN_NETWORKS = [
 ]
 
 
+def resolve_hostname_is_private(hostname: str) -> bool:
+    """Return True if *hostname* DNS-resolves to any forbidden (private/loopback/
+    link-local/multicast/reserved/unspecified) IP address — S-SEC-1.
+
+    This is the single shared DNS-SSRF resolver used by both
+    ``validate_token_url_ssrf`` (token_url check) and
+    ``admin_api.api.services._is_forbidden_destination`` (base_url check).
+
+    - IP literals are checked directly against ``_FORBIDDEN_NETWORKS``.
+    - DNS names are resolved via ``socket.getaddrinfo``; if *any* returned
+      address is in a forbidden range the function returns ``True``.
+    - On ``gaierror`` (DNS failure) returns ``False`` — fails open so that
+      a non-resolvable hostname is not mistakenly blocked (connection will
+      fail at request time anyway).
+
+    Callers are responsible for checking ``MINTKEY_SSRF_ALLOW_PRIVATE``
+    before calling this function.
+    """
+    # IP literal — fast path
+    try:
+        ip = ipaddress.ip_address(hostname)
+        return any(ip in net for net in _FORBIDDEN_NETWORKS)
+    except ValueError:
+        pass  # Not an IP literal — resolve DNS
+
+    try:
+        resolved = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False  # DNS failure → fail open
+
+    for _family, _type, _proto, _canonname, sockaddr in resolved:
+        addr = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def validate_token_url_ssrf(url: str) -> tuple[bool, str]:
     """Validate that a token_url is safe for outbound calls (S-SEC-1).
 
@@ -43,9 +92,8 @@ def validate_token_url_ssrf(url: str) -> tuple[bool, str]:
     Checks:
       1. Scheme must be HTTPS.
       2. Hostname must be present.
-      3. If hostname is an IP literal, it must not be in a forbidden network.
-      4. If hostname is a DNS name, resolve it and reject if any address is
-         in a forbidden network.
+      3. Hostname (IP literal or DNS name) must not resolve to a forbidden
+         network — delegated to ``resolve_hostname_is_private``.
 
     Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the
     private-IP block (e.g. dev workflows hitting a private mock backend).
@@ -63,34 +111,8 @@ def validate_token_url_ssrf(url: str) -> tuple[bool, str]:
     if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") == "1":
         return (True, "")
 
-    # Check IP literal directly
-    try:
-        ip = ipaddress.ip_address(hostname)
-        for net in _FORBIDDEN_NETWORKS:
-            if ip in net:
-                return (False, "private_or_loopback_ip_blocked")
-        return (True, "")
-    except ValueError:
-        pass  # Not an IP literal — resolve DNS
-
-    # DNS resolution check
-    try:
-        resolved = socket.getaddrinfo(hostname, None)
-    except socket.gaierror:
-        return (False, "dns_resolution_failed")
-
-    for _family, _type, _proto, _canonname, sockaddr in resolved:
-        addr = sockaddr[0]
-        ip = ipaddress.ip_address(addr)
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            return (False, "private_or_loopback_ip_blocked")
+    if resolve_hostname_is_private(hostname):
+        return (False, "private_or_loopback_ip_blocked")
 
     return (True, "")
 

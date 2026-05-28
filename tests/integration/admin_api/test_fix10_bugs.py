@@ -22,7 +22,6 @@ from unittest.mock import patch
 
 import psycopg2
 import pytest
-from sqlalchemy.exc import IntegrityError
 from starlette.testclient import TestClient
 
 _CSRF_TOKEN = "test-fix10-csrf"
@@ -126,116 +125,86 @@ def fix10_session(admin_app: TestClient, postgres_container, fix10_tenant: str) 
 
 
 # ---------------------------------------------------------------------------
-# BUG-13: DNS-resolved hostname SSRF (unit-level — no DB needed)
+# BUG-13: DNS-resolved hostname SSRF — pure unit tests, no DB/FastAPI involved
+#
+# We test `_is_forbidden_destination` directly (the production function).
+# We patch ONLY `admin_api.services.credential_service.socket.getaddrinfo`
+# — the single narrow call site in the shared helper.  asyncpg / the test
+# DB container never sees the mock.
 # ---------------------------------------------------------------------------
 
-def test_bug13_hostname_resolving_to_loopback_is_rejected(
-    admin_app: TestClient,
-    fix10_tenant: str,
-    fix10_session: str,
-) -> None:
-    """
-    BUG-13: A hostname that DNS-resolves to 127.0.0.1 must be rejected with 422.
+def test_bug13_hostname_resolving_to_loopback_is_rejected() -> None:
+    """BUG-13: _is_forbidden_destination must return True when the hostname
+    DNS-resolves to 127.0.0.1 (loopback).
 
-    We mock socket.getaddrinfo inside admin_api.api.services to return loopback
-    so the test does not depend on real DNS or /etc/hosts.
+    Patching the shared helper's getaddrinfo only — no FastAPI/DB needed.
     """
+    from admin_api.api.services import _is_forbidden_destination
+
     fake_addrs = [(2, 1, 6, "", ("127.0.0.1", 0))]
 
-    with patch("admin_api.api.services.socket.getaddrinfo", return_value=fake_addrs):
-        resp = admin_app.post(
-            f"/v1/tenants/{fix10_tenant}/services",
-            json={
-                "name": "ssrf-hostname-loopback-test",
-                "base_url": "https://internal.corp.example.com/api",
-                "auth_scheme": "bearer_token",
-            },
-            headers=_CSRF_HEADERS,
-            cookies={**_CSRF_COOKIES, "mintkey_session": fix10_session},
-        )
-    assert resp.status_code == 422, (
-        f"BUG-13: hostname resolving to 127.0.0.1 must return 422, got {resp.status_code}: {resp.text}"
+    with patch(
+        "admin_api.services.credential_service.socket.getaddrinfo",
+        return_value=fake_addrs,
+    ):
+        result = _is_forbidden_destination("https://internal.corp.example.com/api")
+
+    assert result is True, (
+        "BUG-13: hostname resolving to 127.0.0.1 must be a forbidden destination"
     )
-    assert resp.json().get("mintkey:code") == "forbidden_destination", resp.json()
 
 
-def test_bug13_hostname_resolving_to_private_rfc1918_is_rejected(
-    admin_app: TestClient,
-    fix10_tenant: str,
-    fix10_session: str,
-) -> None:
+def test_bug13_hostname_resolving_to_private_rfc1918_is_rejected() -> None:
+    """BUG-13: _is_forbidden_destination must return True when the hostname
+    DNS-resolves to 10.0.0.5 (RFC1918).
     """
-    BUG-13: A hostname that DNS-resolves to 10.0.0.5 (RFC1918) must be rejected.
-    """
+    from admin_api.api.services import _is_forbidden_destination
+
     fake_addrs = [(2, 1, 6, "", ("10.0.0.5", 0))]
 
-    with patch("admin_api.api.services.socket.getaddrinfo", return_value=fake_addrs):
-        resp = admin_app.post(
-            f"/v1/tenants/{fix10_tenant}/services",
-            json={
-                "name": "ssrf-hostname-rfc1918-test",
-                "base_url": "https://internal2.corp.example.com/api",
-                "auth_scheme": "bearer_token",
-            },
-            headers=_CSRF_HEADERS,
-            cookies={**_CSRF_COOKIES, "mintkey_session": fix10_session},
-        )
-    assert resp.status_code == 422, (
-        f"BUG-13: hostname resolving to 10.0.0.5 must return 422, got {resp.status_code}: {resp.text}"
+    with patch(
+        "admin_api.services.credential_service.socket.getaddrinfo",
+        return_value=fake_addrs,
+    ):
+        result = _is_forbidden_destination("https://internal2.corp.example.com/api")
+
+    assert result is True, (
+        "BUG-13: hostname resolving to 10.0.0.5 must be a forbidden destination"
     )
-    assert resp.json().get("mintkey:code") == "forbidden_destination"
 
 
-def test_bug13_hostname_resolving_to_public_ip_is_allowed(
-    admin_app: TestClient,
-    fix10_tenant: str,
-    fix10_session: str,
-) -> None:
+def test_bug13_hostname_resolving_to_public_ip_is_allowed() -> None:
+    """BUG-13: _is_forbidden_destination must return False when the hostname
+    DNS-resolves to a public IP (8.8.8.8).
+
+    Confirms the SSRF fix is targeted — no regression for legitimate public services.
     """
-    BUG-13: A hostname that DNS-resolves to a PUBLIC IP must NOT be blocked.
-    Confirms the fix is targeted (no regression for legitimate public services).
-    """
-    # 8.8.8.8 is a globally routable public IP — must not be blocked
+    from admin_api.api.services import _is_forbidden_destination
+
+    # 8.8.8.8 is globally routable — must not be blocked
     fake_addrs = [(2, 1, 6, "", ("8.8.8.8", 0))]
 
-    with patch("admin_api.api.services.socket.getaddrinfo", return_value=fake_addrs):
-        resp = admin_app.post(
-            f"/v1/tenants/{fix10_tenant}/services",
-            json={
-                "name": "public-hostname-test",
-                "base_url": "https://public.example.com/api",
-                "auth_scheme": "bearer_token",
-            },
-            headers=_CSRF_HEADERS,
-            cookies={**_CSRF_COOKIES, "mintkey_session": fix10_session},
-        )
-    # Must NOT be a 422 forbidden_destination
-    assert resp.status_code == 201, (
-        f"BUG-13 regression: public hostname must succeed; got {resp.status_code}: {resp.text}"
+    with patch(
+        "admin_api.services.credential_service.socket.getaddrinfo",
+        return_value=fake_addrs,
+    ):
+        result = _is_forbidden_destination("https://public.example.com/api")
+
+    assert result is False, (
+        "BUG-13 regression: hostname resolving to public IP must not be blocked"
     )
 
 
-def test_bug13_ip_literal_still_blocked(
-    admin_app: TestClient,
-    fix10_tenant: str,
-    fix10_session: str,
-) -> None:
-    """
-    BUG-13 regression: IP literals (192.168.x.x) must still be rejected.
+def test_bug13_ip_literal_still_blocked() -> None:
+    """BUG-13 regression: IP literals (192.168.x.x) must still be rejected.
     The DNS-resolution path must not break the existing literal check.
+    No mock needed — IP literal is checked before DNS.
     """
-    resp = admin_app.post(
-        f"/v1/tenants/{fix10_tenant}/services",
-        json={
-            "name": "ip-literal-blocked",
-            "base_url": "http://192.168.1.50/api",
-            "auth_scheme": "bearer_token",
-        },
-        headers=_CSRF_HEADERS,
-        cookies={**_CSRF_COOKIES, "mintkey_session": fix10_session},
-    )
-    assert resp.status_code == 422
-    assert resp.json().get("mintkey:code") == "forbidden_destination"
+    from admin_api.api.services import _is_forbidden_destination
+
+    result = _is_forbidden_destination("http://192.168.1.50/api")
+
+    assert result is True, "IP literal 192.168.1.50 must be a forbidden destination"
 
 
 # ---------------------------------------------------------------------------
@@ -361,40 +330,48 @@ def test_bug18_409_comes_from_integrity_error_path(
     fix10_session: str,
 ) -> None:
     """
-    BUG-18: Verify the 409 comes from the IntegrityError catch path (atomic),
-    not the pre-check query. We simulate a race by patching the pre-check to
-    return None (as if no duplicate was found) but the INSERT raises IntegrityError.
+    BUG-18: Verify the 409 originates from the IntegrityError catch path (atomic),
+    not a pre-check SELECT.
 
-    The endpoint must still return 409, proving it's the IntegrityError path.
+    Strategy: patch ``sqlalchemy.ext.asyncio.AsyncSession.execute`` on the
+    from-template handler so that the INSERT raises IntegrityError even though
+    the name has never been inserted before (simulating a lost race).  The
+    endpoint must still return 409 with service_name_taken — proving it is the
+    IntegrityError branch that fires, not a pre-check that would have returned
+    False for a brand-new name.
     """
     from sqlalchemy.exc import IntegrityError as _IE
+    import sqlalchemy.ext.asyncio as _aio
 
-    # Patch session.execute to simulate: pre-check returns no row, then INSERT raises IntegrityError
-    _call_count = {"n": 0}
-
-    original_execute = None
-
-    async def _fake_execute(stmt, params=None, **kwargs):
-        _call_count["n"] += 1
-        # Third execute is the INSERT (after set_tenant_context and dup-check both pass)
-        # We need to let set_tenant_context and dup-check pass, then fail on INSERT.
-        # Heuristic: if params has "id" key, it's the INSERT.
-        if isinstance(params, dict) and "id" in params and "template_id" in params:
-            raise _IE("mock IntegrityError", None, None)
-        return await original_execute(stmt, params, **kwargs)
-
-    # Use a unique name that doesn't already exist to avoid pre-check returning a row
     unique_name = f"integrity-race-test-{_uuid_mod.uuid4().hex[:8]}"
 
-    from admin_api.db.deps import get_db_session
-    from admin_api.main import create_app
-    import admin_api.api.services as _svc_mod
+    _original_execute = _aio.AsyncSession.execute
+    _call_count = {"n": 0}
 
-    # Directly test the function: confirm IntegrityError produces 409
-    # We test this by looking at the handler source — it must import IntegrityError
-    # and have an except IntegrityError block around the INSERT.
-    import inspect
-    src = inspect.getsource(_svc_mod.create_service_from_template)
-    assert "IntegrityError" in src, (
-        "BUG-18: create_service_from_template must catch IntegrityError for atomic duplicate check"
+    async def _patched_execute(self, stmt, params=None, **kwargs):
+        _call_count["n"] += 1
+        # Let set_tenant_context and any other housekeeping calls through;
+        # intercept only the INSERT (identified by the "template_id" param key).
+        if isinstance(params, dict) and "template_id" in params and "id" in params:
+            raise _IE(
+                statement=None,
+                params=None,
+                orig=Exception("mock unique constraint violation"),
+            )
+        return await _original_execute(self, stmt, params, **kwargs)
+
+    with patch.object(_aio.AsyncSession, "execute", _patched_execute):
+        resp = admin_app.post(
+            f"/v1/tenants/{fix10_tenant}/services/from-template",
+            json={"template_id": "stripe", "overrides": {"name": unique_name}},
+            headers=_CSRF_HEADERS,
+            cookies={**_CSRF_COOKIES, "mintkey_session": fix10_session},
+        )
+
+    assert resp.status_code == 409, (
+        f"BUG-18: IntegrityError on INSERT must produce 409; got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("mintkey:code") == "service_name_taken", (
+        f"BUG-18: expected service_name_taken from IntegrityError path; got {body}"
     )
