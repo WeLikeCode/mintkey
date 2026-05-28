@@ -8,6 +8,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
@@ -641,4 +644,174 @@ func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
 		t.Fatalf("production singleflight coalescing broken: expected exactly 1 exchange call, got %d — SF field not wired", calls)
 	}
 	_ = results
+}
+
+// ---------------------------------------------------------------------------
+// BUG-10 / FIX-6: token.exchanged must route through audit.EmitTokenExchanged
+// ---------------------------------------------------------------------------
+
+// TestTokenExchanged_EmitterPath_AgentIDHostOnlyNoSecretLeak verifies:
+//  1. The token.exchanged event is emitted via audit.EmitTokenExchanged (the
+//     previously-dead emitter path), not the hand-built auditq path.
+//  2. The emitted event includes agent_id (non-empty).
+//  3. token_url_host is HOST ONLY — no scheme, no path, no query.
+//  4. No credential_fields value and no exchanged token value appears anywhere
+//     in the serialised audit POST body (Property 12 / Req 22.7).
+//
+// Source: Requirements 22.1–22.3, 22.7; design.md §Audit Event Props 11/12.
+func TestTokenExchanged_EmitterPath_AgentIDHostOnlyNoSecretLeak(t *testing.T) {
+	const (
+		secretPassword  = "super-secret-password-LEAK"
+		exchangedToken  = "exchanged-bearer-token-SECRET"
+		wantAgentID     = "agent_fixbug10_test"
+		wantTenantID    = "tenant-test-uuid-0001"
+		wantServiceID   = testSvcUUIDA
+	)
+
+	// Step 1: Fake token endpoint — returns a JSON body with the exchanged token.
+	// The token URL path/query must NOT appear in the audit event.
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Include the secret password in the response body to confirm the
+		// audit system does NOT echo it back.
+		_, _ = fmt.Fprintf(w, `{"token":"%s","message":"secret=%s"}`, exchangedToken, secretPassword)
+	}))
+	defer tokenSrv.Close()
+
+	// Step 2: Fake admin-api — captures the audit POST body.
+	var (
+		auditMu   sync.Mutex
+		auditBodies [][]byte
+	)
+	auditSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		auditMu.Lock()
+		auditBodies = append(auditBodies, body)
+		auditMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer auditSrv.Close()
+
+	// Step 3: Build a proxyHandler wired with the real audit.Emitter.
+	h := testHandler()
+	h.tokenExchangeEmitter = audit.NewEmitter(auditSrv.URL, "svc-token")
+
+	// Swap in a real token exchanger that calls the fake token endpoint.
+	h.tokenExchanger = credential.NewTokenExchanger()
+	h.tokenCache = cache.NewTokenCache() // empty cache → exchange is attempted
+
+	// Build credential payload pointing at the fake token server.
+	// token_url includes a path (/oauth/token) and query (?grant_type=password)
+	// — neither should appear in the audit event.
+	tokenURL := tokenSrv.URL + "/oauth/token?grant_type=password"
+	credPayload, err := json.Marshal(credential.OAuth2PasswordGrantCredential{
+		TokenURL: tokenURL,
+		CredentialFields: map[string]string{
+			"username": "testuser",
+			"password": secretPassword,
+		},
+		TokenResponsePath: "$.token",
+	})
+	if err != nil {
+		t.Fatalf("marshal credential: %v", err)
+	}
+
+	// Step 4: Build a dummy upstream target so the proxy can complete.
+	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstreamSrv.Close()
+
+	credResp := &vault.GetCredentialResponse{
+		AuthScheme: int32(credential.AuthSchemeOAuth2PasswordGrant),
+		Plaintext:  credPayload,
+		TargetURL:  upstreamSrv.URL,
+	}
+
+	// Step 5: Invoke handleOAuth2PasswordGrant directly with a known agentID.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rw := httptest.NewRecorder()
+	h.handleOAuth2PasswordGrant(rw, req, credResp, wantTenantID, wantServiceID, wantAgentID, time.Now())
+
+	// Give the fire-and-forget goroutine a moment to complete the HTTP POST.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		auditMu.Lock()
+		n := len(auditBodies)
+		auditMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Step 6: Assert at least one token.exchanged audit event was captured.
+	auditMu.Lock()
+	bodies := make([][]byte, len(auditBodies))
+	copy(bodies, auditBodies)
+	auditMu.Unlock()
+
+	var tokenExchangedBody []byte
+	for _, b := range bodies {
+		if strings.Contains(string(b), `"token.exchanged"`) {
+			tokenExchangedBody = b
+			break
+		}
+	}
+	if tokenExchangedBody == nil {
+		t.Fatalf("no token.exchanged event captured in audit server; got %d audit call(s)", len(bodies))
+	}
+
+	// Decode envelope.
+	var envelope map[string]any
+	if err := json.Unmarshal(tokenExchangedBody, &envelope); err != nil {
+		t.Fatalf("audit body not valid JSON: %v\nbody: %s", err, tokenExchangedBody)
+	}
+
+	payload, ok := envelope["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload field missing or not an object; envelope: %v", envelope)
+	}
+
+	// AC2: agent_id present and non-empty.
+	agentID, _ := payload["agent_id"].(string)
+	if agentID == "" {
+		t.Errorf("agent_id missing or empty in token.exchanged payload; payload: %v", payload)
+	}
+	if agentID != wantAgentID {
+		t.Errorf("agent_id = %q; want %q", agentID, wantAgentID)
+	}
+
+	// AC2: tenant_id and service_id present.
+	if payload["tenant_id"] != wantTenantID {
+		t.Errorf("tenant_id = %q; want %q", payload["tenant_id"], wantTenantID)
+	}
+	if payload["service_id"] != wantServiceID {
+		t.Errorf("service_id = %q; want %q", payload["service_id"], wantServiceID)
+	}
+
+	// AC2: token_url_host is HOST ONLY — no scheme, no path, no query.
+	tokenURLHost, _ := payload["token_url_host"].(string)
+	if tokenURLHost == "" {
+		t.Errorf("token_url_host missing or empty; payload: %v", payload)
+	}
+	if strings.Contains(tokenURLHost, "/") {
+		t.Errorf("token_url_host contains a slash (path/scheme leaked): %q", tokenURLHost)
+	}
+	if strings.Contains(tokenURLHost, "?") {
+		t.Errorf("token_url_host contains query params: %q", tokenURLHost)
+	}
+	if strings.HasPrefix(tokenURLHost, "http") {
+		t.Errorf("token_url_host contains scheme: %q", tokenURLHost)
+	}
+
+	// AC3: no secret or token value anywhere in the raw audit body.
+	rawBody := string(tokenExchangedBody)
+	if strings.Contains(rawBody, secretPassword) {
+		t.Errorf("audit body leaks the credential password %q; body: %s", secretPassword, rawBody)
+	}
+	if strings.Contains(rawBody, exchangedToken) {
+		t.Errorf("audit body leaks the exchanged token %q; body: %s", exchangedToken, rawBody)
+	}
 }

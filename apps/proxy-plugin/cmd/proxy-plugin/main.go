@@ -34,6 +34,7 @@ import (
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
@@ -91,6 +92,9 @@ func main() {
 
 	proxyMetrics := metrics.New()
 	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler, auditQueue, proxyMetrics)
+	// BUG-10/FIX-6: wire the structured token.exchanged emitter so the
+	// previously-dead EmitTokenExchanged path is now the live emission path.
+	handler.tokenExchangeEmitter = audit.NewEmitter(cfg.AdminAPIURL, cfg.ProxyServiceToken)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.PluginPort),
@@ -161,6 +165,13 @@ type auditEnqueuer interface {
 	Enqueue(auditq.Event)
 }
 
+// tokenExchangeEmitterI is a narrow interface for emitting token.exchanged
+// audit events via the structured emitter path (Req 22; BUG-10/FIX-6).
+// The concrete implementation is *audit.Emitter; nil means disabled.
+type tokenExchangeEmitterI interface {
+	EmitTokenExchanged(ctx context.Context, event audit.TokenExchangedEvent) error
+}
+
 // proxyHandler is the HTTP handler that validates JWTs, fetches credentials,
 // and reverse-proxies to the target backend.
 type proxyHandler struct {
@@ -170,6 +181,12 @@ type proxyHandler struct {
 	ckHandler   *classicalkey.Handler
 	audit       auditEnqueuer // may be nil (audit disabled)
 	auditQ      *auditq.Queue // same as audit but typed to access WriteMetricsTo (#27)
+	// tokenExchangeEmitter emits token.exchanged audit events via the structured
+	// emitter path (EmitTokenExchanged).  Nil means disabled (e.g. in unit tests
+	// that don't inject it).  BUG-10/FIX-6: previously a hand-built auditq.Event
+	// was used; routing through this emitter ensures agent_id is included and
+	// redaction guardrails are applied.
+	tokenExchangeEmitter tokenExchangeEmitterI // may be nil
 	metrics     *metrics.Metrics
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
@@ -475,20 +492,24 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	)
 
 	// Emit token.exchanged audit event if an exchange was attempted.
-	if oauthResult != nil && oauthResult.Exchanged && h.audit != nil {
-		h.audit.Enqueue(auditq.Event{
-			EventType:  "token.exchanged",
-			TenantID:   tenantID,
-			ActorID:    agentID,
-			ActorType:  "agent",
-			TargetID:   serviceID,
-			TargetType: "service",
-			Payload: map[string]any{
-				"token_url_host": oauthResult.TokenURLHost,
-				"success":        oauthResult.ExchangeSuccess,
-				"latency_ms":     oauthResult.ExchangeLatencyMS,
-			},
-		})
+	// BUG-10/FIX-6: route through audit.EmitTokenExchanged (the previously-dead
+	// emitter path) so that agent_id is included and redaction guardrails apply.
+	// Fire-and-forget: audit must never block the proxied request.
+	if oauthResult != nil && oauthResult.Exchanged && h.tokenExchangeEmitter != nil {
+		emitter := h.tokenExchangeEmitter
+		ev := audit.TokenExchangedEvent{
+			TenantID:     tenantID,
+			ServiceID:    serviceID,
+			AgentID:      agentID,
+			TokenURLHost: oauthResult.TokenURLHost, // already host-only from egress layer
+			Success:      oauthResult.ExchangeSuccess,
+			LatencyMS:    oauthResult.ExchangeLatencyMS,
+		}
+		go func() {
+			if err := emitter.EmitTokenExchanged(context.Background(), ev); err != nil {
+				log.Printf("proxy-plugin: token.exchanged audit emit error: %v", err)
+			}
+		}()
 	}
 
 	if err != nil {
