@@ -202,28 +202,28 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - Ensure no credential_fields values or token values in the event
     - _Requirements: 22.1, 22.2, 22.3, 22.7_
 
-  - [ ]* 9.4 Write property test for graceful degradation (Property 10)
+  - [x]* 9.4 Write property test for graceful degradation (Property 10)
     - **Property 10: Graceful degradation on refresh failure**
     - Generate scenarios with failed refresh + cached token at various expiry states
     - Verify: use cached token if not expired, return 502 only after full expiry
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 21.7**
 
-  - [ ]* 9.5 Write property test for audit event completeness and host-only redaction (Property 11)
+  - [x]* 9.5 Write property test for audit event completeness and host-only redaction (Property 11)
     - **Property 11: Audit event completeness and host-only redaction**
     - Generate arbitrary token_urls; verify emitted event contains only hostname (no path, no query)
     - Verify all required fields present: tenant_id, service_id, agent_id, success, latency_ms
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 22.1**
 
-  - [ ]* 9.6 Write property test for sensitive data exclusion (Property 12)
+  - [x]* 9.6 Write property test for sensitive data exclusion (Property 12)
     - **Property 12: Sensitive data exclusion from all observable outputs**
     - Generate arbitrary credential_fields and tokens
     - Verify neither appears in audit events, log fields, OTel span attributes, or response headers/bodies
     - Use `pgregory.net/rapid`
     - **Validates: Requirements 22.2, 22.3, 22.6, 22.7**
 
-  - [ ]* 9.7 Write integration tests for full OAuth2 password grant flow
+  - [x]* 9.7 Write integration tests for full OAuth2 password grant flow
     - Test full flow: vault stores credential → proxy retrieves → exchanges → injects Bearer
     - Test cache prevents redundant exchanges within TTL
     - Test refresh triggers new exchange when near-expiry
