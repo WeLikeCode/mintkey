@@ -470,12 +470,12 @@ The Vault Adapter stores the credential `value` field as JSON for `auth_scheme=8
 
 ```json
 {
-  "token_url": "https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login",
+  "token_url": "https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token",
   "credential_fields": {
-    "username": "admin",
+    "userName": "admin",
     "password": "secret123"
   },
-  "token_response_path": "$.token",
+  "token_response_path": "$.data.token",
   "token_request_headers": {
     "Content-Type": "application/json"
   }
@@ -512,7 +512,7 @@ type TokenExchangedEvent struct {
 ```
 
 Security constraints:
-- `token_url_host` contains only the hostname (e.g., `dashboard-api-ps-prod.azurewebsites.net`), never the full URL path
+- `token_url_host` contains only the hostname (e.g., `dashboard-api-ps-stag.azurewebsites.net`), never the full URL path
 - No credential_fields values in the event
 - No token value in the event
 
@@ -553,23 +553,23 @@ The `token_url` also passes through the existing SSRF allowlist check (S-SEC-1) 
 New template entry in `service_templates.yaml`:
 
 ```yaml
-  - template_id: azure-dashboard-api
-    name: azure-dashboard-api
-    display_name: Azure Dashboard API
-    description: "Dashboard management, user administration, and reporting via username/password JWT authentication."
-    base_url: https://dashboard-api-ps-prod.azurewebsites.net/api
+  - template_id: spotus-dashboard-api
+    name: SpotUs Dashboard API
+    display_name: SpotUs Dashboard API
+    description: "SpotUs Dashboard API (staging) — user administration, reporting, and identity management via username/password JWT authentication."
+    base_url: https://dashboard-api-ps-stag.azurewebsites.net
     auth_type: oauth2_password_grant
-    openapi_spec_url: https://dashboard-api-ps-prod.azurewebsites.net/swagger/v1/swagger.json
+    openapi_spec_url: https://dashboard-api-ps-stag.azurewebsites.net/swagger/v1/swagger.json
     category: platform
     version: "1.0.0"
-    config_notes: "The login endpoint (POST /api/auth/login) accepts {username, password} as JSON body and returns {token} containing a JWT. The proxy automatically exchanges credentials for a bearer token on each request."
+    config_notes: "Points at the staging deployment. The token endpoint accepts {userName, password} as form/JSON body and returns a JWT via token_response_path. The proxy automatically exchanges credentials for a bearer token on each request."
     credential_hint:
-      token_url: https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login
+      token_url: https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token
       credential_fields:
-        username: "(your username)"
+        userName: "(your userName)"
         password: "(your password)"
-      token_response_path: "$.token"
-    test_path: /health
+      token_response_path: "$.data.token"
+    test_path: /api/v1/Identity/me
 ```
 
 #### ServiceTemplate Model Extension
@@ -742,8 +742,8 @@ Each property test runs a minimum of 100 iterations.
 ### Integration Tests (Python: `pytest` + `httpx`)
 
 - `POST /v1/tenants/{tid}/services` with `auth_type=oauth2_password_grant` stores structured credential
-- `POST /v1/tenants/{tid}/services/from-template` with `azure-dashboard-api` pre-populates credential structure
-- Template registry contains `azure-dashboard-api` with correct fields
+- `POST /v1/tenants/{tid}/services/from-template` with `spotus-dashboard-api` pre-populates credential structure
+- Template registry contains `spotus-dashboard-api` with correct fields
 - Vault adapter scope enforcement: non-proxy callers cannot read oauth2_password_grant credentials
 
 ### Test Configuration

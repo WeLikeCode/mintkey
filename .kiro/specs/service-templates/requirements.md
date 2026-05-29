@@ -270,8 +270,8 @@ Service templates provide pre-configured service definitions that operators can 
 
 #### Acceptance Criteria
 
-1. THE Template_Registry SHALL include a template with `name=azure-dashboard-api`, `display_name=Azure Dashboard API`, `base_url=https://dashboard-api-ps-prod.azurewebsites.net/api`, `auth_type=oauth2_password_grant`, `category=platform`.
-2. THE Azure Dashboard API template SHALL reference the OpenAPI spec at `https://dashboard-api-ps-prod.azurewebsites.net/swagger/v1/swagger.json`.
-3. THE Azure Dashboard API template SHALL include a `credential_hint` specifying: `token_url=https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login`, `credential_fields` with keys `username` and `password`, and `token_response_path=$.token`.
-4. THE Azure Dashboard API template SHALL include a configuration note stating that the login endpoint accepts `{username, password}` as JSON body and returns `{token}` containing a JWT.
-5. WHEN an operator instantiates the Azure Dashboard API template, THE Admin_API SHALL pre-populate the credential structure with the correct `token_url`, field names, and `token_response_path` so the operator only needs to supply the actual username and password values.
+1. THE Template_Registry SHALL include a template with `template_id=spotus-dashboard-api`, `name=SpotUs Dashboard API`, `display_name=SpotUs Dashboard API`, `base_url=https://dashboard-api-ps-stag.azurewebsites.net`, `auth_type=oauth2_password_grant`, `category=platform`.
+2. THE SpotUs Dashboard API template SHALL reference the OpenAPI spec at `https://dashboard-api-ps-stag.azurewebsites.net/swagger/v1/swagger.json`.
+3. THE SpotUs Dashboard API template SHALL include a `credential_hint` specifying: `token_url=https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token`, `credential_fields` with keys `userName` and `password`, and `token_response_path=$.data.token`.
+4. THE SpotUs Dashboard API template SHALL include a configuration note stating that the token endpoint accepts `{userName, password}` as a JSON body and returns a JWT extracted via `token_response_path`.
+5. WHEN an operator instantiates the SpotUs Dashboard API template, THE Admin_API SHALL pre-populate the credential structure with the correct `token_url`, field names, and `token_response_path` so the operator only needs to supply the actual userName and password values.

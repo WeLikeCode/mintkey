@@ -36,7 +36,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - _Requirements: 1.1, 1.3, 1.4, 2.3, 2.4_
 
   - [x]* 2.4 Write unit tests for TemplateRegistry and ServiceTemplate model
-    - Test loading valid YAML exposes all 13 templates
+    - Test loading valid YAML exposes all 16 templates
     - Test skipping malformed entries with warning log
     - Test category filtering
     - Test case-insensitive search across name/display_name/description
@@ -94,7 +94,7 @@ This plan implements two major feature areas: (1) a YAML-based service template 
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 23.5_
 
   - [x]* 5.4 Write integration tests for template API endpoints
-    - Test GET /v1/service-templates returns all 13 templates
+    - Test GET /v1/service-templates returns all 16 templates
     - Test GET with category filter returns correct subset
     - Test GET with search filter (case-insensitive)
     - Test GET /v1/service-templates/{id} returns full detail
