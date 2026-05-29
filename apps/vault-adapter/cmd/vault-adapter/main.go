@@ -85,6 +85,27 @@ func main() {
 		log.Printf("vault-adapter: registered proxy service identity %q with scopes [vault.read vault.put]", proxyIdentityID)
 	}
 
+	// Register the admin-api service identity so the scopeInterceptor allows
+	// it to call GetCredential (vault.read) and PutCredential (vault.put).
+	// MINTKEY_VAULT_ADMIN_IDENTITY_ID defaults to "svcid_admin_api"; must match
+	// admin-api's MINTKEY_VAULT_ADMIN_IDENTITY_ID env var.
+	// MINTKEY_VAULT_ADMIN_TOKEN must be a shared secret (≥ 32 bytes) provisioned
+	// via a Docker/Kubernetes secret and identical on both sides.
+	adminIdentityID := os.Getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID")
+	if adminIdentityID == "" {
+		adminIdentityID = "svcid_admin_api"
+	}
+	adminToken := []byte(os.Getenv("MINTKEY_VAULT_ADMIN_TOKEN"))
+	if len(adminToken) == 0 {
+		log.Printf("vault-adapter: WARNING: MINTKEY_VAULT_ADMIN_TOKEN is not set; admin-api credential operations WILL fail with PERMISSION_DENIED")
+	} else {
+		if err := svc.RegisterServiceIdentity(adminIdentityID, adminToken, []string{"vault.read", "vault.put"}); err != nil {
+			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", adminIdentityID, err)
+			os.Exit(1)
+		}
+		log.Printf("vault-adapter: registered admin-api service identity %q with scopes [vault.read vault.put]", adminIdentityID)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

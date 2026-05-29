@@ -50,6 +50,12 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
 
+# Service identity sent on every vault gRPC call (BUG-20 fix).
+# Must match what vault-adapter has registered for this identity.
+# Override in production via a secret manager; never commit a real secret.
+_VAULT_ADMIN_IDENTITY_ID = os.getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID", "svcid_admin_api")
+_VAULT_ADMIN_TOKEN = os.getenv("MINTKEY_VAULT_ADMIN_TOKEN", "")
+
 # ---------------------------------------------------------------------------
 # Singleton channel — one per process, shared across all requests.
 # grpc.aio reconnects automatically when vault-adapter restarts; no manual
@@ -138,7 +144,13 @@ class VaultAdapterClient:
             header_name=header_name,
             query_param=query_param,
         )
-        resp = await (await self._stub()).PutCredential(req)
+        resp = await (await self._stub()).PutCredential(
+            req,
+            metadata=(
+                ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
+                ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
+            ),
+        )
         return {
             "credential_id": f"cred_{tenant_id[:8]}_{service_id[:8]}",
             "key_version": resp.key_version,
@@ -160,7 +172,13 @@ class VaultAdapterClient:
             key_version=0,
         )
         try:
-            resp = await (await self._stub()).GetCredential(req)
+            resp = await (await self._stub()).GetCredential(
+                req,
+                metadata=(
+                    ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
+                    ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
+                ),
+            )
             return {
                 "plaintext": resp.value.decode("utf-8", errors="replace"),
                 "auth_scheme": resp.auth_scheme,
@@ -186,7 +204,13 @@ class VaultAdapterClient:
             service_id=service_id,
         )
         try:
-            resp = await (await self._stub()).ListVersions(req)
+            resp = await (await self._stub()).ListVersions(
+                req,
+                metadata=(
+                    ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
+                    ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
+                ),
+            )
             return [
                 {
                     "key_version": v.key_version,

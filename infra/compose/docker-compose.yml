@@ -170,6 +170,12 @@ services:
       # secret manager; never commit a real secret here.
       MINTKEY_VAULT_PROXY_IDENTITY_ID: "svcid_proxy"
       MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
+      # Admin-api service identity: vault-adapter registers this on boot so
+      # the scopeInterceptor grants vault.read + vault.put to the admin-api.
+      # Both services MUST carry the SAME MINTKEY_VAULT_ADMIN_TOKEN value.
+      # Override in production via a secret manager; never commit a real secret here.
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
@@ -204,6 +210,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       VAULT_GRPC_ADDR: vault-adapter:8084
+      # Vault-adapter gRPC auth (BUG-20 fix): admin-api must present this
+      # identity+token so the scopeInterceptor grants vault.read + vault.put.
+      # Both services MUST carry the SAME MINTKEY_VAULT_ADMIN_TOKEN value.
+      # Override in production via a secret manager; never commit a real secret here.
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
       MINTKEY_ENV: dev
       ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
       # Service tokens: allowlist for /v1/internal/audit/emit (#22).

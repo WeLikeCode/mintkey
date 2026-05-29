@@ -602,6 +602,145 @@ func TestGRPCScopeEnforcement_MissingToken(t *testing.T) {
 	}
 }
 
+// -----------------------------------------------------------------------
+// BUG-20: admin-api identity scope enforcement tests
+// -----------------------------------------------------------------------
+
+// TestGRPCScopeEnforcement_AdminAPIIdentity_PutAndGet verifies that
+// an identity registered as "svcid_admin_api" with [vault.read, vault.put]
+// can successfully call both PutCredential and GetCredential.
+// Validates: BUG-20 fix — admin-api must be wired like the proxy-plugin.
+func TestGRPCScopeEnforcement_AdminAPIIdentity_PutAndGet(t *testing.T) {
+	ctx := context.Background()
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	token := []byte("admin-api-token-32bytes-for-test!")
+	if err := svc.RegisterServiceIdentity("svcid_admin_api", token, []string{"vault.read", "vault.put"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity svcid_admin_api: %v", err)
+	}
+
+	md := metadata.Pairs(
+		"x-mintkey-service-token", string(token),
+		"x-mintkey-service-identity", "svcid_admin_api",
+	)
+	authCtx := metadata.NewOutgoingContext(ctx, md)
+
+	// PutCredential must succeed.
+	putResp, err := client.PutCredential(authCtx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_admin_api_test",
+		ServiceId:  "svc_admin_api_test",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_BEARER_TOKEN,
+		Value:      []byte("admin-api-secret"),
+	})
+	if err != nil {
+		t.Fatalf("PutCredential with svcid_admin_api: %v", err)
+	}
+	if putResp.KeyVersion == 0 {
+		t.Errorf("expected non-zero key_version from PutCredential")
+	}
+
+	// GetCredential must succeed.
+	getResp, err := client.GetCredential(authCtx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_admin_api_test",
+		ServiceId:  "svc_admin_api_test",
+		KeyVersion: 0,
+	})
+	if err != nil {
+		t.Fatalf("GetCredential with svcid_admin_api: %v", err)
+	}
+	if string(getResp.Value) != "admin-api-secret" {
+		t.Errorf("GetCredential returned %q, want %q", getResp.Value, "admin-api-secret")
+	}
+}
+
+// TestGRPCScopeEnforcement_AdminAPIIdentity_PermissionDenied_NoToken verifies
+// that calling PutCredential/GetCredential with no token returns PERMISSION_DENIED.
+// This is the exact failure mode that BUG-20 fixes.
+func TestGRPCScopeEnforcement_AdminAPIIdentity_PermissionDenied_NoToken(t *testing.T) {
+	ctx := context.Background()
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	// Register admin-api identity — but don't send its token in the call.
+	token := []byte("admin-api-token-32bytes-for-test!")
+	if err := svc.RegisterServiceIdentity("svcid_admin_api", token, []string{"vault.read", "vault.put"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity svcid_admin_api: %v", err)
+	}
+
+	// PutCredential with NO metadata → PERMISSION_DENIED.
+	_, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_noauth",
+		ServiceId:  "svc_noauth",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_BEARER_TOKEN,
+		Value:      []byte("secret"),
+	})
+	if err == nil {
+		t.Fatal("expected PERMISSION_DENIED for PutCredential without token, got nil")
+	}
+	if st, ok := status.FromError(err); !ok || st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied for PutCredential, got %v", err)
+	}
+
+	// GetCredential with NO metadata → PERMISSION_DENIED.
+	_, err = client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_noauth",
+		ServiceId:  "svc_noauth",
+		KeyVersion: 0,
+	})
+	if err == nil {
+		t.Fatal("expected PERMISSION_DENIED for GetCredential without token, got nil")
+	}
+	if st, ok := status.FromError(err); !ok || st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied for GetCredential, got %v", err)
+	}
+}
+
+// TestGRPCScopeEnforcement_AdminAPIIdentity_WrongScopeIdentity verifies
+// that a caller with a wrong-scope identity gets PERMISSION_DENIED
+// on the method requiring the missing scope.
+func TestGRPCScopeEnforcement_AdminAPIIdentity_WrongScopeIdentity(t *testing.T) {
+	ctx := context.Background()
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	// Register identity with ONLY vault.put — no vault.read.
+	token := []byte("put-only-token-32bytes-for-test!!")
+	if err := svc.RegisterServiceIdentity("svcid_put_only", token, []string{"vault.put"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity svcid_put_only: %v", err)
+	}
+
+	md := metadata.Pairs(
+		"x-mintkey-service-token", string(token),
+		"x-mintkey-service-identity", "svcid_put_only",
+	)
+	authCtx := metadata.NewOutgoingContext(ctx, md)
+
+	// PutCredential must succeed (has vault.put).
+	_, err := client.PutCredential(authCtx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_wrongscope",
+		ServiceId:  "svc_wrongscope",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_BEARER_TOKEN,
+		Value:      []byte("secret"),
+	})
+	if err != nil {
+		t.Fatalf("PutCredential with put-only identity: %v", err)
+	}
+
+	// GetCredential must fail (lacks vault.read).
+	_, err = client.GetCredential(authCtx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_wrongscope",
+		ServiceId:  "svc_wrongscope",
+		KeyVersion: 0,
+	})
+	if err == nil {
+		t.Fatal("expected PERMISSION_DENIED for GetCredential with put-only identity, got nil")
+	}
+	if st, ok := status.FromError(err); !ok || st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", err)
+	}
+}
+
 // contains is a simple substring check (avoids importing strings in test file).
 func contains(haystack, needle string) bool {
 	if needle == "" {
