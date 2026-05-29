@@ -46,6 +46,7 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "oauth2_client_credentials": 5,
     "oidc_client_secret": 6,
     "mtls": 7,
+    "oauth2_password_grant": 8,
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
