@@ -16,7 +16,7 @@ import os
 import socket
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +137,9 @@ class OAuth2PasswordGrantPayload(BaseModel):
         token from the token endpoint response. Defaults to $.access_token.
       - token_request_headers: Optional extra headers to include on the token
         exchange request.
+      - exchange_timeout_seconds: HTTP timeout (in seconds) for the token
+        exchange request. Default 10; bounds [1, 120]. Some upstreams (e.g.
+        sleeping Azure apps) need >3 s to wake — operators set this explicitly.
 
     Source: Requirements 19.2, 19.4, 19.5, 19.6.
     """
@@ -145,6 +148,15 @@ class OAuth2PasswordGrantPayload(BaseModel):
     credential_fields: dict[str, str]
     token_response_path: str = "$.access_token"
     token_request_headers: dict[str, str] | None = None
+    exchange_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description=(
+            "Timeout in seconds for the token-exchange HTTP request. "
+            "Bounds [1, 120]; default 10."
+        ),
+    )
 
     @field_validator("token_url")
     @classmethod

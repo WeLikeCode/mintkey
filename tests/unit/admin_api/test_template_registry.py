@@ -482,6 +482,72 @@ class TestOAuth2PasswordGrantPayload:
             p = OAuth2PasswordGrantPayload.model_validate(self._valid_payload())
         assert p.token_request_headers is None
 
+    # --- exchange_timeout_seconds tests (OAUTH-C1) ---
+
+    def test_exchange_timeout_seconds_defaults_to_10(self):
+        """exchange_timeout_seconds defaults to 10 when not supplied."""
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(self._valid_payload())
+        assert p.exchange_timeout_seconds == 10
+
+    def test_exchange_timeout_seconds_explicit_30_accepted(self):
+        """exchange_timeout_seconds=30 is accepted and stored (real-world Azure value)."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 30
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(d)
+        assert p.exchange_timeout_seconds == 30
+
+    def test_exchange_timeout_seconds_lower_bound_1_accepted(self):
+        """exchange_timeout_seconds=1 (lower bound) is accepted."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 1
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(d)
+        assert p.exchange_timeout_seconds == 1
+
+    def test_exchange_timeout_seconds_upper_bound_120_accepted(self):
+        """exchange_timeout_seconds=120 (upper bound) is accepted."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 120
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(d)
+        assert p.exchange_timeout_seconds == 120
+
+    def test_exchange_timeout_seconds_zero_rejected(self):
+        """exchange_timeout_seconds=0 is below the minimum (1) and must be rejected."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 0
+        with self._PUBLIC_DNS_PATCH:
+            with pytest.raises(ValidationError, match="exchange_timeout_seconds"):
+                OAuth2PasswordGrantPayload.model_validate(d)
+
+    def test_exchange_timeout_seconds_121_rejected(self):
+        """exchange_timeout_seconds=121 exceeds the maximum (120) and must be rejected."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 121
+        with self._PUBLIC_DNS_PATCH:
+            with pytest.raises(ValidationError, match="exchange_timeout_seconds"):
+                OAuth2PasswordGrantPayload.model_validate(d)
+
+    def test_exchange_timeout_seconds_in_serialized_json(self):
+        """exchange_timeout_seconds appears in model_dump() so it's included in stored JSON."""
+        d = self._valid_payload()
+        d["exchange_timeout_seconds"] = 30
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(d)
+        dumped = p.model_dump()
+        assert "exchange_timeout_seconds" in dumped
+        assert dumped["exchange_timeout_seconds"] == 30
+
+    def test_exchange_timeout_seconds_default_in_serialized_json(self):
+        """Default value (10) is present in model_dump() even when not supplied."""
+        with self._PUBLIC_DNS_PATCH:
+            p = OAuth2PasswordGrantPayload.model_validate(self._valid_payload())
+        dumped = p.model_dump()
+        assert "exchange_timeout_seconds" in dumped
+        assert dumped["exchange_timeout_seconds"] == 10
+
 
 # ===========================================================================
 # Task 3.2 — Hypothesis PBT: Property 1 (Credential payload validation)
