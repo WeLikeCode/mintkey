@@ -191,20 +191,68 @@ templates:
       format: "u+xxxxxxxxxxxxxxxx"
     test_path: /abilities
 
-  - template_id: azure-dashboard-api
-    name: azure-dashboard-api
-    display_name: Azure Dashboard API
-    description: "Dashboard management, user administration, and reporting via username/password JWT authentication."
-    base_url: https://dashboard-api-ps-prod.azurewebsites.net/api
+  - template_id: spotus-dashboard-api
+    name: SpotUs Dashboard API
+    display_name: SpotUs Dashboard API
+    description: "SpotUs Dashboard API (staging) — user administration, reporting, and identity management via username/password JWT authentication."
+    base_url: https://dashboard-api-ps-stag.azurewebsites.net
     auth_type: oauth2_password_grant
-    openapi_spec_url: https://dashboard-api-ps-prod.azurewebsites.net/swagger/v1/swagger.json
+    openapi_spec_url: https://dashboard-api-ps-stag.azurewebsites.net/swagger/v1/swagger.json
     category: platform
     version: "1.0.0"
-    config_notes: "The login endpoint (POST /api/auth/login) accepts {username, password} as JSON body and returns {token} containing a JWT. The proxy automatically exchanges credentials for a bearer token on each request."
+    config_notes: "Points at the staging deployment. The token endpoint accepts {userName, password} as form/JSON body and returns a JWT via token_response_path. The proxy automatically exchanges credentials for a bearer token on each request."
     credential_hint:
-      token_url: https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login
+      token_url: https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token
       credential_fields:
-        username: "(your username)"
+        userName: "(your userName)"
         password: "(your password)"
-      token_response_path: "$.token"
-    test_path: /health
+      token_response_path: "$.data.token"
+    test_path: /api/v1/Identity/me
+
+  - template_id: github
+    name: github
+    display_name: GitHub REST API
+    description: "GitHub v3 REST API — issues, repos, PRs, workflows. Use a Personal Access Token (classic or fine-grained)."
+    base_url: https://api.github.com
+    auth_type: bearer_token
+    openapi_spec_url: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+    category: developer_tools
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: token
+      help: "Create a fine-grained PAT at https://github.com/settings/tokens?type=beta"
+      format: "ghp_... or github_pat_..."
+    test_path: /user
+
+  - template_id: openai
+    name: openai
+    display_name: OpenAI API
+    description: "OpenAI chat completions, embeddings, and assistants API."
+    base_url: https://api.openai.com/v1
+    auth_type: bearer_token
+    openapi_spec_url: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+    category: ai
+    version: "1.0.0"
+    config_notes: null
+    credential_hint:
+      field: token
+      help: "Create an API key at https://platform.openai.com/api-keys"
+      format: "sk-..."
+    test_path: /models
+
+  - template_id: slack
+    name: slack
+    display_name: Slack Web API
+    description: "Slack messaging and workspace API. Use a Bot User OAuth Token from a Slack app."
+    base_url: https://slack.com/api
+    auth_type: bearer_token
+    openapi_spec_url: null
+    category: communication
+    version: "1.0.0"
+    config_notes: "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token."
+    credential_hint:
+      field: token
+      help: "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token"
+      format: "xoxb-..."
+    test_path: /api.test

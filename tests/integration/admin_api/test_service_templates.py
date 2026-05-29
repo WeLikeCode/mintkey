@@ -2,7 +2,7 @@
 Integration tests for GET /v1/service-templates.
 
 Covers:
-  GET /v1/service-templates              — returns all 13 templates sorted by name
+  GET /v1/service-templates              — returns all 16 templates sorted by name
   GET /v1/service-templates/{template_id} — returns full template for each entry
   GET /v1/service-templates/unknown      — returns 404 with mintkey:code=template_not_found
   auth_type invariant                    — each template's auth_type is valid
@@ -34,7 +34,7 @@ AUTH_TYPES = {
     "oauth2_password_grant",
 }
 
-# The 13 bundled template IDs from service_templates.yaml.
+# The 16 bundled template IDs from service_templates.yaml.
 TEMPLATE_IDS = {
     "gitlab",
     "apple-app-store-connect",
@@ -48,7 +48,10 @@ TEMPLATE_IDS = {
     "cloudflare",
     "datadog",
     "pagerduty",
-    "azure-dashboard-api",
+    "spotus-dashboard-api",
+    "github",
+    "openai",
+    "slack",
 }
 
 # Required fields on a list-item wire representation (Req 2.2, 18.3).
@@ -78,7 +81,10 @@ EXPECTED_TEST_PATHS: dict[str, str] = {
     "cloudflare": "/user/tokens/verify",
     "datadog": "/api/v2/validate",
     "pagerduty": "/abilities",
-    "azure-dashboard-api": "/health",
+    "spotus-dashboard-api": "/api/v1/Identity/me",
+    "github": "/user",
+    "openai": "/models",
+    "slack": "/api.test",
 }
 
 
@@ -87,13 +93,13 @@ EXPECTED_TEST_PATHS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 
-def test_list_templates_returns_thirteen_entries(admin_app: TestClient):
-    """GET /v1/service-templates returns exactly 13 templates."""
+def test_list_templates_returns_sixteen_entries(admin_app: TestClient):
+    """GET /v1/service-templates returns exactly 16 templates."""
     resp = admin_app.get("/v1/service-templates")
     assert resp.status_code == 200
     body = resp.json()
     assert "templates" in body
-    assert len(body["templates"]) == 13
+    assert len(body["templates"]) == 16
 
 
 def test_list_templates_all_have_unique_names(admin_app: TestClient):
@@ -329,15 +335,15 @@ def test_from_template_oauth2_includes_credential_hint(
     session_23_5: str,
 ) -> None:
     """
-    Req 23.5: POST /from-template for azure-dashboard-api returns credential_hint
-    with token_url, credential_fields (username + password keys), and
+    Req 23.5: POST /from-template for spotus-dashboard-api returns credential_hint
+    with token_url, credential_fields (userName + password keys), and
     token_response_path so the operator knows the credential structure they must supply.
 
     No secret is persisted; the hint fields are informational only.
     """
     resp = admin_app.post(
         f"/v1/tenants/{tenant_23_5}/services/from-template",
-        json={"template_id": "azure-dashboard-api"},
+        json={"template_id": "spotus-dashboard-api"},
         headers={"x-mintkey-csrf": _CSRF_TOKEN_23_5},
         cookies={"csrf_token": _CSRF_TOKEN_23_5, "mintkey_session": session_23_5},
     )
@@ -352,24 +358,24 @@ def test_from_template_oauth2_includes_credential_hint(
     hint = body["credential_hint"]
     assert hint is not None, "credential_hint must not be null"
 
-    # token_url must be present and match the template
+    # token_url must be present and match the staging template
     assert "token_url" in hint, "credential_hint must include 'token_url'"
-    assert hint["token_url"] == "https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login"
+    assert hint["token_url"] == "https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token"
 
-    # credential_fields must expose the expected field names (username + password)
+    # credential_fields must expose the expected field names (userName + password)
     assert "credential_fields" in hint, "credential_hint must include 'credential_fields'"
     fields = hint["credential_fields"]
     assert isinstance(fields, dict), "credential_fields must be a dict"
-    assert "username" in fields, "credential_fields must have 'username' key"
+    assert "userName" in fields, "credential_fields must have 'userName' key"
     assert "password" in fields, "credential_fields must have 'password' key"
 
     # token_response_path must be present
     assert "token_response_path" in hint, "credential_hint must include 'token_response_path'"
-    assert hint["token_response_path"] == "$.token"
+    assert hint["token_response_path"] == "$.data.token"
 
     # Cross-check: the service itself is created correctly (audit/RLS still intact)
     assert body["auth_scheme"] == "oauth2_password_grant"
-    assert body["template_id"] == "azure-dashboard-api"
+    assert body["template_id"] == "spotus-dashboard-api"
 
 
 def test_from_template_no_credential_hint_for_bearer_token_templates(
@@ -421,7 +427,7 @@ def test_from_template_cross_tenant_still_403(
 
     resp = admin_app.post(
         f"/v1/tenants/{tenant_b}/services/from-template",
-        json={"template_id": "azure-dashboard-api"},
+        json={"template_id": "spotus-dashboard-api"},
         headers={"x-mintkey-csrf": _CSRF_TOKEN_23_5},
         cookies={
             "csrf_token": _CSRF_TOKEN_23_5,

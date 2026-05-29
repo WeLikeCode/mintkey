@@ -2,7 +2,7 @@
 Integration tests for the service-template API endpoints.
 
 Task 5.4 from the service-templates Kiro spec:
-  - GET /v1/service-templates → 13 templates
+  - GET /v1/service-templates → 16 templates
   - GET with category filter → correct subset
   - GET with case-insensitive search
   - GET /v1/service-templates/{id} → full detail
@@ -35,7 +35,7 @@ _CSRF_TOKEN = "test-tmpl-api-csrf-abc123"
 _CSRF_HEADERS = {"x-mintkey-csrf": _CSRF_TOKEN}
 _CSRF_COOKIES = {"csrf_token": _CSRF_TOKEN}
 
-# The 13 bundled template IDs expected in the catalog.
+# The 16 bundled template IDs expected in the catalog.
 _EXPECTED_TEMPLATE_IDS = {
     "gitlab",
     "apple-app-store-connect",
@@ -49,7 +49,10 @@ _EXPECTED_TEMPLATE_IDS = {
     "cloudflare",
     "datadog",
     "pagerduty",
-    "azure-dashboard-api",
+    "spotus-dashboard-api",
+    "github",
+    "openai",
+    "slack",
 }
 
 # Required fields on every list item (Req 2.2, 18.3).
@@ -202,14 +205,14 @@ def t54_session(admin_app: TestClient, postgres_container, t54_tenant: str) -> s
 # ---------------------------------------------------------------------------
 
 
-def test_5_4_list_returns_13_templates(admin_app: TestClient):
-    """GET /v1/service-templates returns exactly 13 templates."""
+def test_5_4_list_returns_16_templates(admin_app: TestClient):
+    """GET /v1/service-templates returns exactly 16 templates."""
     resp = admin_app.get("/v1/service-templates")
     assert resp.status_code == 200
     body = resp.json()
     assert "templates" in body
-    assert len(body["templates"]) == 13, (
-        f"Expected 13 templates, got {len(body['templates'])}"
+    assert len(body["templates"]) == 16, (
+        f"Expected 16 templates, got {len(body['templates'])}"
     )
 
 
@@ -293,17 +296,19 @@ def test_5_4_detail_nonexistent_returns_404(admin_app: TestClient):
     )
 
 
-def test_5_4_detail_azure_dashboard_has_credential_hint(admin_app: TestClient):
-    """GET /v1/service-templates/azure-dashboard-api includes credential_hint."""
-    resp = admin_app.get("/v1/service-templates/azure-dashboard-api")
+def test_5_4_detail_spotus_dashboard_has_credential_hint(admin_app: TestClient):
+    """GET /v1/service-templates/spotus-dashboard-api includes credential_hint."""
+    resp = admin_app.get("/v1/service-templates/spotus-dashboard-api")
     assert resp.status_code == 200
     body = resp.json()
     assert "credential_hint" in body
     hint = body["credential_hint"]
     assert hint is not None
     assert "token_url" in hint
+    assert hint["token_url"] == "https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token"
     assert "credential_fields" in hint
     assert "token_response_path" in hint
+    assert hint["token_response_path"] == "$.data.token"
 
 
 # ---------------------------------------------------------------------------
