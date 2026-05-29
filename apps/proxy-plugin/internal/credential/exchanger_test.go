@@ -314,22 +314,32 @@ func TestExtractJSONPath_HostileObjectValue(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// BUG-12: Response header timeout test
+// BUG-12 / OAUTH-C2: Per-credential timeout replaces fixed ResponseHeaderTimeout
 // ---------------------------------------------------------------------------
 
-// TestResponseHeaderTimeout verifies that ResponseHeaderTimeout is set on the
-// transport; this provides the slow-header defence beyond the whole-request timeout.
-func TestResponseHeaderTimeout(t *testing.T) {
+// TestResponseHeaderTimeout_ContextDeadlineIsGuard verifies that the transport
+// does NOT have a fixed ResponseHeaderTimeout (which would cap slow-but-within-
+// timeout endpoints), and that the http.Client.Timeout is set to the maximum
+// allowed ceiling (120s) as a last-resort safety net.
+//
+// Rationale (OAUTH-C2): the old 3s ResponseHeaderTimeout prevented cold Azure
+// endpoints from responding within their per-credential window. The per-call
+// timeout is now enforced via context.WithTimeout in Exchange(); the shared
+// client's Timeout is the absolute maximum.
+func TestResponseHeaderTimeout_ContextDeadlineIsGuard(t *testing.T) {
 	te := NewTokenExchanger()
 	transport, ok := te.httpClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", te.httpClient.Transport)
 	}
-	if transport.ResponseHeaderTimeout == 0 {
-		t.Fatal("ResponseHeaderTimeout is 0 — slow token endpoint can hold goroutine indefinitely")
+	// ResponseHeaderTimeout must NOT be a small fixed value — it would kill
+	// per-credential exchanges that need more than 3s for headers.
+	if transport.ResponseHeaderTimeout != 0 && transport.ResponseHeaderTimeout < 10*time.Second {
+		t.Errorf("ResponseHeaderTimeout is %v — too small; would block per-credential timeouts >that value", transport.ResponseHeaderTimeout)
 	}
-	if transport.ResponseHeaderTimeout > 5*time.Second {
-		t.Errorf("ResponseHeaderTimeout %v is too large; expected ≤5s", transport.ResponseHeaderTimeout)
+	// The hard ceiling on the shared client must be exactly maxExchangeTimeout (120s).
+	if te.httpClient.Timeout != maxExchangeTimeout {
+		t.Errorf("Client.Timeout = %v; want %v (maxExchangeTimeout)", te.httpClient.Timeout, maxExchangeTimeout)
 	}
 }
 
@@ -548,15 +558,16 @@ func TestExchange_DNSFailure(t *testing.T) {
 }
 
 // TestExchange_ClientTimeoutConfigured verifies that the HTTP client produced by
-// NewTokenExchanger has a 10-second whole-request timeout configured.
-// This is a structural test of the constructor (Req 20.4).
+// NewTokenExchanger has a hard ceiling timeout equal to maxExchangeTimeout (120s).
+// The per-call timeout is governed by ExchangeRequest.Timeout via context.WithTimeout;
+// the Client.Timeout is the absolute last-resort ceiling. (OAUTH-C2)
 func TestExchange_ClientTimeoutConfigured(t *testing.T) {
 	te := NewTokenExchanger()
 	if te.httpClient.Timeout == 0 {
-		t.Fatal("HTTP client Timeout is 0 — no whole-request timeout configured")
+		t.Fatal("HTTP client Timeout is 0 — no whole-request ceiling timeout configured")
 	}
-	if te.httpClient.Timeout != 10*time.Second {
-		t.Errorf("expected 10s client timeout, got %v", te.httpClient.Timeout)
+	if te.httpClient.Timeout != maxExchangeTimeout {
+		t.Errorf("expected %v (maxExchangeTimeout) client hard ceiling, got %v", maxExchangeTimeout, te.httpClient.Timeout)
 	}
 }
 
@@ -804,6 +815,101 @@ func TestProperty6_Non2xxMapsToExchangeFailed(t *testing.T) {
 			rt.Fatalf("status %d: error leaks attacker-controlled body: %v", statusCode, err)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// OAUTH-C2: per-credential exchange_timeout_seconds tests
+// ---------------------------------------------------------------------------
+
+// TestSlowEndpoint_SucceedsWithPerCredentialTimeout verifies that a token endpoint
+// that takes >3s to respond SUCCEEDS when the per-credential timeout is set to 8s.
+// Under the old hardcoded 3s ResponseHeaderTimeout this test would FAIL.
+func TestSlowEndpoint_SucceedsWithPerCredentialTimeout(t *testing.T) {
+	const serverDelay = 4 * time.Second // longer than old 3s ResponseHeaderTimeout
+	const credTimeout = 8 * time.Second // the per-credential timeout
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate a cold-start Azure app that takes 4s to respond.
+		time.Sleep(serverDelay)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"access_token":"slow-token"}`)
+	}))
+	defer srv.Close()
+
+	te := NewTokenExchangerAllowPrivate()
+	result, err := te.Exchange(context.Background(), ExchangeRequest{
+		TokenURL:          srv.URL + "/token",
+		CredentialFields:  map[string]string{"client_id": "abc"},
+		TokenResponsePath: "$.access_token",
+		Timeout:           credTimeout,
+	})
+	if err != nil {
+		t.Fatalf("expected success with timeout=%s for server delay=%s, got: %v", credTimeout, serverDelay, err)
+	}
+	if result.Token != "slow-token" {
+		t.Errorf("expected token 'slow-token', got %q", result.Token)
+	}
+}
+
+// TestSlowEndpoint_FailsWhenExceedsCredentialTimeout verifies that a token endpoint
+// that delays beyond the per-credential timeout returns ErrTokenEndpointUnreachable.
+func TestSlowEndpoint_FailsWhenExceedsCredentialTimeout(t *testing.T) {
+	const credTimeout = 1 * time.Second
+	const serverDelay = 3 * time.Second // longer than credTimeout
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(serverDelay)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"access_token":"never-returned"}`)
+	}))
+	defer srv.Close()
+
+	te := NewTokenExchangerAllowPrivate()
+	start := time.Now()
+	_, err := te.Exchange(context.Background(), ExchangeRequest{
+		TokenURL:          srv.URL + "/token",
+		CredentialFields:  map[string]string{"client_id": "abc"},
+		TokenResponsePath: "$.access_token",
+		Timeout:           credTimeout,
+	})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected timeout error for slow endpoint, got nil")
+	}
+	if !errors.Is(err, ErrTokenEndpointUnreachable) {
+		t.Fatalf("expected ErrTokenEndpointUnreachable, got: %v", err)
+	}
+	// Should time out around credTimeout, not serverDelay.
+	if elapsed > 2*credTimeout {
+		t.Errorf("exchange took %v, expected to time out around %v", elapsed, credTimeout)
+	}
+}
+
+// TestExchangeTimeout_DefaultIsTen verifies that when Timeout is zero (unset),
+// the effective timeout is 10s (the default).
+func TestExchangeTimeout_DefaultIsZeroMeansDefault(t *testing.T) {
+	// A server that takes 200ms — well within 10s default; must succeed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"access_token":"default-timeout-token"}`)
+	}))
+	defer srv.Close()
+
+	te := NewTokenExchangerAllowPrivate()
+	result, err := te.Exchange(context.Background(), ExchangeRequest{
+		TokenURL:          srv.URL + "/token",
+		CredentialFields:  map[string]string{"client_id": "abc"},
+		TokenResponsePath: "$.access_token",
+		// Timeout deliberately left zero — should default to 10s.
+	})
+	if err != nil {
+		t.Fatalf("expected success with default timeout, got: %v", err)
+	}
+	if result.Token != "default-timeout-token" {
+		t.Errorf("expected 'default-timeout-token', got %q", result.Token)
+	}
 }
 
 // ---------------------------------------------------------------------------

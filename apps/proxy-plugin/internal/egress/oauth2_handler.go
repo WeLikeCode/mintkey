@@ -41,6 +41,18 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// clampExchangeTimeoutSeconds defensively clamps the exchange_timeout_seconds
+// field from the credential: ≤0 → 10, >120 → 120. Returns a time.Duration.
+func clampExchangeTimeoutSeconds(s int) time.Duration {
+	if s <= 0 {
+		return 10 * time.Second
+	}
+	if s > 120 {
+		return 120 * time.Second
+	}
+	return time.Duration(s) * time.Second
+}
+
 // TokenExchangerIface is the minimal interface satisfied by *credential.TokenExchanger.
 // Declaring it here (accept interfaces, return concretes) lets tests supply counting
 // fakes without touching the credential package.
@@ -127,6 +139,8 @@ func HandleOAuth2PasswordGrant(
 		CredentialFields:    cred.CredentialFields,
 		TokenResponsePath:   cred.TokenResponsePath,
 		TokenRequestHeaders: cred.TokenRequestHeaders,
+		// Per-credential timeout: defensively clamped from exchange_timeout_seconds.
+		Timeout: clampExchangeTimeoutSeconds(cred.ExchangeTimeoutSeconds),
 	}
 
 	type exchangeOutcome struct {

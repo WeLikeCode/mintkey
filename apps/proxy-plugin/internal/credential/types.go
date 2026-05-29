@@ -12,4 +12,8 @@ type OAuth2PasswordGrantCredential struct {
 	CredentialFields    map[string]string `json:"credential_fields"`
 	TokenResponsePath   string            `json:"token_response_path"`
 	TokenRequestHeaders map[string]string `json:"token_request_headers,omitempty"`
+	// ExchangeTimeoutSeconds is the whole-request timeout for the token exchange
+	// HTTP call. Default (0 or missing) = 10s; bounds [1, 120].
+	// The Go side defensively clamps: ≤0 → 10, >120 → 120.
+	ExchangeTimeoutSeconds int `json:"exchange_timeout_seconds,omitempty"`
 }

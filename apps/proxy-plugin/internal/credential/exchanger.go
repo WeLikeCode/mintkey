@@ -58,10 +58,19 @@ var (
 	ErrTokenParseFailed = errors.New("token_parse_failed")
 )
 
+// defaultExchangeTimeout is used when ExchangeRequest.Timeout is zero.
+const defaultExchangeTimeout = 10 * time.Second
+
+// maxExchangeTimeout is the upper bound on any per-credential timeout.
+const maxExchangeTimeout = 120 * time.Second
+
 // TokenExchanger performs OAuth2 password-grant token exchanges.
 type TokenExchanger struct {
-	httpClient   *http.Client // hardened: SSRF guard, response-header timeout
-	allowPrivate bool         // bypass SSRF guard for tests/dev
+	// httpClient is the shared transport carrier — contains the SSRF dial guard
+	// and redirect guard. Its Timeout is set to maxExchangeTimeout as a hard
+	// ceiling; per-call context deadlines govern the effective timeout.
+	httpClient   *http.Client
+	allowPrivate bool // bypass SSRF guard for tests/dev
 }
 
 // ExchangeRequest holds the parsed credential payload for a token exchange.
@@ -70,6 +79,9 @@ type ExchangeRequest struct {
 	CredentialFields    map[string]string // POST body fields
 	TokenResponsePath   string            // JSONPath, e.g. "$.token"
 	TokenRequestHeaders map[string]string // extra headers
+	// Timeout is the per-credential whole-request timeout for the token exchange.
+	// Zero means use the default (10s).  The exchanger clamps ≤0 → 10s, >120s → 120s.
+	Timeout time.Duration
 }
 
 // ExchangeResult holds the outcome of a successful token exchange.
@@ -84,16 +96,23 @@ type ExchangeResult struct {
 // Security properties:
 //   - Transport.DialContext: SSRF guard — blocks loopback, link-local, private
 //     ranges, ULA, multicast, and unspecified after DNS resolution.
-//   - Transport.ResponseHeaderTimeout: 3s — prevents slow-header goroutine hold (BUG-12).
 //   - Client.CheckRedirect: SSRF guard on redirect destinations (BUG-3).
-//   - Client.Timeout: 10s whole-request ceiling.
+//   - Client.Timeout: maxExchangeTimeout (120s) hard ceiling — prevents goroutine
+//     hold if a per-call context deadline is somehow not set.
+//   - Per-call timeout: Exchange wraps the caller's context with a
+//     context.WithTimeout(ctx, perCredTimeout) deadline so each call is bounded
+//     by the credential's exchange_timeout_seconds (default 10s, max 120s).
+//     ResponseHeaderTimeout is intentionally NOT set on the transport so that
+//     a slow-but-within-timeout header response (e.g. cold Azure app) is not
+//     prematurely killed.
 //
 // allowPrivate bypasses the SSRF guard; use only in test helpers.
 func newHTTPClient(allowPrivate bool) *http.Client {
 	transport := &http.Transport{
-		DialContext:           ssrfSafeDialContext(allowPrivate),
-		ResponseHeaderTimeout: 3 * time.Second,
-		// Keep sensible defaults for TLS and idle connections.
+		DialContext: ssrfSafeDialContext(allowPrivate),
+		// ResponseHeaderTimeout deliberately omitted — per-call context deadline
+		// governs the effective timeout; a fixed 3s cap here would prevent cold
+		// token endpoints from being reached within their per-credential window.
 		MaxIdleConns:    10,
 		IdleConnTimeout: 30 * time.Second,
 	}
@@ -125,7 +144,9 @@ func newHTTPClient(allowPrivate bool) *http.Client {
 	}
 
 	return &http.Client{
-		Timeout:       10 * time.Second,
+		// Hard ceiling: if per-call context deadline fires first (as expected),
+		// this Timeout is never reached. It is a last-resort safety net.
+		Timeout:       maxExchangeTimeout,
 		Transport:     transport,
 		CheckRedirect: checkRedirect,
 	}
@@ -178,13 +199,36 @@ func validateTokenURL(rawURL string) error {
 	return nil
 }
 
+// effectiveTimeout returns the clamped per-call timeout duration from req.Timeout.
+// ≤0 → defaultExchangeTimeout (10s); >maxExchangeTimeout → maxExchangeTimeout (120s).
+func effectiveTimeout(d time.Duration) time.Duration {
+	if d <= 0 {
+		return defaultExchangeTimeout
+	}
+	if d > maxExchangeTimeout {
+		return maxExchangeTimeout
+	}
+	return d
+}
+
 // Exchange performs the HTTP POST to the token endpoint and extracts the token.
+//
+// The per-call timeout is taken from req.Timeout (defaulted/clamped via
+// effectiveTimeout).  A context.WithTimeout wraps the caller's ctx so that
+// slow-but-within-timeout endpoints succeed while endpoints that exceed the
+// per-credential window fail with ErrTokenEndpointUnreachable.
 //
 // Returns ExchangeResult on success, or a typed error:
 //   - ErrTokenExchangeFailed (non-2xx)
 //   - ErrTokenEndpointUnreachable (network error or SSRF block)
 //   - ErrTokenParseFailed (JSONPath extraction failure)
 func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeResult, error) {
+	// Apply per-credential timeout via context deadline.
+	timeout := effectiveTimeout(req.Timeout)
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	// BUG-3 pre-flight: reject literal-IP blocked addresses before dialling.
 	// Skipped when allowPrivate is true (test/dev mode only).
 	if !te.allowPrivate {
