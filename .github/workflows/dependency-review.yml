@@ -38,5 +38,21 @@ jobs:
             Python-2.0,
             PSF-2.0
 
+          # Targeted per-package license exceptions (OSS-1 decision E-1).
+          # The global allow-licenses policy above stays strict for production
+          # code; these specific entries are dev/test/transitive dependencies
+          # whose licenses (MPL-2.0, MIT-0, BlueOak-1.0.0) are permissive or
+          # weak file-level copyleft and impose no obligations on this
+          # Apache-2.0 codebase when consumed only as test/build/transitive deps:
+          #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
+          #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
+          #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
+          allow-dependencies-licenses: >-
+            pkg:golang/pgregory.net/rapid,
+            pkg:pypi/hypothesis,
+            pkg:npm/@csstools/color-helpers,
+            pkg:npm/@csstools/css-syntax-patches-for-csstree,
+            pkg:npm/lru-cache
+
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
