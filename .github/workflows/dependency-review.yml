@@ -47,12 +47,22 @@ jobs:
           #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
+          #   - golang.org/x/sync: BSD-3-Clause + the standard Go patent grant
+          #     (reported as a compound expr with a non-SPDX scancode LicenseRef);
+          #     permissive Go concurrency lib (singleflight) used in egress code.
+          #   - stretchr/testify, gopkg.in/yaml.v3, types-PyYAML: permissive
+          #     test/build deps (MIT / MIT-Apache / Apache-2.0) whose license the
+          #     scanner could not auto-resolve (reported "unknown").
           allow-dependencies-licenses: >-
             pkg:golang/pgregory.net/rapid,
             pkg:pypi/hypothesis,
             pkg:npm/@csstools/color-helpers,
             pkg:npm/@csstools/css-syntax-patches-for-csstree,
-            pkg:npm/lru-cache
+            pkg:npm/lru-cache,
+            pkg:golang/golang.org/x/sync,
+            pkg:golang/github.com/stretchr/testify,
+            pkg:golang/gopkg.in/yaml.v3,
+            pkg:pypi/types-pyyaml
 
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
