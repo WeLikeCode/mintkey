@@ -21,6 +21,7 @@ Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0013; ADR-0014.4; ADR-0014.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 import uuid
@@ -41,6 +42,8 @@ from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/v1/tenants/{tenant_id}/services/{service_id}/credentials"
@@ -188,11 +191,12 @@ async def create_credential(
                 },
             )
         except ValueError as exc:
+            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
             return JSONResponse(
                 status_code=422,
                 content={
                     "mintkey:code": "invalid_oauth2_payload",
-                    "title": str(exc),
+                    "title": "oauth2_password_grant payload failed validation",
                 },
             )
 
@@ -435,11 +439,12 @@ async def rotate_credential(
                 },
             )
         except ValueError as exc:
+            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
             return JSONResponse(
                 status_code=422,
                 content={
                     "mintkey:code": "invalid_oauth2_payload",
-                    "title": str(exc),
+                    "title": "oauth2_password_grant payload failed validation",
                 },
             )
 

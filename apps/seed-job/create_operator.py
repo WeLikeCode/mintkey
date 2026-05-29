@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
 import sys
 import uuid
 
@@ -298,8 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--email", required=True, help="Operator email (used as KC username)")
     parser.add_argument("--display-name", required=True, dest="display_name",
                         help="Human-readable display name")
-    parser.add_argument("--password", default=None,
-                        help="Initial Keycloak password. If omitted, a random one is generated and printed.")
+    parser.add_argument("--password", required=True,
+                        help="Initial Keycloak password (required).")
     parser.add_argument("--tenant-id", default=None, dest="tenant_id",
                         help="Tenant UUID to join. Defaults to t_default.")
     parser.add_argument("--platform-admin", dest="platform_admin",
@@ -341,17 +340,9 @@ def main(argv: list[str] | None = None) -> int:
         should_set_password = user_was_created or args.reset_password
 
         if should_set_password:
-            # Resolve/generate password only when it will actually be used.
-            generated_password = False
-            password = args.password
-            if not password:
-                password = secrets.token_urlsafe(24)
-                generated_password = True
-            _set_kc_password(token, user_uuid, password, args.dry_run)
+            _set_kc_password(token, user_uuid, args.password, args.dry_run)
         else:
-            generated_password = False
-            password = None
-            print(f"[KC] User exists — password left unchanged (pass --reset-password to rotate).")
+            print("[KC] User exists — password left unchanged (pass --reset-password to rotate).")
 
         if args.platform_admin:
             _ensure_platform_admin_role(token, user_uuid, args.dry_run)
@@ -369,8 +360,6 @@ def main(argv: list[str] | None = None) -> int:
         print("=== DRY RUN complete — nothing written ===")
     else:
         print("\nOperator provisioned successfully.")
-        if generated_password:
-            print(f"  GENERATED PASSWORD (save this — shown only once): {password}")
         print(f"  email:       {args.email}")
         print(f"  tenant:      {tenant_id}")
         print(f"  platform-admin: {args.platform_admin}")
