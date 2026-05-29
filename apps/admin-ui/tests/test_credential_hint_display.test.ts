@@ -95,15 +95,15 @@ describe("Req 23.5 — from-template BFF: credential_hint pass-through", () => {
 
   it("when admin-api returns credential_hint, BFF passes it through in service object", async () => {
     const hint = {
-      token_url: "https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login",
+      token_url: "https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token",
       credential_fields: { username: "(your username)", password: "(your password)" },
-      token_response_path: "$.token",
+      token_response_path: "$.data.token",
     };
     mockFetch.mockResolvedValueOnce(
       makeFetchResponse(
         {
-          id: "svc_azure123",
-          name: "azure-dashboard-api",
+          id: "svc_spotus123",
+          name: "spotus-dashboard-api",
           auth_scheme: "oauth2_password_grant",
           credential_hint: hint,
         },
@@ -114,7 +114,7 @@ describe("Req 23.5 — from-template BFF: credential_hint pass-through", () => {
 
     const handler = getAction("from-template");
     const result = await handler(
-      { method: "post", payload: { template_id: "azure-dashboard-api" }, params: {} },
+      { method: "post", payload: { template_id: "spotus-dashboard-api" }, params: {} },
       {},
       makeContext()
     );
@@ -128,12 +128,12 @@ describe("Req 23.5 — from-template BFF: credential_hint pass-through", () => {
     expect(hint_out, "credential_hint must be forwarded by the BFF from-template handler").toBeDefined();
     expect(hint_out).not.toBeNull();
     const h = hint_out as Record<string, unknown>;
-    expect(h.token_url).toBe("https://dashboard-api-ps-prod.azurewebsites.net/api/auth/login");
+    expect(h.token_url).toBe("https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token");
     expect(typeof h.credential_fields).toBe("object");
     const fields = h.credential_fields as Record<string, string>;
     expect(fields.username).toBeDefined();
     expect(fields.password).toBeDefined();
-    expect(h.token_response_path).toBe("$.token");
+    expect(h.token_response_path).toBe("$.data.token");
   });
 
   it("when admin-api response has no credential_hint, BFF still succeeds (non-oauth2 templates)", async () => {
