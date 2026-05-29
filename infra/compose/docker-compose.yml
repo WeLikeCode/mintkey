@@ -217,6 +217,10 @@ services:
       MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
       MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
       MINTKEY_ENV: dev
+      # DEV ONLY: opt out of the base_url/token_url private-IP SSRF block so the
+      # local stack can register services that target internal compose hostnames
+      # (e.g. mock-backend, vps5). Production MUST NOT set this — leave SSRF on.
+      MINTKEY_SSRF_ALLOW_PRIVATE: "1"
       ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
       # Service tokens: allowlist for /v1/internal/audit/emit (#22).
       # Real deployments must override these with secrets from a vault / CI secret store.
