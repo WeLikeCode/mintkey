@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"strings"
 	"sync"
 	"testing"
@@ -639,13 +640,21 @@ func TestProperty4_RequestConstruction(t *testing.T) {
 		}
 
 		// Generate arbitrary token_request_headers (may be empty).
+		// We deduplicate by canonical MIME header key (matching Go's net/http behaviour)
+		// so that case variants like "X-B" and "X-b" — which both canonicalize to "X-B"
+		// — do not collide and produce last-write-wins non-determinism in the assertion.
 		numHeaders := rapid.IntRange(0, 4).Draw(rt, "numHeaders")
-		reqHeaders := make(map[string]string, numHeaders)
+		rawHeaders := make([]struct{ name, val string }, numHeaders)
 		for i := 0; i < numHeaders; i++ {
 			// Header names: letters and hyphens (valid HTTP header names).
-			name := rapid.StringMatching(`X-[A-Za-z]{1,12}`).Draw(rt, fmt.Sprintf("hdr_key_%d", i))
-			val := rapid.StringMatching(`[a-zA-Z0-9\-]{1,32}`).Draw(rt, fmt.Sprintf("hdr_val_%d", i))
-			reqHeaders[name] = val
+			rawHeaders[i].name = rapid.StringMatching(`X-[A-Za-z]{1,12}`).Draw(rt, fmt.Sprintf("hdr_key_%d", i))
+			rawHeaders[i].val = rapid.StringMatching(`[a-zA-Z0-9\-]{1,32}`).Draw(rt, fmt.Sprintf("hdr_val_%d", i))
+		}
+		// Build reqHeaders using canonical keys; last-write-wins to match HTTP semantics.
+		reqHeaders := make(map[string]string, numHeaders)
+		for _, h := range rawHeaders {
+			canonical := textproto.CanonicalMIMEHeaderKey(h.name)
+			reqHeaders[canonical] = h.val
 		}
 
 		// Capture what the server receives.
