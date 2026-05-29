@@ -57,6 +57,7 @@ help:
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t"
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' TENANT_ID=<uuid>"
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' DRY_RUN=1"
+	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' RESET_PASSWORD=1"
 	@echo ""
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
@@ -91,17 +92,20 @@ admin-password:
 ##   Runs create_operator.py inside the seed-job container on the compose network.
 ##   Required: EMAIL=<email> NAME=<display name>
 ##   Optional: PASSWORD=<password>  TENANT_ID=<uuid>  NO_PLATFORM_ADMIN=1  DRY_RUN=1
+##             RESET_PASSWORD=1  (force-rotate KC password even for existing users)
 ##   Examples:
 ##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User"
 ##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User" DRY_RUN=1
 ##     make create-operator EMAIL=adminus@mintkey.internal NAME=Adminus \
 ##         TENANT_ID=ce79c39d-33de-4689-b827-2e926cb5f2c7
+##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User" RESET_PASSWORD=1
 EMAIL        ?=
 NAME         ?=
 PASSWORD     ?=
 TENANT_ID    ?=
 NO_PLATFORM_ADMIN ?=
 DRY_RUN      ?=
+RESET_PASSWORD ?=
 
 create-operator:
 	@test -n "$(EMAIL)" || (echo "ERROR: EMAIL is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar'" && exit 1)
@@ -122,7 +126,8 @@ create-operator:
 			$(if $(PASSWORD),--password "$(PASSWORD)",) \
 			$(if $(TENANT_ID),--tenant-id "$(TENANT_ID)",) \
 			$(if $(NO_PLATFORM_ADMIN),--no-platform-admin,--platform-admin) \
-			$(if $(DRY_RUN),--dry-run,)
+			$(if $(DRY_RUN),--dry-run,) \
+			$(if $(RESET_PASSWORD),--reset-password,)
 
 dev-test-logs:
 	$(COMPOSE_TEST) logs -f

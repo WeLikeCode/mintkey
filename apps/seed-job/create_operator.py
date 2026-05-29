@@ -79,11 +79,14 @@ def _build_dsn() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _ensure_kc_user(token: str, email: str, first_name: str, last_name: str, dry_run: bool) -> str:
-    """Ensure a Keycloak user exists in realm 'mintkey'; return user UUID.
+def _ensure_kc_user(
+    token: str, email: str, first_name: str, last_name: str, dry_run: bool
+) -> tuple[str, bool]:
+    """Ensure a Keycloak user exists in realm 'mintkey'; return (user_uuid, was_created).
 
-    If the user already exists, its UUID is returned unchanged (idempotent).
-    In dry-run mode no requests are made; returns a placeholder UUID.
+    If the user already exists, its UUID is returned with was_created=False (idempotent).
+    In dry-run mode no requests are made; returns a placeholder UUID with was_created=True
+    (so dry-run still describes the password step as if it would run).
     """
     resp = requests.get(
         f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users",
@@ -96,11 +99,11 @@ def _ensure_kc_user(token: str, email: str, first_name: str, last_name: str, dry
     if users:
         user_uuid = users[0]["id"]
         print(f"[KC] User '{email}' already exists (id={user_uuid}) — reusing.")
-        return user_uuid
+        return user_uuid, False
 
     if dry_run:
         print(f"[DRY-RUN][KC] Would CREATE user '{email}' (firstName={first_name}, lastName={last_name}) in realm mintkey.")
-        return "dry-run-placeholder-uuid"
+        return "dry-run-placeholder-uuid", True
 
     create_resp = requests.post(
         f"{_KC_INTERNAL_URL}/admin/realms/mintkey/users",
@@ -127,7 +130,7 @@ def _ensure_kc_user(token: str, email: str, first_name: str, last_name: str, dry
     refetch.raise_for_status()
     user_uuid = refetch.json()[0]["id"]
     print(f"[KC] Created user '{email}' (id={user_uuid}).")
-    return user_uuid
+    return user_uuid, True
 
 
 # ---------------------------------------------------------------------------
@@ -307,19 +310,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="Do NOT grant mintkey-platform-admin realm role")
     parser.add_argument("--dry-run", dest="dry_run", action="store_true", default=False,
                         help="Print planned actions; write nothing.")
+    parser.add_argument("--reset-password", dest="reset_password", action="store_true", default=False,
+                        help="Force-reset the Keycloak password even for an existing user.")
     args = parser.parse_args(argv)
 
     # Split display_name into first/last for Keycloak
     parts = args.display_name.split(None, 1)
     first_name = parts[0]
     last_name = parts[1] if len(parts) > 1 else ""
-
-    # Generate password if not provided
-    generated_password = False
-    password = args.password
-    if not password:
-        password = secrets.token_urlsafe(24)
-        generated_password = True
 
     if args.dry_run:
         print("=== DRY RUN — no writes will be made ===")
@@ -336,15 +334,24 @@ def main(argv: list[str] | None = None) -> int:
 
         # --- Keycloak steps ---
         token = _kc_admin_token()
-        user_uuid = _ensure_kc_user(token, args.email, first_name, last_name, args.dry_run)
+        user_uuid, user_was_created = _ensure_kc_user(token, args.email, first_name, last_name, args.dry_run)
 
-        # Always set/update the password (non-dry-run); for existing users this
-        # resets to the provided/generated value — callers can skip by setting
-        # --password to the existing value.
-        if not args.dry_run:
+        # Set password only when: (a) user was just created, OR (b) --reset-password passed.
+        # For existing users without --reset-password, skip to preserve their current password.
+        should_set_password = user_was_created or args.reset_password
+
+        if should_set_password:
+            # Resolve/generate password only when it will actually be used.
+            generated_password = False
+            password = args.password
+            if not password:
+                password = secrets.token_urlsafe(24)
+                generated_password = True
             _set_kc_password(token, user_uuid, password, args.dry_run)
         else:
-            _set_kc_password(token, user_uuid, password, args.dry_run)
+            generated_password = False
+            password = None
+            print(f"[KC] User exists — password left unchanged (pass --reset-password to rotate).")
 
         if args.platform_admin:
             _ensure_platform_admin_role(token, user_uuid, args.dry_run)
