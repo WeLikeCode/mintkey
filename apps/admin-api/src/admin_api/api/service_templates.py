@@ -13,17 +13,18 @@ Requirements: 2.1, 2.2, 2.3, 2.4, 18.3.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from admin_api.templates.models import ServiceTemplate
 from admin_api.templates.registry import registry
 
 router = APIRouter(prefix="/v1/service-templates")
 
 
-def _template_to_list_item(t) -> dict:
+def _template_to_list_item(t: ServiceTemplate) -> dict[str, Any]:
     """Map a ServiceTemplate to the list-item wire representation.
 
     Includes all fields required by Req 2.2 and 18.3:

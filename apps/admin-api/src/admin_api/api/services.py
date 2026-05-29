@@ -612,7 +612,7 @@ async def create_service_from_template(
     # token_response_path) so the operator knows what to supply.  No secret value
     # is stored or returned; placeholder strings from the YAML are included as-is
     # so the operator can see the field names only.
-    credential_hint_payload: dict | None = None
+    credential_hint_payload: dict[str, Any] | None = None
     if template.credential_hint is not None:
         hint = template.credential_hint
         # For oauth2_password_grant templates the hint carries token_url, etc.
