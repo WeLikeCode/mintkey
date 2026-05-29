@@ -30,7 +30,7 @@ import {
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { AUTH_SCHEMES, getCredentialFields } from "../../lib/auth-scheme.js";
+import { AUTH_SCHEMES, getCredentialFields, type KvRow } from "../../lib/auth-scheme.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +76,76 @@ const FieldRow = ({ id, label, required, children }: FieldProps): React.ReactEle
   </Box>
 );
 
+// ── KV editor for oauth2_password_grant credential_fields ────────────────────
+
+interface KvEditorProps {
+  rows: KvRow[];
+  onChange: (rows: KvRow[]) => void;
+}
+
+const KvEditor = ({ rows, onChange }: KvEditorProps): React.ReactElement => {
+  const updateKey = (idx: number, newKey: string) => {
+    const next = rows.map((r, i) => i === idx ? { ...r, key: newKey } : r);
+    onChange(next);
+  };
+  const updateValue = (idx: number, newVal: string) => {
+    const next = rows.map((r, i) => i === idx ? { ...r, value: newVal } : r);
+    onChange(next);
+  };
+  const removeRow = (idx: number) => {
+    onChange(rows.filter((_, i) => i !== idx));
+  };
+  const addRow = () => {
+    onChange([...rows, { key: "", value: "" }]);
+  };
+
+  return (
+    <Box data-testid="kv-editor">
+      {rows.map((row, idx) => (
+        <Box
+          key={idx}
+          mb="default"
+          style={{ display: "flex", gap: 8, alignItems: "center" }}
+          data-testid={`kv-row-${idx}`}
+        >
+          <Input
+            value={row.key}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateKey(idx, e.target.value)}
+            placeholder="field name"
+            style={{ ...inputStyle, width: "40%" }}
+            data-testid={`kv-key-${idx}`}
+          />
+          <Input
+            type="password"
+            value={row.value}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateValue(idx, e.target.value)}
+            placeholder="value"
+            style={{ ...inputStyle, flex: 1 }}
+            data-testid={`kv-value-${idx}`}
+          />
+          <button
+            type="button"
+            onClick={() => removeRow(idx)}
+            style={{ padding: "4px 10px", cursor: "pointer", borderRadius: 4, border: "1px solid #dee2e6", background: "#f8f9fa" }}
+            data-testid={`kv-remove-${idx}`}
+            aria-label="Remove row"
+          >
+            ×
+          </button>
+        </Box>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        style={{ padding: "4px 12px", cursor: "pointer", borderRadius: 4, border: "1px solid #0d6efd", background: "#e7f0ff", color: "#0d6efd", fontSize: 13 }}
+        data-testid="kv-add-row"
+      >
+        + Add field
+      </button>
+    </Box>
+  );
+};
+
 // ── CredentialNewForm ─────────────────────────────────────────────────────────
 
 const CredentialNewForm = (props: Props): React.ReactElement => {
@@ -90,6 +160,9 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
   // ── credential fields ──────────────────────────────────────────────────────
   const [authScheme, setAuthScheme] = useState("bearer_token");
   const [credFields, setCredFields] = useState<Record<string, string>>({});
+
+  // ── oauth2_password_grant: editable key-value rows for credential_fields ───
+  const [kvRows, setKvRows] = useState<KvRow[]>([{ key: "userName", value: "" }, { key: "password", value: "" }]);
 
   // ── submission state ───────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
@@ -114,6 +187,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
   const handleSchemeChange = (newScheme: string) => {
     setAuthScheme(newScheme);
     setCredFields({});
+    setKvRows([{ key: "userName", value: "" }, { key: "password", value: "" }]);
   };
 
   const setCredField = (fieldName: string, value: string) => {
@@ -134,16 +208,46 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
 
     const api = new ApiClient();
     try {
-      const credPayload: Record<string, string> = {
-        auth_scheme: authScheme,
-        service_id: serviceId.trim(),
-        ...credFields,
-      };
+      let credPayload: Record<string, string>;
 
-      // Remove empty optional fields so admin-api doesn't receive empty strings
-      for (const key of Object.keys(credPayload)) {
-        if (credPayload[key] === "" && key !== "value" && key !== "service_id") {
-          delete credPayload[key];
+      if (authScheme === "oauth2_password_grant") {
+        // Assemble the value JSON per contract
+        const credentialFields: Record<string, string> = {};
+        for (const row of kvRows) {
+          if (row.key.trim()) {
+            credentialFields[row.key.trim()] = row.value;
+          }
+        }
+        const tokenUrl = credFields["token_url"] ?? "";
+        const tokenResponsePath = credFields["token_response_path"] || "$.access_token";
+        const timeoutRaw = credFields["exchange_timeout_seconds"];
+        const exchangeTimeoutSeconds = timeoutRaw ? parseInt(timeoutRaw, 10) : 10;
+
+        const valueJson = JSON.stringify({
+          token_url: tokenUrl,
+          credential_fields: credentialFields,
+          token_response_path: tokenResponsePath,
+          exchange_timeout_seconds: exchangeTimeoutSeconds,
+        });
+
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: valueJson,
+          token_url: tokenUrl,
+        };
+      } else {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          ...credFields,
+        };
+
+        // Remove empty optional fields so admin-api doesn't receive empty strings
+        for (const key of Object.keys(credPayload)) {
+          if (credPayload[key] === "" && key !== "value" && key !== "service_id") {
+            delete credPayload[key];
+          }
         }
       }
 
@@ -299,15 +403,31 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
             </Text>
             {hintFields.map((f) => (
               <FieldRow key={f.name} id={f.name} label={f.label} required={f.required}>
-                <Input
-                  id={f.name}
-                  type={f.type === "url" ? "url" : "text"}
-                  value={credFields[f.name] ?? ""}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
-                  placeholder={f.placeholder ?? ""}
-                  style={inputStyle}
-                  data-testid={`field-input-${f.name}`}
-                />
+                {f.type === "kv-editor" ? (
+                  <KvEditor rows={kvRows} onChange={setKvRows} />
+                ) : f.type === "number" ? (
+                  <Input
+                    id={f.name}
+                    type="number"
+                    value={credFields[f.name] ?? (f.defaultValue ?? "")}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
+                    placeholder={f.placeholder ?? f.defaultValue ?? ""}
+                    style={inputStyle}
+                    data-testid={`field-input-${f.name}`}
+                    min={f.min}
+                    max={f.max}
+                  />
+                ) : (
+                  <Input
+                    id={f.name}
+                    type={f.type === "url" ? "url" : "text"}
+                    value={credFields[f.name] ?? (f.defaultValue ?? "")}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
+                    placeholder={f.placeholder ?? ""}
+                    style={inputStyle}
+                    data-testid={`field-input-${f.name}`}
+                  />
+                )}
               </FieldRow>
             ))}
           </Box>
