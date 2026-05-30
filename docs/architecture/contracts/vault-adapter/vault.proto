@@ -90,6 +90,7 @@ enum AuthScheme {
   AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS = 5;
   AUTH_SCHEME_OIDC_CLIENT_SECRET = 6;
   AUTH_SCHEME_MTLS = 7;
+  AUTH_SCHEME_OAUTH2_PASSWORD_GRANT = 8;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
