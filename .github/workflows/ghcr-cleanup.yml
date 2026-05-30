@@ -1,0 +1,42 @@
+name: GHCR cleanup
+
+# Monthly prune of stale GHCR package versions. Keeps the last 30 untagged
+# manifests per package; never deletes versions that have an actual tag
+# (latest, main, sha-*, semver). Manual run available via the Actions tab.
+
+on:
+  schedule:
+    - cron: "0 5 1 * *"   # 1st of month at 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prune:
+    name: Prune untagged versions — mintkey-${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - admin-api
+          - mcp-server
+          - broker
+          - vault-adapter
+          - proxy-plugin
+          - kong-syncer
+          - admin-ui
+          - seed-job
+          - mock-backend
+          - jaeger-auth
+    steps:
+      - name: Delete old untagged versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: mintkey-${{ matrix.package }}
+          package-type: container
+          owner: ${{ github.repository_owner }}
+          min-versions-to-keep: 30
+          delete-only-untagged-versions: true

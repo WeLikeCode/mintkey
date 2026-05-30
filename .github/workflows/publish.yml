@@ -1,0 +1,99 @@
+name: Publish images (GHCR)
+
+# Publishes one image per service to ghcr.io on every push to main, on every
+# vX.Y.Z tag, and on manual dispatch. The first run for each service creates
+# a NEW GHCR package under the org; you must link it to this repo + set
+# visibility once per package in the GitHub Packages UI.
+#
+# Image naming: ghcr.io/welikecode/mintkey-<service>:<tag>
+# Tag rules (via docker/metadata-action):
+#   - "latest"       on push to default branch
+#   - "main"         on push to default branch
+#   - "sha-<short>"  always
+#   - "X.Y.Z" / "X.Y" / "X"  on vX.Y.Z tag pushes (semver)
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # required to push to ghcr.io
+      id-token: write          # required for provenance attestation
+      attestations: write      # required for SLSA attestation
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Repo-root context (Dockerfile COPYs from sibling paths: go.work,
+          # packages/python/mintkey-models/, other service go.mod files).
+          - { service: admin-api,     context: .,                 dockerfile: apps/admin-api/Dockerfile     }
+          - { service: mcp-server,    context: .,                 dockerfile: apps/mcp-server/Dockerfile    }
+          - { service: broker,        context: .,                 dockerfile: apps/broker/Dockerfile        }
+          - { service: vault-adapter, context: .,                 dockerfile: apps/vault-adapter/Dockerfile }
+          - { service: proxy-plugin,  context: .,                 dockerfile: apps/proxy-plugin/Dockerfile  }
+          - { service: kong-syncer,   context: .,                 dockerfile: apps/kong-syncer/Dockerfile   }
+          # Self-contained Dockerfiles (no sibling COPYs).
+          - { service: admin-ui,      context: apps/admin-ui,     dockerfile: apps/admin-ui/Dockerfile      }
+          - { service: seed-job,      context: apps/seed-job,     dockerfile: apps/seed-job/Dockerfile      }
+          - { service: mock-backend,  context: apps/mock-backend, dockerfile: apps/mock-backend/Dockerfile  }
+          - { service: jaeger-auth,   context: apps/jaeger-auth,  dockerfile: apps/jaeger-auth/Dockerfile   }
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags + labels
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/mintkey-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.title=mintkey-${{ matrix.service }}
+
+      - name: Build + push
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: ${{ matrix.context }}
+          file:    ${{ matrix.dockerfile }}
+          push:    true
+          tags:    ${{ steps.meta.outputs.tags }}
+          labels:  ${{ steps.meta.outputs.labels }}
+          # Speed: reuse GHA build cache per-service across runs.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,scope=${{ matrix.service }},mode=max
+          # Supply chain: SBOM + signed provenance attached to each image.
+          provenance: true
+          sbom: true
+          # Single-arch only. arm64 would ~double build time; revisit if/when
+          # production runs on ARM.
+          platforms: linux/amd64
