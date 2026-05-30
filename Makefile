@@ -22,7 +22,8 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         lint lint-python lint-go lint-ts lint-contracts \
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull \
-        demo demo-mock
+        demo demo-mock \
+        create-operator
 
 help:
 	@echo ""
@@ -51,6 +52,11 @@ help:
 	@echo "  lint-go                Run golangci-lint on Go code"
 	@echo "  lint-ts                Run eslint on admin-ui TypeScript"
 	@echo "  lint-contracts         Validate OpenAPI + JSON Schema + MCP tools YAML"
+	@echo "  create-operator        Provision or repair a Mintkey operator (Keycloak + DB)"
+	@echo "                         Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t"
+	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t TENANT_ID=<uuid>"
+	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t DRY_RUN=1"
+	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t RESET_PASSWORD=1"
 	@echo ""
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
@@ -80,6 +86,48 @@ admin-password:
 	@python3 -c "from cryptography.fernet import Fernet; import os; \
 		kek = os.environ.get('MINTKEY_BOOTSTRAP_KEK') or 'TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas='; \
 		print(Fernet(kek.encode()).decrypt(open('data/bootstrap-secrets/admin_password','rb').read()).decode())"
+
+## create-operator: Idempotently provision (or repair) a Mintkey operator.
+##   Runs create_operator.py inside the seed-job container on the compose network.
+##   Required: EMAIL=<email> NAME=<display name> PASSWORD=<password>
+##   Optional: TENANT_ID=<uuid>  NO_PLATFORM_ADMIN=1  DRY_RUN=1
+##             RESET_PASSWORD=1  (force-rotate KC password even for existing users)
+##   Examples:
+##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User" PASSWORD=s3cr3t
+##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User" PASSWORD=s3cr3t DRY_RUN=1
+##     make create-operator EMAIL=adminus@mintkey.internal NAME=Adminus PASSWORD=s3cr3t \
+##         TENANT_ID=ce79c39d-33de-4689-b827-2e926cb5f2c7
+##     make create-operator EMAIL=ops@mintkey.internal NAME="Ops User" PASSWORD=s3cr3t RESET_PASSWORD=1
+EMAIL        ?=
+NAME         ?=
+PASSWORD     ?=
+TENANT_ID    ?=
+NO_PLATFORM_ADMIN ?=
+DRY_RUN      ?=
+RESET_PASSWORD ?=
+
+create-operator:
+	@test -n "$(EMAIL)"    || (echo "ERROR: EMAIL is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
+	@test -n "$(NAME)"     || (echo "ERROR: NAME is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
+	@test -n "$(PASSWORD)" || (echo "ERROR: PASSWORD is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
+	docker compose -f infra/compose/docker-compose.yml run --rm --no-deps \
+		-e PGHOST=postgres \
+		-e PGPORT=5432 \
+		-e PGDATABASE=mintkey \
+		-e PGUSER=mintkey_migrate \
+		-e PGPASSWORD=changeme \
+		-e KEYCLOAK_ADMIN=admin \
+		-e KEYCLOAK_ADMIN_PASSWORD=changeme \
+		-e MINTKEY_KEYCLOAK_INTERNAL_URL=http://keycloak:8443 \
+		-v "$(REPO_ROOT)/apps/seed-job/create_operator.py:/app/create_operator.py:ro" \
+		seed-job python /app/create_operator.py \
+			--email "$(EMAIL)" \
+			--display-name "$(NAME)" \
+			--password "$(PASSWORD)" \
+			$(if $(TENANT_ID),--tenant-id "$(TENANT_ID)",) \
+			$(if $(NO_PLATFORM_ADMIN),--no-platform-admin,--platform-admin) \
+			$(if $(DRY_RUN),--dry-run,) \
+			$(if $(RESET_PASSWORD),--reset-password,)
 
 dev-test-logs:
 	$(COMPOSE_TEST) logs -f

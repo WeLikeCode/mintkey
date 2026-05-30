@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: "017-services-template-id"
+      author: mintkey
+      changes:
+        - addColumn:
+            tableName: services
+            columns:
+              - column:
+                  name: template_id
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: true
+      rollback:
+        - dropColumn:
+            tableName: services
+            columnName: template_id

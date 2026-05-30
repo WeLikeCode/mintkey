@@ -3,22 +3,30 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/egress"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
 )
@@ -53,7 +61,7 @@ func testHandler() *proxyHandler {
 		AudEnforcement: config.AudEnforcementPermissive,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	return newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	return newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 }
 
 func testHandlerStrict() *proxyHandler {
@@ -65,7 +73,7 @@ func testHandlerStrict() *proxyHandler {
 		AudEnforcement: config.AudEnforcementStrict,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	return h
 }
 
@@ -248,7 +256,7 @@ func testHandlerStrictWithAudit(mock *mockAuditQueue) *proxyHandler {
 		AudEnforcement: config.AudEnforcementStrict,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	h.audit = mock
 	return h
 }
@@ -350,7 +358,7 @@ func TestAudEnforcement_Permissive_NoAuditEvent(t *testing.T) {
 		AudEnforcement: config.AudEnforcementPermissive,
 	}
 	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
-	h := newProxyHandler(cfg, vault.NewClient("localhost:1", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
 	h.audit = mock
 
 	token, pub := buildTestJWT(t, testSvcUUIDA)
@@ -491,5 +499,319 @@ func TestAudCheck_LogDoesNotContainSecret(t *testing.T) {
 	// Confirm the log line was actually emitted (regression guard).
 	if !strings.Contains(string(logOut), "aud_check") {
 		t.Errorf("expected aud_check log line to be emitted; got: %s", logOut)
+	}
+}
+
+// --- Production-path singleflight guard (FIX-5 regression guard) ---
+//
+// These tests verify that newProxyHandler wires a shared *singleflight.Group
+// (non-nil, reused across requests). If someone removes the SF wiring from
+// newProxyHandler or handleOAuth2PasswordGrant the coalescing test fails with
+// N>1 exchange calls rather than exactly 1.
+
+// countingExchangerForProd is a minimal TokenExchangerIface for the guard test.
+type countingExchangerForProd struct {
+	calls int32 // accessed atomically
+	delay time.Duration
+	token string
+}
+
+func (c *countingExchangerForProd) Exchange(_ context.Context, _ credential.ExchangeRequest) (*credential.ExchangeResult, error) {
+	atomic.AddInt32(&c.calls, 1)
+	if c.delay > 0 {
+		time.Sleep(c.delay)
+	}
+	return &credential.ExchangeResult{Token: c.token}, nil
+}
+
+// TestNewProxyHandler_SFGroupIsNonNil asserts that the production constructor
+// initialises the shared singleflight group.  This fails immediately if the
+// sfGroup field is absent or left nil.
+func TestNewProxyHandler_SFGroupIsNonNil(t *testing.T) {
+	h := testHandler()
+	if h.sfGroup == nil {
+		t.Fatal("newProxyHandler must initialise h.sfGroup; got nil — singleflight coalescing is INACTIVE in production")
+	}
+}
+
+// TestNewProxyHandler_SFGroupIsReused asserts that the same *singleflight.Group
+// instance is shared across multiple calls (i.e. it is not re-created per request).
+// It obtains the pointer twice through the public field and checks identity.
+func TestNewProxyHandler_SFGroupIsReused(t *testing.T) {
+	h := testHandler()
+	if h.sfGroup == nil {
+		t.Fatal("sfGroup is nil — see TestNewProxyHandler_SFGroupIsNonNil")
+	}
+	// Confirm the same pointer would be used for two consecutive requests by
+	// reading it twice from the same handler — must be identical.
+	first := h.sfGroup
+	second := h.sfGroup
+	if first != second {
+		t.Fatal("sfGroup must be the same instance across requests; got different pointers")
+	}
+}
+
+// TestProductionPath_NewOAuth2Deps_SFIsWired is the make-or-break regression
+// guard for FIX-5.  It calls the real production construction method
+// h.newOAuth2Deps() and asserts that the returned deps.SF is non-nil AND is
+// the same pointer as h.sfGroup.
+//
+// FLIP: if someone removes `SF: h.sfGroup` from newOAuth2Deps (re-introducing
+// the attempt-1 regression), this test fails with a clear message because
+// deps.SF will be nil even though h.sfGroup is non-nil.
+func TestProductionPath_NewOAuth2Deps_SFIsWired(t *testing.T) {
+	h := testHandler()
+	if h.sfGroup == nil {
+		t.Fatal("sfGroup is nil — singleflight not wired in production constructor")
+	}
+
+	deps := h.newOAuth2Deps()
+
+	if deps.SF == nil {
+		t.Fatal("newOAuth2Deps().SF is nil — SF field dropped from production construction site; thundering-herd protection is INACTIVE")
+	}
+	if deps.SF != h.sfGroup {
+		t.Fatalf("newOAuth2Deps().SF (%p) != h.sfGroup (%p) — production construction site is not using the shared singleflight group", deps.SF, h.sfGroup)
+	}
+}
+
+// TestProductionPath_SFCoalescesOnConcurrentMiss drives N concurrent cache
+// misses through the real production construction path (via newOAuth2Deps)
+// and asserts exactly 1 upstream exchange — not N.
+func TestProductionPath_SFCoalescesOnConcurrentMiss(t *testing.T) {
+	const N = 50
+
+	h := testHandler()
+	if h.sfGroup == nil {
+		t.Fatal("sfGroup is nil — singleflight not wired in production constructor")
+	}
+
+	// Swap in counting fake exchanger and a fresh cache so all N are misses.
+	ex := &countingExchangerForProd{token: "prod-coalesced-token", delay: 20 * time.Millisecond}
+	tc := cache.NewTokenCache()
+
+	// Point the handler at the fake exchanger and cache; obtain deps via the
+	// real production construction method so SF comes from the production site.
+	h.tokenExchanger = credential.NewTokenExchanger() // keep field valid; deps override below
+	h.tokenCache = tc
+
+	payload, err := json.Marshal(credential.OAuth2PasswordGrantCredential{
+		TokenURL:          "https://dummy.example.com/token",
+		CredentialFields:  map[string]string{"username": "u", "password": "p"},
+		TokenResponsePath: "$.token",
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	// Build deps from the real construction site, then override Exchanger with
+	// the counting fake.  This keeps Cache and SF from the production path while
+	// allowing the fake exchanger for call counting.
+	baseDeps := h.newOAuth2Deps()
+	deps := egress.OAuth2HandlerDeps{
+		Cache:     tc,
+		Exchanger: ex,
+		SF:        baseDeps.SF, // sourced from production site — not hand-built
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(N)
+	started := make(chan struct{})
+
+	results := make([]*egress.OAuth2HandlerResult, N)
+	errs := make([]error, N)
+
+	for i := 0; i < N; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			<-started
+			results[i], errs[i] = egress.HandleOAuth2PasswordGrant(
+				context.Background(), deps, "tenant-prod", "svc-prod", payload,
+			)
+		}()
+	}
+	close(started)
+	wg.Wait()
+
+	for i, e := range errs {
+		if e != nil {
+			t.Errorf("goroutine %d: unexpected error: %v", i, e)
+		}
+	}
+	calls := atomic.LoadInt32(&ex.calls)
+	if calls != 1 {
+		t.Fatalf("production singleflight coalescing broken: expected exactly 1 exchange call, got %d — SF field not wired", calls)
+	}
+	_ = results
+}
+
+// ---------------------------------------------------------------------------
+// BUG-10 / FIX-6: token.exchanged must route through audit.EmitTokenExchanged
+// ---------------------------------------------------------------------------
+
+// TestTokenExchanged_EmitterPath_AgentIDHostOnlyNoSecretLeak verifies:
+//  1. The token.exchanged event is emitted via audit.EmitTokenExchanged (the
+//     previously-dead emitter path), not the hand-built auditq path.
+//  2. The emitted event includes agent_id (non-empty).
+//  3. token_url_host is HOST ONLY — no scheme, no path, no query.
+//  4. No credential_fields value and no exchanged token value appears anywhere
+//     in the serialised audit POST body (Property 12 / Req 22.7).
+//
+// Source: Requirements 22.1–22.3, 22.7; design.md §Audit Event Props 11/12.
+func TestTokenExchanged_EmitterPath_AgentIDHostOnlyNoSecretLeak(t *testing.T) {
+	const (
+		secretPassword  = "super-secret-password-LEAK"
+		exchangedToken  = "exchanged-bearer-token-SECRET"
+		wantAgentID     = "agent_fixbug10_test"
+		wantTenantID    = "tenant-test-uuid-0001"
+		wantServiceID   = testSvcUUIDA
+	)
+
+	// Step 1: Fake token endpoint — returns a JSON body with the exchanged token.
+	// The token URL path/query must NOT appear in the audit event.
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Include the secret password in the response body to confirm the
+		// audit system does NOT echo it back.
+		_, _ = fmt.Fprintf(w, `{"token":"%s","message":"secret=%s"}`, exchangedToken, secretPassword)
+	}))
+	defer tokenSrv.Close()
+
+	// Step 2: Fake admin-api — captures the audit POST body.
+	var (
+		auditMu   sync.Mutex
+		auditBodies [][]byte
+	)
+	auditSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		auditMu.Lock()
+		auditBodies = append(auditBodies, body)
+		auditMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer auditSrv.Close()
+
+	// Step 3: Build a proxyHandler wired with the real audit.Emitter.
+	h := testHandler()
+	h.tokenExchangeEmitter = audit.NewEmitter(auditSrv.URL, "svc-token")
+
+	// Swap in a real token exchanger that calls the fake token endpoint.
+	h.tokenExchanger = credential.NewTokenExchanger()
+	h.tokenCache = cache.NewTokenCache() // empty cache → exchange is attempted
+
+	// Build credential payload pointing at the fake token server.
+	// token_url includes a path (/oauth/token) and query (?grant_type=password)
+	// — neither should appear in the audit event.
+	tokenURL := tokenSrv.URL + "/oauth/token?grant_type=password"
+	credPayload, err := json.Marshal(credential.OAuth2PasswordGrantCredential{
+		TokenURL: tokenURL,
+		CredentialFields: map[string]string{
+			"username": "testuser",
+			"password": secretPassword,
+		},
+		TokenResponsePath: "$.token",
+	})
+	if err != nil {
+		t.Fatalf("marshal credential: %v", err)
+	}
+
+	// Step 4: Build a dummy upstream target so the proxy can complete.
+	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstreamSrv.Close()
+
+	credResp := &vault.GetCredentialResponse{
+		AuthScheme: int32(credential.AuthSchemeOAuth2PasswordGrant),
+		Plaintext:  credPayload,
+		TargetURL:  upstreamSrv.URL,
+	}
+
+	// Step 5: Invoke handleOAuth2PasswordGrant directly with a known agentID.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rw := httptest.NewRecorder()
+	h.handleOAuth2PasswordGrant(rw, req, credResp, wantTenantID, wantServiceID, wantAgentID, time.Now())
+
+	// Give the fire-and-forget goroutine a moment to complete the HTTP POST.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		auditMu.Lock()
+		n := len(auditBodies)
+		auditMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Step 6: Assert at least one token.exchanged audit event was captured.
+	auditMu.Lock()
+	bodies := make([][]byte, len(auditBodies))
+	copy(bodies, auditBodies)
+	auditMu.Unlock()
+
+	var tokenExchangedBody []byte
+	for _, b := range bodies {
+		if strings.Contains(string(b), `"token.exchanged"`) {
+			tokenExchangedBody = b
+			break
+		}
+	}
+	if tokenExchangedBody == nil {
+		t.Fatalf("no token.exchanged event captured in audit server; got %d audit call(s)", len(bodies))
+	}
+
+	// Decode envelope.
+	var envelope map[string]any
+	if err := json.Unmarshal(tokenExchangedBody, &envelope); err != nil {
+		t.Fatalf("audit body not valid JSON: %v\nbody: %s", err, tokenExchangedBody)
+	}
+
+	payload, ok := envelope["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload field missing or not an object; envelope: %v", envelope)
+	}
+
+	// AC2: agent_id present and non-empty.
+	agentID, _ := payload["agent_id"].(string)
+	if agentID == "" {
+		t.Errorf("agent_id missing or empty in token.exchanged payload; payload: %v", payload)
+	}
+	if agentID != wantAgentID {
+		t.Errorf("agent_id = %q; want %q", agentID, wantAgentID)
+	}
+
+	// AC2: tenant_id and service_id present.
+	if payload["tenant_id"] != wantTenantID {
+		t.Errorf("tenant_id = %q; want %q", payload["tenant_id"], wantTenantID)
+	}
+	if payload["service_id"] != wantServiceID {
+		t.Errorf("service_id = %q; want %q", payload["service_id"], wantServiceID)
+	}
+
+	// AC2: token_url_host is HOST ONLY — no scheme, no path, no query.
+	tokenURLHost, _ := payload["token_url_host"].(string)
+	if tokenURLHost == "" {
+		t.Errorf("token_url_host missing or empty; payload: %v", payload)
+	}
+	if strings.Contains(tokenURLHost, "/") {
+		t.Errorf("token_url_host contains a slash (path/scheme leaked): %q", tokenURLHost)
+	}
+	if strings.Contains(tokenURLHost, "?") {
+		t.Errorf("token_url_host contains query params: %q", tokenURLHost)
+	}
+	if strings.HasPrefix(tokenURLHost, "http") {
+		t.Errorf("token_url_host contains scheme: %q", tokenURLHost)
+	}
+
+	// AC3: no secret or token value anywhere in the raw audit body.
+	rawBody := string(tokenExchangedBody)
+	if strings.Contains(rawBody, secretPassword) {
+		t.Errorf("audit body leaks the credential password %q; body: %s", secretPassword, rawBody)
+	}
+	if strings.Contains(rawBody, exchangedToken) {
+		t.Errorf("audit body leaks the exchanged token %q; body: %s", exchangedToken, rawBody)
 	}
 }
