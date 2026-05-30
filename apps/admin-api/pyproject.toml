@@ -29,7 +29,7 @@ packages = ["src/admin_api"]
 [dependency-groups]
 dev = [
     "pytest>=8.3",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.9",
     "mypy>=1.13",
     "testcontainers[postgres]>=4.7",
