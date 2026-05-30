@@ -1072,7 +1072,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if password:
             _ensure_admin_password_file(BOOTSTRAP_SECRETS_DIR, password)
-            print(f"Bootstrap admin password: {password}")
+            print(
+                f"Bootstrap admin password: written to bootstrap-secrets volume "
+                f"(fingerprint sha256:{hashlib.sha256(password.encode()).hexdigest()[:8]})"
+            )
 
         print(f"Seed steps 1-5 complete. tenant={tenant_id} operator={operator_id}")
         print("NOTE: Steps 6-8 (Vault Adapter keypairs) pending T-1.0.4.")

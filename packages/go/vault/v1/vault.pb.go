@@ -1,7 +1,7 @@
 // vault.proto -- Mintkey Vault Adapter gRPC IDL.
 //
 // Stability tier: experimental.
-// Version       : 0.1.0-experimental.
+// Version       : 0.1.0-preview.1.
 //
 // This service is the contract between every credential-aware Mintkey
 // component and the Vault Adapter (container C6 in
@@ -56,6 +56,7 @@ const (
 	AuthScheme_AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS AuthScheme = 5
 	AuthScheme_AUTH_SCHEME_OIDC_CLIENT_SECRET        AuthScheme = 6
 	AuthScheme_AUTH_SCHEME_MTLS                      AuthScheme = 7
+	AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT     AuthScheme = 8
 )
 
 // Enum value maps for AuthScheme.
@@ -69,6 +70,7 @@ var (
 		5: "AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS",
 		6: "AUTH_SCHEME_OIDC_CLIENT_SECRET",
 		7: "AUTH_SCHEME_MTLS",
+		8: "AUTH_SCHEME_OAUTH2_PASSWORD_GRANT",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -79,6 +81,7 @@ var (
 		"AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS": 5,
 		"AUTH_SCHEME_OIDC_CLIENT_SECRET":        6,
 		"AUTH_SCHEME_MTLS":                      7,
+		"AUTH_SCHEME_OAUTH2_PASSWORD_GRANT":     8,
 	}
 )
 
@@ -1158,7 +1161,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12;\n" +
 	"\vvalid_until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"validUntil*\x87\x02\n" +
+	"validUntil*\xae\x02\n" +
 	"\n" +
 	"AuthScheme\x12\x1b\n" +
 	"\x17AUTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n" +
@@ -1168,7 +1171,8 @@ const file_vault_proto_rawDesc = "" +
 	"\x16AUTH_SCHEME_BASIC_AUTH\x10\x04\x12)\n" +
 	"%AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS\x10\x05\x12\"\n" +
 	"\x1eAUTH_SCHEME_OIDC_CLIENT_SECRET\x10\x06\x12\x14\n" +
-	"\x10AUTH_SCHEME_MTLS\x10\a*r\n" +
+	"\x10AUTH_SCHEME_MTLS\x10\a\x12%\n" +
+	"!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\b*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
