@@ -19,7 +19,7 @@ import {
 } from "../src/lib/auth-scheme.js";
 
 describe("AUTH_SCHEMES", () => {
-  it("contains all 8 required schemes", () => {
+  it("contains all 9 required schemes", () => {
     const values = AUTH_SCHEMES.map((s) => s.value);
     expect(values).toContain("none");
     expect(values).toContain("api_key_header");
@@ -27,9 +27,10 @@ describe("AUTH_SCHEMES", () => {
     expect(values).toContain("bearer_token");
     expect(values).toContain("basic_auth");
     expect(values).toContain("oauth2_client_credentials");
+    expect(values).toContain("oauth2_password_grant");
     expect(values).toContain("oidc_client_secret");
     expect(values).toContain("mtls");
-    expect(values).length(8);
+    expect(values).length(9);
   });
 
   it("each scheme has a value and label", () => {
@@ -112,6 +113,23 @@ describe("getCredentialFields", () => {
     expect(keyField.type).toBe("textarea");
   });
 
+  it("oauth2_password_grant returns token_url, credential_fields kv-editor, token_response_path, exchange_timeout_seconds", () => {
+    const fields = getCredentialFields("oauth2_password_grant");
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("token_url");
+    expect(names).toContain("credential_fields");
+    expect(names).toContain("token_response_path");
+    expect(names).toContain("exchange_timeout_seconds");
+    const kvField = fields.find((f) => f.name === "credential_fields")!;
+    expect(kvField.type).toBe("kv-editor");
+    expect(kvField.secret).toBe(false);
+    const timeoutField = fields.find((f) => f.name === "exchange_timeout_seconds")!;
+    expect(timeoutField.type).toBe("number");
+    expect(timeoutField.defaultValue).toBe("10");
+    expect(timeoutField.min).toBe(1);
+    expect(timeoutField.max).toBe(120);
+  });
+
   it("unknown scheme returns empty fields (safe default)", () => {
     const fields = getCredentialFields("unknown_scheme");
     expect(fields).toEqual([]);
@@ -142,5 +160,21 @@ describe("buildCredentialPayload", () => {
   it("none: builds {auth_scheme: none} with no extra fields", () => {
     const payload = buildCredentialPayload("none", {});
     expect(payload).toEqual({ auth_scheme: "none" });
+  });
+
+  it("oauth2_password_grant: assembles nested value JSON with correct contract shape", () => {
+    const payload = buildCredentialPayload("oauth2_password_grant", {
+      token_url: "https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token",
+      credential_fields_json: JSON.stringify({ userName: "vrusu", password: "Asd123!" }),
+      token_response_path: "$.data.token",
+      exchange_timeout_seconds: "30",
+    });
+    expect(payload.auth_scheme).toBe("oauth2_password_grant");
+    expect(payload.token_url).toBe("https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token");
+    const valueObj = JSON.parse(payload.value);
+    expect(valueObj.token_url).toBe("https://dashboard-api-ps-stag.azurewebsites.net/api/v1/Token");
+    expect(valueObj.credential_fields).toEqual({ userName: "vrusu", password: "Asd123!" });
+    expect(valueObj.token_response_path).toBe("$.data.token");
+    expect(valueObj.exchange_timeout_seconds).toBe(30);
   });
 });

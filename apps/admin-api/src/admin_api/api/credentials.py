@@ -21,6 +21,7 @@ Source: T-1.3.2 (session 1); ADR-0008; ADR-0011; ADR-0013; ADR-0014.4; ADR-0014.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 import uuid
@@ -36,10 +37,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.services.credential_service import OAuth2PasswordGrantPayload
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/v1/tenants/{tenant_id}/services/{service_id}/credentials"
@@ -168,6 +172,33 @@ async def create_credential(
             content={"mintkey:code": "not_found", "title": "Service not found"},
         )
     service_base_url: str = svc_row.base_url or ""
+
+    # Step 1c: For oauth2_password_grant, validate the structured payload — BUG-2/BUG-9.
+    # body.value is expected to be a JSON-encoded OAuth2PasswordGrantPayload.
+    # Rejects: non-HTTPS token_url, loopback/private/link-local token_url (S-SEC-1),
+    # empty credential_fields. Requirements 19.2, 19.4, 19.5, 19.6.
+    if body.auth_scheme == "oauth2_password_grant":
+        try:
+            import json as _json_mod
+            raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            OAuth2PasswordGrantPayload(**raw)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": "oauth2_password_grant value must be a valid JSON object",
+                },
+            )
+        except ValueError as exc:
+            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": "oauth2_password_grant payload failed validation",
+                },
+            )
 
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
@@ -388,6 +419,34 @@ async def rotate_credential(
         )
 
     old_internal_id: Any = old_row.id
+
+    # Step 4b: For oauth2_password_grant, validate the new credential value — BUG-2/BUG-9.
+    # Mirrors the create_credential validation (Step 1c) so that the rotate path
+    # cannot be used to bypass HTTPS + SSRF checks by rotating to a malicious token_url.
+    # Rejects: non-HTTPS token_url, loopback/private/link-local/IPv6-ULA (S-SEC-1),
+    # empty credential_fields. Requirements 19.2, 19.4, 19.5, 19.6.
+    if body.auth_scheme == "oauth2_password_grant" and body.value is not None:
+        try:
+            import json as _json_mod
+            raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            OAuth2PasswordGrantPayload(**raw)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": "oauth2_password_grant value must be a valid JSON object",
+                },
+            )
+        except ValueError as exc:
+            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_payload",
+                    "title": "oauth2_password_grant payload failed validation",
+                },
+            )
 
     # Step 5: Call Vault Adapter for new credential — plaintext never stored
     # When body.value is None (e.g., operator clicked Rotate in the UI without
