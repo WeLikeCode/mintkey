@@ -15,10 +15,13 @@ export interface AuthSchemeOption {
 export interface CredentialField {
   name: string;
   label: string;
-  type: "text" | "password" | "textarea" | "url";
+  type: "text" | "password" | "textarea" | "url" | "kv-editor" | "number";
   secret: boolean;
   required: boolean;
   placeholder?: string;
+  defaultValue?: string;
+  min?: number;
+  max?: number;
 }
 
 export const AUTH_SCHEMES: AuthSchemeOption[] = [
@@ -28,6 +31,7 @@ export const AUTH_SCHEMES: AuthSchemeOption[] = [
   { value: "bearer_token", label: "Bearer token" },
   { value: "basic_auth", label: "Basic auth (username + password)" },
   { value: "oauth2_client_credentials", label: "OAuth 2.0 — client credentials" },
+  { value: "oauth2_password_grant", label: "OAuth 2.0 — password grant (username/password → token)" },
   { value: "oidc_client_secret", label: "OIDC — client secret" },
   { value: "mtls", label: "mTLS — client certificate" },
 ];
@@ -62,6 +66,13 @@ const SCHEME_FIELDS: Record<string, CredentialField[]> = {
     { name: "audience", label: "Audience", type: "text", secret: false, required: false },
   ],
 
+  oauth2_password_grant: [
+    { name: "token_url", label: "Token URL", type: "url", secret: false, required: true, placeholder: "https://auth.example.com/oauth2/token" },
+    { name: "credential_fields", label: "Credential fields (key → value)", type: "kv-editor", secret: false, required: true },
+    { name: "token_response_path", label: "Token response path (JSONPath)", type: "text", secret: false, required: true, placeholder: "$.access_token", defaultValue: "$.access_token" },
+    { name: "exchange_timeout_seconds", label: "Exchange timeout (seconds)", type: "number", secret: false, required: false, defaultValue: "10", min: 1, max: 120 },
+  ],
+
   oidc_client_secret: [
     { name: "issuer", label: "Issuer URL", type: "url", secret: false, required: true, placeholder: "https://auth.example.com" },
     { name: "client_id", label: "Client ID", type: "text", secret: false, required: true },
@@ -84,8 +95,20 @@ export function getCredentialFields(scheme: string): CredentialField[] {
 }
 
 /**
+ * Key-value row type used by the oauth2_password_grant kv-editor.
+ * Each row holds an editable key name and a (masked) value.
+ */
+export interface KvRow {
+  key: string;
+  value: string;
+}
+
+/**
  * Build the credential POST body for admin-api.
  * Adds auth_scheme plus all scheme-specific fields from the form data.
+ *
+ * For oauth2_password_grant, assembles the nested value JSON:
+ *   { token_url, credential_fields: {<k>:<v>,...}, token_response_path, exchange_timeout_seconds }
  */
 export function buildCredentialPayload(
   scheme: string,
@@ -93,6 +116,35 @@ export function buildCredentialPayload(
 ): Record<string, string> {
   const fields = getCredentialFields(scheme);
   const payload: Record<string, string> = { auth_scheme: scheme };
+
+  if (scheme === "oauth2_password_grant") {
+    // formData carries:
+    //   token_url, token_response_path, exchange_timeout_seconds (as strings)
+    //   credential_fields_json (pre-serialised JSON string of the kv map)
+    const tokenUrl = formData["token_url"] ?? "";
+    const tokenResponsePath = formData["token_response_path"] || "$.access_token";
+    const timeoutRaw = formData["exchange_timeout_seconds"];
+    const exchangeTimeoutSeconds = timeoutRaw ? parseInt(timeoutRaw, 10) : 10;
+
+    let credentialFields: Record<string, string> = {};
+    try {
+      credentialFields = JSON.parse(formData["credential_fields_json"] ?? "{}") as Record<string, string>;
+    } catch {
+      credentialFields = {};
+    }
+
+    const valueJson = JSON.stringify({
+      token_url: tokenUrl,
+      credential_fields: credentialFields,
+      token_response_path: tokenResponsePath,
+      exchange_timeout_seconds: exchangeTimeoutSeconds,
+    });
+
+    payload["value"] = valueJson;
+    payload["token_url"] = tokenUrl;
+    return payload;
+  }
+
   for (const field of fields) {
     if (formData[field.name] !== undefined) {
       payload[field.name] = formData[field.name];
