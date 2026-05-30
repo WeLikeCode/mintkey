@@ -95,6 +95,101 @@ async def test_get_credential_returns_query_param():
 
 
 @pytest.mark.asyncio
+async def test_get_credential_sends_service_identity_metadata():
+    """
+    BUG-20: get_credential must attach x-mintkey-service-identity and
+    x-mintkey-service-token metadata on every GetCredential gRPC call
+    so the vault-adapter scopeInterceptor grants vault.read.
+
+    Source: BUG-20 fix; Requirement 22.5.
+    """
+    import importlib
+    import admin_api.services.vault_client as vc_mod
+
+    # Reload to pick up any module-level env changes.
+    importlib.reload(vc_mod)
+
+    # Capture the metadata keyword arg passed to GetCredential.
+    captured_metadata = {}
+
+    mock_resp = MagicMock()
+    mock_resp.value = b"test-secret"
+    mock_resp.auth_scheme = 3
+    mock_resp.returned_key_version = 1
+    mock_resp.header_name = ""
+    mock_resp.query_param = ""
+
+    async def _fake_get_credential(req, metadata=None, **kwargs):
+        captured_metadata["metadata"] = metadata
+        return mock_resp
+
+    mock_stub = MagicMock()
+    mock_stub.GetCredential = _fake_get_credential
+
+    client = vc_mod.VaultAdapterClient()
+    with patch.object(client, "_stub", AsyncMock(return_value=mock_stub)):
+        result = await client.get_credential("tenant-meta-test", "svc-meta-test")
+
+    assert result is not None
+    md = captured_metadata.get("metadata")
+    assert md is not None, "GetCredential must be called with metadata= kwarg (BUG-20)"
+    md_dict = dict(md)
+    assert "x-mintkey-service-identity" in md_dict, (
+        f"x-mintkey-service-identity missing from metadata: {md_dict}"
+    )
+    assert "x-mintkey-service-token" in md_dict, (
+        f"x-mintkey-service-token missing from metadata: {md_dict}"
+    )
+    # Values must be non-empty strings (default "svcid_admin_api" when env not set).
+    assert md_dict["x-mintkey-service-identity"], "x-mintkey-service-identity must not be empty"
+
+
+@pytest.mark.asyncio
+async def test_put_credential_sends_service_identity_metadata():
+    """
+    BUG-20: put_credential must attach x-mintkey-service-identity and
+    x-mintkey-service-token metadata on every PutCredential gRPC call
+    so the vault-adapter scopeInterceptor grants vault.put.
+
+    Source: BUG-20 fix; Requirement 22.5.
+    """
+    import importlib
+    import admin_api.services.vault_client as vc_mod
+
+    importlib.reload(vc_mod)
+
+    captured_metadata = {}
+
+    mock_resp = MagicMock()
+    mock_resp.key_version = 1
+
+    async def _fake_put_credential(req, metadata=None, **kwargs):
+        captured_metadata["metadata"] = metadata
+        return mock_resp
+
+    mock_stub = MagicMock()
+    mock_stub.PutCredential = _fake_put_credential
+
+    client = vc_mod.VaultAdapterClient()
+    with patch.object(client, "_stub", AsyncMock(return_value=mock_stub)):
+        result = await client.put_credential(
+            "tenant-meta-test", "svc-meta-test", "bearer_token", "mysecret"
+        )
+
+    assert result is not None
+    md = captured_metadata.get("metadata")
+    assert md is not None, "PutCredential must be called with metadata= kwarg (BUG-20)"
+    md_dict = dict(md)
+    assert "x-mintkey-service-identity" in md_dict, (
+        f"x-mintkey-service-identity missing from PutCredential metadata: {md_dict}"
+    )
+    assert "x-mintkey-service-token" in md_dict, (
+        f"x-mintkey-service-token missing from PutCredential metadata: {md_dict}"
+    )
+    assert md_dict["x-mintkey-service-identity"], "x-mintkey-service-identity must not be empty"
+
+
+@pytest.mark.asyncio
 async def test_get_credential_empty_strings_preserved():
     """
     When header_name and query_param are both empty (e.g. bearer_token scheme),

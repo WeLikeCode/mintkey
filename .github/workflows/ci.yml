@@ -106,7 +106,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Install PyYAML
-        run: pip install pyyaml
+        run: pip install pyyaml==6.0.2
       - name: Validate test-override sync
         run: python3 tools/validate-test-override.py
 

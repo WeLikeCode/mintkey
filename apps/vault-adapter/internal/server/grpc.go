@@ -18,9 +18,17 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// methodScopes maps gRPC method full names to the required scope.
+// Methods not listed here do not require scope enforcement.
+var methodScopes = map[string]string{
+	"/mintkey.vault.v1.VaultAdapter/GetCredential": "vault.read",
+	"/mintkey.vault.v1.VaultAdapter/PutCredential": "vault.put",
+}
 
 // VaultServer is the gRPC server. It holds the KEK, VaultService, and a
 // reference to the shared DEK cache for metrics emission.
@@ -39,6 +47,70 @@ func New(kek []byte, dekCache ...*cache.DEKCache) *VaultServer {
 		c = dekCache[0]
 	}
 	return &VaultServer{kek: kek, dekCache: c}
+}
+
+// scopeInterceptor returns a gRPC unary server interceptor that enforces
+// scope-based access control. It extracts the "x-mintkey-service-token"
+// from incoming metadata, validates it against the VaultService's registered
+// service identities, and checks that the caller has the required scope for
+// the invoked method. Returns PERMISSION_DENIED if the scope is missing.
+//
+// Methods not listed in methodScopes are allowed without scope checks
+// (e.g., ValidateServiceIdentity, ListVersions, health checks).
+//
+// Requirement 22.5: vault.read scope enforcement on GetCredential.
+func scopeInterceptor(svc *VaultService) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req interface{},
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		requiredScope, needsScope := methodScopes[info.FullMethod]
+		if !needsScope {
+			return handler(ctx, req)
+		}
+
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			return nil, status.Errorf(codes.PermissionDenied, "missing metadata")
+		}
+
+		tokens := md.Get("x-mintkey-service-token")
+		if len(tokens) == 0 || tokens[0] == "" {
+			return nil, status.Errorf(codes.PermissionDenied, "missing service token")
+		}
+
+		scopes, valid := svc.ValidateServiceIdentity(ctx, extractIdentityID(md), []byte(tokens[0]))
+		if !valid {
+			return nil, status.Errorf(codes.PermissionDenied, "invalid service token")
+		}
+
+		if !hasScope(scopes, requiredScope) {
+			return nil, status.Errorf(codes.PermissionDenied, "caller lacks required scope %q", requiredScope)
+		}
+
+		return handler(ctx, req)
+	}
+}
+
+// extractIdentityID extracts the service identity ID from gRPC metadata.
+// Falls back to "x-mintkey-service-identity" header, then derives from token header presence.
+func extractIdentityID(md metadata.MD) string {
+	if ids := md.Get("x-mintkey-service-identity"); len(ids) > 0 && ids[0] != "" {
+		return ids[0]
+	}
+	return ""
+}
+
+// hasScope checks if the given scope is present in the scopes slice.
+func hasScope(scopes []string, required string) bool {
+	for _, s := range scopes {
+		if s == required {
+			return true
+		}
+	}
+	return false
 }
 
 // grpcVaultServer implements vaultv1.VaultAdapterServer by delegating to VaultService.
@@ -147,7 +219,9 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 		return fmt.Errorf("vault-adapter: listen :%d: %w", port, err)
 	}
 
-	grpcSrv := grpc.NewServer()
+	grpcSrv := grpc.NewServer(
+		grpc.UnaryInterceptor(scopeInterceptor(svc)),
+	)
 
 	healthSvc := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcSrv, healthSvc)
