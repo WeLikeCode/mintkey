@@ -265,6 +265,131 @@ The one item with an actionable dep-bump -- GO-2026-4918 -- is tracked in the Vu
 
 ---
 
+## CodeQL + Scorecard — accepted false-positive patterns
+
+Some CodeQL and Scorecard alerts represent heuristic false positives where the flagged code is intentional and the actual security boundary lies elsewhere. These patterns are tracked here so that future contributors understand why dismissals exist and do not re-open them without first reading the rationale below.
+
+Each pattern subsection documents: the rule and the file:line site(s) the scanner flags; why the code looks like a problem to the scanner; why it is not actually a problem (where the real security boundary is); and the **dismissal anchor text** — the literal string the operator pastes into GitHub's "Dismiss alert" → "Dismiss with comment" field (reason: "Won't fix") after this PR merges. The operator does this click-through manually; these alerts are NOT auto-dismissed from CI.
+
+Pattern subsections are referenced by their anchor headings (e.g. `[Pattern A](#pattern-a--sha-256-truncated-fingerprint-for-indexed-db-lookup)`), so the dismissal text remains stable across future SECURITY.md edits.
+
+### Pattern A — SHA-256 truncated fingerprint for indexed DB lookup
+
+**Sites:**
+- `apps/admin-api/src/admin_api/api/proxy.py:64` (alert #1268)
+- `apps/admin-api/src/admin_api/api/internal.py:119` (alert #1267)
+- (key-generation source of truth: `apps/admin-api/src/admin_api/api/agents.py::_generate_agent_api_key`)
+
+**Rule:** `py/weak-sensitive-data-hashing`
+
+**Why CodeQL flags it:** the rule heuristically flags any `hashlib.sha256` / `md5` / `sha1` invocation on a variable whose name looks credential-shaped (`api_key`, `token`, `secret`). It does not model the two-tier "fingerprint then verify" pattern.
+
+**Why it is a false positive:** `hashlib.sha256(api_key.encode()).digest()[:8].hex()` produces a deterministic 64-bit fingerprint stored as an **indexed column** in the database. It enables O(log n) lookup by API key without a full table scan. The actual credential verification uses **argon2id** (`agents.api_key_hash` column, per ADR-0017.5). The SHA-256 fingerprint is not the security boundary — it is a search key.
+
+If the fingerprint collides (probability ≈ 2⁻³² per pair), the worst case is that multiple DB rows are loaded and argon2 verifies each — no security regression, just a negligible performance hit. Replacing the fingerprint with argon2id would break the indexed-lookup pattern (argon2 is non-deterministic across salts) and degrade auth latency from microseconds to ~100 ms per request.
+
+**Dismissal anchor (paste into GitHub "Dismiss with comment", reason "Won't fix"):**
+
+> False positive — see SECURITY.md §"CodeQL + Scorecard — accepted false-positive patterns" / Pattern A (SHA-256 truncated fingerprint for indexed DB lookup; argon2id at `agents.api_key_hash` is the actual credential-verification boundary per ADR-0017.5).
+
+---
+
+### Pattern B — SHA-256 Merkle-chain audit hash (ADR-0014.7)
+
+**Site:**
+- `packages/python/mintkey-models/mintkey_models/audit.py:85` (alert #1266)
+
+**Rule:** `py/weak-sensitive-data-hashing`
+
+**Why CodeQL flags it:** the rule sees `hashlib.sha256(canonical_bytes + prev_hash)` on event content and flags it as potentially weak for confidentiality purposes.
+
+**Why it is a false positive:** this is the per-event Merkle-chain link hash. It is used for **integrity** (tamper-evident audit log, per ADR-0014.7), not for confidentiality. SHA-256 is the appropriate cryptographic primitive for tamper-evidence at this threat model — the goal is collision resistance, not secret protection.
+
+**Migration constraint:** changing the algorithm breaks chain integrity for every existing audit record. Any migration requires:
+1. an ADR amendment to ADR-0014.7
+2. a dual-hash transition window (write both old and new algorithm, gradually verify both)
+3. a re-anchoring of all existing chain heads
+
+This is out of scope per the existing `docs/security/weak-hash-migration.md` policy (the audit-chain hash is explicitly excluded from pre-alpha migration sweeps).
+
+**Dismissal anchor:**
+
+> False positive — see SECURITY.md §"CodeQL + Scorecard — accepted false-positive patterns" / Pattern B (SHA-256 Merkle-chain integrity hash per ADR-0014.7; changing the algorithm breaks every existing audit record's chain link; out-of-scope per docs/security/weak-hash-migration.md).
+
+---
+
+### Pattern C — Already-redacted JWT preview variable
+
+**Site:**
+- `examples/python-agent-snippet/agent.py:90` (alert #1261)
+
+**Rule:** `py/clear-text-logging-sensitive-data`
+
+**Why CodeQL flags it:** the rule taint-tracks any string containing `jwt`/`token`/`Bearer` into `print`/log sinks. It does not model variable construction — it cannot see that `jwt_preview` was assembled via truncation upstream.
+
+**Why it is a false positive:** the variable `jwt_preview` is set earlier as `brokered_jwt[:12] + "..."` (12-character prefix plus ellipsis). The full JWT never leaves the local `brokered_jwt` variable. The `print` is intentional documentation output in the example snippet, designed to show operators the shape of the header that gets sent without leaking the credential.
+
+**Codebase convention:** any variable named `*_preview` in this repository MUST be a redacted/truncated version of a sensitive value before it is passed to any print or log call. Reviewers enforce this invariant by inspection during code review.
+
+**Dismissal anchor:**
+
+> False positive — see SECURITY.md §"CodeQL + Scorecard — accepted false-positive patterns" / Pattern C (already-redacted preview-variable convention; `jwt_preview = brokered_jwt[:12] + "..."` upstream).
+
+---
+
+### Pattern D — Function-scope taint-flow artifact in seed-job
+
+**Sites:** `apps/seed-job/main.py` lines 396, 399, 412, 1025, 1031, 1077 (alerts subset of #1276/#1287 family)
+
+**Note:** line 1075 in this same function is **not** a false positive — it was a genuine plaintext-password leak fixed by commit `cf4bcf0` in this PR (`fix(seed-job): redact plaintext bootstrap password from stdout`). The lines listed above are the remaining false positives.
+
+**Rule:** `py/clear-text-logging-sensitive-data`
+
+**Why CodeQL flags it:** CodeQL's taint flow operates at function scope. Once a function body contains a variable named `password`, any string-formatting `print`/log call in the same scope is conservatively flagged as a potential leak, even when the `password` variable is not referenced in the format string.
+
+**Why it is a false positive — per-line inventory (verified 2026-05-23):**
+
+| Line | Print body | Contains `password` variable? |
+|---|---|---|
+| 396 | `f"Bootstrap: {_label} valid — skipping."` | No — bootstrap secret label only |
+| 399 | `f"Bootstrap: {_label} INVALID (size={len(existing)}) — regenerating."` | No — label + raw byte length |
+| 412 | `f"Bootstrap: wrote {_label}"` | No — label only |
+| 1025 | `f"Mirrored admin_password to host bind: {host_file}"` | No — file path only |
+| 1031 | `f"WARN: could not mirror admin_password to {HOST_BOOTSTRAP_SECRETS_DIR}: {exc}"` | No — path + exception object |
+| 1077 | `f"Seed steps 1-5 complete. tenant={tenant_id} operator={operator_id}"` | No — UUIDs only |
+
+None of these lines emit the `password` variable. The taint flag is an artifact of CodeQL's conservative function-scope analysis.
+
+**Dismissal anchor:**
+
+> False positive — see SECURITY.md §"CodeQL + Scorecard — accepted false-positive patterns" / Pattern D (function-scope taint-flow artifact; per-line inventory verified — none of lines 396/399/412/1025/1031/1077 emit the `password` variable; the genuine leak at line 1075 was fixed by commit `cf4bcf0`).
+
+---
+
+### Pattern E — Scorecard PinnedDependenciesID on Dockerfile local-package install
+
+**Site:** `apps/mock-backend/Dockerfile` line 15 (alert #1288)
+
+**Rule:** `PinnedDependenciesID` (Scorecard)
+
+**Why Scorecard flags it:** the heuristic looks for any `pip install` line that does not use `--require-hashes`.
+
+**Why it is a false positive:** the Dockerfile is fully pinned along every dimension that matters:
+
+- `FROM python:3.12-slim-bookworm@sha256:d193c6f51a7dbd10395d6328de3a7edb0516fb0608ca138036576f574c3e07d2` — base image digest-pinned
+- `RUN pip install --no-cache-dir --require-hashes -r requirements-hashes.txt` — all third-party dependencies hash-pinned on the preceding line
+- `RUN pip install --no-cache-dir --no-deps .` — installs the **local** `apps/mock-backend/` package from its `pyproject.toml`
+
+`pip install --require-hashes` cannot be applied to local-path installs (PEP 503 / pip limitation — there is no downloadable artifact to hash). The `--no-deps` flag ensures no transitive dependencies are pulled in beyond what the hash-pinned requirements file already covers. This limitation is documented in a comment in the Dockerfile itself.
+
+The local package's content is whatever ships in the repository (audited by code review), so there is no untrusted-source supply-chain concern.
+
+**Dismissal anchor:**
+
+> False positive — see SECURITY.md §"CodeQL + Scorecard — accepted false-positive patterns" / Pattern E (Dockerfile editable-local install; `pip install --require-hashes` is unavailable for local-path installs per pip's PEP 503 limitation; base image and third-party deps ARE both fully pinned).
+
+---
+
 ## Audit hash chain integrity (SHA-256 invariant)
 
 The audit-event chain in `packages/python/mintkey-models/mintkey_models/audit.py` uses SHA-256 per [ADR-0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md). This is NOT a credential hash -- it is a tamper-evident chain where each event's `hash` incorporates the previous event's `prev_hash`. Changing the algorithm requires a new ADR superseding ADR-0014.7, a migration of all existing `hash`/`prev_hash` columns, and lockstep updates to `apps/audit-verify-job/verify.py`.

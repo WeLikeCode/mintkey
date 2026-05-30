@@ -23,6 +23,7 @@ const (
 	AuthSchemeOAuth2ClientCredentials AuthScheme = 5
 	AuthSchemeOIDCClientSecret        AuthScheme = 6
 	AuthSchemeMTLS                    AuthScheme = 7
+	AuthSchemeOAuth2PasswordGrant     AuthScheme = 8
 )
 
 // Credential holds the plaintext credential and injection metadata.
@@ -67,6 +68,10 @@ func Inject(req *http.Request, cred Credential) error {
 		req.Header.Set("Authorization", "Basic "+encoded)
 
 	case AuthSchemeOAuth2ClientCredentials, AuthSchemeOIDCClientSecret:
+		req.Header.Set("Authorization", "Bearer "+string(cred.Value))
+
+	case AuthSchemeOAuth2PasswordGrant:
+		// Token is already exchanged and passed as cred.Value
 		req.Header.Set("Authorization", "Bearer "+string(cred.Value))
 
 	case AuthSchemeMTLS:

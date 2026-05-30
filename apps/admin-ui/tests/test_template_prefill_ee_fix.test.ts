@@ -42,12 +42,14 @@ describe("services.ts — template-detail BFF EE fix", () => {
   // Use the full services source for these assertions (handler spans > 1500 chars)
   it("template-detail handler normalises all 5 template fields with defaults", () => {
     expect(servicesSrc).toContain('"template-detail"');
-    // Normalised template object contains all 5 key fields
+    // Normalised template object contains all expected key fields.
+    // BUG-16 fix: auth_scheme now reads raw.auth_type first (admin-api field name),
+    // falling back to raw.auth_scheme; openapi_url reads raw.openapi_spec_url first.
     expect(servicesSrc).toContain("description: raw.description");
-    expect(servicesSrc).toContain("openapi_url: raw.openapi_url");
+    expect(servicesSrc).toContain("openapi_url: raw.openapi_spec_url");
     expect(servicesSrc).toContain("name: raw.name");
     expect(servicesSrc).toContain("base_url: raw.base_url");
-    expect(servicesSrc).toContain("auth_scheme: raw.auth_scheme");
+    expect(servicesSrc).toContain("auth_scheme: raw.auth_type");
   });
 
   it("template-detail returns flat params keys for belt-and-suspenders", () => {

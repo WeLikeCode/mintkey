@@ -11,7 +11,7 @@
  * Findings JSON: /tmp/runbook-ui-verify/findings.json
  */
 
-import { test } from "@playwright/test";
+import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import fs from "fs";
 
