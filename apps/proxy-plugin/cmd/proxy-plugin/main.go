@@ -34,14 +34,18 @@ import (
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/egress"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
+	"golang.org/x/sync/singleflight"
 )
 
 func main() {
@@ -74,7 +78,7 @@ func main() {
 	auditQueue.Replay()
 	auditQueue.Start()
 
-	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, "")
+	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, cfg.VaultIdentityToken, cfg.VaultIdentityID)
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
 
 	// Wire AuditEmitter for classical-key path (was nil, causing WS-9 gap).
@@ -88,6 +92,9 @@ func main() {
 
 	proxyMetrics := metrics.New()
 	handler := newProxyHandler(cfg, vaultClient, jwksLimiter, ckHandler, auditQueue, proxyMetrics)
+	// BUG-10/FIX-6: wire the structured token.exchanged emitter so the
+	// previously-dead EmitTokenExchanged path is now the live emission path.
+	handler.tokenExchangeEmitter = audit.NewEmitter(cfg.AdminAPIURL, cfg.ProxyServiceToken)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.PluginPort),
@@ -158,6 +165,13 @@ type auditEnqueuer interface {
 	Enqueue(auditq.Event)
 }
 
+// tokenExchangeEmitterI is a narrow interface for emitting token.exchanged
+// audit events via the structured emitter path (Req 22; BUG-10/FIX-6).
+// The concrete implementation is *audit.Emitter; nil means disabled.
+type tokenExchangeEmitterI interface {
+	EmitTokenExchanged(ctx context.Context, event audit.TokenExchangedEvent) error
+}
+
 // proxyHandler is the HTTP handler that validates JWTs, fetches credentials,
 // and reverse-proxies to the target backend.
 type proxyHandler struct {
@@ -167,9 +181,23 @@ type proxyHandler struct {
 	ckHandler   *classicalkey.Handler
 	audit       auditEnqueuer // may be nil (audit disabled)
 	auditQ      *auditq.Queue // same as audit but typed to access WriteMetricsTo (#27)
+	// tokenExchangeEmitter emits token.exchanged audit events via the structured
+	// emitter path (EmitTokenExchanged).  Nil means disabled (e.g. in unit tests
+	// that don't inject it).  BUG-10/FIX-6: previously a hand-built auditq.Event
+	// was used; routing through this emitter ensures agent_id is included and
+	// redaction guardrails are applied.
+	tokenExchangeEmitter tokenExchangeEmitterI // may be nil
 	metrics     *metrics.Metrics
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
+	// tokenCache is the in-memory cache for OAuth2 password grant exchanged tokens.
+	tokenCache *cache.TokenCache
+	// tokenExchanger performs OAuth2 password grant token exchanges.
+	tokenExchanger *credential.TokenExchanger
+	// sfGroup is the shared singleflight.Group for per-(tenant_id, service_id)
+	// coalescing of concurrent token-cache-miss exchanges.  Initialised once at
+	// startup and reused across all requests (Req 20/21 thundering-herd protection).
+	sfGroup *singleflight.Group
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
@@ -181,14 +209,17 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		m = metrics.New()
 	}
 	return &proxyHandler{
-		cfg:         cfg,
-		vaultClient: vaultClient,
-		jwksLimiter: limiter,
-		ckHandler:   ck,
-		audit:       ae,
-		auditQ:      aq,
-		metrics:     m,
-		pubKeys:     make(map[string]ed25519.PublicKey),
+		cfg:            cfg,
+		vaultClient:    vaultClient,
+		jwksLimiter:    limiter,
+		ckHandler:      ck,
+		audit:          ae,
+		auditQ:         aq,
+		metrics:        m,
+		pubKeys:        make(map[string]ed25519.PublicKey),
+		tokenCache:     cache.NewTokenCache(),
+		tokenExchanger: credential.NewTokenExchanger(),
+		sfGroup:        new(singleflight.Group),
 	}
 }
 
@@ -319,6 +350,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Ensure plaintext is zeroed after use regardless of path.
 	defer clear(credResp.Plaintext)
 
+	// OAuth2 Password Grant (auth_scheme=8): orchestrate cache → exchange → inject → audit.
+	if credential.AuthScheme(credResp.AuthScheme) == credential.AuthSchemeOAuth2PasswordGrant {
+		h.handleOAuth2PasswordGrant(w, r, credResp, tenantID, serviceID, agentID, pluginStart)
+		return
+	}
+
 	// Prefer target URL from vault (registered base_url); fall back to X-Mintkey-Target header
 	// for backward compatibility with credentials registered before this change.
 	target := credResp.TargetURL
@@ -411,6 +448,160 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TargetType: "service",
 			Payload: map[string]any{
 				"jti":                 jtiClaim,
+				"upstream_status":     statusCode,
+				"upstream_latency_ms": latencyMS,
+				"outcome":             outcome,
+			},
+		})
+	}
+}
+
+// newOAuth2Deps builds the egress.OAuth2HandlerDeps used by every
+// handleOAuth2PasswordGrant call.  It is a separate method so that tests can
+// assert that the production construction site wires every required field
+// (including the singleflight group) without needing to hand-build a
+// divergent copy of the struct.
+func (h *proxyHandler) newOAuth2Deps() egress.OAuth2HandlerDeps {
+	return egress.OAuth2HandlerDeps{
+		Cache:     h.tokenCache,
+		Exchanger: h.tokenExchanger,
+		// SF must remain h.sfGroup — dropping this line re-introduces the
+		// thundering-herd regression (FIX-5).  The test
+		// TestProductionPath_NewOAuth2Deps_SFIsWired catches that.
+		SF: h.sfGroup,
+	}
+}
+
+// handleOAuth2PasswordGrant handles the OAuth2 password grant egress flow.
+// Orchestrates: parse credential → cache check → exchange → graceful degradation → inject → audit.
+//
+// Requirements: 20.1, 20.4, 21.3, 21.4, 21.7.
+func (h *proxyHandler) handleOAuth2PasswordGrant(
+	w http.ResponseWriter, r *http.Request,
+	credResp *vault.GetCredentialResponse,
+	tenantID, serviceID, agentID string,
+	pluginStart time.Time,
+) {
+	// Run the OAuth2 orchestration (cache → exchange → graceful degradation).
+	// newOAuth2Deps builds deps from the shared handler fields (including
+	// h.sfGroup for thundering-herd protection).
+	deps := h.newOAuth2Deps()
+
+	oauthResult, err := egress.HandleOAuth2PasswordGrant(
+		r.Context(), deps, tenantID, serviceID, credResp.Plaintext,
+	)
+
+	// Emit token.exchanged audit event if an exchange was attempted.
+	// BUG-10/FIX-6: route through audit.EmitTokenExchanged (the previously-dead
+	// emitter path) so that agent_id is included and redaction guardrails apply.
+	// Fire-and-forget: audit must never block the proxied request.
+	if oauthResult != nil && oauthResult.Exchanged && h.tokenExchangeEmitter != nil {
+		emitter := h.tokenExchangeEmitter
+		ev := audit.TokenExchangedEvent{
+			TenantID:     tenantID,
+			ServiceID:    serviceID,
+			AgentID:      agentID,
+			TokenURLHost: oauthResult.TokenURLHost, // already host-only from egress layer
+			Success:      oauthResult.ExchangeSuccess,
+			LatencyMS:    oauthResult.ExchangeLatencyMS,
+		}
+		go func() {
+			if err := emitter.EmitTokenExchanged(context.Background(), ev); err != nil {
+				log.Printf("proxy-plugin: token.exchanged audit emit error: %v", err)
+			}
+		}()
+	}
+
+	if err != nil {
+		// Exchange failed and no cached token available — return 502.
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		errCode := egress.ClassifyError(err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprintf(w, `{"error":"%s"}`, errCode)
+		return
+	}
+
+	// Determine target URL.
+	target := credResp.TargetURL
+	if target == "" {
+		target = r.Header.Get("X-Mintkey-Target")
+	}
+	if target == "" {
+		target = h.cfg.DefaultTarget
+	}
+	if target == "" {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
+		return
+	}
+
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		return
+	}
+
+	// Build the credential with the exchanged token for injection.
+	cred := credential.Credential{
+		AuthScheme: credential.AuthSchemeOAuth2PasswordGrant,
+		Value:      []byte(oauthResult.Token),
+	}
+
+	// Build the reverse proxy.
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = req.URL.Host
+		req.Header.Del("X-Mintkey-Target")
+		// Strip the leading /<svc_id> segment from the path.
+		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
+		if stripped != req.URL.Path {
+			if stripped == "" || stripped[0] != '/' {
+				stripped = "/" + stripped
+			}
+			req.URL.Path = stripped
+		}
+		// Inject the exchanged token as Authorization: Bearer.
+		if injectErr := credential.Inject(req, cred); injectErr != nil {
+			safeErr := safeInjectErr(injectErr)
+			log.Printf("proxy-plugin: oauth2 inject error: %s", safeErr)
+		}
+	}
+
+	// Plugin logic complete: record added latency.
+	pluginElapsed := time.Since(pluginStart).Seconds()
+	h.metrics.ObserveAddedLatency(serviceID, pluginElapsed)
+	h.metrics.IncProxyHit(serviceID)
+
+	// Wrap ResponseWriter to capture status for audit.
+	startTime := time.Now()
+	rw := &statusCapture{ResponseWriter: w}
+	proxy.ServeHTTP(rw, r)
+
+	// Async audit: proxy.hit / proxy.error.
+	if h.audit != nil {
+		latencyMS := time.Since(startTime).Milliseconds()
+		statusCode := rw.status
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		eventType := "proxy.hit"
+		outcome := "allowed"
+		if statusCode >= 400 {
+			eventType = "proxy.error"
+			outcome = "error"
+		}
+		h.audit.Enqueue(auditq.Event{
+			EventType:  eventType,
+			TenantID:   tenantID,
+			ActorID:    agentID,
+			ActorType:  "agent",
+			TargetID:   serviceID,
+			TargetType: "service",
+			Payload: map[string]any{
 				"upstream_status":     statusCode,
 				"upstream_latency_ms": latencyMS,
 				"outcome":             outcome,

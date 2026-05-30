@@ -281,6 +281,28 @@ def test_admin_api_audit_emit_endpoint_exists() -> None:
     )
 
 
+def test_admin_api_audit_emit_allowlist_includes_token_exchanged() -> None:
+    """
+    admin-api/src/admin_api/api/internal.py _ALLOWED_EVENT_TYPES must include
+    "token.exchanged" so that the proxy-plugin's EmitTokenExchanged call is
+    accepted with 2xx instead of 422.
+
+    Requirement 22 (service-templates spec) mandates token.exchanged as a
+    recordable audit event.  Without it in the allowlist, every
+    EmitTokenExchanged call from the proxy-plugin is silently dropped with
+    HTTP 422 (BUG/#315).
+
+    Source: .kiro/specs/service-templates/requirements.md Req 22;
+            FIX-6 (commit 1077925); BUG/#315.
+    """
+    src = ADMIN_API_INTERNAL.read_text(encoding="utf-8")
+
+    assert '"token.exchanged"' in src, (
+        "admin-api audit/emit allowlist missing token.exchanged — "
+        "proxy-plugin EmitTokenExchanged will receive 422 (BUG/#315)"
+    )
+
+
 def test_audit_emit_authenticates_service_token() -> None:
     """
     admin-api/src/admin_api/api/internal.py must check X-Mintkey-Service-Token
