@@ -47,3 +47,6 @@ databaseChangeLog:
   - include:
       file: 016-sessions-auth-method.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 017-services-template-id.yaml
+      relativeToChangelogFile: true

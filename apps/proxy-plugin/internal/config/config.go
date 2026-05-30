@@ -37,6 +37,11 @@ type Config struct {
 	BrokerBaseURL     string         // base URL for broker's /v1/api-keys/resolve (ADR-0018)
 	ProxyServiceToken string         // X-Mintkey-Service-Token for broker auth (ADR-0018)
 	AudEnforcement    AudEnforcement // strict | permissive (ADR-0004 addendum)
+	// Vault Adapter gRPC authentication (Requirement 22.5 / BUG-1 fix).
+	// The proxy plugin must present a registered service identity + token so the
+	// vault-adapter's scopeInterceptor grants the vault.read scope.
+	VaultIdentityID    string // MINTKEY_VAULT_PROXY_IDENTITY_ID — service identity name registered in vault-adapter
+	VaultIdentityToken string // MINTKEY_VAULT_PROXY_TOKEN — shared secret matching the vault-adapter registration
 	// Audit async emission (#22)
 	AdminAPIURL  string // base URL of admin-api for audit/emit (e.g. http://admin-api:8000)
 	AuditWALPath string // path to the WAL file (default /var/lib/mintkey/proxy-audit.wal)
@@ -60,9 +65,11 @@ func Load() *Config {
 		PluginSocket:      getEnv("PLUGIN_SOCKET", "/tmp/proxy-plugin.sock"),
 		PluginPort:        getEnvInt("PLUGIN_PORT", 8086),
 		DefaultTarget:     getEnv("DEFAULT_TARGET", ""),
-		BrokerBaseURL:     brokerBaseURL,
-		ProxyServiceToken: getEnv("MINTKEY_PROXY_SERVICE_TOKEN", ""),
-		AudEnforcement:    loadAudEnforcement(env),
+		BrokerBaseURL:      brokerBaseURL,
+		ProxyServiceToken:  getEnv("MINTKEY_PROXY_SERVICE_TOKEN", ""),
+		AudEnforcement:     loadAudEnforcement(env),
+		VaultIdentityID:    getEnv("MINTKEY_VAULT_PROXY_IDENTITY_ID", "svcid_proxy"),
+		VaultIdentityToken: getEnv("MINTKEY_VAULT_PROXY_TOKEN", ""),
 		// Audit async emission (#22)
 		AdminAPIURL:  getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
 		AuditWALPath: getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/proxy-audit.wal"),

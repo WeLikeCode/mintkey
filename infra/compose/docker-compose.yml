@@ -164,6 +164,18 @@ services:
       VAULT_GRPC_PORT: "8084"
       VAULT_HTTP_PORT: "8087"
       MINTKEY_VAULT_FILE_PATH: /var/lib/mintkey/vault.sqlite
+      # Proxy-plugin service identity: vault-adapter registers this on boot so
+      # the scopeInterceptor grants vault.read + vault.put to the proxy-plugin.
+      # Both services MUST carry the SAME value.  Override in production via a
+      # secret manager; never commit a real secret here.
+      MINTKEY_VAULT_PROXY_IDENTITY_ID: "svcid_proxy"
+      MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
+      # Admin-api service identity: vault-adapter registers this on boot so
+      # the scopeInterceptor grants vault.read + vault.put to the admin-api.
+      # Both services MUST carry the SAME MINTKEY_VAULT_ADMIN_TOKEN value.
+      # Override in production via a secret manager; never commit a real secret here.
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
@@ -198,7 +210,17 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       VAULT_GRPC_ADDR: vault-adapter:8084
+      # Vault-adapter gRPC auth (BUG-20 fix): admin-api must present this
+      # identity+token so the scopeInterceptor grants vault.read + vault.put.
+      # Both services MUST carry the SAME MINTKEY_VAULT_ADMIN_TOKEN value.
+      # Override in production via a secret manager; never commit a real secret here.
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
       MINTKEY_ENV: dev
+      # DEV ONLY: opt out of the base_url/token_url private-IP SSRF block so the
+      # local stack can register services that target internal compose hostnames
+      # (e.g. mock-backend, vps5). Production MUST NOT set this — leave SSRF on.
+      MINTKEY_SSRF_ALLOW_PRIVATE: "1"
       ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
       # Service tokens: allowlist for /v1/internal/audit/emit (#22).
       # Real deployments must override these with secrets from a vault / CI secret store.
@@ -432,6 +454,12 @@ services:
       MINTKEY_AUD_ENFORCEMENT: permissive
       # Audit async emission (#22): admin-api URL for WAL drain.
       MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+      # Vault-adapter gRPC auth (Requirement 22.5 / BUG-1 fix): the proxy-plugin
+      # must present this identity+token so the scopeInterceptor grants vault.read.
+      # Both services MUST carry the SAME MINTKEY_VAULT_PROXY_TOKEN value.
+      # Override in production via a secret manager; never commit a real secret here.
+      MINTKEY_VAULT_PROXY_IDENTITY_ID: "svcid_proxy"
+      MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
     volumes:
       - proxy_wal:/var/lib/mintkey
     ports:
