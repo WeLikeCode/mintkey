@@ -10,8 +10,9 @@ POST /v1/internal/proxy-hit  — called by Egress Proxy to record a proxy.hit
     (auth_method, api_key_id, key_fingerprint, used_at) — Req 8.7, 10.5.
 
 POST /v1/internal/audit/emit  — generic audit-emit endpoint consumed by broker
-    (token.issued) and proxy-plugin (proxy.hit, proxy.error) via their async
-    WAL queue.  Accepts the auditq.Event wire shape and calls audit_emit().
+    (token.issued) and proxy-plugin (proxy.hit, proxy.error, token.exchanged)
+    via their async WAL queue.  Accepts the auditq.Event wire shape and calls
+    audit_emit().
     Authenticated by X-Mintkey-Service-Token (any registered service token).
     Rate-limited to MINTKEY_AUDIT_EMIT_RATE_LIMIT_RPS per service-token bucket
     (default 100 req/s) — #26.
@@ -292,6 +293,7 @@ async def proxy_hit(
 _ALLOWED_EVENT_TYPES = frozenset(
     {
         "token.issued",
+        "token.exchanged",
         "proxy.hit",
         "proxy.error",
         "proxy.aud_mismatch_rejected",
