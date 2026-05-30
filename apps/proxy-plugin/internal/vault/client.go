@@ -62,23 +62,37 @@ type GetCredentialResponse struct {
 // It has NO cache field — per ADR-0014.4 credential caching lives in the
 // Vault Adapter only; the proxy plugin fetches plaintext per-request.
 type Client struct {
-	address      string
-	serviceToken string
+	address           string
+	serviceToken      string
+	serviceIdentityID string
 	// No cache field — ADR-0014.4: cache in Vault Adapter, not in proxy plugin.
 }
 
 // NewClient creates a Vault Adapter client targeting the given address.
 // serviceToken is sent as "x-mintkey-service-token" metadata on every call.
-func NewClient(address, serviceToken string) *Client {
+// serviceIdentityID is sent as "x-mintkey-service-identity" metadata on every
+// call so the vault-adapter's scopeInterceptor can validate the caller against
+// its registered identities (Requirement 22.5 / BUG-1 fix).
+//
+// serviceIdentityID is required; an empty string will cause every call to fail
+// with PERMISSION_DENIED from the scopeInterceptor (the exact failure mode of BUG-1).
+func NewClient(address, serviceToken, serviceIdentityID string) *Client {
 	return &Client{
-		address:      address,
-		serviceToken: serviceToken,
+		address:           address,
+		serviceToken:      serviceToken,
+		serviceIdentityID: serviceIdentityID,
 	}
 }
 
 // ServiceToken returns the service identity token used in outgoing metadata.
 func (c *Client) ServiceToken() string {
 	return c.serviceToken
+}
+
+// ServiceIdentityID returns the service identity ID sent as
+// "x-mintkey-service-identity" metadata on every vault call.
+func (c *Client) ServiceIdentityID() string {
+	return c.serviceIdentityID
 }
 
 // GetCredential fetches a plaintext credential from the Vault Adapter.
@@ -90,8 +104,14 @@ func (c *Client) ServiceToken() string {
 //
 // Callers MUST zero resp.Plaintext after use.
 func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*GetCredentialResponse, error) {
-	// Attach service identity token to outgoing metadata (required on every call).
-	md := metadata.Pairs("x-mintkey-service-token", c.serviceToken)
+	// Attach service identity headers to outgoing metadata (required on every
+	// call so the vault-adapter's scopeInterceptor can grant vault.read scope).
+	// Both x-mintkey-service-token and x-mintkey-service-identity must be present
+	// and match a registered identity — see Requirement 22.5 / BUG-1 fix.
+	md := metadata.Pairs(
+		"x-mintkey-service-token", c.serviceToken,
+		"x-mintkey-service-identity", c.serviceIdentityID,
+	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
 	// Apply a per-call dial timeout so that an unreachable adapter returns

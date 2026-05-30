@@ -63,12 +63,14 @@ def create_test_app():
     Create an app with:
       - services router included
       - get_db_session overridden to a mock (no real DB)
+      - require_tenant_session overridden to a no-op (session→tenant authz satisfied)
       - CSRF middleware present but services paths registered as exempt
     """
     from fastapi import FastAPI
     from admin_api.api.health import router as health_router
     from admin_api.api.services import router as services_router
     from admin_api.db.deps import get_db_session
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
     app = FastAPI()
@@ -80,6 +82,14 @@ def create_test_app():
         yield _make_mock_session()
 
     app.dependency_overrides[get_db_session] = mock_db_session
+
+    # Override session→tenant authz — unit tests run without a real session store.
+    # The dependency is bypassed here so requests reach the real handler; SSRF and
+    # validation logic inside the handler are NOT affected.
+    async def _noop_require_tenant_session():
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     # Register service paths as CSRF-exempt for unit tests
     csrf_exempt(BASE_URL_PATH)
@@ -325,6 +335,8 @@ async def test_test_service_unexpected_exception_returns_generic_error(
         session.execute = _execute
         return session
 
+    from admin_api.auth.sessions import require_tenant_session
+
     local_app = FastAPI()
     local_app.include_router(services_router)
 
@@ -332,6 +344,12 @@ async def test_test_service_unexpected_exception_returns_generic_error(
         yield _make_session_with_service()
 
     local_app.dependency_overrides[get_db_session] = mock_db
+
+    # Override session→tenant authz for this local app too.
+    async def _noop_require_tenant_session():
+        return None
+
+    local_app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     # Register the test-service path as CSRF-exempt
     test_path = f"{BASE_URL_PATH}/svc_00000000000000000000000002/test"

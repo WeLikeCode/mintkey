@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException, Request
+
 
 async def create_session(
     operator_id: UUID, tenant_id: UUID, auth_method: str = "oidc"
@@ -87,3 +89,68 @@ async def validate_session(token: str) -> Any | None:
             self.tenant_id = tenant_id
 
     return _Ctx(result.operator_id, result.tenant_id)
+
+
+async def _is_operator_platform_admin(operator_id: Any) -> bool:
+    """Look up the is_platform_admin flag for the given operator_id."""
+    from admin_api.db.session import AsyncSessionLocal
+    from sqlalchemy import text
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            await db.execute(
+                text(
+                    "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
+                    " set_config('app.platform_admin_view', 'on', true)"
+                )
+            )
+            row = await db.execute(
+                text(
+                    "SELECT is_platform_admin FROM operators"
+                    " WHERE id = CAST(:oid AS uuid)"
+                ),
+                {"oid": str(operator_id)},
+            )
+            result = row.one_or_none()
+    return bool(result.is_platform_admin) if result is not None else False
+
+
+async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
+    """
+    FastAPI dependency: enforce that the caller's session is scoped to `tenant_id`.
+
+    Reads the `mintkey_session` cookie → validate_session() → checks that
+    session.tenant_id == tenant_id (path param). Platform admins bypass.
+
+    Raises:
+        HTTPException(401)  — no/invalid session cookie.
+        HTTPException(403)  — session belongs to a different tenant.
+
+    Source: SCOPE-A cross-tenant authz fix; ADR-SCOPE-A.
+    """
+    session_token = request.cookies.get("mintkey_session")
+    if not session_token:
+        raise HTTPException(
+            status_code=401,
+            detail={"mintkey:code": "unauthenticated", "title": "No session"},
+        )
+
+    ctx = await validate_session(session_token)
+    if ctx is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"mintkey:code": "unauthenticated", "title": "Session not found or expired"},
+        )
+
+    # Platform admins may operate across any tenant.
+    if await _is_operator_platform_admin(ctx.operator_id):
+        return
+
+    if UUID(str(ctx.tenant_id)) != tenant_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "mintkey:code": "permission_denied",
+                "title": "Session tenant does not match the requested tenant",
+            },
+        )
