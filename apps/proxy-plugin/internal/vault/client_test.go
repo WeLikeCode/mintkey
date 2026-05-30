@@ -15,7 +15,7 @@ import (
 // plugin must NOT cache plaintext credentials. The Client struct must have no
 // "cache" or "Cache" field.
 func TestVaultClient_HasNoCache(t *testing.T) {
-	c := vault.NewClient("localhost:8084", "svcid_proxy_test_token")
+	c := vault.NewClient("localhost:8084", "svcid_proxy_test_token", "")
 	ct := reflect.TypeOf(*c)
 	for i := 0; i < ct.NumField(); i++ {
 		field := ct.Field(i)
@@ -29,7 +29,7 @@ func TestVaultClient_HasNoCache(t *testing.T) {
 // returns an error rather than panicking.
 func TestVaultClient_UnreachableReturnsError(t *testing.T) {
 	// port 1 is always unreachable (root-only, never listened on in tests)
-	client := vault.NewClient("localhost:1", "test_token")
+	client := vault.NewClient("localhost:1", "test_token", "")
 	_, err := client.GetCredential(context.Background(), vault.GetCredentialRequest{
 		TenantID:  "tenant_01HXTEST00000000000000001",
 		ServiceID: "svc_01HXTEST00000000000000001",
@@ -42,7 +42,7 @@ func TestVaultClient_UnreachableReturnsError(t *testing.T) {
 // TestVaultClient_ServiceTokenInMetadata verifies that the client stores the
 // service token for injection into outgoing gRPC metadata.
 func TestVaultClient_ServiceTokenInMetadata(t *testing.T) {
-	client := vault.NewClient("localhost:8084", "my_service_token")
+	client := vault.NewClient("localhost:8084", "my_service_token", "")
 	if client.ServiceToken() != "my_service_token" {
 		t.Fatalf("expected service token %q, got %q", "my_service_token", client.ServiceToken())
 	}

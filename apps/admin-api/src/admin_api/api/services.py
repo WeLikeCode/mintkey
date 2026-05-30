@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
+import socket
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional, cast
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from uuid import UUID
 
 import httpx
@@ -35,10 +37,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.services.credential_service import resolve_hostname_is_private
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
@@ -48,18 +53,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/services")
 
 # ---------------------------------------------------------------------------
-# Forbidden destination networks — S-SEC-1 / ADR-0014.4
+# Forbidden destination check — S-SEC-1 / ADR-0014.4
+# The _FORBIDDEN_NETWORKS list and the DNS resolver live in credential_service
+# (single source of truth); we import resolve_hostname_is_private from there.
 # ---------------------------------------------------------------------------
-
-_FORBIDDEN_NETWORKS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("::1/128"),
-]
 
 # Crockford base32 alphabet (uppercase, no I/L/O/U)
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -100,17 +97,28 @@ def _is_forbidden_destination(base_url: str) -> bool:
     Forbidden: RFC1918, loopback (127/8, ::1), link-local (169.254/16, fe80::/10),
     and unique-local (fc00::/7).
 
-    DNS names are allowed (not resolved here); only IP literals are checked.
+    Both IP literals AND DNS-resolved hostnames are checked so that a hostname
+    that resolves to a private/loopback address is also rejected (BUG-13).
+
+    DNS resolution is delegated to ``credential_service.resolve_hostname_is_private``
+    — the single shared SSRF helper (no third copy of the logic).
+
+    Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the private-IP
+    block (e.g. dev workflows hitting a private mock backend).
     """
     try:
         parsed = urlparse(base_url)
         host = parsed.hostname
         if not host:
             return False
-        ip = ipaddress.ip_address(host)
-        return any(ip in net for net in _FORBIDDEN_NETWORKS)
-    except ValueError:
-        return False  # not an IP literal — DNS resolution happens at request time
+
+        # Opt-out for dev environments
+        if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") == "1":
+            return False
+
+        return resolve_hostname_is_private(host)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +143,25 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = None
     openapi_url: Optional[str] = None
     status: Optional[str] = None
+
+
+class ServiceOverrides(BaseModel):
+    """Optional overrides when instantiating a service from a template."""
+
+    name: Optional[str] = None
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class FromTemplateRequest(BaseModel):
+    """Body for POST /v1/tenants/{tid}/services/from-template.
+
+    Source: design §4 From-Template Instantiation; Requirements 4.1, 4.2.
+    """
+
+    template_id: str
+    overrides: Optional[ServiceOverrides] = None
 
 
 class TestRunRequest(BaseModel):
@@ -247,6 +274,44 @@ def _check_ssrf_hostname(final_url: str, base_url: str) -> str:
     return final_url
 
 
+def _validate_test_url(url: str) -> tuple[bool, str | None]:
+    """Validate URL is safe for outbound test calls.
+
+    Returns (is_safe, reason_if_unsafe).
+    Rejects:
+      - non-http(s) schemes
+      - URLs without a host
+      - hostnames that resolve to private, loopback, link-local, multicast,
+        reserved, or unspecified IP ranges (v4 OR v6)
+
+    Operators may set MINTKEY_SSRF_ALLOW_PRIVATE=1 to opt OUT of the
+    private-IP block (e.g. dev workflows hitting a private mock backend).
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https"):
+        return (False, "scheme_not_allowed")
+    if not parts.hostname:
+        return (False, "missing_host")
+    try:
+        resolved = socket.getaddrinfo(parts.hostname, None)
+    except socket.gaierror:
+        return (False, "dns_resolution_failed")
+    if os.environ.get("MINTKEY_SSRF_ALLOW_PRIVATE") != "1":
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            addr = sockaddr[0]
+            ip = ipaddress.ip_address(addr)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return (False, "private_or_special_ip_blocked")
+    return (True, None)
+
+
 def _wire_id_to_db_uuid(wire_id: str) -> str:
     """
     Convert a wire svc_ ID back to the UUID string stored in the DB.
@@ -265,8 +330,9 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
 
     Emits Crockford ULID wire-form IDs (canonical per ADR-0017.11 / #13).
     Includes current_key_version — MAX key_version of active credentials (UX-FB-B).
+    Includes template_id if the service was created from a template (Req 4.4).
     """
-    return {
+    result: dict[str, Any] = {
         "id": db_uuid_to_wire(row.id, "svc"),
         "tenant_id": str(row.tenant_id),
         "name": row.name,
@@ -281,6 +347,10 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+    # Include template_id if present (nullable column)
+    if hasattr(row, "template_id") and row.template_id is not None:
+        result["template_id"] = row.template_id
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +363,7 @@ async def create_service(
     tenant_id: UUID,
     body: ServiceCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Register a new backend service under a tenant.
@@ -397,6 +468,191 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+@router.post("/from-template", status_code=201)
+async def create_service_from_template(
+    tenant_id: UUID,
+    body: FromTemplateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
+) -> JSONResponse:
+    """
+    Create a service from a template, merging template values with optional overrides.
+
+    Source: design §4 From-Template Instantiation; Requirements 4.1-4.5, 23.5.
+    """
+    from admin_api.templates.registry import registry  # noqa: PLC0415
+
+    # Look up template — 404 if not found
+    template = registry.get(body.template_id)
+    if template is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "mintkey:code": "template_not_found",
+                "title": f"Template '{body.template_id}' not found",
+            },
+        )
+
+    # Merge template values with overrides — Req 4.2
+    name = body.overrides.name if body.overrides and body.overrides.name else template.name
+    display_name = (
+        body.overrides.display_name
+        if body.overrides and body.overrides.display_name
+        else template.display_name
+    )
+    description = (
+        body.overrides.description
+        if body.overrides and body.overrides.description
+        else template.description
+    )
+    base_url = (
+        body.overrides.base_url
+        if body.overrides and body.overrides.base_url
+        else template.base_url
+    )
+
+    # SSRF check on merged base_url — S-SEC-1
+    if _is_forbidden_destination(base_url):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "forbidden_destination",
+                "title": "The base_url resolves to a forbidden destination",
+            },
+        )
+
+    # Set tenant context — bound parameters, ADR-0008
+    await set_tenant_context(session, tenant_id)
+
+    # Derive slug from name — used in uq_services_tenant_slug unique constraint
+    slug = name.lower().replace(" ", "-")
+
+    # Generate ULID ID with svc_ prefix — ADR-0017.11
+    svc_id = _new_svc_id()
+    _crockford_tail = svc_id[len("svc_"):]
+    _val = 0
+    for _ch in _crockford_tail.upper():
+        _val = (_val << 5) | _CROCKFORD.index(_ch)
+    _val &= (1 << 128) - 1
+    internal_id = uuid.UUID(int=_val)
+    now = datetime.now(timezone.utc)
+
+    # INSERT service with template_id metadata — Req 4.1, 4.4
+    # Duplicate-name 409 comes from catching the IntegrityError on INSERT (atomic,
+    # no TOCTOU race window) — BUG-18 fix.
+    try:
+        await session.execute(
+            text(
+                "INSERT INTO services"
+                " (id, tenant_id, name, slug, display_name, description,"
+                "  base_url, auth_scheme, openapi_url, status, template_id,"
+                "  created_at, updated_at)"
+                " VALUES"
+                " (:id, :tenant_id, :name, :slug, :display_name, :description,"
+                "  :base_url, :auth_scheme, :openapi_url, :status, :template_id,"
+                "  :created_at, :updated_at)"
+            ),
+            {
+                "id": str(internal_id),
+                "tenant_id": str(tenant_id),
+                "name": name,
+                "slug": slug,
+                "display_name": display_name,
+                "description": description,
+                "base_url": base_url,
+                "auth_scheme": template.auth_type,
+                "openapi_url": template.openapi_spec_url,
+                "status": "active",
+                "template_id": template.template_id,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+    except IntegrityError:
+        # uq_services_tenant_slug unique constraint violation — Req 4.5
+        return JSONResponse(
+            status_code=409,
+            content={
+                "mintkey:code": "service_name_taken",
+                "title": f"A service with name '{name}' already exists in this tenant",
+            },
+        )
+
+    # Emit audit event — ADR-0014.7, Req 4.3
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="service.registered",
+        actor_id=None,
+        actor_type="operator",
+        target_id=internal_id,
+        target_type="service",
+        payload={
+            "name": name,
+            "auth_scheme": template.auth_type,
+            "svc_id": svc_id,
+            "template_id": template.template_id,
+        },
+    )
+
+    # NOTIFY change channel — ADR-0014.1
+    await notify_change(
+        session,
+        "mintkey:service",
+        {
+            "event": "service.registered",
+            "tenant_id": str(tenant_id),
+            "service_id": svc_id,
+            "template_id": template.template_id,
+        },
+    )
+
+    # Build credential_hint payload — Req 23.5.
+    # The hint exposes the expected credential structure (field names, token_url,
+    # token_response_path) so the operator knows what to supply.  No secret value
+    # is stored or returned; placeholder strings from the YAML are included as-is
+    # so the operator can see the field names only.
+    credential_hint_payload: dict[str, Any] | None = None
+    if template.credential_hint is not None:
+        hint = template.credential_hint
+        # For oauth2_password_grant templates the hint carries token_url, etc.
+        if hint.token_url is not None:
+            credential_hint_payload = {
+                "token_url": hint.token_url,
+                "credential_fields": hint.credential_fields,
+                "token_response_path": hint.token_response_path,
+            }
+        else:
+            # Simple auth types (bearer_token, api_key_header, etc.) — include field/help/format
+            credential_hint_payload = {
+                k: v for k, v in {
+                    "field": hint.field,
+                    "help": hint.help,
+                    "format": hint.format,
+                }.items() if v is not None
+            } or None
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": svc_id,
+            "tenant_id": str(tenant_id),
+            "name": name,
+            "slug": slug,
+            "display_name": display_name,
+            "description": description,
+            "base_url": base_url,
+            "auth_scheme": template.auth_type,
+            "openapi_url": template.openapi_spec_url,
+            "status": "active",
+            "template_id": template.template_id,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "credential_hint": credential_hint_payload,
+        },
+    )
+
+
 @router.get("")
 async def list_services(
     tenant_id: UUID,
@@ -420,6 +676,7 @@ async def list_services(
             text(
                 "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
                 " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+                " s.template_id,"
                 " COALESCE(("
                 "   SELECT MAX(c.key_version)"
                 "   FROM credentials c"
@@ -439,6 +696,7 @@ async def list_services(
             text(
                 "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
                 " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+                " s.template_id,"
                 " COALESCE(("
                 "   SELECT MAX(c.key_version)"
                 "   FROM credentials c"
@@ -471,6 +729,7 @@ async def get_service(
         text(
             "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
             " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " s.template_id,"
             " COALESCE(("
             "   SELECT MAX(c.key_version)"
             "   FROM credentials c"
@@ -494,6 +753,7 @@ async def test_service_transient(
     tenant_id: UUID,
     body: TransientTestRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Validate a candidate service config + credential WITHOUT persisting to DB or vault.
@@ -557,6 +817,17 @@ async def test_service_transient(
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(test.headers or {})}
     timeout_s = test.timeout_ms / 1000.0
+
+    is_safe, reason = _validate_test_url(final_url)
+    if not is_safe:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "mintkey:ssrf_rejected",
+                "reason": reason,
+                "host_redacted": (urlsplit(final_url).hostname or "")[:4] + "***",
+            },
+        )
 
     # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
@@ -631,6 +902,7 @@ async def test_service(
     service_id: str,
     req: Optional[TestRunRequest] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Test the registered service using its stored base_url + the request body's path/method.
@@ -718,6 +990,17 @@ async def test_service(
     # Merge auth headers with optional extra headers from the request body
     merged_headers = {**headers, **(req.headers or {})}
     timeout_s = (req.timeout_ms or 5000) / 1000.0
+
+    is_safe, reason = _validate_test_url(final_url)
+    if not is_safe:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "mintkey:ssrf_rejected",
+                "reason": reason,
+                "host_redacted": (urlsplit(final_url).hostname or "")[:4] + "***",
+            },
+        )
 
     # Make outbound HTTP call
     import time as _time  # noqa: PLC0415
@@ -854,6 +1137,7 @@ async def update_service(
     service_id: str,
     body: ServiceUpdate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Update mutable fields of a service.
@@ -924,6 +1208,7 @@ async def update_service(
         text(
             "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
             " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " s.template_id,"
             " COALESCE(("
             "   SELECT MAX(c.key_version)"
             "   FROM credentials c"
@@ -947,6 +1232,7 @@ async def delete_service(
     tenant_id: UUID,
     service_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
     Delete (hard-delete) a service.
