@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
@@ -47,9 +47,9 @@ jobs:
           #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
-          #   - golang.org/x/sync: BSD-3-Clause + the standard Go patent grant
+          #   - golang.org/x/{sync,net}: BSD-3-Clause + the standard Go patent grant
           #     (reported as a compound expr with a non-SPDX scancode LicenseRef);
-          #     permissive Go concurrency lib (singleflight) used in egress code.
+          #     permissive Go stdlib-adjacent libs (singleflight, HTTP/2, etc.).
           #   - stretchr/testify, gopkg.in/yaml.v3, types-PyYAML: permissive
           #     test/build deps (MIT / MIT-Apache / Apache-2.0) whose license the
           #     scanner could not auto-resolve (reported "unknown").
@@ -60,6 +60,7 @@ jobs:
             pkg:npm/@csstools/css-syntax-patches-for-csstree,
             pkg:npm/lru-cache,
             pkg:golang/golang.org/x/sync,
+            pkg:golang/golang.org/x/net,
             pkg:golang/github.com/stretchr/testify,
             pkg:golang/gopkg.in/yaml.v3,
             pkg:pypi/types-pyyaml
