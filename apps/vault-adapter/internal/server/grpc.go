@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/googleserviceaccount"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -22,6 +24,16 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// googleServiceAccountEnvelope is the JSON structure stored (encrypted) in the
+// vault for AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT credentials.
+// JSONKey is the raw Google service account JSON key file bytes.
+// Scope is the OAuth2 scope string to request.
+// Security note: this struct is never logged; key material is zeroized after use.
+type googleServiceAccountEnvelope struct {
+	JSONKey json.RawMessage `json:"json_key"`
+	Scope   string          `json:"scope"`
+}
 
 // methodScopes maps gRPC method full names to the required scope.
 // Methods not listed here do not require scope enforcement.
@@ -120,6 +132,10 @@ type grpcVaultServer struct {
 }
 
 // GetCredential translates the proto request to VaultService args and returns the result.
+// For AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT credentials the stored plaintext is a
+// two-layer JSON envelope; the handler parses it, fetches (or serves from cache)
+// an OAuth2 access token, zeroizes the PEM key immediately after use, and returns
+// the access token bytes as Value. The access token is never logged or audited.
 func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCredentialRequest) (*vaultv1.GetCredentialResponse, error) {
 	result, err := g.svc.GetCredential(ctx, GetCredentialArgs{
 		TenantID:      req.GetTenantId(),
@@ -130,6 +146,84 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "GetCredential: %v", err)
 	}
+
+	// AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT: parse envelope → cache lookup / fetch
+	// access token → zeroize PEM key bytes → return token as Value.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT) {
+		// Validate outer envelope structure.
+		var env googleServiceAccountEnvelope
+		if err := json.Unmarshal(result.Plaintext, &env); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid google_service_account envelope")
+		}
+		if len(env.JSONKey) == 0 || env.Scope == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid google_service_account envelope")
+		}
+
+		// Parse the two-layer blob: outer envelope + inner Google JSON key file.
+		keyFile, scope, err := googleserviceaccount.ParseStoredBlob(result.Plaintext)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "google_service_account blob parse failed")
+		}
+
+		tenantID := req.GetTenantId()
+		serviceID := req.GetServiceId()
+
+		// Cache lookup: (tenantID, serviceID, privateKeyID).
+		if tok, ok := googleserviceaccount.GlobalCache.Get(tenantID, serviceID, keyFile.PrivateKeyID); ok {
+			// Cache hit — return without touching the token endpoint.
+			// Zeroize key material even on cache-hit path (ParseStoredBlob already
+			// populated keyFile.PrivateKey; clear it to bound in-memory lifetime).
+			pemBytes := []byte(keyFile.PrivateKey)
+			for i := range pemBytes {
+				pemBytes[i] = 0
+			}
+			keyFile.PrivateKey = ""
+
+			return &vaultv1.GetCredentialResponse{
+				AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+				Value:              []byte(tok),
+				ReturnedKeyVersion: result.ReturnedKeyVersion,
+				CurrentKeyVersion:  result.CurrentKeyVersion,
+				TargetUrl:          result.TargetURL,
+				HeaderName:         result.HeaderName,
+				QueryParam:         result.QueryParam,
+			}, nil
+		}
+
+		// Cache miss — fetch a fresh token from the Google token endpoint.
+		tokenResp, fetchErr := googleserviceaccount.FetchAccessToken(ctx, keyFile, scope)
+
+		// Zeroize the PEM private key bytes immediately after FetchAccessToken
+		// returns — on BOTH success and error paths — to bound the in-memory
+		// lifetime of key material to the minimum necessary window.
+		pemBytes := []byte(keyFile.PrivateKey)
+		for i := range pemBytes {
+			pemBytes[i] = 0
+		}
+		keyFile.PrivateKey = ""
+
+		if fetchErr != nil {
+			return nil, status.Errorf(codes.Internal, "google_service_account token fetch failed")
+		}
+
+		// Store in cache keyed by (tenantID, serviceID, privateKeyID).
+		// The access token is NEVER logged or audited — only the key fingerprint fields.
+		googleserviceaccount.GlobalCache.Set(
+			tenantID, serviceID, keyFile.PrivateKeyID,
+			tokenResp.AccessToken, tokenResp.ExpiresIn,
+		)
+
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              []byte(tokenResp.AccessToken),
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			HeaderName:         result.HeaderName,
+			QueryParam:         result.QueryParam,
+		}, nil
+	}
+
 	return &vaultv1.GetCredentialResponse{
 		AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
 		Value:              result.Plaintext,
