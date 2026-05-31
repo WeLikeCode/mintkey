@@ -98,6 +98,10 @@ Admin UI: `http://localhost:8081` — full port map in [`PORTS.md`](PORTS.md).
 
 Full walkthrough: [`docs/guides/github-quickstart.md`](docs/guides/github-quickstart.md).
 
+### Vault storage backend
+
+**Vault storage backend**: encrypted credentials stored in the `vault.credentials` table in the main mintkey Postgres DB by default. Selectable via `MINTKEY_VAULT_BACKEND={postgres|sqlite}`; SQLite fallback at `MINTKEY_VAULT_FILE_PATH` for offline/embedded deploys. See [ADR-0021](docs/architecture/01-architecture/adr/0021-vault-storage-backend-postgres.md) and [`docs/HOW-TO.md` §5](docs/HOW-TO.md#5-vault-migration-sqlite--postgres) for migration.
+
 ### Backup local state before a reset
 
 Local docker volumes hold curated state (agents/services in `postgres_data`, vault
@@ -156,7 +160,7 @@ apps/
   seed-job/                        One-shot bootstrap job
   audit-verify-job/                Scheduled audit chain verification
   broker/                          Credential Broker — EdDSA JWT issuer (Go)
-  vault-adapter/                   Vault Adapter — credential store (Go)
+  vault-adapter/                   Vault Adapter — credential store (Go); default backend: Postgres (`vault.credentials`)
   kong-syncer/                     Kong declarative YAML pusher (Go)
   proxy-plugin/                    Kong go-pdk egress plugin (Go)
   jaeger-auth/                     Jaeger OIDC auth proxy

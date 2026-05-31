@@ -74,6 +74,23 @@ Parallel dispatches: C1 + C6 first round. Then C2 (needs C1's schema names). The
   - Phase 5: Live APIs. Apple /v1/apps → HTTP 200, 3 apps. Google tokeninfo → HTTP 200, scope=androidpublisher, expires_in=3575.
   - **Vault-adapter is now serving all 138 credentials from Postgres. SQLite file retained on volume as fallback.**
 
+## Round R4 — C7 docs (pending commit hash)
+
+**Files touched:**
+
+| File | Change |
+|---|---|
+| `docs/architecture/01-architecture/adr/0021-vault-storage-backend-postgres.md` | **New** — ADR documenting Postgres as default vault backend; amends ADR-0003. |
+| `docs/architecture/01-architecture/adr/0003-credential-storage-strategy.md` | Status block amended: corrigendum pointing to ADR-0021. |
+| `docs/architecture/01-architecture/adr/README.md` | ADR-0021 entry appended to index. |
+| `docs/HOW-TO.md` | New §5 "Vault migration: SQLite → Postgres" inserted; old §5–§9 renumbered to §6–§11. |
+| `README.md` | New "Vault storage backend" subsection (3 lines) added before "Backup local state before a reset"; `vault-adapter` repo-map line updated. |
+| `AGENTS.md` | One-line `MINTKEY_VAULT_BACKEND` mention added to "Schema and storage" guardrail. |
+| `CLAUDE.md` | Same line (non-breaking-hyphen style) added to "Schema and storage" guardrail. |
+| `remediation/active/2026-05-31-vault-pg-migration/00-state.md` | This R4 section. |
+
+**Commit hash:** _to be filled after `git commit`_
+
 ## Open questions
 
 (none — all 4 owner decisions answered at intake)

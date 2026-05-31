@@ -125,7 +125,76 @@ make backup-list
 
 ---
 
-## 5. Operations
+## 5. Vault migration: SQLite → Postgres
+
+> **When to run:** only when upgrading from a pre-2026-05-31 deployment where `MINTKEY_VAULT_BACKEND=sqlite` (or the env var was unset and the stack was running the SQLite-default build). New deployments use Postgres by default and can skip this section entirely.
+
+### Pre-flight checklist
+
+1. **`make backup`** — mandatory. This is your rollback point.
+2. Confirm Postgres is healthy:
+   ```bash
+   docker exec mintkey-postgres-1 pg_isready -U mintkey_migrate -d mintkey
+   ```
+3. Confirm Liquibase has applied changelog `018-vault-schema`:
+   ```bash
+   docker exec mintkey-postgres-1 psql -U mintkey_migrate -d mintkey -c '\dt vault.*'
+   ```
+   Expected: one row — `vault | credentials | table | mintkey_migrate`.
+
+### Run the migration
+
+```bash
+make migrate-vault-sqlite-to-pg
+```
+
+Expected output:
+```
+Read from sqlite: 138, Inserted: 138, Skipped (conflict): 0, Errors: 0
+Sample verify (5): PASS
+Postgres row count: 138 (matches sqlite)
+```
+
+### Restart vault-adapter on the new backend
+
+```bash
+docker compose up -d --no-deps --force-recreate vault-adapter
+```
+
+> Do **not** use `-f infra/compose/...` here — the root compose path reads the root `.env` which carries the correct `MINTKEY_VAULT_BACKEND=postgres` value.
+
+### Verify the cutover
+
+```bash
+docker compose logs --tail=20 mintkey-vault-adapter-1 | grep -i "backend\|store"
+```
+
+Expected: `vault-adapter: store backend = postgres` (or `BACKEND=postgres` in env — visible via `docker inspect`).
+
+### Rollback
+
+If anything looks wrong before or after cutover:
+
+```bash
+MINTKEY_RESTORE_FORCE=1 make restore BACKUP_DIR=<your-pre-migration-backup>
+```
+
+This undoes everything — restores the Postgres DB, KEK volume, and bootstrap secrets from the backup created in step 1.
+
+### Failure modes and remedies
+
+| Symptom | Cause | Remedy |
+|---|---|---|
+| Migration reports `Errors > 0` | Rows with malformed `tenant_id` or `service_id` are skipped | Inspect the per-row error log printed to stdout; fix the SQLite rows if needed and re-run (idempotent) |
+| `Sample verify (5): FAIL` | Blob corruption detected — plaintext round-trip mismatch | **STOP immediately.** Do not switch backends. Restore from backup. |
+| Post-restart `GetCredential` returns wrong data | `MINTKEY_VAULT_BACKEND` not set to `postgres` in compose env; or RLS misconfiguration | Check `docker inspect mintkey-vault-adapter-1` env; confirm `mintkey_app` grants on `vault.credentials` (`\dp vault.credentials` in psql) |
+| vault-adapter exits with DSN error | `MINTKEY_VAULT_PG_DSN` not set | Ensure `.env` has `MINTKEY_VAULT_PG_DSN=postgres://mintkey_migrate:<pass>@postgres:5432/mintkey` |
+
+See [ADR-0021](architecture/01-architecture/adr/0021-vault-storage-backend-postgres.md) for the full decision rationale.
+
+---
+
+## 7. Operations
 
 The proxy endpoint for all brokered calls is **`http://localhost:8000`** (env `MINTKEY_PROXY_URL`,
 per [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) lines 358–360 and the Ports
@@ -146,7 +215,7 @@ If clients on other machines need to reach this Mintkey instance, set `MINTKEY_M
 
 ---
 
-## 6. Database schema changes
+## 8. Database schema changes
 
 Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The schema is owned by Liquibase per
 [ADR-0015](architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md); never edit
@@ -155,7 +224,7 @@ still go through Liquibase changelogs — add a new changeset, never edit an exi
 
 ---
 
-## 7. Stack health checks
+## 9. Stack health checks
 
 | Command | Expected outcome |
 |---|---|
@@ -203,7 +272,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 8. Where else to look
+## 10. Where else to look
 
 | Need | Document |
 |---|---|
@@ -213,7 +282,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 9. Operator cookbook — step-by-step recipes
+## 11. Operator cookbook — step-by-step recipes
 
 Each recipe below is self-contained. Shared setup (session cookie, CSRF token, tenant ID)
 is shown once in Recipe 0 and referenced in subsequent recipes. Use either the Admin UI

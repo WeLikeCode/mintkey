@@ -3,6 +3,8 @@
 ## Status
 Accepted — 2026-05-10. Promoted from [`proposal/P-002-credential-storage-strategy.md`](../../proposal/P-002-credential-storage-strategy.md), Option C, with a revised v1 backend choice.
 
+> **AMENDED by ADR-0021 (2026-05-31):** The SQLite v1 backend is demoted to an opt-in fallback. Postgres (`vault.credentials` table, `vault` schema in the `mintkey` DB) is the default backend as of 2026-05-31. The KEK/DEK scheme and the pluggable-adapter architecture are unchanged. See [ADR-0021](0021-vault-storage-backend-postgres.md).
+
 ## Context
 [P‑002](../../proposal/P-002-credential-storage-strategy.md) considered three options for credential storage:
 - (A) HashiCorp Vault as the only backend.
