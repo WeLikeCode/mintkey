@@ -210,7 +210,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
     try {
       let credPayload: Record<string, string>;
 
-      if (authScheme === "oauth2_password_grant") {
+      if (authScheme === "google_service_account") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "google_service_account",
+            service_account_json: credFields["service_account_json"] ?? "",
+            scope: credFields["scope"] ?? "https://www.googleapis.com/auth/androidpublisher",
+          }),
+        };
+      } else if (authScheme === "oauth2_password_grant") {
         // Assemble the value JSON per contract
         const credentialFields: Record<string, string> = {};
         for (const row of kvRows) {

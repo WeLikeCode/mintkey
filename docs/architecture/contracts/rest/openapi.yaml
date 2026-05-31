@@ -3245,6 +3245,7 @@ components:
         - basic_auth
         - oauth2_client_credentials
         - oidc_client_secret
+        - google_service_account
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -3253,6 +3254,7 @@ components:
         - `basic_auth`: `Authorization: Basic base64(user:pass)`.
         - `oauth2_client_credentials`: token-exchange flow.
         - `oidc_client_secret`: used for the operator IdP integration only.
+        - `google_service_account`: Google IAM service account JSON key; Mintkey exchanges it for a short-lived access token.
 
     Service:
       type: object
@@ -3485,6 +3487,7 @@ components:
         - $ref: "#/components/schemas/CredBasicAuth"
         - $ref: "#/components/schemas/CredOAuth2ClientCredentials"
         - $ref: "#/components/schemas/CredOidcClientSecret"
+        - $ref: "#/components/schemas/CredGoogleServiceAccount"
       discriminator:
         propertyName: auth_scheme
         mapping:
@@ -3494,6 +3497,7 @@ components:
           basic_auth: "#/components/schemas/CredBasicAuth"
           oauth2_client_credentials: "#/components/schemas/CredOAuth2ClientCredentials"
           oidc_client_secret: "#/components/schemas/CredOidcClientSecret"
+          google_service_account: "#/components/schemas/CredGoogleServiceAccount"
 
     CredApiKeyHeader:
       type: object
@@ -3586,6 +3590,31 @@ components:
           type: string
           format: uri
       required: [auth_scheme, client_id, client_secret, issuer]
+
+    CredGoogleServiceAccount:
+      type: object
+      description: |
+        Google IAM service account JSON key. Mintkey exchanges the key for a
+        short-lived OAuth2 access token on every brokered request and injects
+        it as `Authorization: Bearer <token>`. The JSON key is stored
+        envelope-encrypted by the Vault Adapter.
+      properties:
+        auth_scheme:
+          type: string
+          enum: [google_service_account]
+        service_account_json:
+          type: string
+          x-mintkey-sensitive: true
+          description: |
+            Full Google IAM service account key JSON (as exported from the
+            Google Cloud Console or `gcloud iam service-accounts keys create`).
+        scope:
+          type: string
+          default: "https://www.googleapis.com/auth/androidpublisher"
+          description: |
+            OAuth2 scope(s) to request when exchanging the key for an access
+            token. Defaults to the Android Publisher API scope.
+      required: [auth_scheme, service_account_json]
 
     CredentialPage:
       type: object
@@ -4284,7 +4313,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, google_service_account]
 
     TransientCredentialCandidate:
       type: object

@@ -47,6 +47,8 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "oidc_client_secret": 6,
     "mtls": 7,
     "oauth2_password_grant": 8,
+    # 9 is reserved for "apple_jwt" (PR #134, not yet merged).
+    "google_service_account": 10,
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")

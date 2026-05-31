@@ -101,6 +101,30 @@ func TestInject_OAuth2PasswordGrant(t *testing.T) {
 	assert(t, req.Header.Get("Authorization") == "Bearer exchanged_jwt_token_xyz")
 }
 
+func TestInject_GoogleServiceAccount(t *testing.T) {
+	// access_token is generated request-scoped by the Vault Adapter; proxy injects as bearer.
+	req := makeRequest("GET", "https://sheets.googleapis.com/v4/spreadsheets")
+	cred := credential.Credential{
+		AuthScheme: credential.AuthSchemeGoogleServiceAccount,
+		Value:      []byte("ya29.fake-access-token"),
+	}
+	err := credential.Inject(req, cred)
+	assert(t, err == nil)
+	assert(t, req.Header.Get("Authorization") == "Bearer ya29.fake-access-token")
+}
+
+func TestInject_UnspecifiedScheme_NoAuthHeader(t *testing.T) {
+	// AuthScheme=0 (unspecified) must return an error and must not set Authorization.
+	req := makeRequest("GET", "https://api.example.com/v1/data")
+	cred := credential.Credential{
+		AuthScheme: 0,
+		Value:      []byte("should-not-appear"),
+	}
+	err := credential.Inject(req, cred)
+	assert(t, err != nil)
+	assert(t, req.Header.Get("Authorization") == "")
+}
+
 func TestInject_StripAgentAuthAlways(t *testing.T) {
 	// Even for api_key_header, the original Authorization must be gone
 	req := makeRequest("GET", "https://api.example.com/v1/data")

@@ -34,6 +34,7 @@ export const AUTH_SCHEMES: AuthSchemeOption[] = [
   { value: "oauth2_password_grant", label: "OAuth 2.0 — password grant (username/password → token)" },
   { value: "oidc_client_secret", label: "OIDC — client secret" },
   { value: "mtls", label: "mTLS — client certificate" },
+  { value: "google_service_account", label: "Google Service Account (auto-rotating OAuth2)" },
 ];
 
 const SCHEME_FIELDS: Record<string, CredentialField[]> = {
@@ -84,6 +85,11 @@ const SCHEME_FIELDS: Record<string, CredentialField[]> = {
     { name: "client_cert_pem", label: "Client certificate (PEM)", type: "textarea", secret: false, required: true },
     { name: "client_key_pem", label: "Client private key (PEM)", type: "textarea", secret: true, required: true },
   ],
+
+  google_service_account: [
+    { name: "service_account_json", label: "Service Account JSON Key", type: "textarea", secret: true, required: true, placeholder: '{"type":"service_account","project_id":"...","private_key_id":"..."}' },
+    { name: "scope", label: "OAuth2 Scope", type: "text", secret: false, required: true, defaultValue: "https://www.googleapis.com/auth/androidpublisher" },
+  ],
 };
 
 /**
@@ -116,6 +122,15 @@ export function buildCredentialPayload(
 ): Record<string, string> {
   const fields = getCredentialFields(scheme);
   const payload: Record<string, string> = { auth_scheme: scheme };
+
+  if (scheme === "google_service_account") {
+    payload["value"] = JSON.stringify({
+      scheme: "google_service_account",
+      service_account_json: formData["service_account_json"] ?? "",
+      scope: formData["scope"] ?? "https://www.googleapis.com/auth/androidpublisher",
+    });
+    return payload;
+  }
 
   if (scheme === "oauth2_password_grant") {
     // formData carries:

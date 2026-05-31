@@ -1,17 +1,20 @@
 """
-OAuth2 Password Grant credential payload validation.
+Credential payload validation for structured auth schemes.
 
-Defines the Pydantic model for validating structured credential payloads
-when auth_type=oauth2_password_grant. Integrates with the existing SSRF
-allowlist check (S-SEC-1) to reject token_url values pointing at private
-or loopback addresses.
+Defines Pydantic models for validating structured credential payloads:
+  - OAuth2PasswordGrantPayload: auth_type=oauth2_password_grant. Integrates
+    with the existing SSRF allowlist check (S-SEC-1).
+  - GoogleServiceAccountPayload: auth_scheme=google_service_account. Validates
+    Google service-account JSON key material; scrubs service_account_json,
+    json_key, and private_key from any log output — ADR-0014.7, S-SEC-1.
 
 Source: design §7 (Admin API — Credential Validation for oauth2_password_grant);
-        Requirements 19.2, 19.4, 19.5, 19.6.
+        Requirements 19.2, 19.4, 19.5, 19.6; spec §4.3 (google_service_account).
 """
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import socket
 from urllib.parse import urlsplit
@@ -187,3 +190,125 @@ class OAuth2PasswordGrantPayload(BaseModel):
         if not v:
             raise ValueError("credential_fields must contain at least one entry")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Google Service Account credential payload model — spec §4.3
+# ---------------------------------------------------------------------------
+
+_GOOGLE_REQUIRED_FIELDS = (
+    "type",
+    "project_id",
+    "private_key_id",
+    "private_key",
+    "client_email",
+    "token_uri",
+)
+
+
+class GoogleServiceAccountPayload(BaseModel):
+    """Structured credential payload for auth_scheme=google_service_account.
+
+    Validated at registration time. The Vault Adapter stores this as a JSON
+    envelope: { "scheme": "google_service_account", "json_key": ...,
+    "scope": ... }, where ``json_key`` is the raw Google service-account JSON
+    string (matches the ``StoredBlob`` shape in vault-adapter Go code).
+
+    Fields:
+      - service_account_json: The raw Google service-account JSON as a string.
+        Must parse as a JSON object, ``type == "service_account"``, and include
+        required fields ``project_id``, ``private_key_id``, ``private_key``
+        (must start with ``-----BEGIN``), ``client_email`` (must contain ``@``),
+        and ``token_uri`` (must start with ``https://``).
+        NEVER included in audit events or log output — ADR-0014.4, ADR-0014.7.
+      - scope: OAuth2 scope string for the service account token exchange.
+        Defaults to the Android Publisher scope; must be non-empty.
+
+    Source: spec §4.3; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: service_account_json contains private_key — NEVER repr'd or logged.
+    # The field is validated then serialised into the vault envelope; it MUST
+    # NOT appear in any audit payload or structlog / stdlib log event.
+    service_account_json: str
+    scope: str = "https://www.googleapis.com/auth/androidpublisher"
+
+    @field_validator("service_account_json")
+    @classmethod
+    def validate_service_account_json(cls, v: str) -> str:
+        """Parse and validate Google service-account JSON — spec §4.3."""
+        try:
+            parsed = json.loads(v)
+        except (json.JSONDecodeError, ValueError):
+            raise ValueError("invalid service_account_json: not valid JSON")
+
+        if not isinstance(parsed, dict):
+            raise ValueError("invalid service_account_json: must be a JSON object")
+
+        # Reject user-credential blobs (auth_uri-only, authorized_user type).
+        acc_type = parsed.get("type", "")
+        if acc_type != "service_account":
+            raise ValueError(
+                "invalid service_account_json: type must be 'service_account'"
+            )
+
+        # Validate all required fields are present and non-empty.
+        for field in _GOOGLE_REQUIRED_FIELDS:
+            val = parsed.get(field)
+            if not val or not str(val).strip():
+                raise ValueError(
+                    f"invalid service_account_json: missing or empty field '{field}'"
+                )
+
+        # private_key must look like PEM material.
+        private_key: str = parsed["private_key"]
+        if not private_key.strip().startswith("-----BEGIN"):
+            raise ValueError(
+                "invalid service_account_json: private_key must start with '-----BEGIN'"
+            )
+
+        # client_email must be email-ish.
+        client_email: str = parsed["client_email"]
+        if "@" not in client_email:
+            raise ValueError(
+                "invalid service_account_json: client_email must contain '@'"
+            )
+
+        # token_uri must be HTTPS.
+        token_uri: str = parsed["token_uri"]
+        if not token_uri.startswith("https://"):
+            raise ValueError(
+                "invalid service_account_json: token_uri must start with 'https://'"
+            )
+
+        return v
+
+    @field_validator("scope")
+    @classmethod
+    def validate_scope_non_empty(cls, v: str) -> str:
+        """scope must be non-empty — spec §4.3."""
+        if not v.strip():
+            raise ValueError("scope must be a non-empty string")
+        return v
+
+    def to_vault_envelope(self) -> bytes:
+        """Serialise to the JSON envelope shape the Vault Adapter expects.
+
+        Returns the canonical envelope bytes:
+          { "scheme": "google_service_account", "json_key": ..., "scope": ... }
+
+        ``json_key`` (not ``service_account_json``) is the field name expected
+        by the Go StoredBlob in vault-adapter/internal/googleserviceaccount/key.go.
+
+        This is the ONLY place service_account_json is written into a serialised
+        value after validation; the resulting bytes are passed directly to
+        StoreCredential and NEVER logged or returned in a response.
+        """
+        return json.dumps(
+            {
+                "scheme": "google_service_account",
+                "json_key": self.service_account_json,
+                "scope": self.scope,
+            },
+            separators=(",", ":"),
+        ).encode()

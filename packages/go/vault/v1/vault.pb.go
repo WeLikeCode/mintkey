@@ -57,20 +57,23 @@ const (
 	AuthScheme_AUTH_SCHEME_OIDC_CLIENT_SECRET        AuthScheme = 6
 	AuthScheme_AUTH_SCHEME_MTLS                      AuthScheme = 7
 	AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT     AuthScheme = 8
+	// 9 is reserved for AUTH_SCHEME_APPLE_JWT (PR #134, not yet merged).
+	AuthScheme_AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT AuthScheme = 10
 )
 
 // Enum value maps for AuthScheme.
 var (
 	AuthScheme_name = map[int32]string{
-		0: "AUTH_SCHEME_UNSPECIFIED",
-		1: "AUTH_SCHEME_API_KEY_HEADER",
-		2: "AUTH_SCHEME_API_KEY_QUERY",
-		3: "AUTH_SCHEME_BEARER_TOKEN",
-		4: "AUTH_SCHEME_BASIC_AUTH",
-		5: "AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS",
-		6: "AUTH_SCHEME_OIDC_CLIENT_SECRET",
-		7: "AUTH_SCHEME_MTLS",
-		8: "AUTH_SCHEME_OAUTH2_PASSWORD_GRANT",
+		0:  "AUTH_SCHEME_UNSPECIFIED",
+		1:  "AUTH_SCHEME_API_KEY_HEADER",
+		2:  "AUTH_SCHEME_API_KEY_QUERY",
+		3:  "AUTH_SCHEME_BEARER_TOKEN",
+		4:  "AUTH_SCHEME_BASIC_AUTH",
+		5:  "AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS",
+		6:  "AUTH_SCHEME_OIDC_CLIENT_SECRET",
+		7:  "AUTH_SCHEME_MTLS",
+		8:  "AUTH_SCHEME_OAUTH2_PASSWORD_GRANT",
+		10: "AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -82,6 +85,7 @@ var (
 		"AUTH_SCHEME_OIDC_CLIENT_SECRET":        6,
 		"AUTH_SCHEME_MTLS":                      7,
 		"AUTH_SCHEME_OAUTH2_PASSWORD_GRANT":     8,
+		"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT":    10,
 	}
 )
 
@@ -1161,7 +1165,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12;\n" +
 	"\vvalid_until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"validUntil*\xae\x02\n" +
+	"validUntil*\xd6\x02\n" +
 	"\n" +
 	"AuthScheme\x12\x1b\n" +
 	"\x17AUTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n" +
@@ -1172,7 +1176,9 @@ const file_vault_proto_rawDesc = "" +
 	"%AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS\x10\x05\x12\"\n" +
 	"\x1eAUTH_SCHEME_OIDC_CLIENT_SECRET\x10\x06\x12\x14\n" +
 	"\x10AUTH_SCHEME_MTLS\x10\a\x12%\n" +
-	"!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\b*r\n" +
+	"!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\b\x12&\n" +
+	"\"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT\x10\n" +
+	"*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
