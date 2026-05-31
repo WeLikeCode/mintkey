@@ -1,0 +1,141 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 018-vault-schema.yaml
+  #
+  # Creates the `vault` schema and `vault.credentials` table — the
+  # encrypted-blob store owned by vault-adapter.  This is distinct from
+  # `public.credentials` (admin-api metadata table).
+  #
+  # RLS decision: public.credentials carries a `tenant_isolation` policy
+  # (verified via \d+ public.credentials → "POLICY tenant_isolation").
+  # We mirror the identical policy on vault.credentials so the same
+  # multi-tenant isolation guarantee applies when mintkey_app queries
+  # through vault-adapter.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create vault schema -------------------------------------------
+  - changeSet:
+      id: "018-vault-schema-1"
+      author: mintkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE SCHEMA IF NOT EXISTS vault;
+      rollback:
+        - sql:
+            sql: |
+              DROP SCHEMA IF EXISTS vault CASCADE;
+
+  # --- 2. Create vault.credentials table --------------------------------
+  - changeSet:
+      id: "018-vault-schema-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: vault
+              tableName: credentials
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE vault.credentials (
+                  credential_id TEXT        PRIMARY KEY,
+                  tenant_id     UUID        NOT NULL,
+                  service_id    UUID        NOT NULL,
+                  key_version   INTEGER     NOT NULL,
+                  auth_scheme   INTEGER     NOT NULL DEFAULT 0,
+                  wrapped_dek   BYTEA       NOT NULL,
+                  enc_payload   BYTEA       NOT NULL,
+                  is_current    BOOLEAN     NOT NULL DEFAULT TRUE,
+                  is_revoked    BOOLEAN     NOT NULL DEFAULT FALSE,
+                  created_at    BIGINT      NOT NULL,
+                  target_url    TEXT        NOT NULL DEFAULT '',
+                  header_name   TEXT        NOT NULL DEFAULT '',
+                  query_param   TEXT        NOT NULL DEFAULT '',
+                  UNIQUE (tenant_id, service_id, key_version)
+              );
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS vault.credentials;
+
+  # --- 3. Index ----------------------------------------------------------
+  - changeSet:
+      id: "018-vault-schema-3"
+      author: mintkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS idx_vault_credentials_tenant_service
+                  ON vault.credentials (tenant_id, service_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS vault.idx_vault_credentials_tenant_service;
+
+  # --- 4. RLS (mirrors public.credentials tenant_isolation policy) -------
+  - changeSet:
+      id: "018-vault-schema-4"
+      author: mintkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vault.credentials ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON vault.credentials
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON vault.credentials;
+              ALTER TABLE vault.credentials DISABLE ROW LEVEL SECURITY;
+
+  # --- 5. Grants ---------------------------------------------------------
+  - changeSet:
+      id: "018-vault-schema-5"
+      author: mintkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT ALL ON SCHEMA vault TO mintkey_migrate;
+              GRANT ALL ON ALL TABLES IN SCHEMA vault TO mintkey_migrate;
+
+              GRANT USAGE ON SCHEMA vault TO mintkey_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA vault TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON ALL TABLES IN SCHEMA vault FROM mintkey_migrate;
+              REVOKE ALL ON SCHEMA vault FROM mintkey_migrate;
+              REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA vault FROM mintkey_app;
+              REVOKE USAGE ON SCHEMA vault FROM mintkey_app;
+
+  # --- 6. Default privileges (future tables inherit same grants) ---------
+  - changeSet:
+      id: "018-vault-schema-6"
+      author: mintkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault
+                GRANT ALL ON TABLES TO mintkey_migrate;
+
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault
+                GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault
+                REVOKE ALL ON TABLES FROM mintkey_migrate;
+
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault
+                REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM mintkey_app;
