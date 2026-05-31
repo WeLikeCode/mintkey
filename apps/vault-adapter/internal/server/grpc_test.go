@@ -9,12 +9,19 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"reflect"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
 	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 	"google.golang.org/grpc"
@@ -916,4 +923,198 @@ func TestCredentialStorageRoundTrip(t *testing.T) {
 				original, retrieved, payloadBytes, getResp.Value)
 		}
 	})
+}
+
+// -----------------------------------------------------------------------
+// AUTH_SCHEME_APPLE_JWT handler tests
+// -----------------------------------------------------------------------
+
+// mustTestECKeyPEM generates a P-256 ECDSA key and returns it PEM-encoded as
+// PKCS#8. Mirrors the helper in applejwt/generate_test.go but scoped to the
+// server test package (cross-package test helpers cannot be shared in Go).
+func mustTestECKeyPEM(t *testing.T) ([]byte, *ecdsa.PrivateKey) {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate EC key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatalf("marshal PKCS8: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	return pemBytes, priv
+}
+
+// TestGRPCAppleJWT_HappyPath stores an apple_jwt JSON envelope via PutCredential
+// (auth_scheme=9), then calls GetCredential and verifies:
+//   - The returned Value is a valid ES256 JWS (three dot-separated segments).
+//   - The JWT verifies with the original EC public key.
+//   - iss == issuerID.
+//   - aud contains "appstoreconnect-v1".
+//   - AuthScheme in the response is AUTH_SCHEME_APPLE_JWT.
+func TestGRPCAppleJWT_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	pemBytes, ecPriv := mustTestECKeyPEM(t)
+
+	const keyID = "TESTKEY0001"
+	const issuerID = "11111111-2222-3333-4444-555555555555"
+
+	envelope := appleJWTEnvelope{
+		Scheme:   "apple_jwt",
+		P8KeyPEM: string(pemBytes),
+		KeyID:    keyID,
+		IssuerID: issuerID,
+	}
+	envelopeBytes, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+
+	// Store the envelope.
+	putResp, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_apple_jwt",
+		ServiceId:  "svc_apple_jwt",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_APPLE_JWT,
+		Value:      envelopeBytes,
+	})
+	if err != nil {
+		t.Fatalf("PutCredential (apple_jwt): %v", err)
+	}
+	if putResp.KeyVersion == 0 {
+		t.Fatal("expected non-zero key_version")
+	}
+
+	// Retrieve — handler must generate a fresh JWT.
+	getResp, err := client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_apple_jwt",
+		ServiceId:  "svc_apple_jwt",
+		KeyVersion: 0,
+	})
+	if err != nil {
+		t.Fatalf("GetCredential (apple_jwt): %v", err)
+	}
+
+	// AuthScheme must be preserved.
+	if getResp.AuthScheme != vaultv1.AuthScheme_AUTH_SCHEME_APPLE_JWT {
+		t.Errorf("AuthScheme = %v, want AUTH_SCHEME_APPLE_JWT", getResp.AuthScheme)
+	}
+
+	// The returned Value must be a non-empty JWS string.
+	jwtStr := string(getResp.Value)
+	if jwtStr == "" {
+		t.Fatal("GetCredential returned empty Value for apple_jwt")
+	}
+
+	// Parse and verify the JWT with the original EC public key.
+	parsedJWT, err := josejwt.ParseSigned(jwtStr, []jose.SignatureAlgorithm{jose.ES256})
+	if err != nil {
+		t.Fatalf("ParseSigned on returned Value: %v (raw: %q)", err, jwtStr)
+	}
+
+	// Verify signature + extract claims.
+	var claims josejwt.Claims
+	if err := parsedJWT.Claims(ecPriv.Public(), &claims); err != nil {
+		t.Fatalf("verify+extract claims: %v", err)
+	}
+
+	if claims.Issuer != issuerID {
+		t.Errorf("iss = %q, want %q", claims.Issuer, issuerID)
+	}
+	if len(claims.Audience) != 1 || claims.Audience[0] != "appstoreconnect-v1" {
+		t.Errorf("aud = %v, want [appstoreconnect-v1]", claims.Audience)
+	}
+
+	// Confirm the raw stored envelope is NOT returned (value should not be valid JSON).
+	var leak appleJWTEnvelope
+	if json.Unmarshal(getResp.Value, &leak) == nil && leak.P8KeyPEM != "" {
+		t.Error("SECURITY: GetCredential leaked the raw apple_jwt JSON envelope (p8_key_pem visible)")
+	}
+}
+
+// TestGRPCAppleJWT_EmptyP8KeyPEM verifies that an envelope missing p8_key_pem
+// returns codes.InvalidArgument (not Internal), with a terse message that
+// does not include key material.
+func TestGRPCAppleJWT_EmptyP8KeyPEM(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	// Envelope with empty p8_key_pem — invalid.
+	envelope := appleJWTEnvelope{
+		Scheme:   "apple_jwt",
+		P8KeyPEM: "", // intentionally empty
+		KeyID:    "TESTKEY0001",
+		IssuerID: "11111111-2222-3333-4444-555555555555",
+	}
+	envelopeBytes, _ := json.Marshal(envelope)
+
+	_, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_apple_jwt_bad",
+		ServiceId:  "svc_apple_jwt_bad",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_APPLE_JWT,
+		Value:      envelopeBytes,
+	})
+	if err != nil {
+		t.Fatalf("PutCredential unexpected error: %v", err)
+	}
+
+	_, err = client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_apple_jwt_bad",
+		ServiceId:  "svc_apple_jwt_bad",
+		KeyVersion: 0,
+	})
+	if err == nil {
+		t.Fatal("expected error for envelope with empty p8_key_pem, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %T: %v", err, err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected codes.InvalidArgument, got %v: %s", st.Code(), st.Message())
+	}
+}
+
+// TestGRPCAppleJWT_WrongSchemeField verifies that an envelope with scheme != "apple_jwt"
+// returns codes.InvalidArgument.
+func TestGRPCAppleJWT_WrongSchemeField(t *testing.T) {
+	ctx := context.Background()
+	client, cleanup := newTestGRPCServer(t)
+	defer cleanup()
+
+	pemBytes, _ := mustTestECKeyPEM(t)
+	envelope := appleJWTEnvelope{
+		Scheme:   "bearer_token", // wrong scheme field
+		P8KeyPEM: string(pemBytes),
+		KeyID:    "TESTKEY0001",
+		IssuerID: "11111111-2222-3333-4444-555555555555",
+	}
+	envelopeBytes, _ := json.Marshal(envelope)
+
+	_, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
+		TenantId:   "tenant_apple_jwt_wrongscheme",
+		ServiceId:  "svc_apple_jwt_wrongscheme",
+		AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_APPLE_JWT,
+		Value:      envelopeBytes,
+	})
+	if err != nil {
+		t.Fatalf("PutCredential unexpected error: %v", err)
+	}
+
+	_, err = client.GetCredential(ctx, &vaultv1.GetCredentialRequest{
+		TenantId:   "tenant_apple_jwt_wrongscheme",
+		ServiceId:  "svc_apple_jwt_wrongscheme",
+		KeyVersion: 0,
+	})
+	if err == nil {
+		t.Fatal("expected InvalidArgument for wrong scheme field, got nil")
+	}
+	st, _ := status.FromError(err)
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected codes.InvalidArgument, got %v", st.Code())
+	}
 }
