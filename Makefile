@@ -24,7 +24,8 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         template-diff template-pull \
         demo demo-mock \
         create-operator \
-        backup restore backup-list
+        backup restore backup-list \
+        migrate-vault-sqlite-to-pg
 
 help:
 	@echo ""
@@ -64,6 +65,7 @@ help:
 	@echo "                         Set MINTKEY_RESTORE_FORCE=1 to skip the confirmation prompt."
 	@echo "                         Example: make restore BACKUP_DIR=~/mintkey-backups/20260531_222854"
 	@echo "  backup-list            List all available backup dirs under ~/mintkey-backups/"
+	@echo "  migrate-vault-sqlite-to-pg  Copy all vault credentials from SQLite to Postgres (idempotent)"
 	@echo ""
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
@@ -629,3 +631,19 @@ backup-list:
 		| awk '{print $$9}' \
 		| sed 's|/MANIFEST.txt$$||' \
 		|| echo "(no backups found in ~/mintkey-backups/)"
+
+## migrate-vault-sqlite-to-pg: Copy all vault credentials from SQLite to Postgres.
+##   Reads /var/lib/mintkey/vault.sqlite from the mintkey_vault_data volume and
+##   writes every row to the postgres DSN configured for vault-adapter.
+##   Idempotent (ON CONFLICT DO NOTHING on credential_id PK).
+##   Verifies a 5-credential sample byte-equal post-insert.
+##   DO NOT run while vault-adapter is being written to (stop writes or run
+##   during a maintenance window). After success, cut over with:
+##     docker compose up -d --no-deps --force-recreate vault-adapter
+migrate-vault-sqlite-to-pg:
+	docker run --rm --network=mintkey_mintkey \
+		-v mintkey_vault_data:/var/lib/mintkey \
+		-v "$(REPO_ROOT)/apps/vault-adapter":/src -w /src \
+		-e MINTKEY_VAULT_SQLITE_PATH=/var/lib/mintkey/vault.sqlite \
+		-e MINTKEY_VAULT_PG_DSN="postgres://mintkey_migrate:changeme@postgres:5432/mintkey?sslmode=disable" \
+		golang:latest go run ./cmd/vault-migrate-sqlite-to-pg/...
