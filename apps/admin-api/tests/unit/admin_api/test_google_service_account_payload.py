@@ -74,7 +74,10 @@ def test_to_vault_envelope_shape() -> None:
     assert envelope["scheme"] == "google_service_account"
     assert "json_key" in envelope, "Go StoredBlob expects 'json_key', not 'service_account_json'"
     assert "service_account_json" not in envelope, "Raw field name must NOT appear in envelope"
-    assert envelope["json_key"] == _VALID_SA_JSON_STR
+    assert isinstance(envelope["json_key"], dict), (
+        "Go StoredBlob.JSONKey is json.RawMessage — wire must embed the SA as a JSON object, not a string"
+    )
+    assert envelope["json_key"] == _VALID_SA_JSON
     assert envelope["scope"] == "https://www.googleapis.com/auth/androidpublisher"
 
 
@@ -82,7 +85,7 @@ def test_to_vault_envelope_roundtrip() -> None:
     """json_key value in the envelope matches the original service_account_json input."""
     payload = GoogleServiceAccountPayload(service_account_json=_VALID_SA_JSON_STR)
     envelope = json.loads(payload.to_vault_envelope().decode())
-    assert json.loads(envelope["json_key"]) == _VALID_SA_JSON
+    assert envelope["json_key"] == _VALID_SA_JSON
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +206,7 @@ def test_json_key_fingerprint_value() -> None:
     """SHA-256[:16] of service_account_json matches expected fingerprint."""
     payload = GoogleServiceAccountPayload(service_account_json=_VALID_SA_JSON_STR)
     expected = hashlib.sha256(_VALID_SA_JSON_STR.encode()).hexdigest()[:16]
-    envelope = json.loads(payload.to_vault_envelope().decode())
-    actual = hashlib.sha256(envelope["json_key"].encode()).hexdigest()[:16]
+    actual = hashlib.sha256(payload.service_account_json.encode()).hexdigest()[:16]
     assert actual == expected
 
 

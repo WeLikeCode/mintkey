@@ -392,7 +392,7 @@ class GoogleServiceAccountPayload(BaseModel):
         return json.dumps(
             {
                 "scheme": "google_service_account",
-                "json_key": self.service_account_json,
+                "json_key": json.loads(self.service_account_json),
                 "scope": self.scope,
             },
             separators=(",", ":"),
