@@ -93,6 +93,7 @@ $defs:
       - oauth2_client_credentials
       - oidc_client_secret
       - mtls
+      - apple_jwt
       - google_service_account
 
   service_summary:

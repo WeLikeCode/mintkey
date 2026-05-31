@@ -34,6 +34,7 @@ export const AUTH_SCHEMES: AuthSchemeOption[] = [
   { value: "oauth2_password_grant", label: "OAuth 2.0 — password grant (username/password → token)" },
   { value: "oidc_client_secret", label: "OIDC — client secret" },
   { value: "mtls", label: "mTLS — client certificate" },
+  { value: "apple_jwt", label: "Apple JWT — .p8 key (App Store Connect)" },
   { value: "google_service_account", label: "Google Service Account (auto-rotating OAuth2)" },
 ];
 
@@ -86,6 +87,12 @@ const SCHEME_FIELDS: Record<string, CredentialField[]> = {
     { name: "client_key_pem", label: "Client private key (PEM)", type: "textarea", secret: true, required: true },
   ],
 
+  apple_jwt: [
+    { name: "p8_key_pem", label: "Apple .p8 PEM (PKCS#8 EC private key)", type: "textarea", secret: true, required: true, placeholder: "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----" },
+    { name: "key_id", label: "Key ID (kid)", type: "text", secret: false, required: true, placeholder: "TNRVKBLCWWTH" },
+    { name: "issuer_id", label: "Issuer ID (iss)", type: "text", secret: false, required: true, placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+  ],
+
   google_service_account: [
     { name: "service_account_json", label: "Service Account JSON Key", type: "textarea", secret: true, required: true, placeholder: '{"type":"service_account","project_id":"...","private_key_id":"..."}' },
     { name: "scope", label: "OAuth2 Scope", type: "text", secret: false, required: true, defaultValue: "https://www.googleapis.com/auth/androidpublisher" },
@@ -122,6 +129,20 @@ export function buildCredentialPayload(
 ): Record<string, string> {
   const fields = getCredentialFields(scheme);
   const payload: Record<string, string> = { auth_scheme: scheme };
+
+  if (scheme === "apple_jwt") {
+    const p8KeyPem = formData["p8_key_pem"] ?? "";
+    const keyId = formData["key_id"] ?? "";
+    const issuerId = formData["issuer_id"] ?? "";
+
+    payload["value"] = JSON.stringify({
+      scheme: "apple_jwt",
+      p8_key_pem: p8KeyPem,
+      key_id: keyId,
+      issuer_id: issuerId,
+    });
+    return payload;
+  }
 
   if (scheme === "google_service_account") {
     payload["value"] = JSON.stringify({

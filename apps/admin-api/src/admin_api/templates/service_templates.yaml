@@ -18,17 +18,17 @@ templates:
   - template_id: apple-app-store-connect
     name: apple-app-store-connect
     display_name: Apple App Store Connect
-    description: "App management, TestFlight, provisioning profiles, and sales reporting."
+    description: "App management, TestFlight, provisioning profiles, and sales reporting. Mintkey signs the required ES256 JWT (aud=appstoreconnect-v1, 19m TTL) from your .p8 key on every request — no manual rotation."
     base_url: https://api.appstoreconnect.apple.com/v1
-    auth_type: bearer_token
+    auth_type: apple_jwt
     openapi_spec_url: https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip
     category: app_store
     version: "1.0.0"
-    config_notes: "Authentication requires a JWT signed with an App Store Connect API key (ES256)."
+    config_notes: "Paste the .p8 PKCS#8 PEM private key, the Key ID (kid) and the Issuer ID (iss) from App Store Connect. Mintkey signs an ES256 JWT (aud=appstoreconnect-v1) per request — there is no token to refresh manually."
     credential_hint:
-      field: token
-      help: "JWT signed with your App Store Connect API key (ES256 algorithm)"
-      format: "eyJhbGciOiJFUzI1NiIs..."
+      p8_key_pem: "-----BEGIN PRIVATE KEY-----\n...your .p8 contents...\n-----END PRIVATE KEY-----"
+      key_id: "TNRVKBLCWWTH"
+      issuer_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     test_path: /apps
 
   - template_id: google-play-developer

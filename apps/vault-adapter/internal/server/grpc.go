@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/applejwt"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/googleserviceaccount"
 	"golang.org/x/net/http2"
@@ -24,6 +25,18 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// appleJWTEnvelope is the JSON structure stored (encrypted) in the vault for
+// AUTH_SCHEME_APPLE_JWT credentials. The envelope is written by the Admin API
+// (Chunk 4) and mirrors the Admin UI payload (Chunk 6).
+// Security note: p8_key_pem bytes are zeroized immediately after use;
+// this struct is never logged.
+type appleJWTEnvelope struct {
+	Scheme   string `json:"scheme"`     // must be "apple_jwt"
+	P8KeyPEM string `json:"p8_key_pem"` // PKCS#8 PEM EC private key — never logged
+	KeyID    string `json:"key_id"`     // 10-char Apple Key ID
+	IssuerID string `json:"issuer_id"`  // Apple Issuer UUID
+}
 
 // googleServiceAccountEnvelope is the JSON structure stored (encrypted) in the
 // vault for AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT credentials.
@@ -132,6 +145,10 @@ type grpcVaultServer struct {
 }
 
 // GetCredential translates the proto request to VaultService args and returns the result.
+// For AUTH_SCHEME_APPLE_JWT credentials the stored plaintext is a JSON envelope;
+// the handler decrypts it, calls applejwt.Generate to produce a fresh ES256 JWT,
+// and returns that JWT as the Value — zeroizing the PEM key bytes immediately after.
+// The generated JWT is never cached (spec §3).
 // For AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT credentials the stored plaintext is a
 // two-layer JSON envelope; the handler parses it, fetches (or serves from cache)
 // an OAuth2 access token, zeroizes the PEM key immediately after use, and returns
@@ -145,6 +162,43 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "GetCredential: %v", err)
+	}
+
+	// AUTH_SCHEME_APPLE_JWT: decrypt envelope → generate fresh JWT → return as Value.
+	// The plaintext is NOT the credential itself; it is the JSON key envelope.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_APPLE_JWT) {
+		var env appleJWTEnvelope
+		if err := json.Unmarshal(result.Plaintext, &env); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid apple_jwt envelope")
+		}
+		if env.Scheme != "apple_jwt" || env.P8KeyPEM == "" || env.KeyID == "" || env.IssuerID == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid apple_jwt envelope")
+		}
+
+		// Convert to []byte so we can zeroize after use (Go strings are immutable).
+		pemBytes := []byte(env.P8KeyPEM)
+
+		jwtToken, err := applejwt.Generate(pemBytes, env.KeyID, env.IssuerID)
+
+		// Zeroize the PEM key bytes immediately — spec §3 hard rule.
+		for i := range pemBytes {
+			pemBytes[i] = 0
+		}
+		env.P8KeyPEM = ""
+
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "apple_jwt token generation failed")
+		}
+
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              []byte(jwtToken),
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			HeaderName:         result.HeaderName,
+			QueryParam:         result.QueryParam,
+		}, nil
 	}
 
 	// AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT: parse envelope → cache lookup / fetch

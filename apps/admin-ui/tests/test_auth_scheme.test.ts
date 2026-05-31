@@ -30,8 +30,9 @@ describe("AUTH_SCHEMES", () => {
     expect(values).toContain("oauth2_password_grant");
     expect(values).toContain("oidc_client_secret");
     expect(values).toContain("mtls");
+    expect(values).toContain("apple_jwt");
     expect(values).toContain("google_service_account");
-    expect(values).length(10);
+    expect(values).length(11);
   });
 
   it("each scheme has a value and label", () => {
@@ -131,6 +132,25 @@ describe("getCredentialFields", () => {
     expect(timeoutField.max).toBe(120);
   });
 
+  it("apple_jwt returns p8_key_pem (textarea, secret), key_id (text), issuer_id (text)", () => {
+    const fields = getCredentialFields("apple_jwt");
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("p8_key_pem");
+    expect(names).toContain("key_id");
+    expect(names).toContain("issuer_id");
+    expect(fields).toHaveLength(3);
+    const p8Field = fields.find((f) => f.name === "p8_key_pem")!;
+    expect(p8Field.type).toBe("textarea");
+    expect(p8Field.secret).toBe(true);
+    expect(p8Field.required).toBe(true);
+    const keyIdField = fields.find((f) => f.name === "key_id")!;
+    expect(keyIdField.type).toBe("text");
+    expect(keyIdField.required).toBe(true);
+    const issuerField = fields.find((f) => f.name === "issuer_id")!;
+    expect(issuerField.type).toBe("text");
+    expect(issuerField.required).toBe(true);
+  });
+
   it("google_service_account returns service_account_json (textarea, secret) + scope (text, not secret)", () => {
     const fields = getCredentialFields("google_service_account");
     expect(fields).toHaveLength(2);
@@ -178,6 +198,20 @@ describe("buildCredentialPayload", () => {
   it("none: builds {auth_scheme: none} with no extra fields", () => {
     const payload = buildCredentialPayload("none", {});
     expect(payload).toEqual({ auth_scheme: "none" });
+  });
+
+  it("apple_jwt: assembles nested value JSON with scheme, p8_key_pem, key_id, issuer_id", () => {
+    const payload = buildCredentialPayload("apple_jwt", {
+      p8_key_pem: "-----BEGIN PRIVATE KEY-----\nMIGH...\n-----END PRIVATE KEY-----",
+      key_id: "TNRVKBLCWWTH",
+      issuer_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    });
+    expect(payload.auth_scheme).toBe("apple_jwt");
+    const valueObj = JSON.parse(payload.value);
+    expect(valueObj.scheme).toBe("apple_jwt");
+    expect(valueObj.p8_key_pem).toBe("-----BEGIN PRIVATE KEY-----\nMIGH...\n-----END PRIVATE KEY-----");
+    expect(valueObj.key_id).toBe("TNRVKBLCWWTH");
+    expect(valueObj.issuer_id).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
   });
 
   it("google_service_account: value is JSON string with exactly 3 keys", () => {

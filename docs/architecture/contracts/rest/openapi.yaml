@@ -3245,6 +3245,7 @@ components:
         - basic_auth
         - oauth2_client_credentials
         - oidc_client_secret
+        - apple_jwt
         - google_service_account
       description: |
         How Mintkey injects the credential into the outbound request.
@@ -3254,6 +3255,7 @@ components:
         - `basic_auth`: `Authorization: Basic base64(user:pass)`.
         - `oauth2_client_credentials`: token-exchange flow.
         - `oidc_client_secret`: used for the operator IdP integration only.
+        - `apple_jwt`: Apple Sign In with Apple JWT (p8 key, key_id, issuer_id).
         - `google_service_account`: Google IAM service account JSON key; Mintkey exchanges it for a short-lived access token.
 
     Service:
@@ -3487,6 +3489,7 @@ components:
         - $ref: "#/components/schemas/CredBasicAuth"
         - $ref: "#/components/schemas/CredOAuth2ClientCredentials"
         - $ref: "#/components/schemas/CredOidcClientSecret"
+        - $ref: "#/components/schemas/CredAppleJWT"
         - $ref: "#/components/schemas/CredGoogleServiceAccount"
       discriminator:
         propertyName: auth_scheme
@@ -3497,6 +3500,7 @@ components:
           basic_auth: "#/components/schemas/CredBasicAuth"
           oauth2_client_credentials: "#/components/schemas/CredOAuth2ClientCredentials"
           oidc_client_secret: "#/components/schemas/CredOidcClientSecret"
+          apple_jwt: "#/components/schemas/CredAppleJWT"
           google_service_account: "#/components/schemas/CredGoogleServiceAccount"
 
     CredApiKeyHeader:
@@ -3590,6 +3594,34 @@ components:
           type: string
           format: uri
       required: [auth_scheme, client_id, client_secret, issuer]
+
+    CredAppleJWT:
+      type: object
+      description: |
+        Apple Sign In with Apple JWT credential. The proxy generates a
+        short-lived client_secret JWT from the p8 private key on every
+        outbound request. Per Apple's App Store Connect API documentation.
+      properties:
+        auth_scheme:
+          type: string
+          enum: [apple_jwt]
+        p8_key_pem:
+          type: string
+          description: |
+            PEM-encoded private key from the Apple Developer Portal (.p8 file
+            contents). Begins with `-----BEGIN PRIVATE KEY-----`.
+          x-mintkey-sensitive: true
+        key_id:
+          type: string
+          description: |
+            10-character key identifier from the Apple Developer Portal
+            (e.g. `ABCD1234EF`).
+        issuer_id:
+          type: string
+          description: |
+            Team ID or Issuer ID from the Apple Developer Portal
+            (e.g. `DEF456GHIJ`).
+      required: [auth_scheme, p8_key_pem, key_id, issuer_id]
 
     CredGoogleServiceAccount:
       type: object
@@ -4313,7 +4345,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, google_service_account]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, apple_jwt, google_service_account]
 
     TransientCredentialCandidate:
       type: object
