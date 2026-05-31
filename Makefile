@@ -441,7 +441,7 @@ backup:
 	echo "--> [1/5] Postgres dump (mintkey DB)..."; \
 	if docker exec mintkey-postgres-1 pg_dump \
 		-U mintkey_migrate -d mintkey \
-		--no-owner --no-privileges --clean --if-exists \
+		--no-owner --clean --if-exists \
 		-F custom -Z 9 \
 		-f /tmp/mintkey-$$TS.pgcustom 2>&1; then \
 		docker cp mintkey-postgres-1:/tmp/mintkey-$$TS.pgcustom "$$BDIR/postgres-mintkey.pgcustom"; \
