@@ -89,7 +89,7 @@ Parallel dispatches: C1 + C6 first round. Then C2 (needs C1's schema names). The
 | `CLAUDE.md` | Same line (non-breaking-hyphen style) added to "Schema and storage" guardrail. |
 | `remediation/active/2026-05-31-vault-pg-migration/00-state.md` | This R4 section. |
 
-**Commit hash:** _to be filled after `git commit`_
+**Commit hash:** `d340c18`
 
 ## Open questions
 
