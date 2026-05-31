@@ -190,11 +190,16 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 			tenantID, serviceID,
 		)
 	} else {
+		// Match sqlite.go: Get(keyVersion!=0) returns the row regardless of
+		// is_revoked so callers can inspect the revoked flag.  The is_revoked
+		// filter must NOT be applied here — sqlite never does it on the explicit-
+		// version branch, and the round-2 divergence caused sqlite to return
+		// (row{is_revoked=true}, nil) while postgres returned (nil, sql.ErrNoRows).
 		row = tx.QueryRow(ctx,
 			`SELECT `+cols+`
 			   FROM vault.credentials
 			  WHERE tenant_id = $1 AND service_id = $2
-			    AND key_version = $3 AND is_revoked = false
+			    AND key_version = $3
 			  LIMIT 1`,
 			tenantID, serviceID, keyVersion,
 		)
