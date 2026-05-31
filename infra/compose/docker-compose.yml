@@ -164,6 +164,11 @@ services:
       VAULT_GRPC_PORT: "8084"
       VAULT_HTTP_PORT: "8087"
       MINTKEY_VAULT_FILE_PATH: /var/lib/mintkey/vault.sqlite
+      # Backend selector (C3): set MINTKEY_VAULT_BACKEND=postgres to use Postgres
+      # once the C4 migration tool has run (C5 does the live cutover).
+      # Explicitly set here so that C5 only needs a restart, not an env change.
+      MINTKEY_VAULT_BACKEND: postgres
+      MINTKEY_VAULT_PG_DSN: postgres://mintkey_migrate:changeme@postgres:5432/mintkey?sslmode=disable
       # Proxy-plugin service identity: vault-adapter registers this on boot so
       # the scopeInterceptor grants vault.read + vault.put to the proxy-plugin.
       # Both services MUST carry the SAME value.  Override in production via a

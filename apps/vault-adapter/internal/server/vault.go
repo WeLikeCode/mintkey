@@ -168,18 +168,20 @@ type serviceIdentity struct {
 // VaultService implements credential storage and service-identity validation.
 type VaultService struct {
 	kek        []byte
-	store      *store.Store
+	store      store.Backend
 	cache      *cache.DEKCache // encrypted-DEK cache (ADR-0014.4)
 	identityMu sync.RWMutex
 	identities map[string]*serviceIdentity // keyed by service_identity_id
 }
 
 // NewVaultService creates a VaultService with the given KEK and store.
+// s must implement store.Backend; both *store.Store (SQLite) and
+// *store.PostgresStore satisfy it.
 // If dekCache is nil, a default 5-minute TTL cache is allocated internally.
 // Pass a non-nil cache to share a single DEKCache instance with the
 // changes.Subscriber (so both the subscriber invalidations and the metrics
 // counters reflect the same cache).
-func NewVaultService(kek []byte, s *store.Store, dekCache ...*cache.DEKCache) *VaultService {
+func NewVaultService(kek []byte, s store.Backend, dekCache ...*cache.DEKCache) *VaultService {
 	var c *cache.DEKCache
 	if len(dekCache) > 0 && dekCache[0] != nil {
 		c = dekCache[0]

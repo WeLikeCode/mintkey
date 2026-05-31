@@ -47,7 +47,7 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "oidc_client_secret": 6,
     "mtls": 7,
     "oauth2_password_grant": 8,
-    # 9 is reserved for "apple_jwt" (PR #134, not yet merged).
+    "apple_jwt": 9,
     "google_service_account": 10,
 }
 

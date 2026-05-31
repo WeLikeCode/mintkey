@@ -1,0 +1,48 @@
+databaseChangeLog:
+  # Defensive re-grant: pg_restore with --no-privileges (or pre-2026-05-31 backups
+  # taken with that flag) drops table-level GRANTs. Without this, mintkey_app
+  # ends up with NO permissions on any application table after a restore, and
+  # admin-api crashes with "permission denied for table agents" on every query.
+  #
+  # This changeset runs on every Liquibase apply (runAlways: true) so the grants
+  # auto-heal at the next admin-api startup. All statements are idempotent:
+  # GRANT is a no-op when the grant is already present.
+  #
+  # Source: 2026-05-31 incident — admin UI internal error after C6 restore round-trip
+  #         silently stripped grants because backup used pg_dump --no-privileges.
+  #         pg_dump now keeps grants (Makefile fix removed --no-privileges), but
+  #         this changeset is the second line of defense against ANY future event
+  #         that drops them (manual restore from an older dump, role recreation, etc.).
+  - changeSet:
+      id: 019-grants-defensive-public
+      author: mintkey
+      runAlways: true
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              GRANT USAGE ON SCHEMA public TO mintkey_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mintkey_app;
+              GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO mintkey_app;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mintkey_app;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO mintkey_app;
+              -- Append-only invariant for audit_events (ADR-0014.7 audit immutability).
+              -- The blanket GRANT above includes UPDATE/DELETE; this REVOKE restores the
+              -- per-table restriction from 009-roles.yaml. mintkey_app keeps SELECT+INSERT.
+              REVOKE UPDATE, DELETE ON audit_events FROM mintkey_app;
+
+  - changeSet:
+      id: 019-grants-defensive-vault
+      author: mintkey
+      runAlways: true
+      changes:
+        - sql:
+            splitStatements: true
+            stripComments: true
+            sql: |
+              GRANT USAGE ON SCHEMA vault TO mintkey_app;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA vault TO mintkey_app;
+              GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA vault TO mintkey_app;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mintkey_app;
+              ALTER DEFAULT PRIVILEGES IN SCHEMA vault GRANT USAGE, SELECT ON SEQUENCES TO mintkey_app;

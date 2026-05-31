@@ -38,7 +38,163 @@ section for the exact list (Docker, docker compose, ports, disk space).
 
 ---
 
-## 4. Operations
+## 4. Backup and restore
+
+### Pre-requisites
+
+- Running Mintkey stack (`make dev` or `docker compose up -d`).
+- Docker volumes `mintkey_vault_data` and `mintkey_vault_kek` must exist (they are created on first `make dev`).
+- The postgres container `mintkey-postgres-1` must be reachable.
+
+> **WARNING: KEK is required to decrypt any credential.** The `vault-kek.tar.gz` artifact contains the Fernet KEK used to encrypt credentials at rest. Losing the KEK makes all postgres + sqlite dumps permanently unreadable, even with the data intact. Back up the KEK volume along with everything else — `make backup` does this automatically.
+
+### `make backup` — create a timestamped backup
+
+```bash
+make backup
+```
+
+Creates `~/mintkey-backups/<TS>/` containing:
+
+| File | Contents |
+|---|---|
+| `postgres-mintkey.pgcustom` | `pg_dump -F custom -Z 9` of the `mintkey` DB (agents, services, permissions, credentials, audit) |
+| `vault.sqlite` | Binary copy of the SQLite vault (the primary credential store today) |
+| `vault.sqlite.sql` | Text dump of the SQLite vault (for diffing) |
+| `vault-kek.tar.gz` | Contents of the `mintkey_vault_kek` Docker volume (the Fernet KEK) |
+| `bootstrap-secrets.tar.gz` | Contents of `data/bootstrap-secrets/` (admin password ciphertext) |
+| `MANIFEST.txt` | One line per file: `<size>  <sha256>  <filename>` |
+
+Sample output:
+```
+==> Backup started: /Users/you/mintkey-backups/20260531_225805 (20260531_225805)
+
+--> [1/5] Postgres dump (mintkey DB)...
+    postgres dump: OK
+--> [2/5] Vault SQLite (mintkey_vault_data volume)...
+    vault.sqlite: OK
+    vault.sqlite.sql: OK
+--> [3/5] KEK volume (mintkey_vault_kek)...
+    vault-kek.tar.gz: OK (filenames only — KEK contents not logged)
+--> [4/5] Bootstrap secrets (data/bootstrap-secrets/)...
+    bootstrap-secrets.tar.gz: OK
+--> [5/5] Writing MANIFEST.txt with sha256 checksums...
+    MANIFEST.txt: OK
+
+==> Backup complete: /Users/you/mintkey-backups/20260531_225805
+    Restore with: make restore BACKUP_DIR=/Users/you/mintkey-backups/20260531_225805
+```
+
+### `make restore BACKUP_DIR=<path>` — restore from a backup
+
+```bash
+make restore BACKUP_DIR=~/mintkey-backups/20260531_225805
+```
+
+Validates all MANIFEST.txt SHA-256 checksums before touching any state, then:
+1. Stops dependent services (postgres + keycloak stay up).
+2. Restores the postgres DB via `pg_restore --clean --if-exists`.
+3. Restores `vault.sqlite` into the `mintkey_vault_data` volume.
+4. Restores the KEK into the `mintkey_vault_kek` volume (replaces all contents).
+5. Backs up the existing `data/bootstrap-secrets/` to `.bak.<TS>` and extracts the archived version.
+6. Restarts all dependent services with `docker compose up -d --no-deps`.
+
+Add `MINTKEY_RESTORE_FORCE=1` to skip the interactive confirmation prompt:
+
+```bash
+MINTKEY_RESTORE_FORCE=1 make restore BACKUP_DIR=~/mintkey-backups/20260531_225805
+```
+
+### Restoring on a fresh machine
+
+1. Clone the repo and run `make dev` once — this creates all Docker volumes and runs the seed job.
+2. Wait for the stack to be fully healthy: `curl http://localhost:8080/v1/health` returns `{"status":"ok"}`.
+3. Stop dependent services and restore:
+   ```bash
+   MINTKEY_RESTORE_FORCE=1 make restore BACKUP_DIR=/path/to/backup
+   ```
+4. The stack will restart automatically. Verify with `docker compose ps` and `make smoke`.
+
+> Note: if the seed-job runs again after restore (e.g. due to a container restart), it may rotate bootstrap secrets. To prevent this, restore *after* the seed-job has run and the stack is healthy — not before.
+
+### List available backups
+
+```bash
+make backup-list
+```
+
+---
+
+## 5. Vault migration: SQLite → Postgres
+
+> **When to run:** only when upgrading from a pre-2026-05-31 deployment where `MINTKEY_VAULT_BACKEND=sqlite` (or the env var was unset and the stack was running the SQLite-default build). New deployments use Postgres by default and can skip this section entirely.
+
+### Pre-flight checklist
+
+1. **`make backup`** — mandatory. This is your rollback point.
+2. Confirm Postgres is healthy:
+   ```bash
+   docker exec mintkey-postgres-1 pg_isready -U mintkey_migrate -d mintkey
+   ```
+3. Confirm Liquibase has applied changelog `018-vault-schema`:
+   ```bash
+   docker exec mintkey-postgres-1 psql -U mintkey_migrate -d mintkey -c '\dt vault.*'
+   ```
+   Expected: one row — `vault | credentials | table | mintkey_migrate`.
+
+### Run the migration
+
+```bash
+make migrate-vault-sqlite-to-pg
+```
+
+Expected output:
+```
+Read from sqlite: 138, Inserted: 138, Skipped (conflict): 0, Errors: 0
+Sample verify (5): PASS
+Postgres row count: 138 (matches sqlite)
+```
+
+### Restart vault-adapter on the new backend
+
+```bash
+docker compose up -d --no-deps --force-recreate vault-adapter
+```
+
+> Do **not** use `-f infra/compose/...` here — the root compose path reads the root `.env` which carries the correct `MINTKEY_VAULT_BACKEND=postgres` value.
+
+### Verify the cutover
+
+```bash
+docker compose logs --tail=20 mintkey-vault-adapter-1 | grep -i "backend\|store"
+```
+
+Expected: `vault-adapter: store backend = postgres` (or `BACKEND=postgres` in env — visible via `docker inspect`).
+
+### Rollback
+
+If anything looks wrong before or after cutover:
+
+```bash
+MINTKEY_RESTORE_FORCE=1 make restore BACKUP_DIR=<your-pre-migration-backup>
+```
+
+This undoes everything — restores the Postgres DB, KEK volume, and bootstrap secrets from the backup created in step 1.
+
+### Failure modes and remedies
+
+| Symptom | Cause | Remedy |
+|---|---|---|
+| Migration reports `Errors > 0` | Rows with malformed `tenant_id` or `service_id` are skipped | Inspect the per-row error log printed to stdout; fix the SQLite rows if needed and re-run (idempotent) |
+| `Sample verify (5): FAIL` | Blob corruption detected — plaintext round-trip mismatch | **STOP immediately.** Do not switch backends. Restore from backup. |
+| Post-restart `GetCredential` returns wrong data | `MINTKEY_VAULT_BACKEND` not set to `postgres` in compose env; or RLS misconfiguration | Check `docker inspect mintkey-vault-adapter-1` env; confirm `mintkey_app` grants on `vault.credentials` (`\dp vault.credentials` in psql) |
+| vault-adapter exits with DSN error | `MINTKEY_VAULT_PG_DSN` not set | Ensure `.env` has `MINTKEY_VAULT_PG_DSN=postgres://mintkey_migrate:<pass>@postgres:5432/mintkey` |
+
+See [ADR-0021](architecture/01-architecture/adr/0021-vault-storage-backend-postgres.md) for the full decision rationale.
+
+---
+
+## 6. Operations
 
 The proxy endpoint for all brokered calls is **`http://localhost:8000`** (env `MINTKEY_PROXY_URL`,
 per [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) lines 358–360 and the Ports
@@ -59,7 +215,7 @@ If clients on other machines need to reach this Mintkey instance, set `MINTKEY_M
 
 ---
 
-## 5. Database schema changes
+## 7. Database schema changes
 
 Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The schema is owned by Liquibase per
 [ADR-0015](architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md); never edit
@@ -68,7 +224,7 @@ still go through Liquibase changelogs — add a new changeset, never edit an exi
 
 ---
 
-## 6. Stack health checks
+## 8. Stack health checks
 
 | Command | Expected outcome |
 |---|---|
@@ -116,7 +272,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 7. Where else to look
+## 9. Where else to look
 
 | Need | Document |
 |---|---|
@@ -126,7 +282,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 8. Operator cookbook — step-by-step recipes
+## 10. Operator cookbook — step-by-step recipes
 
 Each recipe below is self-contained. Shared setup (session cookie, CSRF token, tenant ID)
 is shown once in Recipe 0 and referenced in subsequent recipes. Use either the Admin UI

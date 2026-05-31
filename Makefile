@@ -23,7 +23,9 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull \
         demo demo-mock \
-        create-operator
+        create-operator \
+        backup restore backup-list \
+        migrate-vault-sqlite-to-pg
 
 help:
 	@echo ""
@@ -57,6 +59,13 @@ help:
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t TENANT_ID=<uuid>"
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t DRY_RUN=1"
 	@echo "                                make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=s3cr3t RESET_PASSWORD=1"
+	@echo "  backup                 Dump postgres DB + vault SQLite + KEK volume + bootstrap secrets"
+	@echo "                         to ~/mintkey-backups/<TS>/  (ALWAYS dumps both stores; harmless if empty)"
+	@echo "  restore                Restore from a backup dir. Requires BACKUP_DIR=<path>."
+	@echo "                         Set MINTKEY_RESTORE_FORCE=1 to skip the confirmation prompt."
+	@echo "                         Example: make restore BACKUP_DIR=~/mintkey-backups/20260531_222854"
+	@echo "  backup-list            List all available backup dirs under ~/mintkey-backups/"
+	@echo "  migrate-vault-sqlite-to-pg  Copy all vault credentials from SQLite to Postgres (idempotent)"
 	@echo ""
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
@@ -110,7 +119,7 @@ create-operator:
 	@test -n "$(EMAIL)"    || (echo "ERROR: EMAIL is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
 	@test -n "$(NAME)"     || (echo "ERROR: NAME is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
 	@test -n "$(PASSWORD)" || (echo "ERROR: PASSWORD is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
-	docker compose -f infra/compose/docker-compose.yml run --rm --no-deps \
+	docker compose --env-file .env -f infra/compose/docker-compose.yml run --rm --no-deps \
 		-e PGHOST=postgres \
 		-e PGPORT=5432 \
 		-e PGDATABASE=mintkey \
@@ -404,3 +413,237 @@ demo-mock:
 	@echo "See: docs/guides/10min-mock-demo.md"
 	@echo ""
 	bash scripts/demo-mock-flow.sh || { echo ""; echo "ERROR: Mock demo failed. Review the output above for the failing step."; exit 1; }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup / Restore targets
+# Covers both vault backends (postgres + sqlite) transparently.
+# Dumping an empty/missing backend produces harmless zero-byte artifacts.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Detect sha256 tool (macOS ships shasum, Linux ships sha256sum)
+SHA256_CMD := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
+
+BACKUP_DIR ?=
+
+## backup: Dump postgres DB + vault SQLite + KEK volume + bootstrap secrets to
+##         ~/mintkey-backups/<TS>/. Works with both sqlite and postgres backends.
+##         Artifacts: postgres-mintkey.pgcustom, vault.sqlite, vault.sqlite.sql,
+##         vault-kek.tar.gz, bootstrap-secrets.tar.gz, MANIFEST.txt.
+backup:
+	@set -euo pipefail; \
+	TS=$$(date +%Y%m%d_%H%M%S); \
+	BDIR=$$HOME/mintkey-backups/$$TS; \
+	mkdir -p "$$BDIR"; \
+	echo ""; \
+	echo "==> Backup started: $$BDIR ($$TS)"; \
+	echo ""; \
+	\
+	echo "--> [1/5] Postgres dump (mintkey DB)..."; \
+	if docker exec mintkey-postgres-1 pg_dump \
+		-U mintkey_migrate -d mintkey \
+		--no-owner --clean --if-exists \
+		-F custom -Z 9 \
+		-f /tmp/mintkey-$$TS.pgcustom 2>&1; then \
+		docker cp mintkey-postgres-1:/tmp/mintkey-$$TS.pgcustom "$$BDIR/postgres-mintkey.pgcustom"; \
+		docker exec mintkey-postgres-1 rm -f /tmp/mintkey-$$TS.pgcustom; \
+		echo "    postgres dump: OK"; \
+	else \
+		echo "    WARNING: postgres dump failed (stack may not be running or DB empty) — skipping."; \
+		touch "$$BDIR/postgres-mintkey.pgcustom"; \
+	fi; \
+	\
+	echo "--> [2/5] Vault SQLite (mintkey_vault_data volume)..."; \
+	if docker run --rm \
+		-v mintkey_vault_data:/data \
+		-v "$$BDIR":/out \
+		alpine:latest sh -c 'cp /data/vault.sqlite /out/vault.sqlite 2>/dev/null && echo copied || (touch /out/vault.sqlite && echo empty)'; then \
+		echo "    vault.sqlite: OK"; \
+	else \
+		echo "    WARNING: vault.sqlite copy failed — creating empty placeholder."; \
+		touch "$$BDIR/vault.sqlite"; \
+	fi; \
+	echo "    Generating vault.sqlite.sql text dump (nice-to-have for diffs)..."; \
+	docker run --rm \
+		-v mintkey_vault_data:/data \
+		-v "$$BDIR":/out \
+		alpine:latest sh -c \
+		'apk add --quiet sqlite 2>/dev/null; sqlite3 /data/vault.sqlite .dump > /out/vault.sqlite.sql 2>/dev/null || touch /out/vault.sqlite.sql' \
+		2>/dev/null || touch "$$BDIR/vault.sqlite.sql"; \
+	echo "    vault.sqlite.sql: OK"; \
+	\
+	echo "--> [3/5] KEK volume (mintkey_vault_kek)..."; \
+	docker run --rm \
+		-v mintkey_vault_kek:/kek \
+		-v "$$BDIR":/out \
+		alpine:latest sh -c 'cd /kek && tar czf /out/vault-kek.tar.gz . 2>/dev/null || (cd /tmp && tar czf /out/vault-kek.tar.gz --files-from /dev/null)'; \
+	echo "    vault-kek.tar.gz: OK (filenames only — KEK contents not logged)"; \
+	\
+	echo "--> [4/5] Bootstrap secrets (data/bootstrap-secrets/)..."; \
+	if [ -d "$(REPO_ROOT)/data/bootstrap-secrets" ]; then \
+		tar czf "$$BDIR/bootstrap-secrets.tar.gz" \
+			-C "$(REPO_ROOT)" data/bootstrap-secrets; \
+		echo "    bootstrap-secrets.tar.gz: OK"; \
+	else \
+		echo "    WARNING: data/bootstrap-secrets/ not found — skipping."; \
+		touch "$$BDIR/bootstrap-secrets.tar.gz"; \
+	fi; \
+	\
+	echo "--> [5/5] Writing MANIFEST.txt with sha256 checksums..."; \
+	cd "$$BDIR"; \
+	for f in postgres-mintkey.pgcustom vault.sqlite vault.sqlite.sql vault-kek.tar.gz bootstrap-secrets.tar.gz; do \
+		if [ -f "$$f" ]; then \
+			SZ=$$(wc -c < "$$f" | tr -d ' '); \
+			HASH=$$($(SHA256_CMD) "$$f" | awk '{print $$1}'); \
+			printf '%s  %s  %s\n' "$$SZ" "$$HASH" "$$f"; \
+		fi; \
+	done > MANIFEST.txt; \
+	echo "    MANIFEST.txt: OK"; \
+	\
+	echo ""; \
+	echo "==> Backup complete: $$BDIR"; \
+	echo ""; \
+	ls -lh "$$BDIR"; \
+	echo ""; \
+	echo "    Restore with: make restore BACKUP_DIR=$$BDIR"
+
+## restore: Restore from a timestamped backup. Requires BACKUP_DIR=<path>.
+##          Validates MANIFEST.txt checksums before touching any state.
+##          Set MINTKEY_RESTORE_FORCE=1 to skip the interactive prompt.
+##          Restore order: stop dependents → postgres → sqlite → KEK → bootstrap → restart.
+restore:
+	@set -euo pipefail; \
+	if [ -z "$(BACKUP_DIR)" ]; then \
+		echo "ERROR: BACKUP_DIR is required."; \
+		echo "Usage: make restore BACKUP_DIR=~/mintkey-backups/<timestamp>"; \
+		exit 1; \
+	fi; \
+	BDIR=$$(eval echo "$(BACKUP_DIR)"); \
+	if [ ! -d "$$BDIR" ]; then \
+		echo "ERROR: backup dir not found: $$BDIR"; \
+		exit 1; \
+	fi; \
+	if [ ! -f "$$BDIR/MANIFEST.txt" ]; then \
+		echo "ERROR: MANIFEST.txt not found in $$BDIR — not a valid backup dir."; \
+		exit 1; \
+	fi; \
+	echo ""; \
+	echo "==> Validating MANIFEST.txt checksums in $$BDIR ..."; \
+	MANIFEST_OK=1; \
+	while IFS= read -r line; do \
+		EXP_HASH=$$(echo "$$line" | awk '{print $$2}'); \
+		FNAME=$$(echo "$$line" | awk '{print $$3}'); \
+		if [ ! -f "$$BDIR/$$FNAME" ]; then \
+			echo "ERROR: artifact missing: $$FNAME"; \
+			MANIFEST_OK=0; \
+			continue; \
+		fi; \
+		ACTUAL_HASH=$$($(SHA256_CMD) "$$BDIR/$$FNAME" | awk '{print $$1}'); \
+		if [ "$$ACTUAL_HASH" != "$$EXP_HASH" ]; then \
+			echo "ERROR: checksum mismatch for $$FNAME"; \
+			echo "  expected: $$EXP_HASH"; \
+			echo "  actual:   $$ACTUAL_HASH"; \
+			MANIFEST_OK=0; \
+		fi; \
+	done < "$$BDIR/MANIFEST.txt"; \
+	if [ "$$MANIFEST_OK" -ne 1 ]; then \
+		echo "ERROR: checksum validation FAILED — aborting restore."; \
+		exit 1; \
+	fi; \
+	echo "    All checksums OK."; \
+	echo ""; \
+	if [ -z "$${MINTKEY_RESTORE_FORCE:-}" ]; then \
+		echo "About to restore from $$BDIR:"; \
+		echo "  - postgres: drop+recreate the mintkey DB and pg_restore"; \
+		echo "  - vault sqlite: overwrite /var/lib/mintkey/vault.sqlite"; \
+		echo "  - KEK volume: tar overwrite of /run/secrets"; \
+		echo "  - bootstrap-secrets: tar extract over data/bootstrap-secrets"; \
+		echo ""; \
+		echo "THIS WILL DESTROY ANY UNSAVED LOCAL STATE."; \
+		echo "Press Ctrl-C to abort or Enter to continue."; \
+		read _confirm; \
+	fi; \
+	TS=$$(date +%Y%m%d_%H%M%S); \
+	echo "--> [1/6] Stopping dependent services (postgres + keycloak stay up)..."; \
+	docker compose stop admin-api vault-adapter proxy-plugin admin-ui mcp-server broker kong-syncer 2>/dev/null || true; \
+	echo "    services stopped."; \
+	\
+	echo "--> [2/6] Postgres restore..."; \
+	if [ -s "$$BDIR/postgres-mintkey.pgcustom" ]; then \
+		docker cp "$$BDIR/postgres-mintkey.pgcustom" mintkey-postgres-1:/tmp/restore-$$TS.pgcustom; \
+		docker exec mintkey-postgres-1 pg_restore \
+			--clean --if-exists \
+			-U mintkey_migrate -d mintkey \
+			-j 2 -v \
+			/tmp/restore-$$TS.pgcustom; \
+		docker exec mintkey-postgres-1 rm -f /tmp/restore-$$TS.pgcustom; \
+		echo "    postgres restore: OK"; \
+	else \
+		echo "    postgres-mintkey.pgcustom is empty — skipping postgres restore."; \
+	fi; \
+	\
+	echo "--> [3/6] Vault SQLite restore..."; \
+	if [ -s "$$BDIR/vault.sqlite" ]; then \
+		docker run --rm \
+			-v mintkey_vault_data:/data \
+			-v "$$BDIR":/in \
+			alpine:latest sh -c 'cp /in/vault.sqlite /data/vault.sqlite'; \
+		echo "    vault.sqlite restore: OK"; \
+	else \
+		echo "    vault.sqlite is empty — skipping sqlite restore."; \
+	fi; \
+	\
+	echo "--> [4/6] KEK volume restore..."; \
+	if [ -s "$$BDIR/vault-kek.tar.gz" ]; then \
+		docker run --rm \
+			-v mintkey_vault_kek:/kek \
+			-v "$$BDIR":/in \
+			alpine:latest sh -c 'cd /kek && rm -rf -- * .[!.]* ..?* 2>/dev/null; tar xzf /in/vault-kek.tar.gz'; \
+		echo "    KEK volume restore: OK (contents not logged)"; \
+	else \
+		echo "    vault-kek.tar.gz is empty — skipping KEK restore."; \
+	fi; \
+	\
+	echo "--> [5/6] Bootstrap secrets restore..."; \
+	if [ -s "$$BDIR/bootstrap-secrets.tar.gz" ]; then \
+		if [ -d "$(REPO_ROOT)/data/bootstrap-secrets" ]; then \
+			mv "$(REPO_ROOT)/data/bootstrap-secrets" "$(REPO_ROOT)/data/bootstrap-secrets.bak.$$TS"; \
+			echo "    pre-existing bootstrap-secrets/ backed up to data/bootstrap-secrets.bak.$$TS"; \
+		fi; \
+		tar xzf "$$BDIR/bootstrap-secrets.tar.gz" -C "$(REPO_ROOT)"; \
+		echo "    bootstrap-secrets restore: OK"; \
+	else \
+		echo "    bootstrap-secrets.tar.gz is empty — skipping bootstrap restore."; \
+	fi; \
+	\
+	echo "--> [6/6] Restarting services..."; \
+	docker compose up -d --no-deps admin-api vault-adapter proxy-plugin admin-ui mcp-server broker kong-syncer; \
+	echo "    services restarted."; \
+	echo ""; \
+	echo "==> Restore complete from $$BDIR"; \
+	echo ""; \
+	echo "    Verify with:"; \
+	echo "      docker compose ps"; \
+	echo "      docker exec mintkey-admin-api-1 curl -sf http://localhost:8080/v1/ready"
+
+## backup-list: List all available backup dirs under ~/mintkey-backups/.
+backup-list:
+	@ls -la $$HOME/mintkey-backups/*/MANIFEST.txt 2>/dev/null \
+		| awk '{print $$9}' \
+		| sed 's|/MANIFEST.txt$$||' \
+		|| echo "(no backups found in ~/mintkey-backups/)"
+
+## migrate-vault-sqlite-to-pg: Copy all vault credentials from SQLite to Postgres.
+##   Reads /var/lib/mintkey/vault.sqlite from the mintkey_vault_data volume and
+##   writes every row to the postgres DSN configured for vault-adapter.
+##   Idempotent (ON CONFLICT DO NOTHING on credential_id PK).
+##   Verifies a 5-credential sample byte-equal post-insert.
+##   DO NOT run while vault-adapter is being written to (stop writes or run
+##   during a maintenance window). After success, cut over with:
+##     docker compose up -d --no-deps --force-recreate vault-adapter
+migrate-vault-sqlite-to-pg:
+	docker run --rm --network=mintkey_mintkey \
+		-v mintkey_vault_data:/var/lib/mintkey \
+		-v "$(REPO_ROOT)/apps/vault-adapter":/src -w /src \
+		-e MINTKEY_VAULT_SQLITE_PATH=/var/lib/mintkey/vault.sqlite \
+		-e MINTKEY_VAULT_PG_DSN="postgres://mintkey_migrate:changeme@postgres:5432/mintkey?sslmode=disable" \
+		golang:latest go run ./cmd/vault-migrate-sqlite-to-pg/...

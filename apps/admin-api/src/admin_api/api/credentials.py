@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.credential_service import (
+    AppleJWTPayload,
     GoogleServiceAccountPayload,
     OAuth2PasswordGrantPayload,
 )
@@ -203,7 +204,51 @@ async def create_credential(
                 },
             )
 
-    # Step 1d: For google_service_account, validate the structured payload — spec §4.3.
+    # Step 1d: For apple_jwt, validate the structured payload — spec §4.2.
+    # body.value is expected to be the JSON envelope:
+    #   { "scheme": "apple_jwt", "p8_key_pem": ..., "key_id": ..., "issuer_id": ... }
+    # Validation: PEM header check, non-empty key_id, non-empty issuer_id.
+    # p8_key_pem is scrubbed from all log calls — ADR-0014.7, S-SEC-1.
+    # On success: re-serialise the validated payload as the canonical envelope so
+    # the Vault Adapter receives EXACTLY the expected JSON shape.
+    apple_jwt_envelope: str | None = None  # set below if auth_scheme == "apple_jwt"
+    apple_jwt_validated: AppleJWTPayload | None = None
+    if body.auth_scheme == "apple_jwt":
+        import json as _json_mod
+        try:
+            raw_apple = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_apple, dict):
+                raise TypeError("apple_jwt value must be a JSON object")
+            # Strip the outer "scheme" key if present (UI may include it)
+            raw_apple.pop("scheme", None)
+            apple_jwt_validated = AppleJWTPayload(**raw_apple)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "title": "apple_jwt value must be a valid JSON object",
+                },
+            )
+        except ValueError as exc:
+            # Log the error without including p8_key_pem in the message — ADR-0014.7.
+            logger.warning(
+                "apple_jwt payload validation failed: %s",
+                str(exc),  # exc text describes the field constraint, not the key value
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "title": "apple_jwt payload failed validation",
+                    "detail": str(exc),
+                },
+            )
+        # Serialise the validated envelope for the vault — p8_key_pem is in this string
+        # but is passed directly to StoreCredential and never logged.
+        apple_jwt_envelope = apple_jwt_validated.to_vault_envelope()
+
+    # Step 1e: For google_service_account, validate the structured payload — spec §4.3.
     # body.value is expected to be the JSON envelope:
     #   { "scheme": "google_service_account", "service_account_json": ..., "scope": ... }
     # Validation: service_account_json parses as valid Google SA JSON, required fields
@@ -253,16 +298,20 @@ async def create_credential(
 
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
-    # For google_service_account: pass the canonical JSON envelope as plaintext so the
-    # Vault Adapter receives exactly { scheme, json_key, scope }.
-    _vault_plaintext: str = (
-        _gsa_envelope.decode() if _gsa_envelope is not None else body.value
-    )
+    # For apple_jwt: pass the canonical JSON envelope as plaintext.
+    # For google_service_account: pass the canonical JSON envelope as plaintext.
+    vault_plaintext: str
+    if apple_jwt_envelope is not None:
+        vault_plaintext = apple_jwt_envelope
+    elif _gsa_envelope is not None:
+        vault_plaintext = _gsa_envelope.decode()
+    else:
+        vault_plaintext = body.value
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
         service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
-        plaintext=_vault_plaintext,  # plaintext leaves scope here; vault encrypts it
+        plaintext=vault_plaintext,  # plaintext leaves scope here; vault encrypts it
         target_url=service_base_url,
         header_name=body.header_name or "",
         query_param=body.query_param or "",
@@ -308,6 +357,8 @@ async def create_credential(
     # Step 5: Emit audit event — ADR-0014.7
     # Rotation detected when vault returns key_version > 1 — T-1.8.2.
     # Payload MUST NOT include body.value or any plaintext — ADR-0014.4, S-SEC-1.
+    # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (SHA-256 hex[:16]);
+    # NEVER include p8_key_pem itself.
     is_rotation = key_version > 1
     event_type = "credential.rotated" if is_rotation else "credential.registered"
     audit_payload: dict[str, Any] = {
@@ -318,6 +369,14 @@ async def create_credential(
     }
     if is_rotation:
         audit_payload["previous_key_version"] = key_version - 1
+    if apple_jwt_validated is not None:
+        import hashlib as _hashlib
+        # Include non-sensitive metadata for the audit trail; NEVER p8_key_pem.
+        audit_payload["key_id"] = apple_jwt_validated.key_id
+        audit_payload["issuer_id"] = apple_jwt_validated.issuer_id
+        audit_payload["p8_fingerprint"] = _hashlib.sha256(
+            apple_jwt_validated.p8_key_pem.encode()
+        ).hexdigest()[:16]
     if _gsa_validated is not None:
         import hashlib as _hashlib
         import json as _json_gsa

@@ -50,3 +50,9 @@ databaseChangeLog:
   - include:
       file: 017-services-template-id.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 018-vault-schema.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 019-grants-defensive.yaml
+      relativeToChangelogFile: true
