@@ -101,6 +101,20 @@ func TestInject_OAuth2PasswordGrant(t *testing.T) {
 	assert(t, req.Header.Get("Authorization") == "Bearer exchanged_jwt_token_xyz")
 }
 
+func TestInject_AppleJWT(t *testing.T) {
+	// apple_jwt: Vault Adapter has already generated the ES256 JWT and placed it
+	// in Value. Proxy treats it opaquely — same Authorization: Bearer header as
+	// bearer_token. No JWT generation or decode happens here.
+	req := makeRequest("GET", "https://api.example.com/v1/data")
+	cred := credential.Credential{
+		AuthScheme: credential.AuthSchemeAppleJWT,
+		Value:      []byte("eyJhbGciOiJFUzI1NiJ9.apple_payload.sig"),
+	}
+	err := credential.Inject(req, cred)
+	assert(t, err == nil)
+	assert(t, req.Header.Get("Authorization") == "Bearer eyJhbGciOiJFUzI1NiJ9.apple_payload.sig")
+}
+
 func TestInject_StripAgentAuthAlways(t *testing.T) {
 	// Even for api_key_header, the original Authorization must be gone
 	req := makeRequest("GET", "https://api.example.com/v1/data")
