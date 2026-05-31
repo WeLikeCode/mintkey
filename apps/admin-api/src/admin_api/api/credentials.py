@@ -37,7 +37,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
-from admin_api.services.credential_service import OAuth2PasswordGrantPayload
+from admin_api.services.credential_service import (
+    GoogleServiceAccountPayload,
+    OAuth2PasswordGrantPayload,
+)
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
@@ -200,13 +203,66 @@ async def create_credential(
                 },
             )
 
+    # Step 1d: For google_service_account, validate the structured payload — spec §4.3.
+    # body.value is expected to be the JSON envelope:
+    #   { "scheme": "google_service_account", "service_account_json": ..., "scope": ... }
+    # Validation: service_account_json parses as valid Google SA JSON, required fields
+    # present, private_key starts with -----BEGIN, client_email contains @, token_uri
+    # starts with https://. scope must be non-empty.
+    # service_account_json, json_key, and private_key are scrubbed from all log calls —
+    # ADR-0014.7, S-SEC-1.
+    # On success: serialise as canonical vault envelope so the Vault Adapter receives
+    # EXACTLY the expected JSON shape { scheme, json_key, scope }.
+    _gsa_envelope: bytes | None = None
+    _gsa_validated: GoogleServiceAccountPayload | None = None
+    if body.auth_scheme == "google_service_account":
+        import json as _json_mod
+        try:
+            raw_gsa = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_gsa, dict):
+                raise TypeError("google_service_account value must be a JSON object")
+            # Strip the outer "scheme" key if present (UI may include it).
+            raw_gsa.pop("scheme", None)
+            _gsa_validated = GoogleServiceAccountPayload(**raw_gsa)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account value must be a valid JSON object",
+                },
+            )
+        except ValueError as exc:
+            # Log the error without including service_account_json — ADR-0014.7.
+            # Only the terse validation message is logged — NEVER private_key material.
+            logger.warning(
+                "google_service_account credential validation failed: %s", str(exc)
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": str(exc),
+                },
+            )
+        # Serialise the validated envelope for the vault — service_account_json is in
+        # these bytes but is passed directly to StoreCredential and never logged.
+        _gsa_envelope = _gsa_validated.to_vault_envelope()
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
+    # For google_service_account: pass the canonical JSON envelope as plaintext so the
+    # Vault Adapter receives exactly { scheme, json_key, scope }.
+    _vault_plaintext: str = (
+        _gsa_envelope.decode() if _gsa_envelope is not None else body.value
+    )
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
         service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
-        plaintext=body.value,  # plaintext leaves scope here; vault encrypts it
+        plaintext=_vault_plaintext,  # plaintext leaves scope here; vault encrypts it
         target_url=service_base_url,
         header_name=body.header_name or "",
         query_param=body.query_param or "",
@@ -262,6 +318,17 @@ async def create_credential(
     }
     if is_rotation:
         audit_payload["previous_key_version"] = key_version - 1
+    if _gsa_validated is not None:
+        import hashlib as _hashlib
+        import json as _json_gsa
+        # Include non-sensitive metadata only — NEVER service_account_json or private_key.
+        _gsa_parsed: dict[str, object] = _json_gsa.loads(_gsa_validated.service_account_json)
+        audit_payload["auth_scheme"] = "google_service_account"
+        audit_payload["service_account_email"] = str(_gsa_parsed.get("client_email", ""))
+        audit_payload["project_id"] = str(_gsa_parsed.get("project_id", ""))
+        audit_payload["json_key_fingerprint"] = _hashlib.sha256(
+            _gsa_validated.service_account_json.encode()
+        ).hexdigest()[:16]
 
     await audit_emit(
         session=session,
