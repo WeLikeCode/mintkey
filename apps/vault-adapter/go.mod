@@ -3,6 +3,7 @@ module github.com/mintkey/mintkey/services/vault-adapter
 go 1.26.2
 
 require (
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/lib/pq v1.12.3
 	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.54.0
