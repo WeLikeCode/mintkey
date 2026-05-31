@@ -162,6 +162,9 @@ else
     # Fernet key = URL-safe base64 of 32 random bytes = exactly 44 chars with one trailing =
     _raw="$(openssl rand -base64 32 | tr '/+' '_-' | tr -d '\n=')"
     MINTKEY_BOOTSTRAP_KEK="${_raw}="
+    if [ ${#MINTKEY_BOOTSTRAP_KEK} -ne 44 ]; then
+      fatal "generated KEK has wrong length (${#MINTKEY_BOOTSTRAP_KEK} chars, expected 44); openssl output was unexpected"
+    fi
   else
     fatal "Cannot generate Fernet key: python3 (cryptography) or openssl required. Install one and retry."
   fi

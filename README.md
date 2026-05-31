@@ -222,10 +222,23 @@ Full guardrails: [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) (kept in 
 
 ### Clone-free (operator path — Docker only)
 
+> **Post-merge path (default).** The `install.sh`, `docker-compose.ghcr.yml`, and config
+> tree in this section only exist on `main` after this branch is merged.  Running the
+> one-liner against `main` before the merge returns a 404.
+
 ```sh
 # Create a directory and run the installer:
 mkdir mintkey && cd mintkey
-curl -fsSL https://raw.githubusercontent.com/WeLikeCode/mintkey/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/WeLikeCode/mintkey/main/install.sh | bash
+```
+
+**Pre-merge / branch testing.** To test from this branch before it lands on `main`,
+set `MINTKEY_BRANCH` so the installer fetches files from the feature branch:
+
+```sh
+mkdir mintkey && cd mintkey
+MINTKEY_BRANCH=feat/ghcr-compose-and-install \
+  curl -fsSL https://raw.githubusercontent.com/WeLikeCode/mintkey/feat/ghcr-compose-and-install/install.sh | bash
 ```
 
 The script downloads `docker-compose.ghcr.yml` and all required config files,
@@ -239,7 +252,7 @@ starts the stack.  No `git clone` needed.
 
 To target a specific release tag:
 ```sh
-MINTKEY_BRANCH=v1.2.3 sh install.sh
+MINTKEY_BRANCH=v1.2.3 bash install.sh
 ```
 
 After the stack comes up, retrieve the bootstrap admin password:
@@ -256,12 +269,34 @@ with open('data/bootstrap-secrets/admin_password','rb') as f:
 Keep `.env` safe — losing `MINTKEY_BOOTSTRAP_KEK` makes the bootstrap admin password
 unrecoverable without a full reset (`docker compose down -v`).
 
+#### Multi-arch note
+
+GHCR images are built by `publish.yml`.  The multi-arch change (linux/amd64 +
+linux/arm64) in this branch only takes effect **after this PR merges and
+`publish.yml` re-runs**.  Until that re-publish completes, ARM hosts (`linux/arm64/v8`)
+will see `no matching manifest` when pulling images.
+
+To verify both architectures are present after merge:
+```sh
+docker manifest inspect ghcr.io/welikecode/mintkey-admin-api:latest
+# Both linux/amd64 and linux/arm64 entries should appear in the manifests list.
+```
+
+If you are on an ARM host and see the manifest error before the post-merge re-publish
+completes, wait for the `publish.yml` workflow run to finish on `main` and then retry.
+
 ### Developer path (requires git clone)
 
 ```sh
 git clone https://github.com/WeLikeCode/mintkey.git && cd mintkey
+bash scripts/dev-install.sh   # full automated setup with --clean / --force-destroy guards
+# or, to bring up the stack manually:
 docker compose -f infra/compose/docker-compose.yml up -d
 ```
+
+`scripts/dev-install.sh` is the original developer install script (moved from the repo
+root).  It handles `--clean`, `--force-destroy`, interactive prompts, `--non-interactive`
+mode, SIGINT/SIGTERM cleanup, and `.env` generation automatically.
 
 ---
 
