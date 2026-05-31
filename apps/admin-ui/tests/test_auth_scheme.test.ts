@@ -19,7 +19,7 @@ import {
 } from "../src/lib/auth-scheme.js";
 
 describe("AUTH_SCHEMES", () => {
-  it("contains all 9 required schemes", () => {
+  it("contains all 10 required schemes", () => {
     const values = AUTH_SCHEMES.map((s) => s.value);
     expect(values).toContain("none");
     expect(values).toContain("api_key_header");
@@ -30,7 +30,8 @@ describe("AUTH_SCHEMES", () => {
     expect(values).toContain("oauth2_password_grant");
     expect(values).toContain("oidc_client_secret");
     expect(values).toContain("mtls");
-    expect(values).length(9);
+    expect(values).toContain("google_service_account");
+    expect(values).length(10);
   });
 
   it("each scheme has a value and label", () => {
@@ -130,6 +131,23 @@ describe("getCredentialFields", () => {
     expect(timeoutField.max).toBe(120);
   });
 
+  it("google_service_account returns service_account_json (textarea, secret) + scope (text, not secret)", () => {
+    const fields = getCredentialFields("google_service_account");
+    expect(fields).toHaveLength(2);
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("service_account_json");
+    expect(names).toContain("scope");
+    const jsonField = fields.find((f) => f.name === "service_account_json")!;
+    expect(jsonField.type).toBe("textarea");
+    expect(jsonField.secret).toBe(true);
+    expect(jsonField.required).toBe(true);
+    const scopeField = fields.find((f) => f.name === "scope")!;
+    expect(scopeField.type).toBe("text");
+    expect(scopeField.secret).toBe(false);
+    expect(scopeField.required).toBe(true);
+    expect(scopeField.defaultValue).toBe("https://www.googleapis.com/auth/androidpublisher");
+  });
+
   it("unknown scheme returns empty fields (safe default)", () => {
     const fields = getCredentialFields("unknown_scheme");
     expect(fields).toEqual([]);
@@ -160,6 +178,31 @@ describe("buildCredentialPayload", () => {
   it("none: builds {auth_scheme: none} with no extra fields", () => {
     const payload = buildCredentialPayload("none", {});
     expect(payload).toEqual({ auth_scheme: "none" });
+  });
+
+  it("google_service_account: value is JSON string with exactly 3 keys", () => {
+    const saJson = '{"type":"service_account","project_id":"my-proj"}';
+    const payload = buildCredentialPayload("google_service_account", {
+      service_account_json: saJson,
+      scope: "https://example/scope",
+    });
+    expect(payload.auth_scheme).toBe("google_service_account");
+    expect(typeof payload.value).toBe("string");
+    const parsed = JSON.parse(payload.value);
+    expect(parsed.scheme).toBe("google_service_account");
+    expect(parsed.service_account_json).toBe(saJson);
+    expect(parsed.scope).toBe("https://example/scope");
+    // Exactly 3 keys — no extras
+    expect(Object.keys(parsed)).toHaveLength(3);
+  });
+
+  it("google_service_account: re-parsing payload.value returns scheme, service_account_json, scope only", () => {
+    const payload = buildCredentialPayload("google_service_account", {
+      service_account_json: '{"type":"service_account"}',
+      scope: "https://www.googleapis.com/auth/androidpublisher",
+    });
+    const parsed = JSON.parse(payload.value);
+    expect(Object.keys(parsed).sort()).toEqual(["scheme", "scope", "service_account_json"].sort());
   });
 
   it("oauth2_password_grant: assembles nested value JSON with correct contract shape", () => {
