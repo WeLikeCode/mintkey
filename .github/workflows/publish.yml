@@ -53,6 +53,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Set up QEMU (cross-arch emulation for non-native builds)
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
@@ -94,6 +97,7 @@ jobs:
           # Supply chain: SBOM + signed provenance attached to each image.
           provenance: true
           sbom: true
-          # Single-arch only. arm64 would ~double build time; revisit if/when
-          # production runs on ARM.
-          platforms: linux/amd64
+          # Multi-arch so Apple Silicon (M-series) Macs and ARM cloud hosts
+          # pull native images instead of running amd64 under emulation. Build
+          # time roughly doubles per service; per-service GHA cache mitigates.
+          platforms: linux/amd64,linux/arm64

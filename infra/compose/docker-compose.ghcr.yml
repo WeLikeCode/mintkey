@@ -1,0 +1,564 @@
+# Mintkey GHCR install compose — pull-only (no build:) for clone-free installs.
+# Images: ghcr.io/welikecode/mintkey-<service>:${MINTKEY_TAG:-latest}  (multi-arch; no platform: field)
+# Third-party images are pinned to the same digest as infra/compose/docker-compose.yml.
+# Bind-mounted configs are expected at ./config/<original-repo-path> — install.sh downloads them.
+#
+# DO NOT modify infra/compose/docker-compose.yml — that is the source of truth for service config.
+
+name: mintkey
+
+# ---------------------------------------------------------------------------
+# Named volumes
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:        # /var/lib/postgresql/data
+  vault_data:           # /var/lib/mintkey/ (vault.sqlite) — encrypted credential store
+  vault_kek:            # /run/secrets/ (mintkey_kek_keyfile) — SEPARATE from vault_data (ADR-0003 defense in depth)
+  bootstrap_secrets:    # /run/secrets/mintkey/bootstrap-secrets/
+  grafana_data:         # /var/lib/grafana
+  broker_wal:           # /var/lib/mintkey/ — broker WAL + dead-letter (#22)
+  proxy_wal:            # /var/lib/mintkey/ — proxy-plugin WAL + dead-letter (#22)
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  mintkey:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+
+  # ─── 1. Postgres ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16@sha256:b6ccf02e9b47eac0d67b5eaa0ef56fd59163bffa5506f64e96ceb5053130ec86
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=4MB"]
+    environment:
+      POSTGRES_DB: mintkey
+      POSTGRES_USER: mintkey_migrate
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mintkey_migrate -d mintkey"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ─── 2. Keycloak ─────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    restart: unless-stopped
+    mem_limit: 1g
+    command: start-dev --db postgres --db-url jdbc:postgresql://postgres:5432/mintkey --db-username mintkey_migrate --db-password changeme
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/mintkey
+      KC_DB_USERNAME: mintkey_migrate
+      KC_DB_PASSWORD: changeme
+      KC_HTTP_PORT: "8443"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      JAVA_OPTS_APPEND: "-Xms256m -Xmx768m"
+    ports:
+      - "8443:8443"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8443 && printf 'GET /realms/master/.well-known/openid-configuration HTTP/1.0\\r\\n\\r\\n' >&3 && head -c 1 <&3 | grep -q ."]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
+  liquibase:
+    image: liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e662c4212e834468df959983
+    restart: on-failure:3
+    mem_limit: 256m
+    command:
+      - --url=jdbc:postgresql://postgres:5432/mintkey
+      - --username=mintkey_migrate
+      - --password=changeme
+      - --changeLogFile=changelog/db.changelog-master.yaml
+      - update
+    volumes:
+      - ./config/apps/admin-api/db/changelog:/liquibase/changelog:ro
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
+  seed-job:
+    image: ghcr.io/welikecode/mintkey-seed-job:${MINTKEY_TAG:-latest}
+    restart: on-failure:3
+    mem_limit: 128m
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: mintkey
+      PGUSER: mintkey_migrate
+      PGPASSWORD: changeme
+      BOOTSTRAP_SECRETS_DIR: /run/secrets/mintkey/bootstrap-secrets
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: changeme
+      MINTKEY_KEYCLOAK_INTERNAL_URL: http://keycloak:8443
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+      MINTKEY_GRAFANA_PUBLIC_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}"
+      MINTKEY_JAEGER_PUBLIC_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}"
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK}"
+      HOST_BOOTSTRAP_SECRETS_DIR: /host-bootstrap-secrets
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
+      - ./data/bootstrap-secrets:/host-bootstrap-secrets:rw
+    networks:
+      - mintkey
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
+  # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
+  vault-adapter:
+    image: ghcr.io/welikecode/mintkey-vault-adapter:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      MINTKEY_VAULT_KEK: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+      VAULT_GRPC_PORT: "8084"
+      VAULT_HTTP_PORT: "8087"
+      MINTKEY_VAULT_FILE_PATH: /var/lib/mintkey/vault.sqlite
+      MINTKEY_VAULT_PROXY_IDENTITY_ID: "svcid_proxy"
+      MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
+    volumes:
+      - vault_data:/var/lib/mintkey
+      - vault_kek:/run/secrets
+    ports:
+      - "8084:8084"
+      - "8087:8087"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/grpc_health_probe", "-addr=:8084"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 4. Admin API ─────────────────────────────────────────────────────────
+  admin-api:
+    image: ghcr.io/welikecode/mintkey-admin-api:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
+      MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
+      MINTKEY_ENV: dev
+      MINTKEY_SSRF_ALLOW_PRIVATE: "1"
+      ADMIN_UI_PUBLIC_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
+      MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_KEYCLOAK_PUBLIC_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}"
+      MINTKEY_KEYCLOAK_INTERNAL_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+      MINTKEY_ADMIN_UI_PUBLIC_URL: "${MINTKEY_ADMIN_UI_PUBLIC_URL:-http://localhost:8081}"
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - mintkey
+    depends_on:
+      seed-job:
+        condition: service_completed_successfully
+      vault-adapter:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8080/v1/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ─── 5. Admin UI ──────────────────────────────────────────────────────────
+  admin-ui:
+    image: ghcr.io/welikecode/mintkey-admin-ui:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      ADMIN_API_URL: http://admin-api:8080
+      SESSION_SECRET: mintkey-session-secret-change-in-production
+      PORT: "8081"
+      ADMIN_EMAIL: admin@mintkey.internal
+      ADMIN_PASSWORD_FILE: /run/secrets/mintkey/bootstrap-secrets/admin_password
+      MINTKEY_BOOTSTRAP_KEK: "${MINTKEY_BOOTSTRAP_KEK}"
+      ADMIN_UI_PRIVATE_KEY_PATH: /run/secrets/mintkey/bootstrap-secrets/admin_ui_private.pem
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+      MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    ports:
+      - "8081:8081"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8081/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # ─── 6. MCP Server ────────────────────────────────────────────────────────
+  mcp-server:
+    image: ghcr.io/welikecode/mintkey-mcp-server:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      ADMIN_API_BASE_URL: http://admin-api:8080
+      MINTKEY_ENV: dev
+      BROKER_BASE_URL: http://broker:8083
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+      MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
+      MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+    ports:
+      - "8082:8082"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8082/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # ─── 7. Broker ────────────────────────────────────────────────────────────
+  broker:
+    image: ghcr.io/welikecode/mintkey-broker:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      BROKER_PORT: "8083"
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+    volumes:
+      - broker_wal:/var/lib/mintkey
+    ports:
+      - "8083:8083"
+    networks:
+      - mintkey
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8083/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 8. Kong (DB-less) ────────────────────────────────────────────────────
+  kong:
+    image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_NGINX_WORKER_PROCESSES: "2"
+    volumes:
+      - ./config/apps/proxy-plugin/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+      - "127.0.0.1:8001:8001"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kong health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ─── 9. Kong Syncer ───────────────────────────────────────────────────────
+  kong-syncer:
+    image: ghcr.io/welikecode/mintkey-kong-syncer:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      KONG_ADMIN_URL: http://kong:8001
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey?sslmode=disable
+      KONG_SYNCER_HTTP_PORT: "8085"
+    ports:
+      - "8085:8085"
+    networks:
+      - mintkey
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://127.0.0.1:8085/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── 10. Proxy Plugin ─────────────────────────────────────────────────────
+  proxy-plugin:
+    image: ghcr.io/welikecode/mintkey-proxy-plugin:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      MINTKEY_ENV: dev
+      BROKER_ADDR: broker:8083
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      PLUGIN_PORT: "8086"
+      DEFAULT_TARGET: http://mock-backend:8999
+      MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
+      DATABASE_URL: postgres://mintkey_app:mintkey_app_password@postgres:5432/mintkey
+      MINTKEY_AUD_ENFORCEMENT: permissive
+      MINTKEY_ADMIN_API_URL: "http://admin-api:8080"
+      MINTKEY_VAULT_PROXY_IDENTITY_ID: "svcid_proxy"
+      MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
+    volumes:
+      - proxy_wal:/var/lib/mintkey
+    ports:
+      - "8086:8086"
+    networks:
+      - mintkey
+    depends_on:
+      kong:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/wget", "-qO-", "http://localhost:8086/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── 11. Mock Backend ─────────────────────────────────────────────────────
+  mock-backend:
+    image: ghcr.io/welikecode/mintkey-mock-backend:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "8999:8999"
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8999/health') or sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 12. OTel Collector ───────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.104.0@sha256:e07e325e303e86f4a87a617491e921b579a92da6d404007394757ac910bf9587
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./config/infra/observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+    networks:
+      - mintkey
+
+  # ─── 13. Jaeger ───────────────────────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.56@sha256:d2cd4c226624bdc116decd3106091b4df9882da8db42f8550293596cab79b8ea
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    expose:
+      - "16686"
+    networks:
+      - mintkey
+    depends_on:
+      - otel-collector
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:14269/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 13b. Jaeger Auth (oauth2-proxy) ──────────────────────────────────────
+  jaeger-auth:
+    image: ghcr.io/welikecode/mintkey-jaeger-auth:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 96m
+    command:
+      - --provider=keycloak-oidc
+      - --client-id=mintkey-jaeger
+      - --client-secret-file=/run/secrets/mintkey/bootstrap-secrets/jaeger_oidc_client_secret
+      - --redirect-url=${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback
+      - --oidc-issuer-url=${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey
+      - --upstream=http://jaeger:16686/
+      - --http-address=0.0.0.0:4180
+      - --email-domain=*
+      - --cookie-secure=false
+      - --cookie-samesite=lax
+      - --pass-access-token=false
+      - --pass-authorization-header=false
+      - --skip-provider-button=true
+      - --reverse-proxy=false
+      - --skip-jwt-bearer-tokens=false
+      - --insecure-oidc-allow-unverified-email=true
+    environment:
+      OAUTH2_PROXY_REDIRECT_URL: "${MINTKEY_JAEGER_PUBLIC_URL:-http://localhost:16686}/oauth2/callback"
+    ports:
+      - "16686:4180"
+    volumes:
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    extra_hosts:
+      - "localhost:host-gateway"
+    networks:
+      - mintkey
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4180/ping || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─── 14. Prometheus ───────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - ./config/infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/infra/observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ─── 16b. cAdvisor ────────────────────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
+    restart: unless-stopped
+    mem_limit: 256m
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "8088:8080"
+    networks:
+      - mintkey
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ─── 15. Grafana ──────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.3@sha256:8640e5038e83ca4554ed56b9d76375158bcd51580238c6f5d8adaf3f20dd5379
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SERVER_ROOT_URL: "${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: "Mintkey SSO"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "mintkey-grafana"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE: /run/secrets/mintkey/bootstrap-secrets/grafana_oidc_client_secret
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid email profile roles"
+      GF_AUTH_GENERIC_OAUTH_EMPTY_SCOPES: "false"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/auth"
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/token"
+      GF_AUTH_GENERIC_OAUTH_API_URL: "${MINTKEY_KEYCLOAK_INTERNAL_URL:-http://keycloak:8443}/realms/mintkey/protocol/openid-connect/userinfo"
+      GF_AUTH_GENERIC_OAUTH_SIGNOUT_REDIRECT_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}/realms/mintkey/protocol/openid-connect/logout?redirect_uri=${MINTKEY_GRAFANA_PUBLIC_URL:-http://localhost:3003}/login"
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(realm_access.roles[*], 'mintkey-platform-admin') && 'Admin' || contains(realm_access.roles[*], 'mintkey-grafana-editor') && 'Editor' || 'Viewer'"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTO_LOGIN: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/infra/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/infra/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
+    ports:
+      - "3003:3000"
+    networks:
+      - mintkey
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      seed-job:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
