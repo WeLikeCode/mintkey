@@ -91,6 +91,8 @@ enum AuthScheme {
   AUTH_SCHEME_OIDC_CLIENT_SECRET = 6;
   AUTH_SCHEME_MTLS = 7;
   AUTH_SCHEME_OAUTH2_PASSWORD_GRANT = 8;
+  // 9 is reserved for AUTH_SCHEME_APPLE_JWT (PR #134, not yet merged).
+  AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT = 10;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
