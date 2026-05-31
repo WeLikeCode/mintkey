@@ -27,6 +27,10 @@ databaseChangeLog:
               GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO mintkey_app;
               ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mintkey_app;
               ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO mintkey_app;
+              -- Append-only invariant for audit_events (ADR-0014.7 audit immutability).
+              -- The blanket GRANT above includes UPDATE/DELETE; this REVOKE restores the
+              -- per-table restriction from 009-roles.yaml. mintkey_app keeps SELECT+INSERT.
+              REVOKE UPDATE, DELETE ON audit_events FROM mintkey_app;
 
   - changeSet:
       id: 019-grants-defensive-vault
