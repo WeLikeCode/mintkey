@@ -45,18 +45,16 @@ func main() {
 
 	dekCache := cache.New(0) // default 5-min TTL
 
-	dbPath := os.Getenv("MINTKEY_VAULT_FILE_PATH")
-	if dbPath == "" {
-		dbPath = os.Getenv("VAULT_DB_PATH") // legacy fallback
-	}
-	if dbPath == "" {
-		dbPath = "/tmp/vault-adapter.db"
-	}
-	st, err := store.New(dbPath)
+	st, err := store.NewFromEnv(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "vault-adapter: store: %v\n", err)
 		os.Exit(1)
 	}
+	backendName := os.Getenv("MINTKEY_VAULT_BACKEND")
+	if backendName == "" {
+		backendName = "postgres"
+	}
+	log.Printf("vault-adapter: store backend = %s", backendName)
 
 	// NewVaultService shares dekCache so the changes subscriber and the vault
 	// service operate on the same in-process cache instance (metrics and
