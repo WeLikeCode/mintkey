@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import vault_pb2 as vault__pb2
+from admin_api.services import vault_pb2 as vault__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
