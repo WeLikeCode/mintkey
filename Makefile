@@ -110,7 +110,7 @@ create-operator:
 	@test -n "$(EMAIL)"    || (echo "ERROR: EMAIL is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
 	@test -n "$(NAME)"     || (echo "ERROR: NAME is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
 	@test -n "$(PASSWORD)" || (echo "ERROR: PASSWORD is required. Usage: make create-operator EMAIL=foo@mintkey.internal NAME='Foo Bar' PASSWORD=<password>" && exit 1)
-	docker compose -f infra/compose/docker-compose.yml run --rm --no-deps \
+	docker compose --env-file .env -f infra/compose/docker-compose.yml run --rm --no-deps \
 		-e PGHOST=postgres \
 		-e PGPORT=5432 \
 		-e PGDATABASE=mintkey \

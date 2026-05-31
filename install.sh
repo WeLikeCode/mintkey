@@ -16,7 +16,8 @@
 #
 # Developer install (requires git clone):
 #   git clone https://github.com/WeLikeCode/mintkey.git && cd mintkey
-#   docker compose -f infra/compose/docker-compose.yml up -d
+#   make dev                # preferred — reads root .env automatically
+#   # or:   docker compose --env-file .env -f infra/compose/docker-compose.yml up -d
 
 set -euo pipefail
 
