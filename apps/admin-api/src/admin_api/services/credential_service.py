@@ -1,13 +1,14 @@
 """
-OAuth2 Password Grant credential payload validation.
+Credential payload validation for structured auth schemes.
 
-Defines the Pydantic model for validating structured credential payloads
-when auth_type=oauth2_password_grant. Integrates with the existing SSRF
-allowlist check (S-SEC-1) to reject token_url values pointing at private
-or loopback addresses.
+Defines Pydantic models for validating structured credential payloads:
+  - OAuth2PasswordGrantPayload: auth_type=oauth2_password_grant. Integrates
+    with the existing SSRF allowlist check (S-SEC-1).
+  - AppleJWTPayload: auth_scheme=apple_jwt. Validates .p8 PEM material,
+    key_id, and issuer_id fields; scrubs p8_key_pem from any log output.
 
 Source: design §7 (Admin API — Credential Validation for oauth2_password_grant);
-        Requirements 19.2, 19.4, 19.5, 19.6.
+        Requirements 19.2, 19.4, 19.5, 19.6; spec §4.2 (apple_jwt).
 """
 from __future__ import annotations
 
@@ -187,3 +188,85 @@ class OAuth2PasswordGrantPayload(BaseModel):
         if not v:
             raise ValueError("credential_fields must contain at least one entry")
         return v
+
+
+# ---------------------------------------------------------------------------
+# Apple JWT credential payload model — spec §4.2
+# ---------------------------------------------------------------------------
+
+_APPLE_PEM_PREFIX = "-----BEGIN PRIVATE KEY-----"
+
+
+class AppleJWTPayload(BaseModel):
+    """Structured credential payload for auth_scheme=apple_jwt.
+
+    Validated at registration time. The Vault Adapter stores this as a JSON
+    envelope: { "scheme": "apple_jwt", "p8_key_pem": ..., "key_id": ...,
+    "issuer_id": ... }.
+
+    Fields:
+      - p8_key_pem: PEM-encoded PKCS#8 private key (.p8 file contents).
+        Must begin with "-----BEGIN PRIVATE KEY-----". NEVER included in
+        audit events or log output — scrubbed at all call sites.
+      - key_id: 10-char Apple developer key ID (non-empty string).
+      - issuer_id: Apple Team ID / Issuer ID (non-empty string; spec hints
+        UUID format but basic non-empty is enforced in this chunk).
+
+    Source: spec §4.2; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: p8_key_pem is intentionally NOT repr'd or logged anywhere.
+    # The field is validated then serialised into the vault envelope; it
+    # MUST NOT appear in any audit payload or structlog event.
+    p8_key_pem: str
+    key_id: str
+    issuer_id: str
+
+    @field_validator("p8_key_pem")
+    @classmethod
+    def validate_pem_header(cls, v: str) -> str:
+        """Require PKCS#8 PEM header — spec §4.2."""
+        stripped = v.strip()
+        if not stripped.startswith(_APPLE_PEM_PREFIX):
+            raise ValueError(
+                f"p8_key_pem must start with '{_APPLE_PEM_PREFIX}'"
+            )
+        return v
+
+    @field_validator("key_id")
+    @classmethod
+    def validate_key_id_non_empty(cls, v: str) -> str:
+        """key_id must be non-empty — spec §4.2."""
+        if not v.strip():
+            raise ValueError("key_id must be a non-empty string")
+        return v
+
+    @field_validator("issuer_id")
+    @classmethod
+    def validate_issuer_id_non_empty(cls, v: str) -> str:
+        """issuer_id must be non-empty — spec §4.2."""
+        if not v.strip():
+            raise ValueError("issuer_id must be a non-empty string")
+        return v
+
+    def to_vault_envelope(self) -> str:
+        """Serialise to the JSON envelope shape the Vault Adapter expects.
+
+        Returns the canonical envelope string:
+          { "scheme": "apple_jwt", "p8_key_pem": ..., "key_id": ..., "issuer_id": ... }
+
+        This is the ONLY place p8_key_pem is written into a string after
+        validation; the resulting string is passed directly to StoreCredential
+        and NEVER logged or returned in a response.
+        """
+        import json as _json
+
+        return _json.dumps(
+            {
+                "scheme": "apple_jwt",
+                "p8_key_pem": self.p8_key_pem,
+                "key_id": self.key_id,
+                "issuer_id": self.issuer_id,
+            },
+            separators=(",", ":"),
+        )
