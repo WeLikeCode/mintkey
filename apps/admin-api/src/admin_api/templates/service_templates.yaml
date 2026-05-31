@@ -36,15 +36,16 @@ templates:
     display_name: Google Play Developer API
     description: "App publishing, in-app purchases, subscriptions, and review management."
     base_url: https://androidpublisher.googleapis.com
-    auth_type: oauth2_client_credentials
+    auth_type: google_service_account
     openapi_spec_url: https://androidpublisher.googleapis.com/$discovery/rest?version=v3
     category: app_store
     version: "1.0.0"
-    config_notes: "Authentication uses OAuth 2.0 service account credentials."
+    config_notes: "Operator uploads a service account JSON key; Vault Adapter auto-rotates OAuth2 access tokens (scope: androidpublisher) — no manual token management required."
     credential_hint:
       field: service_account_json
-      help: "OAuth 2.0 service account JSON key file contents"
+      help: "Paste the full service account JSON key file. Mintkey auto-rotates access tokens for scope https://www.googleapis.com/auth/androidpublisher."
       format: '{"type": "service_account", ...}'
+      scope_default: "https://www.googleapis.com/auth/androidpublisher"
     test_path: /androidpublisher/v3/applications
 
   - template_id: azure-devops
