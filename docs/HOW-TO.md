@@ -194,7 +194,7 @@ See [ADR-0021](architecture/01-architecture/adr/0021-vault-storage-backend-postg
 
 ---
 
-## 7. Operations
+## 6. Operations
 
 The proxy endpoint for all brokered calls is **`http://localhost:8000`** (env `MINTKEY_PROXY_URL`,
 per [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) lines 358–360 and the Ports
@@ -215,7 +215,7 @@ If clients on other machines need to reach this Mintkey instance, set `MINTKEY_M
 
 ---
 
-## 8. Database schema changes
+## 7. Database schema changes
 
 Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The schema is owned by Liquibase per
 [ADR-0015](architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md); never edit
@@ -224,7 +224,7 @@ still go through Liquibase changelogs — add a new changeset, never edit an exi
 
 ---
 
-## 9. Stack health checks
+## 8. Stack health checks
 
 | Command | Expected outcome |
 |---|---|
@@ -272,7 +272,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 10. Where else to look
+## 9. Where else to look
 
 | Need | Document |
 |---|---|
@@ -282,7 +282,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 11. Operator cookbook — step-by-step recipes
+## 10. Operator cookbook — step-by-step recipes
 
 Each recipe below is self-contained. Shared setup (session cookie, CSRF token, tenant ID)
 is shown once in Recipe 0 and referenced in subsequent recipes. Use either the Admin UI
