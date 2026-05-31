@@ -218,6 +218,53 @@ Full guardrails: [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) (kept in 
 
 ---
 
+## Install
+
+### Clone-free (operator path — Docker only)
+
+```sh
+# Create a directory and run the installer:
+mkdir mintkey && cd mintkey
+curl -fsSL https://raw.githubusercontent.com/WeLikeCode/mintkey/main/install.sh | sh
+```
+
+The script downloads `docker-compose.ghcr.yml` and all required config files,
+generates a Fernet KEK, writes a starter `.env`, pulls images from GHCR, and
+starts the stack.  No `git clone` needed.
+
+**Ports used:** 8080 (admin-api), 8081 (admin-ui), 8082 (mcp-server),
+8083 (broker), 8084/8087 (vault-adapter), 8085 (kong-syncer),
+8086 (proxy-plugin), 8000 (kong), 8443 (keycloak), 3003 (grafana),
+16686 (jaeger), 4317 (otel-collector), 8999 (mock-backend).
+
+To target a specific release tag:
+```sh
+MINTKEY_BRANCH=v1.2.3 sh install.sh
+```
+
+After the stack comes up, retrieve the bootstrap admin password:
+```sh
+MINTKEY_BOOTSTRAP_KEK=$(grep MINTKEY_BOOTSTRAP_KEK .env | cut -d= -f2-)
+python3 -c "
+import os
+from cryptography.fernet import Fernet
+with open('data/bootstrap-secrets/admin_password','rb') as f:
+    print(Fernet(os.environ['MINTKEY_BOOTSTRAP_KEK'].encode()).decrypt(f.read().strip()).decode())
+"
+```
+
+Keep `.env` safe — losing `MINTKEY_BOOTSTRAP_KEK` makes the bootstrap admin password
+unrecoverable without a full reset (`docker compose down -v`).
+
+### Developer path (requires git clone)
+
+```sh
+git clone https://github.com/WeLikeCode/mintkey.git && cd mintkey
+docker compose -f infra/compose/docker-compose.yml up -d
+```
+
+---
+
 ## Stability and versioning
 
 Mintkey is pre-alpha. The wire surface is declared `experimental` in [`docs/architecture/contracts/rest/openapi.yaml`](docs/architecture/contracts/rest/openapi.yaml) (`x-mintkey-stability: experimental`, version `0.1.0-preview.1`). Breaking changes will bump the major version; resource-level stability is called out per operation in the OpenAPI `description` where it differs from the document tier.
