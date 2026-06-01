@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 )
 
 func TestAuditEvent_Serialization(t *testing.T) {

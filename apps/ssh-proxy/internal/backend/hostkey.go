@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/WeLikeCode/mintkey/internal/vault"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -38,8 +38,10 @@ func (s *HostKeyStore) GetFingerprint(ctx context.Context, hostname string) (str
 	}
 	s.mu.RUnlock()
 
-	// Query vault for stored fingerprint
-	fp, err := s.vaultClient.GetHostKeyFingerprint(ctx, hostname)
+	// Query vault for stored fingerprint.
+	// hostname is used as a stand-in for tenantID/serviceID until C6 wires
+	// the proper identifiers from the session context.
+	fp, err := s.vaultClient.GetHostKeyFingerprint(ctx, hostname, "")
 	if err != nil {
 		return "", err
 	}
@@ -54,8 +56,10 @@ func (s *HostKeyStore) GetFingerprint(ctx context.Context, hostname string) (str
 
 // StoreFingerprint stores a fingerprint for a hostname.
 func (s *HostKeyStore) StoreFingerprint(ctx context.Context, hostname, fingerprint string) error {
-	// Store in vault
-	if err := s.vaultClient.StoreHostKeyFingerprint(ctx, hostname, fingerprint); err != nil {
+	// Store in vault.
+	// hostname is used as a stand-in for tenantID/serviceID until C6 wires
+	// the proper identifiers from the session context.
+	if err := s.vaultClient.StoreHostKeyFingerprint(ctx, hostname, "", fingerprint); err != nil {
 		return err
 	}
 

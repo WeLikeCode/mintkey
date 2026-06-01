@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/config"
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/server"
-	"github.com/WeLikeCode/mintkey/internal/otelinit"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/server"
+	"github.com/mintkey/mintkey/packages/go/otelinit"
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// Initialize OTel
-	shutdown, err := otelinit.Init(context.Background(), "mintkey.ssh-proxy", cfg.OTel)
+	shutdown, err := otelinit.Init(context.Background(), "mintkey.ssh-proxy", cfg.OTelEndpoint)
 	if err != nil {
 		slog.Error("failed to initialize OTel", "error", err)
 		os.Exit(1)

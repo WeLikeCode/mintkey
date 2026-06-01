@@ -5,19 +5,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 )
 
 func TestNewHandler(t *testing.T) {
 	sessionMgr := session.NewManager(5)
 
-	// This will fail because we don't have a real database URL
-	// In a real test, we'd use a test database or mock
+	// changes.Client defers connection until Start(); construction with any
+	// non-empty URL succeeds — connection errors surface at runtime.
 	handler, err := NewHandler(sessionMgr, "postgres://invalid")
-	if err == nil {
-		t.Error("NewHandler() should fail with invalid database URL")
+	if err != nil {
+		t.Errorf("NewHandler() unexpected error = %v", err)
 	}
 
+	if handler == nil {
+		t.Error("NewHandler() should return non-nil handler")
+	}
+}
+
+func TestNewHandler_EmptyURL(t *testing.T) {
+	sessionMgr := session.NewManager(5)
+
+	handler, err := NewHandler(sessionMgr, "")
+	if err == nil {
+		t.Error("NewHandler() should fail with empty database URL")
+	}
 	if handler != nil {
 		t.Error("NewHandler() should return nil on error")
 	}
@@ -70,9 +82,10 @@ func TestHandler_HandleEvent(t *testing.T) {
 		sessionMgr: sessionMgr,
 	}
 
-	// Test with non-revocation event (should be ignored)
 	ctx := context.Background()
-	event := &changes.Event{
+
+	// Test with non-revocation event (should be ignored)
+	event := &Event{
 		EventType: "agent.created",
 		TargetID:  "agent_123",
 	}
@@ -82,7 +95,7 @@ func TestHandler_HandleEvent(t *testing.T) {
 	// Verify no panic occurred
 
 	// Test with revocation event
-	event = &changes.Event{
+	event = &Event{
 		EventType: "agent.revoked",
 		TargetID:  "agent_123",
 	}

@@ -3,34 +3,60 @@ package revocation
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
-	"github.com/WeLikeCode/mintkey/internal/changes"
+	"github.com/mintkey/mintkey/packages/go/changes"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 )
+
+// Event is the revocation event payload shape that arrives over the changes
+// channel. Only the fields consumed by this package are modelled here.
+type Event struct {
+	EventType string `json:"event_type"`
+	TargetID  string `json:"target_id"`
+}
 
 // Handler handles agent revocation events and terminates active sessions.
 type Handler struct {
 	sessionMgr *session.Manager
-	subscriber *changes.Subscriber
+	subscriber *changes.Client
 	mu         sync.Mutex
 	running    bool
 	stopCh     chan struct{}
 }
 
 // NewHandler creates a new revocation handler.
+// dbURL is accepted for interface compatibility; the changes.Client does not
+// use a direct DB URL (T-1.2.2 will wire the pgx connection).
 func NewHandler(sessionMgr *session.Manager, dbURL string) (*Handler, error) {
-	subscriber, err := changes.NewSubscriber(dbURL, "mintkey:agent")
-	if err != nil {
-		return nil, err
+	if dbURL == "" {
+		return nil, errInvalidDBURL
 	}
 
-	return &Handler{
+	h := &Handler{
 		sessionMgr: sessionMgr,
-		subscriber: subscriber,
 		stopCh:     make(chan struct{}),
-	}, nil
+	}
+
+	// Build a changes client that calls our event handler on each notification.
+	client := changes.NewClient(nil,
+		changes.WithTenantScope(changes.AllTenants),
+		changes.WithEventHandler(func(channel, payload string) {
+			var ev Event
+			if err := json.Unmarshal([]byte(payload), &ev); err != nil {
+				slog.Warn("revocation: failed to parse event",
+					"channel", channel,
+					"error", err,
+				)
+				return
+			}
+			h.handleEvent(context.Background(), &ev)
+		}),
+	)
+	h.subscriber = client
+	return h, nil
 }
 
 // Start starts listening for revocation events.
@@ -43,7 +69,9 @@ func (h *Handler) Start(ctx context.Context) error {
 	h.running = true
 	h.mu.Unlock()
 
-	go h.listen(ctx)
+	if h.subscriber != nil {
+		go h.subscriber.Start(ctx)
+	}
 
 	slog.Info("revocation handler started")
 	return nil
@@ -59,32 +87,22 @@ func (h *Handler) Stop() {
 	}
 
 	close(h.stopCh)
-	h.subscriber.Close()
 	h.running = false
 
 	slog.Info("revocation handler stopped")
 }
 
+// listen is retained for test compatibility. The real event delivery is
+// via changes.Client.WithEventHandler (see NewHandler). This method
+// only watches for stop/cancel signals.
 func (h *Handler) listen(ctx context.Context) {
-	for {
-		select {
-		case <-h.stopCh:
-			return
-		case <-ctx.Done():
-			return
-		default:
-			event, err := h.subscriber.Next()
-			if err != nil {
-				slog.Error("failed to receive revocation event", "error", err)
-				continue
-			}
-
-			h.handleEvent(ctx, event)
-		}
+	select {
+	case <-h.stopCh:
+	case <-ctx.Done():
 	}
 }
 
-func (h *Handler) handleEvent(ctx context.Context, event *changes.Event) {
+func (h *Handler) handleEvent(_ context.Context, event *Event) {
 	if event.EventType != "agent.revoked" {
 		return
 	}
@@ -97,3 +115,9 @@ func (h *Handler) handleEvent(ctx context.Context, event *changes.Event) {
 
 	slog.Info("terminated sessions for revoked agent", "agent_id", agentID)
 }
+
+var errInvalidDBURL = errString("revocation: dbURL must not be empty")
+
+type errString string
+
+func (e errString) Error() string { return string(e) }

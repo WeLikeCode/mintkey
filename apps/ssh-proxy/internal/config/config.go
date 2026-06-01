@@ -6,8 +6,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/WeLikeCode/mintkey/internal/otelinit"
 )
 
 // Config holds all configuration for the SSH Proxy.
@@ -41,8 +39,12 @@ type Config struct {
 	// Command filtering
 	CommandFilterMode string // "allowlist" or "denylist"
 
-	// OTel configuration
-	OTel otelinit.Config
+	// OTel configuration: OTLP gRPC endpoint, e.g. "otel-collector:4317".
+	OTelEndpoint string
+
+	// Vault identity for outbound vault calls (C1: empty default; C3 wires real values).
+	VaultIdentityID string
+	VaultToken      string
 }
 
 // Load loads configuration from environment variables and optional config file.
@@ -130,8 +132,18 @@ func Load(configPath string) (*Config, error) {
 		cfg.CommandFilterMode = v
 	}
 
-	// Load OTel config
-	cfg.OTel = otelinit.LoadConfig()
+	// OTel endpoint override.
+	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" {
+		cfg.OTelEndpoint = v
+	}
+
+	// Vault identity fields (C3 wires real values via MINTKEY_VAULT_SSH_PROXY_*).
+	if v := os.Getenv("MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID"); v != "" {
+		cfg.VaultIdentityID = v
+	}
+	if v := os.Getenv("MINTKEY_VAULT_SSH_PROXY_TOKEN"); v != "" {
+		cfg.VaultToken = v
+	}
 
 	return cfg, nil
 }

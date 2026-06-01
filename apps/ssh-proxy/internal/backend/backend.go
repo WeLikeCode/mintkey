@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
-	"github.com/WeLikeCode/mintkey/internal/vault"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
 

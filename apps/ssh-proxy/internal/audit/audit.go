@@ -3,14 +3,12 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
-	"github.com/WeLikeCode/mintkey/internal/auditq"
-	"github.com/WeLikeCode/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/packages/go/ulid"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 )
 
 // Emitter emits audit events for SSH sessions.
@@ -27,8 +25,8 @@ func NewEmitter(queue *auditq.Queue) *Emitter {
 
 // EmitSessionStarted emits an ssh.session.started event.
 func (e *Emitter) EmitSessionStarted(ctx context.Context, sessCtx *session.SessionContext, sessionID, sourceIP string) error {
-	event := &AuditEvent{
-		EventID:    ulid.New("audit"),
+	return e.emit(ctx, &AuditEvent{
+		EventID:    ulid.New("audit_"),
 		EventType:  "ssh.session.started",
 		TenantID:   sessCtx.TenantID,
 		ActorID:    sessCtx.AgentID,
@@ -43,36 +41,32 @@ func (e *Emitter) EmitSessionStarted(ctx context.Context, sessCtx *session.Sessi
 			"source_ip":   sourceIP,
 			"auth_method": sessCtx.AuthMethod,
 		},
-	}
-
-	return e.emit(ctx, event)
+	})
 }
 
 // EmitSessionExec emits an ssh.session.exec event.
 func (e *Emitter) EmitSessionExec(ctx context.Context, sessCtx *session.SessionContext, sessionID, command string, exitCode int) error {
-	event := &AuditEvent{
-		EventID:    ulid.New("audit"),
-		EventType:  "ssh.session.exec",
-		TenantID:   sessCtx.TenantID,
-		ActorID:    sessCtx.AgentID,
-		ActorType:  "agent",
-		TargetID:   sessionID,
+	return e.emit(ctx, &AuditEvent{
+		EventID:   ulid.New("audit_"),
+		EventType: "ssh.session.exec",
+		TenantID:  sessCtx.TenantID,
+		ActorID:   sessCtx.AgentID,
+		ActorType: "agent",
+		TargetID:  sessionID,
 		TargetType: "ssh_session",
-		At:         time.Now().UTC(),
+		At:        time.Now().UTC(),
 		Payload: map[string]interface{}{
 			"session_id": sessionID,
 			"command":    command,
 			"exit_code":  exitCode,
 		},
-	}
-
-	return e.emit(ctx, event)
+	})
 }
 
 // EmitSessionSFTP emits an ssh.session.sftp event.
 func (e *Emitter) EmitSessionSFTP(ctx context.Context, sessCtx *session.SessionContext, sessionID, operation, path string) error {
-	event := &AuditEvent{
-		EventID:    ulid.New("audit"),
+	return e.emit(ctx, &AuditEvent{
+		EventID:    ulid.New("audit_"),
 		EventType:  "ssh.session.sftp",
 		TenantID:   sessCtx.TenantID,
 		ActorID:    sessCtx.AgentID,
@@ -85,15 +79,13 @@ func (e *Emitter) EmitSessionSFTP(ctx context.Context, sessCtx *session.SessionC
 			"operation":  operation,
 			"path":       path,
 		},
-	}
-
-	return e.emit(ctx, event)
+	})
 }
 
 // EmitSessionEnded emits an ssh.session.ended event.
 func (e *Emitter) EmitSessionEnded(ctx context.Context, sessCtx *session.SessionContext, sessionID string, durationSeconds, bytesSent, bytesReceived int64) error {
-	event := &AuditEvent{
-		EventID:    ulid.New("audit"),
+	return e.emit(ctx, &AuditEvent{
+		EventID:    ulid.New("audit_"),
 		EventType:  "ssh.session.ended",
 		TenantID:   sessCtx.TenantID,
 		ActorID:    sessCtx.AgentID,
@@ -107,26 +99,32 @@ func (e *Emitter) EmitSessionEnded(ctx context.Context, sessCtx *session.Session
 			"bytes_sent":       bytesSent,
 			"bytes_received":   bytesReceived,
 		},
-	}
-
-	return e.emit(ctx, event)
+	})
 }
 
-func (e *Emitter) emit(ctx context.Context, event *AuditEvent) error {
-	// Serialize event to JSON
-	data, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal audit event: %w", err)
+func (e *Emitter) emit(_ context.Context, event *AuditEvent) error {
+	if e.queue == nil {
+		return &emitError{eventType: event.EventType, cause: errNilQueue}
 	}
 
-	// Enqueue event
-	if err := e.queue.Enqueue(ctx, event.TenantID, data); err != nil {
-		slog.Error("failed to enqueue audit event",
-			"event_type", event.EventType,
-			"error", err,
-		)
-		return err
+	// Map AuditEvent → auditq.Event. Extra fields (EventID, At) are carried in
+	// Payload so they survive the queue's JSON round-trip without schema changes.
+	payload := make(map[string]any, len(event.Payload)+2)
+	for k, v := range event.Payload {
+		payload[k] = v
 	}
+	payload["event_id"] = event.EventID
+	payload["at"] = event.At.Format(time.RFC3339Nano)
+
+	e.queue.Enqueue(auditq.Event{
+		EventType:  event.EventType,
+		TenantID:   event.TenantID,
+		ActorID:    event.ActorID,
+		ActorType:  event.ActorType,
+		TargetID:   event.TargetID,
+		TargetType: event.TargetType,
+		Payload:    payload,
+	})
 
 	slog.Debug("audit event emitted",
 		"event_type", event.EventType,
@@ -137,7 +135,26 @@ func (e *Emitter) emit(ctx context.Context, event *AuditEvent) error {
 	return nil
 }
 
-// AuditEvent represents an audit event.
+// emitError wraps an emit failure with the event type.
+type emitError struct {
+	eventType string
+	cause     error
+}
+
+func (e *emitError) Error() string {
+	return "audit: failed to enqueue " + e.eventType + ": " + e.cause.Error()
+}
+
+func (e *emitError) Unwrap() error { return e.cause }
+
+var errNilQueue = errString("audit queue is nil")
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
+// AuditEvent represents an SSH audit event. The struct is kept local
+// so that callers and tests can construct events without importing auditq.
 type AuditEvent struct {
 	EventID    string                 `json:"event_id"`
 	EventType  string                 `json:"event_type"`

@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/internal/ulid"
+	"github.com/mintkey/mintkey/packages/go/ulid"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -49,7 +49,7 @@ func (m *Manager) CreateSession(sessionCtx string, sshConn *ssh.ServerConn, chan
 	}
 
 	// Create session
-	sessionID := ulid.New("session")
+	sessionID := ulid.New("session_")
 	sess := &Session{
 		ID:         sessionID,
 		Context:    ctx,

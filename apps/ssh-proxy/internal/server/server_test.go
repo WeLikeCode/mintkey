@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
 )
 
 func TestNew(t *testing.T) {

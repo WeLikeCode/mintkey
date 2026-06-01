@@ -5,8 +5,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/audit"
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/audit"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 	"golang.org/x/crypto/ssh"
 )
 

@@ -13,11 +13,10 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/auth"
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/config"
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/auth"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/ssh"
 )

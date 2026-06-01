@@ -39,11 +39,11 @@ func ParsePTYRequest(payload []byte) (*PTYRequest, error) {
 	req.HeightPx = binary.BigEndian.Uint32(payload[offset+12 : offset+16])
 
 	offset += 16
-	if offset < len(payload) {
+	if int(offset) < len(payload) {
 		modesLen := binary.BigEndian.Uint32(payload[offset : offset+4])
 		offset += 4
-		if offset+int(modesLen) <= len(payload) {
-			req.Modes = string(payload[offset : offset+int(modesLen)])
+		if int(offset)+int(modesLen) <= len(payload) {
+			req.Modes = string(payload[offset : uint32(int(offset)+int(modesLen))])
 		}
 	}
 

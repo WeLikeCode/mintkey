@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/config"
-	"github.com/WeLikeCode/mintkey/apps/ssh-proxy/internal/session"
-	"github.com/WeLikeCode/mintkey/internal/vault"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/vault"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/ssh"
 )
@@ -28,7 +28,7 @@ type Handler struct {
 
 // NewHandler creates a new authentication handler.
 func NewHandler(cfg *config.Config) (*Handler, error) {
-	vaultClient, err := vault.NewClient(cfg.VaultAddr)
+	vaultClient, err := vault.NewClient(cfg.VaultAddr, cfg.VaultIdentityID, cfg.VaultToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vault client: %w", err)
 	}
