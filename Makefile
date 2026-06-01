@@ -15,7 +15,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
 # Mintkey development targets
 # ─────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help admin-password dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
+.PHONY: help admin-password ssh-proxy-init dev dev-test dev-test-down dev-test-reset dev-test-logs smoke-test-ns \
         test test-unit test-arch test-integration test-acceptance \
         test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
@@ -30,6 +30,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
 help:
 	@echo ""
 	@echo "Mintkey dev targets:"
+	@echo "  ssh-proxy-init         Generate the SSH proxy host key into the persistent volume (run once before 'make dev')"
 	@echo "  dev                    Start all services with docker compose"
 	@echo "  dev-test               Start the test namespace (parallel isolated environment)"
 	@echo "  dev-test-down          Stop the test namespace (preserves volumes)"
@@ -95,6 +96,20 @@ admin-password:
 	@python3 -c "from cryptography.fernet import Fernet; import os; \
 		kek = os.environ.get('MINTKEY_BOOTSTRAP_KEK') or 'TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas='; \
 		print(Fernet(kek.encode()).decrypt(open('data/bootstrap-secrets/admin_password','rb').read()).decode())"
+
+## ssh-proxy-init: Generate the SSH proxy host key into the persistent volume.
+##   Idempotent — checks if a key already exists; only generates if missing.
+##   Run once before 'make dev' the first time.
+ssh-proxy-init:
+	@docker volume create mintkey_ssh_proxy_hostkey >/dev/null
+	@docker run --rm -v mintkey_ssh_proxy_hostkey:/data alpine:latest sh -c '\
+		if [ -f /data/ssh_host_ed25519_key ]; then \
+			echo "ssh_host_ed25519_key already exists; skipping"; \
+		else \
+			apk add --no-cache openssh-keygen >/dev/null 2>&1 || apk add --no-cache openssh-client-default >/dev/null; \
+			ssh-keygen -t ed25519 -N "" -f /data/ssh_host_ed25519_key -C "mintkey-ssh-proxy"; \
+			chmod 600 /data/ssh_host_ed25519_key; \
+		fi'
 
 ## create-operator: Idempotently provision (or repair) a Mintkey operator.
 ##   Runs create_operator.py inside the seed-job container on the compose network.

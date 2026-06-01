@@ -17,9 +17,15 @@ section for the exact list (Docker, docker compose, ports, disk space).
 
 | Step | One-line summary | Full instructions |
 |---|---|---|
-| 1. Bring the stack up | `docker compose up -d` — 15 long-running containers + 2 one-shot jobs | [`QUICKSTART.md`](../QUICKSTART.md) §1 |
-| 2. Get the bootstrap admin password | Printed once to stdout; also at `./data/bootstrap-secrets/` (mode `0400`) | [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) §0 |
-| 3. Open the Admin UI | `http://localhost:8081` | [`PORTS.md`](../PORTS.md) "Quick access" |
+| 1. Generate the SSH proxy host key | `make ssh-proxy-init` — seeds the persistent Ed25519 host key into the `mintkey_ssh_proxy_hostkey` volume (idempotent; skips if key already exists). Must run before `make dev` the first time. | See `make help` |
+| 2. Bring the stack up | `make dev` — starts 15 long-running containers + 2 one-shot jobs | [`QUICKSTART.md`](../QUICKSTART.md) §1 |
+| 3. Get the bootstrap admin password | Printed once to stdout; also at `./data/bootstrap-secrets/` (mode `0400`) | [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) §0 |
+| 4. Open the Admin UI | `http://localhost:8081` | [`PORTS.md`](../PORTS.md) "Quick access" |
+
+> **Note on SSH proxy port exposure:** `make dev` binds `:2222` on all host interfaces by
+> default. In production, restrict this to a specific interface (e.g. `0.0.0.0:2222`) behind
+> a firewall or load balancer — do not expose it on a public IP without additional access
+> controls. The HTTP metrics port (`8089`) should not be publicly reachable.
 
 ---
 
