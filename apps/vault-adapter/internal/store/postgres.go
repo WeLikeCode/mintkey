@@ -178,8 +178,10 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 	// COALESCE(s.base_url, '') ensures a NULL base_url (orphaned credential or
 	// service without a base_url configured) still scans cleanly into a string.
 	// The JOIN is tenant-scoped via the WHERE clause; RLS on vault.credentials is
-	// already enforced by the set_config GUC above. public.services does not have
-	// RLS, so no additional platform_admin_view flag is required here.
+	// already enforced by the set_config GUC above. public.services has RLS but
+	// the connection role (mintkey_migrate) bypasses it; if vault-adapter ever
+	// migrates to a non-bypass role, set_config('app.current_tenant',…) is
+	// required for the JOIN to be tenant-safe.
 	const cols = `vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 	              vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 	              vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
@@ -192,7 +194,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 		row = tx.QueryRow(ctx,
 			`SELECT `+cols+`
 			   FROM vault.credentials vc
-			   LEFT JOIN public.services s ON s.id::text = vc.service_id
+			   LEFT JOIN public.services s ON s.id = vc.service_id
 			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
 			    AND vc.is_current = true
 			  LIMIT 1`,
@@ -207,7 +209,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 		row = tx.QueryRow(ctx,
 			`SELECT `+cols+`
 			   FROM vault.credentials vc
-			   LEFT JOIN public.services s ON s.id::text = vc.service_id
+			   LEFT JOIN public.services s ON s.id = vc.service_id
 			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
 			    AND vc.key_version = $3
 			  LIMIT 1`,
