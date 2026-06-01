@@ -1,4 +1,12 @@
 # Mintkey Trivy allow-list — review by 2026-09-01 (3 months from last update)
+#
+# ── Secret scanning suppressions ─────────────────────────────────────────────
+# gcp-service-account: Trivy secret scanner fires on the format hint template
+#   '{"type":"service_account",...}' in service_templates.yaml (line 47). This is
+#   a documentation format string, NOT an actual GCP credential. The file is
+#   baked into the container image as a static template; Vault handles real creds.
+#   Suppressed with trivy:ignore comment on the line AND this global entry.
+gcp-service-account
 # Each entry documents: CVE-ID, affected package, brief justification.
 # When this file changes, ALSO refresh the expiry date in this header.
 # CI gate: HIGH/CRITICAL CVEs not listed here will fail container-scan.yml.
