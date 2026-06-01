@@ -10,21 +10,19 @@ The email proxy is a Go service that enables agents to send and receive emails v
 ```mermaid
 graph TB
     subgraph "Agent Layer"
-        A1[Agent A<br/>send_email]
-        A2[Agent B<br/>list_emails]
-        A3[Agent C<br/>read_email]
-    end
-    
-    subgraph "MCP Layer"
-        MCP[MCP Server]
+        A1[Agent A<br/>IMAP/SMTP<br/>Standard Email Client]
+        A2[Agent B<br/>REST API<br/>MCP Tools]
+        A3[Agent C<br/>IMAP/SMTP<br/>Custom Script]
     end
     
     subgraph "Email Proxy Layer"
         EP[email-proxy<br/>Go binary]
-        API[REST API<br/>:8088]
+        IMAP[IMAP Listener<br/>:993]
+        SMTP[SMTP Listener<br/>:587]
+        REST[REST API<br/>:8088]
         Pool[IMAP Connection Pool]
-        IMAP[IMAP Client]
-        SMTP[SMTP Client]
+        IMAPClient[IMAP Client]
+        SMTPClient[SMTP Client]
         OAuth[OAuth2 Handler]
         Router[Service Router]
     end
@@ -40,48 +38,43 @@ graph TB
         Custom[Custom IMAP/SMTP<br/>Password]
     end
     
-    subgraph "Admin Layer"
-        AdminUI[Admin UI<br/>AdminJS]
-        AdminAPI[admin-api<br/>FastAPI]
-    end
-    
-    A1 -->|MCP + JWT| MCP
-    A2 -->|MCP + JWT| MCP
-    A3 -->|MCP + JWT| MCP
-    MCP -->|REST API + JWT| API
-    API --> EP
+    A1 -->|IMAP :993| IMAP
+    A1 -->|SMTP :587| SMTP
+    A2 -->|REST API :8088| REST
+    A3 -->|IMAP :993| IMAP
+    IMAP --> EP
+    SMTP --> EP
+    REST --> EP
     EP --> Router
     Router --> Pool
-    Pool --> IMAP
-    EP --> SMTP
+    Pool --> IMAPClient
+    EP --> SMTPClient
     EP --> OAuth
     EP -->|gRPC| VA
     EP -->|Read config| PG
-    IMAP --> Gmail
-    IMAP --> Outlook
-    IMAP --> Custom
-    SMTP --> Gmail
-    SMTP --> Outlook
-    SMTP --> Custom
-    
-    AdminUI -->|REST API| AdminAPI
-    AdminAPI -->|Write config| PG
-    AdminAPI -->|Store credentials| VA
+    IMAPClient --> Gmail
+    IMAPClient --> Outlook
+    IMAPClient --> Custom
+    SMTPClient --> Gmail
+    SMTPClient --> Outlook
+    SMTPClient --> Custom
 ```
 
-**Protocol Multiplexing Flow:**
+**Hybrid Approach:**
 
-1. Agent A calls `send_email(to: "user@gmail.com")` → email-proxy determines service is Gmail → uses OAuth2 token → Gmail SMTP
-2. Agent B calls `list_emails(mailbox: "INBOX")` → email-proxy determines service is Outlook → uses OAuth2 token → Outlook IMAP
-3. Agent C calls `read_email(id: "msg_123")` → email-proxy determines service is Custom → uses password → Custom IMAP
+The email proxy supports **both** transparent protocol handling AND REST API:
 
-**Key architectural decisions:**
-- Email proxy reads config directly from Postgres (like kong-syncer), not via admin-api
-- IMAP connections pooled per service (5-minute idle timeout)
-- SMTP connections created per operation (not pooled)
-- TLS termination via Kong TCP route or mTLS
-- Rate limiting via Postgres advisory locks (shared across instances)
-- Audit events via auditq.Queue → admin-api → Postgres (hash chain)
+1. **Transparent Protocol (IMAP/SMTP)**: Agents connect with standard email clients (Thunderbird, mutt, etc.) on ports 993 (IMAP) and 587 (SMTP). The proxy bridges connections to the backend.
+
+2. **REST API**: Agents call REST API endpoints on port 8088 for simpler integration via MCP tools.
+
+Both approaches use the same credential fetching and protocol handling internally.
+
+**Why Both?**
+- **Maximum flexibility**: Agents choose the approach that fits their needs
+- **Consistency**: Transparent protocol matches SSH proxy pattern
+- **Simplicity**: REST API is easier for basic operations
+- **Future-proofing**: Supports both current and future agent architectures
 
 ### Sequence Diagrams
 

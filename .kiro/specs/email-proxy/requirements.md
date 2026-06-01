@@ -1,7 +1,12 @@
 # Email Proxy Requirements
 
 ## Overview
-The email proxy enables agents to send and receive emails transparently via MCP tools, while humans configure email services through the Admin UI. The proxy handles IMAP/SMTP protocols internally and exposes a clean REST API to agents.
+The email proxy enables agents to send and receive emails transparently via **both IMAP/SMTP protocols AND REST API**. The proxy handles IMAP/SMTP protocols internally and bridges connections for agents using standard email tools, while also providing a REST API for simpler integration via MCP tools. Humans configure email services through the Admin UI.
+
+**Hybrid Approach:**
+- **Transparent Protocol**: Agents connect with IMAP (port 993) or SMTP (port 587) using standard email tools
+- **REST API**: Agents call REST API endpoints (port 8088) for simpler integration
+- Both approaches use the same credential fetching and protocol handling internally
 
 ## User Stories
 

@@ -6,6 +6,21 @@ Proposed — 2026-06-01
 ## Context
 Agents need to send and receive emails transparently without holding email credentials (passwords, OAuth2 tokens). The current egress proxy (ADR-0004) is HTTP-only and cannot proxy IMAP/SMTP traffic. Email protocols are stateful (IMAP) or transactional (SMTP), requiring a different approach than HTTP reverse proxying.
 
+**Design Question: REST API vs Transparent Protocol Proxy**
+
+The SSH proxy (ADR-0022) uses the actual SSH protocol transparently - agents connect with standard SSH tools and the bastion bridges the connection. Should the email proxy follow the same pattern?
+
+**Option A: Transparent Protocol Proxy (like SSH)**
+- Agent connects with IMAP/SMTP to the email proxy
+- Email proxy connects to backend with IMAP/SMTP
+- Bridges the connections transparently
+- Agent uses standard email tools (Thunderbird, mutt, etc.)
+
+**Option B: REST API (current design)**
+- Agent calls REST API endpoints
+- Email proxy handles IMAP/SMTP internally
+- Agent uses MCP tools
+
 Quality attributes affected:
 - S-SEC-1: Agent never holds usable backend credential
 - S-AUD-1: Every credential use is logged
@@ -13,32 +28,70 @@ Quality attributes affected:
 
 ## Decision
 
-### D1: Email Proxy Architecture
-Deploy a **separate Go binary** (`apps/email-proxy/`) that implements an email proxy service with **protocol multiplexing**:
+### D1: Email Proxy Architecture - Hybrid Approach (Both Transparent Protocol + REST API)
 
-- **Transparent protocol handling**: Agents call REST API endpoints without knowing the underlying protocol (IMAP/SMTP/OAuth2)
-- **Protocol multiplexing**: Email proxy automatically selects the correct protocol and credentials based on the service configuration
-- **Provider abstraction**: Gmail, Outlook, and custom IMAP/SMTP providers are handled transparently
-- **Multi-service support**: Multiple email services (Gmail, Outlook, custom) can be configured simultaneously; agents access them via different service_ids
-- **Credential isolation**: Email credentials (passwords, OAuth2 tokens) are fetched from Vault Adapter per-operation, never exposed to agents
+Deploy a **separate Go binary** (`apps/email-proxy/`) that implements an email proxy with **both transparent protocol handling AND REST API**:
 
-**Multiplexing flow:**
-1. Agent calls REST API (e.g., `POST /v1/email/send`)
-2. Email proxy looks up service configuration for the agent's `service_id`
+**Approach 1: Transparent Protocol Proxy (like SSH)**
+- Agent connects with IMAP/SMTP to the email proxy
+- Email proxy connects to backend with IMAP/SMTP
+- Bridges the connections transparently
+- Agent uses standard email tools (Thunderbird, mutt, etc.)
+- Consistent with SSH proxy pattern (ADR-0022)
+
+**Approach 2: REST API (for simpler integration)**
+- Agent calls REST API endpoints
+- Email proxy handles IMAP/SMTP internally
+- Agent uses MCP tools
+- Simpler for agents that don't need full email protocol features
+
+**Why Both?**
+- **Maximum flexibility**: Agents choose the approach that fits their needs
+- **Consistency**: Transparent protocol matches SSH proxy pattern
+- **Simplicity**: REST API is easier for basic operations
+- **Future-proofing**: Supports both current and future agent architectures
+
+**Protocol Multiplexing Flow (Transparent):**
+1. Agent connects to email proxy with IMAP (port 993) or SMTP (port 587)
+2. Email proxy looks up service configuration for the agent's service_id
 3. Email proxy determines provider type (Gmail/Outlook/Custom) from config
 4. Email proxy fetches appropriate credentials (OAuth2 token or password) from Vault
-5. Email proxy connects using the correct protocol (IMAP/SMTP with appropriate auth)
+5. Email proxy connects to backend using the correct protocol
+6. Email proxy bridges the connection transparently
+
+**REST API Flow:**
+1. Agent calls REST API endpoint (e.g., `POST /v1/email/send`)
+2. Email proxy looks up service configuration for the agent's service_id
+3. Email proxy determines provider type (Gmail/Outlook/Custom) from config
+4. Email proxy fetches appropriate credentials (OAuth2 token or password) from Vault
+5. Email proxy connects to backend using the correct protocol
 6. Email proxy returns result to agent
 
+**Port Mapping:**
+- Port 993: IMAP (SSL/TLS) - all email services share this port
+- Port 587: SMTP (STARTTLS) - all email services share this port
+- Port 8088: REST API + health/metrics endpoint
+
 **Key architectural decisions:**
-- Exposes REST API for agents (not raw IMAP/SMTP)
-- Authenticates agents via **brokered JWT** (JWS Ed25519, validated against broker JWKS per ADR-0006)
-- Fetches email credentials from Vault Adapter per-operation
-- Handles IMAP/SMTP protocols internally using `go-imap` and `go-smtp`
-- Bridges agent REST requests to email provider operations
-- Emits audit events for all email operations
-- **Connection pooling** for IMAP (per-service pool with 5-minute idle timeout)
-- **TLS termination** via Kong TCP route or mTLS between MCP server and email proxy
+- Agents choose between transparent protocol (IMAP/SMTP) or REST API
+- Both approaches use the same credential fetching and protocol handling
+- Consistent with SSH proxy pattern for transparent protocol
+- REST API provides simpler integration for basic operations
+- Connection pooling for IMAP (per-service pool with 5-minute idle timeout)
+- TLS termination via Kong TCP route or mTLS
+- Audit events for all operations (connection, authentication, commands)
+- Rate limiting via Postgres advisory locks (shared across instances)
+
+**Comparison with SSH Proxy:**
+
+| Aspect | SSH Proxy (ADR-0022) | Email Proxy (this ADR) |
+|--------|---------------------|------------------------|
+| Protocol | SSH (single) | IMAP + SMTP (multiple) |
+| Agent tools | Standard SSH client | Standard email client OR REST API |
+| Connection type | Persistent session | Per-operation (IMAP) / per-message (SMTP) |
+| State management | Session state | IMAP mailbox state, SMTP transaction state |
+| Complexity | Moderate | High (IMAP is RFC 3501 + extensions) |
+| Audit granularity | Session + command | Connection + authentication + operations |
 
 ### D2: New Auth Schemes
 Add three new auth schemes to support email:

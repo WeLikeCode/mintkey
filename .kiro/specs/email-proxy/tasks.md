@@ -148,7 +148,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 - `.kiro/specs/email-proxy/design.md`
 - `.kiro/specs/email-proxy/tasks.md`
 
-## Milestone 2: Backend Core (Weeks 2-3)
+## Milestone 2: Backend Core (Weeks 2-4)
 
 ### Task 2.1: Create email-proxy Directory Structure
 **Status**: ⏳ Pending  
@@ -165,7 +165,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 - [ ] Create `internal/imap/` directory
 - [ ] Create `internal/smtp/` directory
 - [ ] Create `internal/oauth2/` directory
-- [ ] Create `internal/api/` directory
+- [ ] Create `internal/api/` directory (REST API)
 - [ ] Create `internal/auth/` directory (JWT validation)
 - [ ] Create `internal/security/` directory (injection prevention, domain filtering, rate limiting)
 - [ ] Create `internal/audit/` directory
@@ -768,7 +768,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 ### Task 5.4: Update Docker Compose
 **Status**: ⏳ Pending  
 **Effort**: 0.5 day  
-**Dependencies**: Task 2.10
+**Dependencies**: Task 2.13
 
 **Description**: Add email-proxy to docker-compose.yml.
 
@@ -776,6 +776,9 @@ This document breaks down the email proxy implementation into concrete tasks org
 - [ ] email-proxy service defined
 - [ ] Environment variables configured
 - [ ] Health checks configured
+- [ ] Port 993 exposed (IMAP)
+- [ ] Port 587 exposed (SMTP)
+- [ ] Port 8088 exposed (REST API + health/metrics)
 - [ ] Depends on vault-adapter and admin-api
 - [ ] docker-compose up starts email-proxy
 
@@ -907,8 +910,8 @@ This document breaks down the email proxy implementation into concrete tasks org
 
 ## Summary
 
-**Total Tasks**: 53  
-**Total Effort**: ~8 weeks (1 developer)  
+**Total Tasks**: 55  
+**Total Effort**: ~9 weeks (1 developer)  
 **Critical Path**: Task 1.1 → Task 2.1 → Task 2.13 → Task 4.3 → Task 6.3 → Task 7.3
 
 **Key Dependencies**:
@@ -918,7 +921,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 - All tests must pass before release
 
 **Risk Mitigation**:
-- Start with MVP (basic send/receive) and add features incrementally
+- Start with MVP (basic IMAP/SMTP transparent proxy) and add REST API incrementally
 - Use mock email providers for testing
 - Conduct adversarial review before release
 - Performance test with realistic load
@@ -932,3 +935,9 @@ This document breaks down the email proxy implementation into concrete tasks org
 - Use `ulid.New("email_")` with trailing underscore
 - Wire module into `go.work` workspace
 - Test that code builds before merging
+
+**Hybrid Approach Benefits**:
+- Maximum flexibility for agents (IMAP/SMTP or REST API)
+- Consistent with SSH proxy pattern (transparent protocol)
+- REST API provides simpler integration for basic operations
+- Future-proofing for both current and future agent architectures
