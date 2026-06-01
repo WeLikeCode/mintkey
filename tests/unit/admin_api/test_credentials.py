@@ -668,8 +668,10 @@ async def test_oauth2_password_grant_valid_returns_201(app, mock_audit) -> None:
 @pytest.mark.asyncio
 async def test_oauth2_password_grant_non_https_token_url_rejected(app, mock_audit) -> None:
     """
-    oauth2_password_grant with http:// token_url → 422.
+    oauth2_password_grant with http:// token_url → 400 (pydantic ValidationError).
     Requirement 19.4 / S-SEC-1.
+    Returns 400 with structured field errors (not 422) per e70ffcf — UI uses
+    the structured detail array to render per-field messages.
     This test FAILS without validation wired in.
     """
     payload = _valid_oauth2_payload()
@@ -680,16 +682,17 @@ async def test_oauth2_password_grant_non_https_token_url_rejected(app, mock_audi
             json={"auth_scheme": "oauth2_password_grant", "value": _json.dumps(payload)},
         )
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for non-HTTPS token_url, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 400, (
+        f"Expected 400 for non-HTTPS token_url, got {resp.status_code}: {resp.text}"
     )
 
 
 @pytest.mark.asyncio
 async def test_oauth2_password_grant_loopback_token_url_rejected(app, mock_audit) -> None:
     """
-    oauth2_password_grant with loopback IP in token_url → 422 (SSRF block).
+    oauth2_password_grant with loopback IP in token_url → 400 (SSRF block, pydantic ValidationError).
     S-SEC-1 / Requirement 19.4.
+    Returns 400 with structured field errors per e70ffcf.
     This test FAILS without SSRF validation wired in.
     """
     payload = _valid_oauth2_payload()
@@ -700,16 +703,17 @@ async def test_oauth2_password_grant_loopback_token_url_rejected(app, mock_audit
             json={"auth_scheme": "oauth2_password_grant", "value": _json.dumps(payload)},
         )
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for loopback token_url, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 400, (
+        f"Expected 400 for loopback token_url, got {resp.status_code}: {resp.text}"
     )
 
 
 @pytest.mark.asyncio
 async def test_oauth2_password_grant_private_ip_token_url_rejected(app, mock_audit) -> None:
     """
-    oauth2_password_grant with RFC1918 IP in token_url → 422.
+    oauth2_password_grant with RFC1918 IP in token_url → 400 (SSRF block, pydantic ValidationError).
     S-SEC-1 / Requirement 19.4.
+    Returns 400 with structured field errors per e70ffcf.
     This test FAILS without SSRF validation wired in.
     """
     for private_ip in ["10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.1.1"]:
@@ -720,8 +724,8 @@ async def test_oauth2_password_grant_private_ip_token_url_rejected(app, mock_aud
                 BASE_URL_PATH,
                 json={"auth_scheme": "oauth2_password_grant", "value": _json.dumps(payload)},
             )
-        assert resp.status_code == 422, (
-            f"Expected 422 for private IP {private_ip} in token_url, "
+        assert resp.status_code == 400, (
+            f"Expected 400 for private IP {private_ip} in token_url, "
             f"got {resp.status_code}: {resp.text}"
         )
 
@@ -729,8 +733,9 @@ async def test_oauth2_password_grant_private_ip_token_url_rejected(app, mock_aud
 @pytest.mark.asyncio
 async def test_oauth2_password_grant_empty_credential_fields_rejected(app, mock_audit) -> None:
     """
-    oauth2_password_grant with empty credential_fields → 422.
+    oauth2_password_grant with empty credential_fields → 400 (pydantic ValidationError).
     Requirement 19.2 / 19.5.
+    Returns 400 with structured field errors per e70ffcf.
     This test FAILS without validation wired in.
     """
     payload = _valid_oauth2_payload()
@@ -741,8 +746,8 @@ async def test_oauth2_password_grant_empty_credential_fields_rejected(app, mock_
             json={"auth_scheme": "oauth2_password_grant", "value": _json.dumps(payload)},
         )
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for empty credential_fields, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 400, (
+        f"Expected 400 for empty credential_fields, got {resp.status_code}: {resp.text}"
     )
 
 
@@ -775,8 +780,8 @@ async def test_rotate_oauth2_password_grant_non_https_token_url_rejected(
             },
         )
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for non-HTTPS token_url on rotate path, "
+    assert resp.status_code == 400, (
+        f"Expected 400 for non-HTTPS token_url on rotate path, "
         f"got {resp.status_code}: {resp.text}"
     )
 
@@ -802,8 +807,8 @@ async def test_rotate_oauth2_password_grant_loopback_token_url_rejected(
             },
         )
 
-    assert resp.status_code == 422, (
-        f"Expected 422 for loopback token_url on rotate path, "
+    assert resp.status_code == 400, (
+        f"Expected 400 for loopback token_url on rotate path, "
         f"got {resp.status_code}: {resp.text}"
     )
 

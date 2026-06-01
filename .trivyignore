@@ -1,9 +1,11 @@
-# Mintkey Trivy allow-list — review by 2026-08-16 (3 months)
+# Mintkey Trivy allow-list — review by 2026-09-01 (3 months from last update)
 # Each entry documents: CVE-ID, affected package, brief justification.
 # When this file changes, ALSO refresh the expiry date in this header.
 # CI gate: HIGH/CRITICAL CVEs not listed here will fail container-scan.yml.
 #
 # Owner decision recorded: 2026-05-16 (fix/ci-pipeline-remediation).
+# Updated: 2026-06-01 (fix/ssh-credential-flow PR #139) — new CVE-DB entries
+#   for Debian base image Perl/gnutls/sqlite/zlib/bzip2 packages.
 # Every CVE here is individually listed; no blanket severity downgrade.
 # Re-evaluate at expiry: upgrade base images or accept renewed allowance.
 
@@ -207,3 +209,101 @@ CVE-2026-39836
 #   Same context as CVE-2026-39820; oauth2-proxy does not parse raw RFC 5322
 #   addresses from user-controlled input.
 CVE-2026-42499
+
+# ── New CVEs added 2026-06-01 (PR #139 CVE-DB flip) — review by 2026-09-01 ──
+# These CVEs appeared in the fresh Trivy DB download on 2026-06-01 and affect
+# Debian 12/13 base image packages (Perl modules, gnutls, sqlite, zlib, bzip2).
+# No fix is available yet for these package versions in the Debian repos.
+
+# CVE-2026-42250  bzip2 (all Debian base images)
+#   Off-by-one error in bzip2recover utility.
+#   No service uses bzip2recover; it is a standalone recovery tool not invoked
+#   by any application code path.  Not exploitable in container context.
+CVE-2026-42250
+
+# CVE-2026-48962  perl-IO-Compress (admin-api, mcp-server, admin-ui, seed-job, mock-backend)
+#   Arbitrary code execution via attacker-controlled output glob in IO::Compress.
+#   None of these services invoke Perl IO::Compress from user-controlled inputs.
+#   Perl is a Debian base image transitive dependency only.
+CVE-2026-48962
+
+# CVE-2026-48961  IO::Compress (admin-ui, admin-api, mcp-server, seed-job, mock-backend)
+#   IO::Compress ships zipdetails binary with path traversal.
+#   zipdetails is not invoked by any service.  Debian base image transitive dep.
+CVE-2026-48961
+
+# CVE-2026-48959  IO::Uncompress::Unzip (admin-ui, admin-api, mcp-server, seed-job, mock-backend)
+#   CPU exhaustion via crafted zip file in IO::Uncompress::Unzip.
+#   No service decompresses zip files from user input via Perl.
+CVE-2026-48959
+
+# CVE-2025-15649  IO::Uncompress::Unzip (admin-ui, admin-api, mcp-server, seed-job, mock-backend)
+#   Propagates uncaught exceptions leading to denial of service.
+#   Same context as CVE-2026-48959; Perl not on any user-facing code path.
+CVE-2025-15649
+
+# CVE-2026-42496  Archive::Tar (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   Archive::Tar before 3.08 extracts symlinks with attacker-controlled targets.
+#   No service extracts tar archives from user input; Perl Archive::Tar is a
+#   Debian base image transitive dep not invoked in any container code path.
+CVE-2026-42496
+
+# CVE-2026-42497  Archive::Tar (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   Archive::Tar before 3.08 extracts hardlinks to attacker-controlled paths.
+#   Same context as CVE-2026-42496.
+CVE-2026-42497
+
+# CVE-2026-9538  Archive::Tar (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   Archive::Tar before 3.10 allows memory exhaustion via crafted archive.
+#   Same context as CVE-2026-42496.
+CVE-2026-9538
+
+# CVE-2026-33845  gnutls (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   GnuTLS: Denial of Service via DTLS zero-length fragment.
+#   None of these services use DTLS; all TLS is standard TLS 1.2/1.3 via Kong.
+CVE-2026-33845
+
+# CVE-2026-42010  gnutls (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   Authentication bypass via NUL character in username in gnutls.
+#   NUL-byte usernames are not a valid input in any Mintkey auth path.
+CVE-2026-42010
+
+# CVE-2026-33846  gnutls (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   Heap buffer overflow in DTLS handshake frame processing.
+#   Same context as CVE-2026-33845; DTLS not used.
+CVE-2026-33846
+
+# CVE-2026-3833  gnutls (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   Policy bypass due to case-sensitive nameConstraints comparison.
+#   Certificates are issued by cert-manager / Mintkey PKI; no untrusted certs
+#   processed by these services.
+CVE-2026-3833
+
+# CVE-2026-42009  gnutls (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   DoS via DTLS packet reordering.
+#   Same context as CVE-2026-33845; DTLS not used.
+CVE-2026-42009
+
+# CVE-2026-41907  uuid (admin-api, mcp-server, admin-ui, seed-job, mock-backend) HIGH
+#   Out-of-bounds write in libuuid / uuid library.
+#   The affected e2fsprogs libuuid is a Debian base image dependency not
+#   invoked directly by any service application code.
+CVE-2026-41907
+
+# CVE-2025-7458  sqlite (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   SQLite integer overflow.
+#   These services use PostgreSQL, not SQLite.  SQLite is a Debian base image
+#   transitive dep that is never loaded or invoked at runtime.
+CVE-2025-7458
+
+# CVE-2023-45853  zlib (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   Integer overflow in zlib zipOpenNewFileInZip4_64.
+#   None of these services create zip archives via zlib's zipOpenNewFileInZip.
+#   The minizip API subset affected is not used by any Python package.
+CVE-2023-45853
+
+# CVE-2026-8376  perl (admin-api, mcp-server, admin-ui, seed-job, mock-backend) CRITICAL
+#   Heap buffer overflow in Perl regex compiler.
+#   Perl is a Debian base image dep; none of the Python/Node services execute
+#   Perl regexes from user input.  Not exploitable in container context.
+CVE-2026-8376

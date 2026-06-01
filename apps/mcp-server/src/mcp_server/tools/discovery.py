@@ -17,7 +17,15 @@ from __future__ import annotations
 
 from typing import Optional
 
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.config.public_urls import resolve_proxy_public_url, resolve_ssh_proxy_public_host
+from mcp_server.db.session import get_db_session
+from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
 
 # Auth schemes that use SSH transport (ssh-proxy) rather than Kong HTTP proxy.
 _SSH_AUTH_SCHEMES = {"ssh_private_key", "ssh_password", "ssh_ca"}
@@ -59,15 +67,6 @@ def _ssh_agent_connection_guide() -> dict:
         ],
         "lifetime_seconds": 600,
     }
-
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from mintkey_models.tenant_ctx import set_tenant_context
-from mcp_server.db.session import get_db_session
-from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
 
 router = APIRouter(prefix="/v1/tools")
 

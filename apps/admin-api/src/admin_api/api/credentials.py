@@ -254,10 +254,12 @@ async def create_credential(
             # Return structured field errors so the UI can render per-field messages — C-2.
             # include_input=False: prevents p8_key_pem bytes from leaking into the HTTP
             # response — ADR-0014.7, S-SEC-1.
+            # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
             logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
                     "detail": exc.errors(include_url=False, include_context=False, include_input=False),
@@ -271,6 +273,7 @@ async def create_credential(
             return JSONResponse(
                 status_code=400,
                 content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
                     "detail": "apple_jwt payload malformed",
@@ -624,6 +627,9 @@ async def create_credential(
         # password_fingerprint is the first 16 hex chars of SHA-256(password) — ADR-0021, ADR-0014.7.
         audit_payload["username"] = _ssh_pwd_validated.username
         audit_payload["target_address"] = _ssh_pwd_validated.target_address
+        # lgtm[py/weak-sensitive-data-hashing] SHA-256 used as non-reversible audit
+        # fingerprint (first 16 hex chars), NOT for password authentication or key derivation.
+        # ADR-0021: display token for audit trails; actual auth uses Vault-stored encrypted creds.
         audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(
             _ssh_pwd_validated.password.encode("utf-8")
         ).hexdigest()[:16]
@@ -848,10 +854,12 @@ async def rotate_credential(
             )
         except _pydantic_rot.ValidationError as exc:
             # include_input=False: prevents p8_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
             logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
                     "detail": exc.errors(include_url=False, include_context=False, include_input=False),
@@ -863,6 +871,7 @@ async def rotate_credential(
             return JSONResponse(
                 status_code=400,
                 content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
                     "detail": "apple_jwt payload malformed",

@@ -235,10 +235,12 @@ async def test_ssh_credential(
             "test_ssh_credential: unexpected error host=%s:%d user=%s error_type=%s",
             host, port, username, type(exc).__name__,
         )
+        # ADR-0014.7 / S-SEC-1: do NOT include str(exc) in the response — it may contain
+        # internal hostnames, credentials, or stack frames. Type name is safe to surface.
         return {
             "ok": False,
             "status_code": 502,
             "latency_ms": latency_ms,
             "final_url": final_url,
-            "response_body_truncated": f"SSH test error: {type(exc).__name__}: {exc}",
+            "response_body_truncated": f"SSH test error: {type(exc).__name__}",
         }

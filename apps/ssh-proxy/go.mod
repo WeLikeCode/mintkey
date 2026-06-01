@@ -3,7 +3,7 @@ module github.com/mintkey/mintkey/services/ssh-proxy
 go 1.26.0
 
 require (
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/prometheus/client_golang v1.19.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
