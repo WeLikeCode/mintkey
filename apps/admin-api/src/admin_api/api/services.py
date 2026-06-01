@@ -363,6 +363,75 @@ from admin_api.api._ssh_test import SSH_SCHEMES as _SSH_SCHEMES  # noqa: E402
 from admin_api.api._ssh_test import test_ssh_credential as _test_ssh_credential  # noqa: E402
 
 
+async def _run_ssh_post_save_test(
+    auth_scheme: str,
+    cred_entry: dict[str, Any] | None,
+    base_url: str,
+    timeout_ms: int,
+) -> dict[str, Any]:
+    """
+    Build the envelope JSON for a post-save SSH credential test and call
+    _test_ssh_credential.  Credential plaintext NEVER appears in return dict.
+
+    For ssh_private_key: {"scheme": ..., "private_key_pem": ..., "ssh_user": ..., "target_address": ...}
+    For ssh_password:    {"scheme": ..., "username": ..., "password": ..., "target_address": ...}
+
+    Returns the same {ok, status_code, latency_ms, final_url, response_body_truncated}
+    shape as the HTTP test path so the UI renders it unchanged.
+
+    ADR-0021 / OPS-T / S-SEC-1.
+    """
+    import json as _json  # noqa: PLC0415
+
+    if not cred_entry:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "latency_ms": 0,
+            "final_url": base_url,
+            "response_body_truncated": "No credential found for this service.",
+        }
+
+    target_address: str = cast(str, cred_entry.get("target_address") or "")
+    ssh_user: str = cast(str, cred_entry.get("ssh_user") or "")
+    plaintext: str = cast(str, cred_entry.get("plaintext") or "")
+
+    # Guard: legacy credentials created before ADR-0021 may lack these fields.
+    if not target_address or not ssh_user:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "latency_ms": 0,
+            "final_url": base_url,
+            "response_body_truncated": (
+                "Credential is missing target_address or ssh_user metadata. "
+                "Re-create the credential to populate these fields."
+            ),
+        }
+
+    if auth_scheme == "ssh_private_key":
+        envelope = _json.dumps({
+            "scheme": auth_scheme,
+            "private_key_pem": plaintext,
+            "ssh_user": ssh_user,
+            "target_address": target_address,
+        })
+    else:  # ssh_password
+        envelope = _json.dumps({
+            "scheme": auth_scheme,
+            "username": ssh_user,
+            "password": plaintext,
+            "target_address": target_address,
+        })
+
+    return await _test_ssh_credential(
+        scheme=auth_scheme,
+        credential_value=envelope,
+        base_url=base_url,
+        timeout_ms=timeout_ms,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -992,6 +1061,48 @@ async def test_service(
     from admin_api.services.vault_client import get_vault_client  # noqa: PLC0415
     vault = await get_vault_client()
     cred_entry = await vault.get_credential(str(tenant_id), str(row.id))
+
+    # SSH schemes — dial via asyncssh; method/path/headers/body are meaningless.
+    # For ssh_* schemes, method/path/headers/body are ignored. — OPS-T / ADR-0021.
+    if auth_scheme in _SSH_SCHEMES:
+        ssh_result = await _run_ssh_post_save_test(
+            auth_scheme=auth_scheme,
+            cred_entry=cred_entry,
+            base_url=base_url,
+            timeout_ms=req.timeout_ms or 10000,
+        )
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=row.id,
+                target_type="service",
+                payload={
+                    "method": "SSH",
+                    "auth_scheme": auth_scheme,
+                    "target_host_port": (ssh_result.get("final_url") or base_url).replace("ssh://", ""),
+                    "status_code": ssh_result.get("status_code", 0),
+                    "latency_ms": ssh_result.get("latency_ms", 0),
+                    "ok": ssh_result.get("ok", False),
+                    "transient": False,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service(SSH): audit_emit failed (non-fatal). service=%s tenant=%s",
+                service_id,
+                str(tenant_id),
+            )
+        return JSONResponse({
+            "ok": ssh_result.get("ok", False),
+            "status_code": ssh_result.get("status_code", 0),
+            "latency_ms": ssh_result.get("latency_ms", 0),
+            "response_body_truncated": ssh_result.get("response_body_truncated", ""),
+            "final_url": ssh_result.get("final_url", base_url),
+        })
 
     # Build the final URL: urljoin handles leading-slash on path correctly.
     # urljoin('http://x:8999', '/health') == 'http://x:8999/health'

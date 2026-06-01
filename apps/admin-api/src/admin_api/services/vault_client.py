@@ -197,6 +197,9 @@ class VaultAdapterClient:
                 "key_version": resp.returned_key_version,
                 "header_name": resp.header_name,
                 "query_param": resp.query_param,
+                # SSH metadata — ADR-0021; empty string for non-SSH schemes.
+                "target_address": resp.target_address,
+                "ssh_user": resp.ssh_user,
             }
         except grpc.aio.AioRpcError:
             return None
