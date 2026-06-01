@@ -39,19 +39,9 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 		return nil, nil, fmt.Errorf("failed to fetch credential: %w", err)
 	}
 
-	// Verify auth scheme is SSH private key
-	if cred.AuthScheme != vault.AuthSchemeSSHPrivateKey {
-		return nil, nil, fmt.Errorf("invalid auth scheme: expected SSH_PRIVATE_KEY, got %v", cred.AuthScheme)
-	}
-
-	// Parse SSH private key
-	signer, err := ssh.ParsePrivateKey(cred.Value)
-	if err != nil {
-		// Try parsing as OpenSSH format
-		signer, err = ssh.ParsePrivateKeyWithPassphrase(cred.Value, nil)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to parse SSH private key: %w", err)
-		}
+	// Verify auth scheme is SSH private key or SSH password
+	if cred.AuthScheme != vault.AuthSchemeSSHPrivateKey && cred.AuthScheme != vault.AuthSchemeSSHPassword {
+		return nil, nil, fmt.Errorf("invalid auth scheme: expected SSH_PRIVATE_KEY or SSH_PASSWORD, got %v", cred.AuthScheme)
 	}
 
 	// Determine target address
@@ -69,11 +59,35 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 		user = "root" // Default to root if not specified
 	}
 
+	// Build the auth method based on the scheme.
+	var authMethod ssh.AuthMethod
+	if cred.AuthScheme == vault.AuthSchemeSSHPassword {
+		// SSH password auth — copy password bytes into the method then zeroize.
+		pwCopy := make([]byte, len(cred.Value))
+		copy(pwCopy, cred.Value)
+		authMethod = ssh.Password(string(pwCopy))
+		// Zeroize our copy immediately; cred.Value is zeroed by Close() after session ends.
+		for i := range pwCopy {
+			pwCopy[i] = 0
+		}
+	} else {
+		// SSH private key auth.
+		signer, err := ssh.ParsePrivateKey(cred.Value)
+		if err != nil {
+			// Try parsing as OpenSSH format
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(cred.Value, nil)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse SSH private key: %w", err)
+			}
+		}
+		authMethod = ssh.PublicKeys(signer)
+	}
+
 	// Create SSH client config
 	config := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
+			authMethod,
 		},
 		HostKeyCallback: c.hostKeyCallback(ctx, sessCtx),
 		Timeout:         10 * time.Second,

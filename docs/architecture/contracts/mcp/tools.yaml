@@ -97,6 +97,7 @@ $defs:
       - google_service_account
       - ssh_private_key
       - ssh_ca
+      - ssh_password
 
   service_summary:
     type: object

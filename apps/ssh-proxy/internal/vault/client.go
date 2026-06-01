@@ -35,6 +35,7 @@ const (
 	AuthSchemeGoogleServiceAccount AuthScheme = 10 // existing
 	AuthSchemeSSHPrivateKey        AuthScheme = 11 // this PR
 	AuthSchemeSSHCA                AuthScheme = 12 // Phase 2
+	AuthSchemeSSHPassword          AuthScheme = 13 // username+password for SSH bastion
 )
 
 // Credential carries the decrypted credential and SSH-specific metadata.
@@ -132,10 +133,11 @@ func (c *Client) GetCredential(ctx context.Context, tenantID, serviceID string) 
 	}
 
 	return &Credential{
-		Value:      resp.GetValue(),
-		AuthScheme: AuthScheme(resp.GetAuthScheme()),
-		KeyVersion: resp.GetReturnedKeyVersion(),
-		// TargetAddress and SSHUser are left "" until C3 adds proto extensions.
+		Value:         resp.GetValue(),
+		AuthScheme:    AuthScheme(resp.GetAuthScheme()),
+		KeyVersion:    resp.GetReturnedKeyVersion(),
+		TargetAddress: resp.GetTargetAddress(),
+		SSHUser:       resp.GetSshUser(),
 	}, nil
 }
 

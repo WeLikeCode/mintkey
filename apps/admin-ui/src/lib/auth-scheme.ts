@@ -38,6 +38,7 @@ export const AUTH_SCHEMES: AuthSchemeOption[] = [
   { value: "google_service_account", label: "Google Service Account (auto-rotating OAuth2)" },
   { value: "ssh_private_key", label: "SSH Private Key (bastion)" },
   { value: "ssh_ca", label: "SSH CA Signing Key (bastion — Phase 2)" },
+  { value: "ssh_password", label: "SSH Password (bastion — username + password)" },
 ];
 
 const SCHEME_FIELDS: Record<string, CredentialField[]> = {
@@ -110,6 +111,12 @@ const SCHEME_FIELDS: Record<string, CredentialField[]> = {
     { name: "ca_private_key_pem", label: "SSH CA Private Key (PEM)", type: "textarea", secret: true, required: true },
     { name: "ca_principal_prefix", label: "Principal prefix (e.g. 'agent-')", type: "text", secret: false, required: true },
   ],
+
+  ssh_password: [
+    { name: "username", label: "SSH user", type: "text", secret: false, required: true, placeholder: "ubuntu" },
+    { name: "password", label: "SSH password", type: "password", secret: true, required: true },
+    { name: "target_address", label: "Target host:port", type: "text", secret: false, required: true, placeholder: "host:port" },
+  ],
 };
 
 /**
@@ -181,6 +188,16 @@ export function buildCredentialPayload(
       scheme: "ssh_ca",
       ca_private_key_pem: formData.ca_private_key_pem ?? "",
       ca_principal_prefix: formData.ca_principal_prefix ?? "",
+    });
+    return payload;
+  }
+
+  if (scheme === "ssh_password") {
+    payload["value"] = JSON.stringify({
+      scheme: "ssh_password",
+      username: formData.username ?? "",
+      password: formData.password ?? "",
+      target_address: formData.target_address ?? "",
     });
     return payload;
   }

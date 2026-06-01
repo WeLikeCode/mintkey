@@ -67,6 +67,10 @@ const (
 	// Used by the SSH proxy (ADR-0021, Phase 2) to sign short-lived SSH certificates
 	// for direct-connect mode (agent connects directly to backend, no bastion in data path).
 	AuthScheme_AUTH_SCHEME_SSH_CA AuthScheme = 12
+	// SSH_PASSWORD: Vault stores a plaintext SSH password for username+password bastion auth.
+	// The password is stored as raw bytes in the encrypted payload; target_address and
+	// ssh_user are stored in the dedicated metadata columns (ADR-0021).
+	AuthScheme_AUTH_SCHEME_SSH_PASSWORD AuthScheme = 13
 )
 
 // Enum value maps for AuthScheme.
@@ -85,6 +89,7 @@ var (
 		10: "AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT",
 		11: "AUTH_SCHEME_SSH_PRIVATE_KEY",
 		12: "AUTH_SCHEME_SSH_CA",
+		13: "AUTH_SCHEME_SSH_PASSWORD",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -100,6 +105,7 @@ var (
 		"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT":    10,
 		"AUTH_SCHEME_SSH_PRIVATE_KEY":           11,
 		"AUTH_SCHEME_SSH_CA":                    12,
+		"AUTH_SCHEME_SSH_PASSWORD":              13,
 	}
 )
 

@@ -490,3 +490,85 @@ class SSHPrivateKeyPayload(BaseModel):
         resulting bytes are passed directly to PutCredential and NEVER logged.
         """
         return self.private_key_pem.encode()
+
+
+# ---------------------------------------------------------------------------
+# SSH Password credential payload model — ADR-0021
+# ---------------------------------------------------------------------------
+
+
+class SSHPasswordPayload(BaseModel):
+    """Structured credential payload for auth_scheme=ssh_password.
+
+    Validated at registration time. The Vault Adapter stores the raw password
+    bytes directly (no JSON envelope) in the encrypted payload column.  The
+    routing metadata (target_address, username) is passed as separate gRPC
+    fields on the PutCredential call and stored in the dedicated vault columns.
+
+    Fields:
+      - username: SSH username for authentication.  Must be non-empty and
+        contain only safe characters (ASCII letters, digits, '.', '_', '-').
+        Shell-metacharacters are rejected.
+      - password: SSH password.  Length 1..1024 bytes after UTF-8 encoding.
+        NEVER included in audit events or log output — ADR-0021, ADR-0014.7.
+      - target_address: "host:port" string for the backend SSH server.  Port
+        must be a valid decimal integer.
+
+    Source: ADR-0021; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: password is intentionally NOT repr'd or logged anywhere.
+    # The field is validated then passed as raw bytes to PutCredential;
+    # it MUST NOT appear in any audit payload or structlog / stdlib log event.
+    username: str
+    password: str = Field(..., min_length=1, max_length=1024)
+    target_address: str  # "host:port"
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        """Require non-empty username with no shell-metacharacters — ADR-0021."""
+        if not v.strip():
+            raise ValueError("username must be a non-empty string")
+        if not _SSH_SAFE_USER_RE.match(v):
+            raise ValueError(
+                "username contains invalid characters; "
+                "only ASCII letters, digits, '.', '_', and '-' are allowed"
+            )
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        """Require non-empty password that fits in 1024 bytes — ADR-0021."""
+        if not v:
+            raise ValueError("password must not be empty")
+        if len(v.encode("utf-8")) > 1024:
+            raise ValueError("password exceeds 1024-byte limit after UTF-8 encoding")
+        return v
+
+    @field_validator("target_address")
+    @classmethod
+    def validate_target(cls, v: str) -> str:
+        """Require 'host:port' format with a numeric port — ADR-0021."""
+        parts = v.rsplit(":", 1)
+        if len(parts) != 2 or not parts[1].isdigit():
+            raise ValueError(
+                "target_address must be 'host:port' with a numeric port (e.g. 'myhost:22')"
+            )
+        host = parts[0].strip()
+        if not host:
+            raise ValueError("target_address host part must not be empty")
+        return v
+
+    def to_vault_envelope(self) -> bytes:
+        """Return the raw password bytes to store in the Vault Adapter.
+
+        For SSH password, the stored credential IS the raw password bytes.
+        username and target_address are passed as separate gRPC metadata fields
+        on the PutCredential call (username → ssh_user, target_address → target_address).
+
+        This is the ONLY place password is read after validation; the resulting
+        bytes are passed directly to PutCredential and NEVER logged.
+        """
+        return self.password.encode("utf-8")

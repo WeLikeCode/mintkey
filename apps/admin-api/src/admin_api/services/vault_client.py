@@ -51,6 +51,7 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "google_service_account": 10,
     "ssh_private_key": 11,  # ADR-0021: SSH private key for SSH proxy auth
     "ssh_ca": 12,           # ADR-0021: SSH CA key for certificate signing (Phase 2)
+    "ssh_password": 13,     # ADR-0021: SSH username+password for SSH proxy auth
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")

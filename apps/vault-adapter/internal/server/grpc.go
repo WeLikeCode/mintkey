@@ -303,6 +303,21 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		}, nil
 	}
 
+	// AUTH_SCHEME_SSH_PASSWORD: return raw password bytes + SSH routing metadata.
+	// The password is stored as raw bytes (no envelope). The SSH proxy uses
+	// ssh.Password(cred.Value) and zeros the bytes immediately after use.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PASSWORD) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+		}, nil
+	}
+
 	// AUTH_SCHEME_SSH_CA (Phase 2 stub): return raw CA key bytes.
 	// Certificate signing logic is deferred to Phase 2 (ADR-0021 §3).
 	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_CA) {

@@ -41,6 +41,7 @@ from admin_api.services.credential_service import (
     AppleJWTPayload,
     GoogleServiceAccountPayload,
     OAuth2PasswordGrantPayload,
+    SSHPasswordPayload,
     SSHPrivateKeyPayload,
 )
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
@@ -340,6 +341,49 @@ async def create_credential(
         _ssh_target_address = _ssh_validated.target_address
         _ssh_user = _ssh_validated.ssh_user
 
+    # Step 1g: For ssh_password, validate the structured payload — ADR-0021.
+    # body.value is expected to be a JSON object:
+    #   { "username": ..., "password": ..., "target_address": ... }
+    # Validation: safe username chars, password length 1..1024, host:port format.
+    # password is scrubbed from all log calls — ADR-0014.7, S-SEC-1.
+    _ssh_pwd_validated: SSHPasswordPayload | None = None
+    _ssh_pwd_envelope: bytes | None = None
+    _ssh_pwd_target_address: str = ""
+    _ssh_pwd_user: str = ""
+    if body.auth_scheme == "ssh_password":
+        import json as _json_mod
+        from pydantic import ValidationError
+        try:
+            raw_ssh_pwd = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_pwd, dict):
+                raise TypeError("ssh_password value must be a JSON object")
+            raw_ssh_pwd.pop("scheme", None)
+            _ssh_pwd_validated = SSHPasswordPayload(**raw_ssh_pwd)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password value must be a valid JSON object",
+                },
+            )
+        except (ValidationError, ValueError) as exc:
+            # Log without including password — ADR-0014.7.
+            logger.warning("ssh_password credential validation failed: %s", str(exc))
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": str(exc),
+                },
+            )
+        # Extract routing metadata for the separate gRPC fields — ADR-0021.
+        _ssh_pwd_envelope = _ssh_pwd_validated.to_vault_envelope()  # raw password bytes — NEVER logged
+        _ssh_pwd_target_address = _ssh_pwd_validated.target_address
+        _ssh_pwd_user = _ssh_pwd_validated.username
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     # For apple_jwt: pass the canonical JSON envelope as plaintext.
@@ -347,14 +391,28 @@ async def create_credential(
     # For ssh_private_key: pass the raw PEM bytes as plaintext; routing metadata
     #   goes as separate fields (target_address, ssh_user).
     vault_plaintext: str
+    vault_target_address: str
+    vault_ssh_user: str
     if apple_jwt_envelope is not None:
         vault_plaintext = apple_jwt_envelope
+        vault_target_address = ""
+        vault_ssh_user = ""
     elif _gsa_envelope is not None:
         vault_plaintext = _gsa_envelope.decode()
+        vault_target_address = ""
+        vault_ssh_user = ""
     elif _ssh_envelope is not None:
         vault_plaintext = _ssh_envelope.decode()
+        vault_target_address = _ssh_target_address
+        vault_ssh_user = _ssh_user
+    elif _ssh_pwd_envelope is not None:
+        vault_plaintext = _ssh_pwd_envelope.decode("utf-8")
+        vault_target_address = _ssh_pwd_target_address
+        vault_ssh_user = _ssh_pwd_user
     else:
         vault_plaintext = body.value
+        vault_target_address = ""
+        vault_ssh_user = ""
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
         service_id=db_svc_uuid,
@@ -363,8 +421,8 @@ async def create_credential(
         target_url=service_base_url,
         header_name=body.header_name or "",
         query_param=body.query_param or "",
-        target_address=_ssh_target_address,
-        ssh_user=_ssh_user,
+        target_address=vault_target_address,
+        ssh_user=vault_ssh_user,
     )
     key_version: int = cast(int, vault_result["key_version"])
 
@@ -446,6 +504,15 @@ async def create_credential(
         audit_payload["ssh_user"] = _ssh_validated.ssh_user
         audit_payload["key_fingerprint"] = _hashlib_ssh.sha256(
             _ssh_validated.private_key_pem.encode()
+        ).hexdigest()[:16]
+    if _ssh_pwd_validated is not None:
+        import hashlib as _hashlib_sshpwd
+        # Include non-sensitive metadata only — NEVER the raw password.
+        # password_fingerprint is the first 16 hex chars of SHA-256(password) — ADR-0021, ADR-0014.7.
+        audit_payload["username"] = _ssh_pwd_validated.username
+        audit_payload["target_address"] = _ssh_pwd_validated.target_address
+        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(
+            _ssh_pwd_validated.password.encode("utf-8")
         ).hexdigest()[:16]
 
     await audit_emit(

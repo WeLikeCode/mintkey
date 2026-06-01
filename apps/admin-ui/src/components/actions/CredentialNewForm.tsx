@@ -241,6 +241,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
             ca_principal_prefix: credFields["ca_principal_prefix"] ?? "",
           }),
         };
+      } else if (authScheme === "ssh_password") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_password",
+            username: credFields["username"] ?? "",
+            password: credFields["password"] ?? "",
+            target_address: credFields["target_address"] ?? "",
+          }),
+        };
       } else if (authScheme === "oauth2_password_grant") {
         // Assemble the value JSON per contract
         const credentialFields: Record<string, string> = {};

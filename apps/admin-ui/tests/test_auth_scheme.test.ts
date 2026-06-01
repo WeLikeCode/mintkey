@@ -19,7 +19,7 @@ import {
 } from "../src/lib/auth-scheme.js";
 
 describe("AUTH_SCHEMES", () => {
-  it("contains all 12 required schemes", () => {
+  it("contains all 13 required schemes (including ssh_password)", () => {
     const values = AUTH_SCHEMES.map((s) => s.value);
     expect(values).toContain("none");
     expect(values).toContain("api_key_header");
@@ -34,7 +34,8 @@ describe("AUTH_SCHEMES", () => {
     expect(values).toContain("google_service_account");
     expect(values).toContain("ssh_private_key");
     expect(values).toContain("ssh_ca");
-    expect(values).length(13);
+    expect(values).toContain("ssh_password");
+    expect(values).length(14);
   });
 
   it("each scheme has a value and label", () => {
@@ -207,6 +208,27 @@ describe("getCredentialFields", () => {
     expect(prefixField.required).toBe(true);
   });
 
+  it("ssh_password returns username (text), password (password, secret), target_address (text)", () => {
+    const fields = getCredentialFields("ssh_password");
+    expect(fields).toHaveLength(3);
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("username");
+    expect(names).toContain("password");
+    expect(names).toContain("target_address");
+    const userField = fields.find((f) => f.name === "username")!;
+    expect(userField.type).toBe("text");
+    expect(userField.secret).toBe(false);
+    expect(userField.required).toBe(true);
+    const pwField = fields.find((f) => f.name === "password")!;
+    expect(pwField.type).toBe("password");
+    expect(pwField.secret).toBe(true);
+    expect(pwField.required).toBe(true);
+    const addrField = fields.find((f) => f.name === "target_address")!;
+    expect(addrField.type).toBe("text");
+    expect(addrField.secret).toBe(false);
+    expect(addrField.required).toBe(true);
+  });
+
   it("unknown scheme returns empty fields (safe default)", () => {
     const fields = getCredentialFields("unknown_scheme");
     expect(fields).toEqual([]);
@@ -328,6 +350,34 @@ describe("buildCredentialPayload", () => {
     const parsed = JSON.parse(payload.value);
     expect(Object.keys(parsed).sort()).toEqual(["ca_principal_prefix", "ca_private_key_pem", "scheme"].sort());
     expect(parsed.ca_principal_prefix).toBe("svc-");
+  });
+
+  it("ssh_password: value is JSON string with exactly 4 keys (scheme, username, password, target_address)", () => {
+    const payload = buildCredentialPayload("ssh_password", {
+      username: "alice",
+      password: "s3cr3t!",
+      target_address: "bastion.example.com:22",
+    });
+    expect(payload.auth_scheme).toBe("ssh_password");
+    expect(typeof payload.value).toBe("string");
+    const parsed = JSON.parse(payload.value);
+    expect(parsed.scheme).toBe("ssh_password");
+    expect(parsed.username).toBe("alice");
+    expect(parsed.password).toBe("s3cr3t!");
+    expect(parsed.target_address).toBe("bastion.example.com:22");
+    expect(Object.keys(parsed)).toHaveLength(4);
+  });
+
+  it("ssh_password: round-trip JSON.parse returns expected object shape", () => {
+    const payload = buildCredentialPayload("ssh_password", {
+      username: "deploy",
+      password: "hunter2",
+      target_address: "10.0.0.1:2222",
+    });
+    const parsed = JSON.parse(payload.value);
+    expect(Object.keys(parsed).sort()).toEqual(["password", "scheme", "target_address", "username"].sort());
+    expect(parsed.target_address).toBe("10.0.0.1:2222");
+    expect(parsed.username).toBe("deploy");
   });
 
   it("oauth2_password_grant: assembles nested value JSON with correct contract shape", () => {
