@@ -185,9 +185,8 @@ def test_password_fingerprint_is_not_raw_password() -> None:
     payload = _make_valid()
     # SHA-256 used as audit fingerprint in test assertion, not for authentication.
     # Mirrors the non-auth fingerprint produced by credentials.py (ADR-0021).
-    # lgtm[py/weak-sensitive-data-hashing]
     _pwd_bytes = payload.password.encode("utf-8")
-    fingerprint = hashlib.sha256(_pwd_bytes).hexdigest()[:16]
+    fingerprint = hashlib.sha256(_pwd_bytes).hexdigest()[:16]  # lgtm[py/weak-sensitive-data-hashing]
     assert len(fingerprint) == 16
     assert fingerprint != payload.password
     assert "@" not in fingerprint  # no special chars from the real password
