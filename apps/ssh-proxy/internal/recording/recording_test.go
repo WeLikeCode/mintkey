@@ -427,3 +427,31 @@ func TestLocalStorage_Cleanup(t *testing.T) {
 		t.Error("new recording was deleted")
 	}
 }
+
+// TestLocalStorage_PathTraversal verifies that Retrieve and Delete reject paths
+// that escape the recording directory. ADR-0021 / CodeQL go/path-injection.
+func TestLocalStorage_PathTraversal(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	storage, err := NewLocalStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewLocalStorage() error = %v", err)
+	}
+
+	traversalPaths := []string{
+		tmpDir + "/../etc/passwd",
+		"/etc/passwd",
+		tmpDir + "/../../secret",
+	}
+
+	for _, p := range traversalPaths {
+		_, err := storage.Retrieve(nil, p)
+		if err == nil {
+			t.Errorf("Retrieve(%q) should have rejected path traversal, got nil error", p)
+		}
+
+		if err := storage.Delete(nil, p); err == nil {
+			t.Errorf("Delete(%q) should have rejected path traversal, got nil error", p)
+		}
+	}
+}

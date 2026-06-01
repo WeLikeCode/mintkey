@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -60,9 +61,31 @@ func (s *LocalStorage) Store(ctx context.Context, sessionID string, data io.Read
 	return filepath, nil
 }
 
+// validatePath ensures path is within s.basePath to prevent path traversal.
+// ADR-0021: recording paths must be confined to the configured recording directory.
+func (s *LocalStorage) validatePath(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("invalid path: %w", err)
+	}
+	base, err := filepath.Abs(s.basePath)
+	if err != nil {
+		return fmt.Errorf("invalid base path: %w", err)
+	}
+	// Ensure abs is base or a direct child of base.
+	rel, err := filepath.Rel(base, abs)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path %q escapes recording directory", path)
+	}
+	return nil
+}
+
 // Retrieve retrieves a recording from the local filesystem.
 func (s *LocalStorage) Retrieve(ctx context.Context, path string) (io.ReadCloser, error) {
-	file, err := os.Open(path)
+	if err := s.validatePath(path); err != nil {
+		return nil, err
+	}
+	file, err := os.Open(path) // #nosec G304 — path validated above
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
@@ -72,6 +95,9 @@ func (s *LocalStorage) Retrieve(ctx context.Context, path string) (io.ReadCloser
 
 // Delete deletes a recording from the local filesystem.
 func (s *LocalStorage) Delete(ctx context.Context, path string) error {
+	if err := s.validatePath(path); err != nil {
+		return err
+	}
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("failed to delete file: %w", err)
 	}

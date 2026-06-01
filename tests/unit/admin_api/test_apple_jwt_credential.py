@@ -140,6 +140,8 @@ def _create_apple_jwt_app() -> object:
             target_url: str = "",
             header_name: str = "",
             query_param: str = "",
+            target_address: str = "",
+            ssh_user: str = "",
         ) -> dict[str, object]:
             return {
                 "credential_id": "cred_apple_mock_0000000000000001",

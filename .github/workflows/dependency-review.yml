@@ -47,9 +47,10 @@ jobs:
           #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
-          #   - golang.org/x/{sync,net}: BSD-3-Clause + the standard Go patent grant
+          #   - golang.org/x/{sync,net,time}: BSD-3-Clause + the standard Go patent grant
           #     (reported as a compound expr with a non-SPDX scancode LicenseRef);
-          #     permissive Go stdlib-adjacent libs (singleflight, HTTP/2, etc.).
+          #     permissive Go stdlib-adjacent libs (singleflight, HTTP/2, rate-limiter, etc.).
+          #     golang.org/x/time added as transitive dep of ssh-proxy in PR #138.
           #   - stretchr/testify, gopkg.in/yaml.v3, types-PyYAML: permissive
           #     test/build deps (MIT / MIT-Apache / Apache-2.0) whose license the
           #     scanner could not auto-resolve (reported "unknown").
@@ -61,6 +62,7 @@ jobs:
             pkg:npm/lru-cache,
             pkg:golang/golang.org/x/sync,
             pkg:golang/golang.org/x/net,
+            pkg:golang/golang.org/x/time,
             pkg:golang/github.com/stretchr/testify,
             pkg:golang/gopkg.in/yaml.v3,
             pkg:pypi/types-pyyaml

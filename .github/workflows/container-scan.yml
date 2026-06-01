@@ -99,6 +99,11 @@ jobs:
             context: apps/jaeger-auth
             dockerfile: apps/jaeger-auth/Dockerfile
             image: mintkey-jaeger-auth
+          # ssh-proxy added in fix/ssh-proxy-integration (PR #138)
+          - service: ssh-proxy
+            context: .
+            dockerfile: apps/ssh-proxy/Dockerfile
+            image: mintkey-ssh-proxy
 
     steps:
       - name: Checkout repository

@@ -112,7 +112,7 @@ async def test_rotation_increments_key_version() -> None:
     class _CyclingVaultClient(VaultAdapterClient):
         async def put_credential(
             self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
-            header_name="", query_param=""
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             nonlocal call_count
             call_count += 1
@@ -162,7 +162,7 @@ async def test_rotation_audit_event_has_previous_version() -> None:
     class _RotationVaultClient(VaultAdapterClient):
         async def put_credential(
             self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
-            header_name="", query_param=""
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000002",
@@ -214,7 +214,7 @@ async def test_rotation_notifies_credential_channel() -> None:
     class _RotationVaultClient(VaultAdapterClient):
         async def put_credential(
             self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
-            header_name="", query_param=""
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000002",

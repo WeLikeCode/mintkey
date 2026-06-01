@@ -117,7 +117,7 @@ def create_test_app():
     class _MockVaultClient(VaultAdapterClient):
         async def put_credential(
             self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
-            header_name="", query_param=""
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             return {
                 "credential_id": "cred_abc123xyz00000000000000001",
@@ -384,7 +384,8 @@ def create_rotate_test_app():
 
     class _MockVaultClient(VaultAdapterClient):
         async def put_credential(
-            self, tenant_id, service_id, auth_scheme, plaintext, target_url=""
+            self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             return {"credential_id": "cred_rotate_mock", "key_version": 2, "created_at": 1_700_000_000.0}
 
@@ -578,7 +579,7 @@ def create_rotate_no_cred_app():
     class _MockVaultClient(VaultAdapterClient):
         async def put_credential(
             self, tenant_id, service_id, auth_scheme, plaintext, target_url="",
-            header_name="", query_param=""
+            header_name="", query_param="", target_address="", ssh_user=""
         ):
             return {"credential_id": "cred_mock", "key_version": 2, "created_at": 0.0}
 

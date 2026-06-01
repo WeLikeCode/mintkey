@@ -201,7 +201,7 @@ async def test_ssh_credential(
             "response_body_truncated": f"SSH authentication failed: {exc}",
         }
 
-    except (TimeoutError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, asyncio.TimeoutError):
         latency_ms = int((_time.monotonic() - start) * 1000)
         logger.info(
             "test_ssh_credential: timeout host=%s:%d user=%s after=%dms",
