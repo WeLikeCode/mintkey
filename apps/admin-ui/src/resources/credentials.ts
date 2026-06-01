@@ -100,10 +100,17 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           );
 
           if (!resp.ok) {
-            const err = await resp.json().catch(() => ({})) as { title?: string };
+            // Preserve the full response body so CredentialNewForm can render
+            // per-field errors from the pydantic `detail` array — C-2.
+            const errBody = await resp.json().catch(() => ({})) as {
+              title?: string;
+              detail?: string | Array<{ loc: (string | number)[]; msg: string; type?: string }>;
+            };
             return {
               record: await recordJSON(context, request.payload ?? {}),
-              notice: { message: err.title ?? "Failed to register credential", type: "error" },
+              notice: { message: errBody.title ?? "Failed to register credential", type: "error" },
+              // fieldErrors is read by CredentialNewForm to render inline messages
+              fieldErrors: errBody.detail,
             };
           }
 

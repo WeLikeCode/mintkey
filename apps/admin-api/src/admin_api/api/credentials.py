@@ -325,7 +325,23 @@ async def create_credential(
                     "detail": "ssh_private_key value must be a valid JSON object",
                 },
             )
-        except (ValidationError, ValueError) as exc:
+        except ValidationError as exc:
+            # Log the error without including private_key_pem — ADR-0014.7.
+            # Return structured field errors so the UI can render per-field
+            # messages — C-2.  exc.errors() is pydantic v2 format:
+            # [{loc: [...], msg: "...", type: "..."}].
+            # include_input=False: prevents credential values (private_key_pem)
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential validation failed: %s", str(exc))
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError as exc:
             # Log the error without including private_key_pem — ADR-0014.7.
             logger.warning("ssh_private_key credential validation failed: %s", str(exc))
             return JSONResponse(
@@ -368,7 +384,23 @@ async def create_credential(
                     "detail": "ssh_password value must be a valid JSON object",
                 },
             )
-        except (ValidationError, ValueError) as exc:
+        except ValidationError as exc:
+            # Log without including password — ADR-0014.7.
+            # Return structured field errors so the UI can render per-field
+            # messages — C-2.  exc.errors() is pydantic v2 format:
+            # [{loc: [...], msg: "...", type: "..."}].
+            # include_input=False: prevents credential values (password)
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential validation failed: %s", str(exc))
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError as exc:
             # Log without including password — ADR-0014.7.
             logger.warning("ssh_password credential validation failed: %s", str(exc))
             return JSONResponse(

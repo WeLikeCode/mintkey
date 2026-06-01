@@ -31,6 +31,7 @@ import {
 import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { AUTH_SCHEMES, getCredentialFields, buildCredentialPayload, type KvRow } from "../../lib/auth-scheme.js";
+import { extractFieldErrors, type AdminApiErrorResponse } from "../../lib/credential-errors.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -167,6 +168,8 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
   // ── submission state ───────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-field validation errors — keyed by credFields field name — C-2.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState(false);
 
   // ── on mount: read service_id from URL ────────────────────────────────────
@@ -205,6 +208,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
 
     setSubmitting(true);
     setError(null);
+    setFieldErrors({});
 
     const api = new ApiClient();
     try {
@@ -318,9 +322,16 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
       const result = resp.data as {
         notice?: { message: string; type: string };
         redirectUrl?: string;
+        // fieldErrors is forwarded by the credentials `new` handler — C-2.
+        fieldErrors?: string | Array<{ loc: (string | number)[]; msg: string; type?: string }>;
       };
 
       if (result?.notice?.type === "error") {
+        // Parse per-field errors from the structured pydantic detail array.
+        const parsed = extractFieldErrors(
+          { detail: result.fieldErrors } as AdminApiErrorResponse
+        );
+        setFieldErrors(parsed);
         setError(result.notice.message || "Failed to register credential.");
         return;
       }
@@ -469,7 +480,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? (f.defaultValue ?? "")}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? f.defaultValue ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                     min={f.min}
                     max={f.max}
@@ -481,9 +492,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? (f.defaultValue ?? "")}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                   />
+                )}
+                {fieldErrors[f.name] && (
+                  <div
+                    style={{ color: "#dc3545", fontSize: 12, marginTop: 4 }}
+                    data-testid={`field-error-${f.name}`}
+                  >
+                    {f.label}: {fieldErrors[f.name]}
+                  </div>
                 )}
               </FieldRow>
             ))}
@@ -514,7 +533,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? ""}
                     onChange={(e) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={textareaStyle}
+                    style={fieldErrors[f.name] ? { ...textareaStyle, borderColor: "#dc3545" } : textareaStyle}
                     data-testid={`field-input-${f.name}`}
                   />
                 ) : (
@@ -524,9 +543,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? ""}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                   />
+                )}
+                {fieldErrors[f.name] && (
+                  <div
+                    style={{ color: "#dc3545", fontSize: 12, marginTop: 4 }}
+                    data-testid={`field-error-${f.name}`}
+                  >
+                    {f.label}: {fieldErrors[f.name]}
+                  </div>
                 )}
               </FieldRow>
             ))}
