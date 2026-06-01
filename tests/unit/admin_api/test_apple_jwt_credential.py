@@ -15,7 +15,6 @@ Sources: spec §4.2; ADR-0014.4; ADR-0014.7; S-SEC-1.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -386,7 +385,8 @@ async def test_apple_jwt_audit_has_key_id_issuer_id_fingerprint(
     assert payload.get("key_id") == _VALID_KEY_ID, f"key_id missing/wrong in audit payload: {payload}"
     assert payload.get("issuer_id") == _VALID_ISSUER_ID, f"issuer_id missing/wrong in audit payload: {payload}"
 
-    expected_fp = hashlib.sha256(_VALID_P8_PEM.encode()).hexdigest()[:16]
+    from admin_api.services.audit_fingerprint import audit_fingerprint
+    expected_fp = audit_fingerprint(_VALID_P8_PEM.encode())
     assert payload.get("p8_fingerprint") == expected_fp, (
         f"p8_fingerprint wrong in audit payload: got {payload.get('p8_fingerprint')!r}, "
         f"expected {expected_fp!r}"

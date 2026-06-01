@@ -86,5 +86,14 @@ def audit_fingerprint(plaintext: bytes, *, length: int = 16) -> str:
         raise ValueError("plaintext must be non-empty")
     if length < 8 or length > 64:
         raise ValueError(f"length must be 8..64, got {length}")
-    digest = hmac.new(_HMAC_KEY, plaintext, hashlib.sha256).hexdigest()
+    # CodeQL's py/weak-sensitive-data-hashing query flags hashlib.sha256 as a
+    # constructor argument to hmac.new().  HMAC-SHA256 IS the secure primitive
+    # here — keyed mode with a server-side secret prevents offline dictionary
+    # attack on the fingerprint without the server-side key.
+    # This is audit metadata (per-row reference for log traceability), NOT a
+    # password store.  Using argon2id/bcrypt/scrypt/pbkdf2 would be
+    # inappropriate: those KDFs are designed for ~1 verification/sec, whereas
+    # audit fingerprints fire on every credential write/rotate (~hundreds per
+    # minute under load).  See ADR-0012 for the argon2id password-storage path.
+    digest = hmac.new(_HMAC_KEY, plaintext, hashlib.sha256).hexdigest()  # lgtm[py/weak-sensitive-data-hashing]
     return digest[:length]

@@ -15,7 +15,6 @@ Source: ADR-0021; ADR-0014.4; ADR-0014.7.
 """
 from __future__ import annotations
 
-import hashlib
 import json as _json
 import logging
 
@@ -181,12 +180,14 @@ def test_password_not_logged_on_bad_username(caplog: pytest.LogCaptureFixture) -
 
 
 def test_password_fingerprint_is_not_raw_password() -> None:
-    """Audit helper: SHA-256[:16] of password != the password itself."""
+    """Audit helper: HMAC-SHA256[:16] of password != the password itself."""
+    from admin_api.services.audit_fingerprint import audit_fingerprint
+
     payload = _make_valid()
-    # SHA-256 used as audit fingerprint in test assertion, not for authentication.
-    # Mirrors the non-auth fingerprint produced by credentials.py (ADR-0021).
+    # Use the production audit_fingerprint() helper so the test automatically
+    # tracks any future fingerprint-scheme changes (ADR-0021).
     _pwd_bytes = payload.password.encode("utf-8")
-    fingerprint = hashlib.sha256(_pwd_bytes).hexdigest()[:16]  # lgtm[py/weak-sensitive-data-hashing]
+    fingerprint = audit_fingerprint(_pwd_bytes)
     assert len(fingerprint) == 16
     assert fingerprint != payload.password
     assert "@" not in fingerprint  # no special chars from the real password

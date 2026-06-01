@@ -379,3 +379,28 @@ CVE-2026-42497
 #   Archive::Tar < 3.08: Symlink extraction with attacker-controlled targets.
 #   Same mitigation as CVE-2026-42497; no Archive::Tar usage in any service.
 CVE-2026-42496
+
+# ── jaeger-auth new stdlib CVEs (PR #139, 2026-06-02) — review by 2026-09-02 ──
+# oauth2-proxy v7.15.2 (quay.io/oauth2-proxy/oauth2-proxy:v7.15.2) bundles Go
+# stdlib v1.25.9.  These CVEs are fixed in stdlib ≥1.25.10 / ≥1.26.3 but the
+# fix requires upgrading to a new oauth2-proxy release (no patch release for
+# v7.15.x available).  Upgrade tracked in MINTKEY-412.
+# All three are mitigated at the Kong gateway layer before reaching jaeger-auth.
+
+# CVE-2026-39823  stdlib v1.25.9 (jaeger-auth / oauth2-proxy binary) HIGH
+#   URL parsing flaw in net/url; attacker-crafted URLs can bypass routing.
+#   Kong normalises all URLs before forwarding; jaeger-auth is internal-only
+#   and not directly reachable by untrusted clients.
+CVE-2026-39823
+
+# CVE-2026-39825  stdlib v1.25.9 (jaeger-auth / oauth2-proxy binary) HIGH
+#   ReverseProxy forwards attacker-controlled query strings in net/http/httputil.
+#   oauth2-proxy's reverse-proxy mode is only reachable through Kong, which
+#   enforces query-string length limits and strips untrusted hop-by-hop headers.
+CVE-2026-39825
+
+# CVE-2026-39826  stdlib v1.25.9 (jaeger-auth / oauth2-proxy binary) HIGH
+#   Arbitrary JS injection via <script> tag in html/template.
+#   oauth2-proxy does not render HTML templates from user-controlled input in
+#   Mintkey's deployment; sign-in pages are served by Keycloak, not oauth2-proxy.
+CVE-2026-39826
