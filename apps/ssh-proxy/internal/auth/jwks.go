@@ -22,19 +22,15 @@ type JWKSCache struct {
 	ttl        time.Duration
 }
 
-// NewJWKSCache creates a new JWKS cache.
+// NewJWKSCache creates a new JWKS cache. The first network fetch is deferred
+// until GetKey is called so that server construction does not require a live
+// broker (and tests do not fail at New() time).
 func NewJWKSCache(brokerAddr string) (*JWKSCache, error) {
 	cache := &JWKSCache{
 		brokerAddr: brokerAddr,
 		keys:       make(map[string]ed25519.PublicKey),
 		ttl:        5 * time.Minute,
 	}
-
-	// Initial fetch
-	if err := cache.Refresh(); err != nil {
-		return nil, fmt.Errorf("failed to fetch initial JWKS: %w", err)
-	}
-
 	return cache, nil
 }
 

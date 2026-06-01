@@ -98,18 +98,16 @@ func (aw *AsciicastWriter) writeJSON(v interface{}) error {
 
 // AsciicastReader reads asciicast v2 format.
 type AsciicastReader struct {
-	reader io.Reader
-	header *AsciicastHeader
+	decoder *json.Decoder
+	header  *AsciicastHeader
 }
 
 // NewAsciicastReader creates a new asciicast reader.
 func NewAsciicastReader(r io.Reader) (*AsciicastReader, error) {
-	ar := &AsciicastReader{
-		reader: r,
-	}
-
-	// Read header
+	// Use a single decoder for the lifetime of the reader so its internal
+	// buffer is preserved between the header read and subsequent event reads.
 	decoder := json.NewDecoder(r)
+
 	var header AsciicastHeader
 	if err := decoder.Decode(&header); err != nil {
 		return nil, fmt.Errorf("failed to read header: %w", err)
@@ -119,8 +117,10 @@ func NewAsciicastReader(r io.Reader) (*AsciicastReader, error) {
 		return nil, fmt.Errorf("unsupported asciicast version: %d", header.Version)
 	}
 
-	ar.header = &header
-	return ar, nil
+	return &AsciicastReader{
+		decoder: decoder,
+		header:  &header,
+	}, nil
 }
 
 // Header returns the asciicast header.
@@ -130,10 +130,8 @@ func (ar *AsciicastReader) Header() *AsciicastHeader {
 
 // ReadEvent reads the next event.
 func (ar *AsciicastReader) ReadEvent() (*AsciicastEvent, error) {
-	decoder := json.NewDecoder(ar.reader)
-
 	var raw []interface{}
-	if err := decoder.Decode(&raw); err != nil {
+	if err := ar.decoder.Decode(&raw); err != nil {
 		if err == io.EOF {
 			return nil, err
 		}

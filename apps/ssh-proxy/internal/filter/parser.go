@@ -169,6 +169,7 @@ func IsDangerousCommand(command string) bool {
 		"kill":     true,
 		"killall":  true,
 		"pkill":    true,
+		"sudo":     true,
 	}
 
 	return dangerous[command]
