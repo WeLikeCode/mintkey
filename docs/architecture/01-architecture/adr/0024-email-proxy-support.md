@@ -1,4 +1,4 @@
-# ADR-0022: Email Proxy Support for Agent Email Operations
+# ADR-0024: Email Proxy Support for Agent Email Operations
 
 ## Status
 Proposed — 2026-06-01

@@ -5,7 +5,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 
 ## Milestone 1: Architecture & Contracts (Week 1)
 
-### Task 1.1: Create ADR-0022
+### Task 1.1: Create ADR-0024
 **Status**: ✅ Complete  
 **Effort**: 0.5 day  
 **Dependencies**: None
@@ -13,7 +13,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Document the architectural decision for email proxy support.
 
 **Acceptance Criteria**:
-- [x] ADR-0022 created in `docs/architecture/01-architecture/adr/0022-email-proxy-support.md`
+- [x] ADR-0024 created in `docs/architecture/01-architecture/adr/0024-email-proxy-support.md`
 - [x] Follows ADR template structure
 - [x] Documents decision, context, consequences, and trade-offs
 - [x] References related ADRs (0004, 0014.4, 0021, 0018)
@@ -912,7 +912,7 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Critical Path**: Task 1.1 → Task 2.1 → Task 2.13 → Task 4.3 → Task 6.3 → Task 7.3
 
 **Key Dependencies**:
-- ADR-0022 must be approved before implementation
+- ADR-0024 must be approved before implementation
 - Contracts must be updated before backend implementation
 - Backend must be complete before frontend implementation
 - All tests must pass before release
