@@ -90,7 +90,8 @@
         "audit_chain",
         "admin_settings",
         "platform_admin_view",
-        "api_key"
+        "api_key",
+        "ssh_session"
       ]
     },
     "auth_scheme": {
@@ -102,7 +103,9 @@
         "basic_auth",
         "oauth2_client_credentials",
         "oidc_client_secret",
-        "mtls"
+        "mtls",
+        "ssh_private_key",
+        "ssh_ca"
       ]
     },
     "envelope": {
@@ -1947,6 +1950,198 @@
           }
         }
       ]
+    },
+    "ev_ssh_session_started": {
+      "title": "ssh.session.started",
+      "description": "An SSH session was established via the SSH proxy bastion. Per ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "ssh.session.started"
+            },
+            "target_type": {
+              "const": "ssh_session"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "$ref": "#/$defs/session_id"
+                },
+                "agent_id": {
+                  "$ref": "#/$defs/agent_id"
+                },
+                "service_id": {
+                  "$ref": "#/$defs/service_id"
+                },
+                "source_ip": {
+                  "type": "string",
+                  "format": "ipv4"
+                },
+                "auth_method": {
+                  "type": "string",
+                  "enum": [
+                    "jwt",
+                    "api_key"
+                  ]
+                }
+              },
+              "required": [
+                "session_id",
+                "agent_id",
+                "service_id",
+                "source_ip",
+                "auth_method"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_ssh_session_exec": {
+      "title": "ssh.session.exec",
+      "description": "A command was executed in an SSH session. Per ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "ssh.session.exec"
+            },
+            "target_type": {
+              "const": "ssh_session"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "$ref": "#/$defs/session_id"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "The command executed (may be truncated for very long commands)."
+                },
+                "exit_code": {
+                  "type": "integer",
+                  "description": "Exit code of the command (0 = success)."
+                }
+              },
+              "required": [
+                "session_id",
+                "command",
+                "exit_code"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_ssh_session_sftp": {
+      "title": "ssh.session.sftp",
+      "description": "An SFTP operation was performed in an SSH session. Per ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "ssh.session.sftp"
+            },
+            "target_type": {
+              "const": "ssh_session"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "$ref": "#/$defs/session_id"
+                },
+                "operation": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "list",
+                    "delete",
+                    "mkdir",
+                    "rmdir",
+                    "rename"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The file/directory path affected by the operation."
+                }
+              },
+              "required": [
+                "session_id",
+                "operation",
+                "path"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ev_ssh_session_ended": {
+      "title": "ssh.session.ended",
+      "description": "An SSH session was terminated. Per ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {
+              "const": "ssh.session.ended"
+            },
+            "target_type": {
+              "const": "ssh_session"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "$ref": "#/$defs/session_id"
+                },
+                "duration_seconds": {
+                  "type": "integer",
+                  "description": "Total session duration in seconds."
+                },
+                "bytes_sent": {
+                  "type": "integer",
+                  "description": "Total bytes sent from agent to backend."
+                },
+                "bytes_received": {
+                  "type": "integer",
+                  "description": "Total bytes received from backend to agent."
+                }
+              },
+              "required": [
+                "session_id",
+                "duration_seconds",
+                "bytes_sent",
+                "bytes_received"
+              ]
+            }
+          }
+        }
+      ]
     }
   },
   "oneOf": [
@@ -2051,6 +2246,18 @@
     },
     {
       "$ref": "#/$defs/ev_tenant_bootstrap_completed"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_started"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_exec"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_sftp"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_ended"
     }
   ],
   "discriminator": {
@@ -2089,7 +2296,11 @@
       "tenant.bootstrap_completed": "#/$defs/ev_tenant_bootstrap_completed",
       "api_key.created": "#/$defs/ev_api_key_created",
       "api_key.revoked": "#/$defs/ev_api_key_revoked",
-      "api_key.rotated": "#/$defs/ev_api_key_rotated"
+      "api_key.rotated": "#/$defs/ev_api_key_rotated",
+      "ssh.session.started": "#/$defs/ev_ssh_session_started",
+      "ssh.session.exec": "#/$defs/ev_ssh_session_exec",
+      "ssh.session.sftp": "#/$defs/ev_ssh_session_sftp",
+      "ssh.session.ended": "#/$defs/ev_ssh_session_ended"
     }
   },
   "examples": [

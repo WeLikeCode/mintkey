@@ -3245,6 +3245,8 @@ components:
         - basic_auth
         - oauth2_client_credentials
         - oidc_client_secret
+        - ssh_private_key
+        - ssh_ca
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -3253,6 +3255,8 @@ components:
         - `basic_auth`: `Authorization: Basic base64(user:pass)`.
         - `oauth2_client_credentials`: token-exchange flow.
         - `oidc_client_secret`: used for the operator IdP integration only.
+        - `ssh_private_key`: SSH private key (PEM/OpenSSH format) for SSH proxy (ADR-0021).
+        - `ssh_ca`: SSH Certificate Authority signing key for direct-connect mode (ADR-0021, Phase 2).
 
     Service:
       type: object
