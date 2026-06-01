@@ -41,6 +41,7 @@ from admin_api.services.credential_service import (
     AppleJWTPayload,
     GoogleServiceAccountPayload,
     OAuth2PasswordGrantPayload,
+    SSHPrivateKeyPayload,
 )
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
@@ -296,15 +297,62 @@ async def create_credential(
         # these bytes but is passed directly to StoreCredential and never logged.
         _gsa_envelope = _gsa_validated.to_vault_envelope()
 
+    # Step 1f: For ssh_private_key, validate the structured payload — ADR-0021.
+    # body.value is expected to be a JSON object:
+    #   { "private_key_pem": ..., "target_address": ..., "ssh_user": ... }
+    # Validation: PEM header, host:port format, safe ssh_user characters.
+    # private_key_pem is scrubbed from all log calls — ADR-0014.7, S-SEC-1.
+    _ssh_validated: SSHPrivateKeyPayload | None = None
+    _ssh_envelope: bytes | None = None
+    _ssh_target_address: str = ""
+    _ssh_user: str = ""
+    if body.auth_scheme == "ssh_private_key":
+        import json as _json_mod
+        from pydantic import ValidationError
+        try:
+            raw_ssh = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh, dict):
+                raise TypeError("ssh_private_key value must be a JSON object")
+            raw_ssh.pop("scheme", None)
+            _ssh_validated = SSHPrivateKeyPayload(**raw_ssh)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key value must be a valid JSON object",
+                },
+            )
+        except (ValidationError, ValueError) as exc:
+            # Log the error without including private_key_pem — ADR-0014.7.
+            logger.warning("ssh_private_key credential validation failed: %s", str(exc))
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": str(exc),
+                },
+            )
+        # Extract routing metadata for the separate gRPC fields — ADR-0021.
+        _ssh_envelope = _ssh_validated.to_vault_envelope()  # raw PEM bytes — NEVER logged
+        _ssh_target_address = _ssh_validated.target_address
+        _ssh_user = _ssh_validated.ssh_user
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     # For apple_jwt: pass the canonical JSON envelope as plaintext.
     # For google_service_account: pass the canonical JSON envelope as plaintext.
+    # For ssh_private_key: pass the raw PEM bytes as plaintext; routing metadata
+    #   goes as separate fields (target_address, ssh_user).
     vault_plaintext: str
     if apple_jwt_envelope is not None:
         vault_plaintext = apple_jwt_envelope
     elif _gsa_envelope is not None:
         vault_plaintext = _gsa_envelope.decode()
+    elif _ssh_envelope is not None:
+        vault_plaintext = _ssh_envelope.decode()
     else:
         vault_plaintext = body.value
     vault_result = await vault.put_credential(
@@ -315,6 +363,8 @@ async def create_credential(
         target_url=service_base_url,
         header_name=body.header_name or "",
         query_param=body.query_param or "",
+        target_address=_ssh_target_address,
+        ssh_user=_ssh_user,
     )
     key_version: int = cast(int, vault_result["key_version"])
 
@@ -387,6 +437,15 @@ async def create_credential(
         audit_payload["project_id"] = str(_gsa_parsed.get("project_id", ""))
         audit_payload["json_key_fingerprint"] = _hashlib.sha256(
             _gsa_validated.service_account_json.encode()
+        ).hexdigest()[:16]
+    if _ssh_validated is not None:
+        import hashlib as _hashlib_ssh
+        # Include non-sensitive metadata only — NEVER private_key_pem.
+        # key_fingerprint is the first 16 hex chars of SHA-256(pem) — ADR-0021, ADR-0014.7.
+        audit_payload["target_address"] = _ssh_validated.target_address
+        audit_payload["ssh_user"] = _ssh_validated.ssh_user
+        audit_payload["key_fingerprint"] = _hashlib_ssh.sha256(
+            _ssh_validated.private_key_pem.encode()
         ).hexdigest()[:16]
 
     await audit_emit(

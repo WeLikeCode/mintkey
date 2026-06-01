@@ -56,3 +56,6 @@ databaseChangeLog:
   - include:
       file: 019-grants-defensive.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 020-vault-ssh-cols.yaml
+      relativeToChangelogFile: true

@@ -59,6 +59,14 @@ const (
 	AuthScheme_AUTH_SCHEME_OAUTH2_PASSWORD_GRANT     AuthScheme = 8
 	AuthScheme_AUTH_SCHEME_APPLE_JWT                 AuthScheme = 9
 	AuthScheme_AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT    AuthScheme = 10
+	// SSH_PRIVATE_KEY: Vault stores an SSH private key (PEM or OpenSSH format).
+	// Used by the SSH proxy (ADR-0021) to authenticate to backend SSH servers.
+	// The proxy holds the key in session scope and zeros it on disconnect.
+	AuthScheme_AUTH_SCHEME_SSH_PRIVATE_KEY AuthScheme = 11
+	// SSH_CA: Vault stores an SSH Certificate Authority signing key.
+	// Used by the SSH proxy (ADR-0021, Phase 2) to sign short-lived SSH certificates
+	// for direct-connect mode (agent connects directly to backend, no bastion in data path).
+	AuthScheme_AUTH_SCHEME_SSH_CA AuthScheme = 12
 )
 
 // Enum value maps for AuthScheme.
@@ -75,6 +83,8 @@ var (
 		8:  "AUTH_SCHEME_OAUTH2_PASSWORD_GRANT",
 		9:  "AUTH_SCHEME_APPLE_JWT",
 		10: "AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT",
+		11: "AUTH_SCHEME_SSH_PRIVATE_KEY",
+		12: "AUTH_SCHEME_SSH_CA",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -88,6 +98,8 @@ var (
 		"AUTH_SCHEME_OAUTH2_PASSWORD_GRANT":     8,
 		"AUTH_SCHEME_APPLE_JWT":                 9,
 		"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT":    10,
+		"AUTH_SCHEME_SSH_PRIVATE_KEY":           11,
+		"AUTH_SCHEME_SSH_CA":                    12,
 	}
 )
 
@@ -262,6 +274,11 @@ type GetCredentialResponse struct {
 	//	OAUTH2_CLIENT_CREDENTIALS, OIDC_CLIENT_SECRET ->
 	//	      JSON-encoded structured payload (see Cred*ClientSecret
 	//	      schemas in docs/contracts/rest/openapi.yaml).
+	//	SSH_PRIVATE_KEY -> PEM or OpenSSH format private key bytes.
+	//	      The SSH proxy (ADR-0021) holds this in session scope and
+	//	      zeros it on disconnect. Never injected into HTTP headers.
+	//	SSH_CA -> SSH Certificate Authority signing key bytes (Phase 2).
+	//	      Used by the SSH proxy to sign short-lived SSH certificates.
 	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	// Optional upstream expiry (e.g. for OAuth2 access tokens cached by
 	// the adapter). Empty for static credentials.
@@ -280,7 +297,11 @@ type GetCredentialResponse struct {
 	// The registered base_url for the service (e.g. "https://api.twilio.com").
 	// Stored alongside the credential so the proxy plugin never needs to trust
 	// the caller-supplied X-Mintkey-Target header.
-	TargetUrl     string `protobuf:"bytes,8,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
+	TargetUrl string `protobuf:"bytes,8,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
+	// SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+	TargetAddress string `protobuf:"bytes,9,opt,name=target_address,json=targetAddress,proto3" json:"target_address,omitempty"`
+	// SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+	SshUser       string `protobuf:"bytes,10,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -371,6 +392,20 @@ func (x *GetCredentialResponse) GetTargetUrl() string {
 	return ""
 }
 
+func (x *GetCredentialResponse) GetTargetAddress() string {
+	if x != nil {
+		return x.TargetAddress
+	}
+	return ""
+}
+
+func (x *GetCredentialResponse) GetSshUser() string {
+	if x != nil {
+		return x.SshUser
+	}
+	return ""
+}
+
 // PutCredentialRequest creates a new credential version. Always
 // monotonically advances key_version per (tenant_id, service_id).
 type PutCredentialRequest struct {
@@ -397,7 +432,11 @@ type PutCredentialRequest struct {
 	CallerActorId string `protobuf:"bytes,8,opt,name=caller_actor_id,json=callerActorId,proto3" json:"caller_actor_id,omitempty"`
 	// The service's registered base_url (e.g. "https://api.twilio.com").
 	// Stored with the credential so GetCredential can return it to the proxy.
-	TargetUrl     string `protobuf:"bytes,9,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
+	TargetUrl string `protobuf:"bytes,9,opt,name=target_url,json=targetUrl,proto3" json:"target_url,omitempty"`
+	// SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+	TargetAddress string `protobuf:"bytes,10,opt,name=target_address,json=targetAddress,proto3" json:"target_address,omitempty"`
+	// SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+	SshUser       string `protobuf:"bytes,11,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -491,6 +530,20 @@ func (x *PutCredentialRequest) GetCallerActorId() string {
 func (x *PutCredentialRequest) GetTargetUrl() string {
 	if x != nil {
 		return x.TargetUrl
+	}
+	return ""
+}
+
+func (x *PutCredentialRequest) GetTargetAddress() string {
+	if x != nil {
+		return x.TargetAddress
+	}
+	return ""
+}
+
+func (x *PutCredentialRequest) GetSshUser() string {
+	if x != nil {
+		return x.SshUser
 	}
 	return ""
 }
@@ -1084,7 +1137,7 @@ const file_vault_proto_rawDesc = "" +
 	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
 	"\vkey_version\x18\x03 \x01(\rR\n" +
 	"keyVersion\x12&\n" +
-	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xea\x02\n" +
+	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xac\x03\n" +
 	"\x15GetCredentialResponse\x12=\n" +
 	"\vauth_scheme\x18\x01 \x01(\x0e2\x1c.mintkey.vault.v1.AuthSchemeR\n" +
 	"authScheme\x12\x14\n" +
@@ -1098,7 +1151,10 @@ const file_vault_proto_rawDesc = "" +
 	"\vquery_param\x18\a \x01(\tR\n" +
 	"queryParam\x12\x1d\n" +
 	"\n" +
-	"target_url\x18\b \x01(\tR\ttargetUrl\"\xeb\x02\n" +
+	"target_url\x18\b \x01(\tR\ttargetUrl\x12%\n" +
+	"\x0etarget_address\x18\t \x01(\tR\rtargetAddress\x12\x19\n" +
+	"\bssh_user\x18\n" +
+	" \x01(\tR\asshUser\"\xad\x03\n" +
 	"\x14PutCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
@@ -1114,7 +1170,10 @@ const file_vault_proto_rawDesc = "" +
 	"queryParam\x12&\n" +
 	"\x0fcaller_actor_id\x18\b \x01(\tR\rcallerActorId\x12\x1d\n" +
 	"\n" +
-	"target_url\x18\t \x01(\tR\ttargetUrl\"s\n" +
+	"target_url\x18\t \x01(\tR\ttargetUrl\x12%\n" +
+	"\x0etarget_address\x18\n" +
+	" \x01(\tR\rtargetAddress\x12\x19\n" +
+	"\bssh_user\x18\v \x01(\tR\asshUser\"s\n" +
 	"\x15PutCredentialResponse\x12\x1f\n" +
 	"\vkey_version\x18\x01 \x01(\rR\n" +
 	"keyVersion\x129\n" +
@@ -1167,7 +1226,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12;\n" +
 	"\vvalid_until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"validUntil*\xf1\x02\n" +
+	"validUntil*\xaa\x03\n" +
 	"\n" +
 	"AuthScheme\x12\x1b\n" +
 	"\x17AUTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n" +
@@ -1181,7 +1240,9 @@ const file_vault_proto_rawDesc = "" +
 	"!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\b\x12\x19\n" +
 	"\x15AUTH_SCHEME_APPLE_JWT\x10\t\x12&\n" +
 	"\"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT\x10\n" +
-	"*r\n" +
+	"\x12\x1f\n" +
+	"\x1bAUTH_SCHEME_SSH_PRIVATE_KEY\x10\v\x12\x16\n" +
+	"\x12AUTH_SCHEME_SSH_CA\x10\f*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +

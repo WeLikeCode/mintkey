@@ -49,6 +49,8 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "oauth2_password_grant": 8,
     "apple_jwt": 9,
     "google_service_account": 10,
+    "ssh_private_key": 11,  # ADR-0021: SSH private key for SSH proxy auth
+    "ssh_ca": 12,           # ADR-0021: SSH CA key for certificate signing (Phase 2)
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
@@ -131,11 +133,15 @@ class VaultAdapterClient:
         target_url: str = "",
         header_name: str = "",
         query_param: str = "",
+        target_address: str = "",
+        ssh_user: str = "",
     ) -> dict[str, object]:
         """Seal and store a credential. Returns metadata — no plaintext.
 
         header_name: HTTP header name for api_key_header scheme (e.g. "X-API-Key") — UX-C6.
         query_param: query parameter name for api_key_query scheme (e.g. "api_key") — UX-C6.
+        target_address: SSH-only "host:port" of the backend SSH server — ADR-0021.
+        ssh_user: SSH-only username for authentication — ADR-0021.
         """
         scheme_int = _AUTH_SCHEME_MAP.get(auth_scheme, 0)
         req = vault_pb2.PutCredentialRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
@@ -146,6 +152,8 @@ class VaultAdapterClient:
             target_url=target_url,
             header_name=header_name,
             query_param=query_param,
+            target_address=target_address,
+            ssh_user=ssh_user,
         )
         resp = await (await self._stub()).PutCredential(
             req,

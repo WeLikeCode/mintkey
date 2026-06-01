@@ -104,6 +104,29 @@ func main() {
 		log.Printf("vault-adapter: registered admin-api service identity %q with scopes [vault.read vault.put]", adminIdentityID)
 	}
 
+	// Register the SSH-proxy service identity so the scopeInterceptor allows
+	// it to call GetCredential (vault.read). The SSH proxy only reads credentials;
+	// it never writes them (vault.put is not granted).
+	// MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID defaults to "svcid_ssh_proxy"; must match
+	// the ssh-proxy's MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID env var.
+	// MINTKEY_VAULT_SSH_PROXY_TOKEN must be a shared secret (≥ 32 bytes) provisioned
+	// via a Docker/Kubernetes secret. When not set, SSH proxy credential fetches WILL
+	// fail with PERMISSION_DENIED (intentional — unprovisioned env is not a valid state).
+	sshProxyIdentityID := os.Getenv("MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID")
+	if sshProxyIdentityID == "" {
+		sshProxyIdentityID = "svcid_ssh_proxy"
+	}
+	sshProxyToken := []byte(os.Getenv("MINTKEY_VAULT_SSH_PROXY_TOKEN"))
+	if len(sshProxyToken) == 0 {
+		log.Printf("vault-adapter: MINTKEY_VAULT_SSH_PROXY_TOKEN not set; SSH proxy credential fetches WILL fail with PERMISSION_DENIED")
+	} else {
+		if err := svc.RegisterServiceIdentity(sshProxyIdentityID, sshProxyToken, []string{"vault.read"}); err != nil {
+			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", sshProxyIdentityID, err)
+			os.Exit(1)
+		}
+		log.Printf("vault-adapter: registered SSH proxy service identity %q with scopes [vault.read]", sshProxyIdentityID)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 

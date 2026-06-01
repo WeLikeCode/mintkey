@@ -1,0 +1,61 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 020-vault-ssh-cols.yaml
+  #
+  # Adds SSH-specific columns to vault.credentials:
+  #   - target_address TEXT NOT NULL DEFAULT '' — "host:port" of the backend SSH server
+  #   - ssh_user       TEXT NOT NULL DEFAULT '' — SSH username
+  #
+  # Idempotent: each changeset has an `if columnExists` precondition with
+  # MARK_RAN so re-running the migration on an already-migrated database
+  # is a safe no-op.
+  #
+  # Existing rows (non-SSH credentials) receive empty-string defaults —
+  # no backfill required.
+  #
+  # Source: ADR-0021 (SSH proxy); chunk C3.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Add target_address column --------------------------------------
+  - changeSet:
+      id: "020-vault-ssh-cols-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            columnExists:
+              schemaName: vault
+              tableName: credentials
+              columnName: target_address
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vault.credentials
+                ADD COLUMN target_address TEXT NOT NULL DEFAULT '';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vault.credentials DROP COLUMN IF EXISTS target_address;
+
+  # --- 2. Add ssh_user column --------------------------------------------
+  - changeSet:
+      id: "020-vault-ssh-cols-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            columnExists:
+              schemaName: vault
+              tableName: credentials
+              columnName: ssh_user
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vault.credentials
+                ADD COLUMN ssh_user TEXT NOT NULL DEFAULT '';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE vault.credentials DROP COLUMN IF EXISTS ssh_user;

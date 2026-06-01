@@ -37,14 +37,16 @@ type cacheKey struct {
 // DEK sealed by the KEK; encPayload is the ciphertext produced by
 // AES-256-GCM.  Plaintext never enters this struct.
 type cacheEntry struct {
-	wrappedDEK []byte
-	encPayload []byte
-	authScheme int32
-	isRevoked  bool
-	targetURL  string
-	headerName string // injection hint — UX-C6
-	queryParam string // injection hint — UX-C6
-	expiresAt  time.Time
+	wrappedDEK    []byte
+	encPayload    []byte
+	authScheme    int32
+	isRevoked     bool
+	targetURL     string
+	headerName    string // injection hint — UX-C6
+	queryParam    string // injection hint — UX-C6
+	targetAddress string // SSH-only: "host:port" — ADR-0021
+	sshUser       string // SSH-only: username — ADR-0021
+	expiresAt     time.Time
 }
 
 // DEKCache caches encrypted DEKs per (tenant_id, service_id, key_version).
@@ -74,19 +76,21 @@ func New(ttl time.Duration) *DEKCache {
 
 // Entry is the value returned by a cache hit.
 type Entry struct {
-	WrappedDEK []byte
-	EncPayload []byte
-	AuthScheme int32
-	IsRevoked  bool
-	TargetURL  string
-	HeaderName string // injection hint — UX-C6
-	QueryParam string // injection hint — UX-C6
+	WrappedDEK    []byte
+	EncPayload    []byte
+	AuthScheme    int32
+	IsRevoked     bool
+	TargetURL     string
+	HeaderName    string // injection hint — UX-C6
+	QueryParam    string // injection hint — UX-C6
+	TargetAddress string // SSH-only: "host:port" — ADR-0021
+	SSHUser       string // SSH-only: username — ADR-0021
 }
 
 // Put stores a cache entry for the given key with the configured TTL.
 // wrappedDEK and encPayload must be ENCRYPTED blobs — callers must never pass
 // plaintext.
-func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam string) {
+func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam, targetAddress, sshUser string) {
 	k := cacheKey{tenantID: tenantID, serviceID: serviceID, keyVersion: keyVersion}
 	// Copy slices so the caller's buffer changes don't corrupt the cache.
 	wCopy := make([]byte, len(wrappedDEK))
@@ -96,14 +100,16 @@ func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK
 
 	c.mu.Lock()
 	c.entries[k] = &cacheEntry{
-		wrappedDEK: wCopy,
-		encPayload: pCopy,
-		authScheme: authScheme,
-		isRevoked:  isRevoked,
-		targetURL:  targetURL,
-		headerName: headerName,
-		queryParam: queryParam,
-		expiresAt:  time.Now().Add(c.ttl),
+		wrappedDEK:    wCopy,
+		encPayload:    pCopy,
+		authScheme:    authScheme,
+		isRevoked:     isRevoked,
+		targetURL:     targetURL,
+		headerName:    headerName,
+		queryParam:    queryParam,
+		targetAddress: targetAddress,
+		sshUser:       sshUser,
+		expiresAt:     time.Now().Add(c.ttl),
 	}
 	c.mu.Unlock()
 }
@@ -134,13 +140,15 @@ func (c *DEKCache) Get(tenantID, serviceID string, keyVersion uint32) (Entry, bo
 
 	c.hits.Add(1)
 	return Entry{
-		WrappedDEK: entry.wrappedDEK,
-		EncPayload: entry.encPayload,
-		AuthScheme: entry.authScheme,
-		IsRevoked:  entry.isRevoked,
-		TargetURL:  entry.targetURL,
-		HeaderName: entry.headerName,
-		QueryParam: entry.queryParam,
+		WrappedDEK:    entry.wrappedDEK,
+		EncPayload:    entry.encPayload,
+		AuthScheme:    entry.authScheme,
+		IsRevoked:     entry.isRevoked,
+		TargetURL:     entry.targetURL,
+		HeaderName:    entry.headerName,
+		QueryParam:    entry.queryParam,
+		TargetAddress: entry.targetAddress,
+		SSHUser:       entry.sshUser,
 	}, true
 }
 

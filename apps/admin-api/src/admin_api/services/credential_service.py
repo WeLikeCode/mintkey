@@ -9,16 +9,21 @@ Defines Pydantic models for validating structured credential payloads:
   - GoogleServiceAccountPayload: auth_scheme=google_service_account. Validates
     Google service-account JSON key material; scrubs service_account_json,
     json_key, and private_key from any log output — ADR-0014.7, S-SEC-1.
+  - SSHPrivateKeyPayload: auth_scheme=ssh_private_key. Validates PEM-encoded
+    SSH private key material, target_address ("host:port"), and ssh_user.
+    private_key_pem is NEVER included in audit events or log output — ADR-0021,
+    ADR-0014.7, S-SEC-1.
 
 Source: design §7 (Admin API — Credential Validation for oauth2_password_grant);
         Requirements 19.2, 19.4, 19.5, 19.6; spec §4.2 (apple_jwt);
-        spec §4.3 (google_service_account).
+        spec §4.3 (google_service_account); ADR-0021 (ssh_private_key).
 """
 from __future__ import annotations
 
 import ipaddress
 import json
 import os
+import re
 import socket
 from urllib.parse import urlsplit
 
@@ -397,3 +402,91 @@ class GoogleServiceAccountPayload(BaseModel):
             },
             separators=(",", ":"),
         ).encode()
+
+
+# ---------------------------------------------------------------------------
+# SSH Private Key credential payload model — ADR-0021
+# ---------------------------------------------------------------------------
+
+_SSH_SAFE_USER_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
+
+
+class SSHPrivateKeyPayload(BaseModel):
+    """Structured credential payload for auth_scheme=ssh_private_key.
+
+    Validated at registration time. The Vault Adapter stores the raw PEM bytes
+    directly (no JSON envelope) in the encrypted payload column.  The routing
+    metadata (target_address, ssh_user) is passed as separate gRPC fields on
+    the PutCredential call and stored in the dedicated vault.credentials columns
+    added by Liquibase changeset 020-vault-ssh-cols.yaml.
+
+    Fields:
+      - private_key_pem: PEM-encoded SSH private key (OpenSSH or PKCS#8 format).
+        Must begin with "-----BEGIN" and contain "PRIVATE KEY-----".
+        NEVER included in audit events or log output — ADR-0021, ADR-0014.7.
+      - target_address: "host:port" string for the backend SSH server.  Port
+        must be a valid decimal integer.
+      - ssh_user: SSH username for authentication.  Must be non-empty and
+        contain only safe characters (ASCII letters, digits, '.', '_', '-').
+        Shell-metacharacters are rejected.
+
+    Source: ADR-0021; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: private_key_pem is intentionally NOT repr'd or logged anywhere.
+    # The field is validated then passed as raw bytes to StoreCredential;
+    # it MUST NOT appear in any audit payload or structlog / stdlib log event.
+    private_key_pem: str = Field(..., min_length=1)
+    target_address: str  # "host:port"
+    ssh_user: str
+
+    @field_validator("private_key_pem")
+    @classmethod
+    def validate_pem(cls, v: str) -> str:
+        """Require PEM header with PRIVATE KEY marker — ADR-0021."""
+        stripped = v.strip()
+        if not (stripped.startswith("-----BEGIN") and "PRIVATE KEY-----" in stripped):
+            raise ValueError(
+                "private_key_pem must be a PEM-encoded private key "
+                "(must start with '-----BEGIN' and contain 'PRIVATE KEY-----')"
+            )
+        return v
+
+    @field_validator("target_address")
+    @classmethod
+    def validate_target(cls, v: str) -> str:
+        """Require 'host:port' format with a numeric port — ADR-0021."""
+        parts = v.rsplit(":", 1)
+        if len(parts) != 2 or not parts[1].isdigit():
+            raise ValueError(
+                "target_address must be 'host:port' with a numeric port (e.g. 'myhost:22')"
+            )
+        host = parts[0].strip()
+        if not host:
+            raise ValueError("target_address host part must not be empty")
+        return v
+
+    @field_validator("ssh_user")
+    @classmethod
+    def validate_user(cls, v: str) -> str:
+        """Require non-empty ssh_user with no shell-metacharacters — ADR-0021."""
+        if not v.strip():
+            raise ValueError("ssh_user must be a non-empty string")
+        if not _SSH_SAFE_USER_RE.match(v):
+            raise ValueError(
+                "ssh_user contains invalid characters; "
+                "only ASCII letters, digits, '.', '_', and '-' are allowed"
+            )
+        return v
+
+    def to_vault_envelope(self) -> bytes:
+        """Return the raw PEM bytes to store in the Vault Adapter.
+
+        For SSH, there is no JSON envelope — the PEM IS the credential.
+        target_address and ssh_user are passed as separate gRPC metadata fields
+        on the PutCredential call (see admin_api/api/credentials.py).
+
+        This is the ONLY place private_key_pem is read after validation; the
+        resulting bytes are passed directly to PutCredential and NEVER logged.
+        """
+        return self.private_key_pem.encode()

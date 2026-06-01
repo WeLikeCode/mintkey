@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bvault.proto\x12\x10mintkey.vault.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"k\n\x14GetCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x13\n\x0bkey_version\x18\x03 \x01(\r\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x04 \x01(\t\"\x82\x02\n\x15GetCredentialResponse\x12\x31\n\x0b\x61uth_scheme\x18\x01 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\r\n\x05value\x18\x02 \x01(\x0c\x12.\n\nexpires_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1c\n\x14returned_key_version\x18\x04 \x01(\r\x12\x1b\n\x13\x63urrent_key_version\x18\x05 \x01(\r\x12\x13\n\x0bheader_name\x18\x06 \x01(\t\x12\x13\n\x0bquery_param\x18\x07 \x01(\t\x12\x12\n\ntarget_url\x18\x08 \x01(\t\"\x86\x02\n\x14PutCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x31\n\x0b\x61uth_scheme\x18\x03 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\r\n\x05value\x18\x04 \x01(\x0c\x12.\n\nexpires_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x13\n\x0bheader_name\x18\x06 \x01(\t\x12\x13\n\x0bquery_param\x18\x07 \x01(\t\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x08 \x01(\t\x12\x12\n\ntarget_url\x18\t \x01(\t\"\\\n\x15PutCredentialResponse\x12\x13\n\x0bkey_version\x18\x01 \x01(\r\x12.\n\ncreated_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"~\n\x17RevokeCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x13\n\x0bkey_version\x18\x03 \x01(\r\x12\x0e\n\x06reason\x18\x04 \x01(\t\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x05 \x01(\t\"~\n\x18RevokeCredentialResponse\x12\x32\n\x06status\x18\x01 \x01(\x0e\x32\".mintkey.vault.v1.CredentialStatus\x12.\n\nrevoked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x7f\n\x13ListVersionsRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x19\n\x11\x61\x66ter_key_version\x18\x03 \x01(\r\x12\r\n\x05limit\x18\x04 \x01(\r\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x05 \x01(\t\"\xdf\x02\n\x11VersionDescriptor\x12\x15\n\rcredential_id\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\r\x12\x12\n\nis_current\x18\x03 \x01(\x08\x12\x32\n\x06status\x18\x04 \x01(\x0e\x32\".mintkey.vault.v1.CredentialStatus\x12\x31\n\x0b\x61uth_scheme\x18\x05 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\x13\n\x0bkek_version\x18\x06 \x01(\r\x12.\n\ncreated_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nrevoked_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nexpires_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x8a\x01\n\x14ListVersionsResponse\x12\x35\n\x08versions\x18\x01 \x03(\x0b\x32#.mintkey.vault.v1.VersionDescriptor\x12\x1e\n\x16next_after_key_version\x18\x02 \x01(\r\x12\x1b\n\x13\x63urrent_key_version\x18\x03 \x01(\r\"L\n\x1eValidateServiceIdentityRequest\x12\x1b\n\x13service_identity_id\x18\x01 \x01(\t\x12\r\n\x05token\x18\x02 \x01(\x0c\"n\n\x1fValidateServiceIdentityResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0e\n\x06scopes\x18\x02 \x03(\t\x12/\n\x0bvalid_until\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*\xf1\x02\n\nAuthScheme\x12\x1b\n\x17\x41UTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x41UTH_SCHEME_API_KEY_HEADER\x10\x01\x12\x1d\n\x19\x41UTH_SCHEME_API_KEY_QUERY\x10\x02\x12\x1c\n\x18\x41UTH_SCHEME_BEARER_TOKEN\x10\x03\x12\x1a\n\x16\x41UTH_SCHEME_BASIC_AUTH\x10\x04\x12)\n%AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS\x10\x05\x12\"\n\x1e\x41UTH_SCHEME_OIDC_CLIENT_SECRET\x10\x06\x12\x14\n\x10\x41UTH_SCHEME_MTLS\x10\x07\x12%\n!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\x08\x12\x19\n\x15\x41UTH_SCHEME_APPLE_JWT\x10\t\x12&\n\"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT\x10\n*r\n\x10\x43redentialStatus\x12!\n\x1d\x43REDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x43REDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n\x19\x43REDENTIAL_STATUS_REVOKED\x10\x02\x32\x9c\x04\n\x0cVaultAdapter\x12`\n\rGetCredential\x12&.mintkey.vault.v1.GetCredentialRequest\x1a\'.mintkey.vault.v1.GetCredentialResponse\x12`\n\rPutCredential\x12&.mintkey.vault.v1.PutCredentialRequest\x1a\'.mintkey.vault.v1.PutCredentialResponse\x12i\n\x10RevokeCredential\x12).mintkey.vault.v1.RevokeCredentialRequest\x1a*.mintkey.vault.v1.RevokeCredentialResponse\x12]\n\x0cListVersions\x12%.mintkey.vault.v1.ListVersionsRequest\x1a&.mintkey.vault.v1.ListVersionsResponse\x12~\n\x17ValidateServiceIdentity\x12\x30.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a\x31.mintkey.vault.v1.ValidateServiceIdentityResponseBM\n\x13io.mintkey.vault.v1P\x01Z4github.com/mintkey/mintkey/internal/vault/v1;vaultv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bvault.proto\x12\x10mintkey.vault.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"k\n\x14GetCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x13\n\x0bkey_version\x18\x03 \x01(\r\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x04 \x01(\t\"\xac\x02\n\x15GetCredentialResponse\x12\x31\n\x0b\x61uth_scheme\x18\x01 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\r\n\x05value\x18\x02 \x01(\x0c\x12.\n\nexpires_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x1c\n\x14returned_key_version\x18\x04 \x01(\r\x12\x1b\n\x13\x63urrent_key_version\x18\x05 \x01(\r\x12\x13\n\x0bheader_name\x18\x06 \x01(\t\x12\x13\n\x0bquery_param\x18\x07 \x01(\t\x12\x12\n\ntarget_url\x18\x08 \x01(\t\x12\x16\n\x0etarget_address\x18\t \x01(\t\x12\x10\n\x08ssh_user\x18\n \x01(\t\"\xb0\x02\n\x14PutCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x31\n\x0b\x61uth_scheme\x18\x03 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\r\n\x05value\x18\x04 \x01(\x0c\x12.\n\nexpires_at\x18\x05 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x13\n\x0bheader_name\x18\x06 \x01(\t\x12\x13\n\x0bquery_param\x18\x07 \x01(\t\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x08 \x01(\t\x12\x12\n\ntarget_url\x18\t \x01(\t\x12\x16\n\x0etarget_address\x18\n \x01(\t\x12\x10\n\x08ssh_user\x18\x0b \x01(\t\"\\\n\x15PutCredentialResponse\x12\x13\n\x0bkey_version\x18\x01 \x01(\r\x12.\n\ncreated_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"~\n\x17RevokeCredentialRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x13\n\x0bkey_version\x18\x03 \x01(\r\x12\x0e\n\x06reason\x18\x04 \x01(\t\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x05 \x01(\t\"~\n\x18RevokeCredentialResponse\x12\x32\n\x06status\x18\x01 \x01(\x0e\x32\".mintkey.vault.v1.CredentialStatus\x12.\n\nrevoked_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x7f\n\x13ListVersionsRequest\x12\x11\n\ttenant_id\x18\x01 \x01(\t\x12\x12\n\nservice_id\x18\x02 \x01(\t\x12\x19\n\x11\x61\x66ter_key_version\x18\x03 \x01(\r\x12\r\n\x05limit\x18\x04 \x01(\r\x12\x17\n\x0f\x63\x61ller_actor_id\x18\x05 \x01(\t\"\xdf\x02\n\x11VersionDescriptor\x12\x15\n\rcredential_id\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\r\x12\x12\n\nis_current\x18\x03 \x01(\x08\x12\x32\n\x06status\x18\x04 \x01(\x0e\x32\".mintkey.vault.v1.CredentialStatus\x12\x31\n\x0b\x61uth_scheme\x18\x05 \x01(\x0e\x32\x1c.mintkey.vault.v1.AuthScheme\x12\x13\n\x0bkek_version\x18\x06 \x01(\r\x12.\n\ncreated_at\x18\x07 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nrevoked_at\x18\x08 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12.\n\nexpires_at\x18\t \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"\x8a\x01\n\x14ListVersionsResponse\x12\x35\n\x08versions\x18\x01 \x03(\x0b\x32#.mintkey.vault.v1.VersionDescriptor\x12\x1e\n\x16next_after_key_version\x18\x02 \x01(\r\x12\x1b\n\x13\x63urrent_key_version\x18\x03 \x01(\r\"L\n\x1eValidateServiceIdentityRequest\x12\x1b\n\x13service_identity_id\x18\x01 \x01(\t\x12\r\n\x05token\x18\x02 \x01(\x0c\"n\n\x1fValidateServiceIdentityResponse\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0e\n\x06scopes\x18\x02 \x03(\t\x12/\n\x0bvalid_until\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp*\xaa\x03\n\nAuthScheme\x12\x1b\n\x17\x41UTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n\x1a\x41UTH_SCHEME_API_KEY_HEADER\x10\x01\x12\x1d\n\x19\x41UTH_SCHEME_API_KEY_QUERY\x10\x02\x12\x1c\n\x18\x41UTH_SCHEME_BEARER_TOKEN\x10\x03\x12\x1a\n\x16\x41UTH_SCHEME_BASIC_AUTH\x10\x04\x12)\n%AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS\x10\x05\x12\"\n\x1e\x41UTH_SCHEME_OIDC_CLIENT_SECRET\x10\x06\x12\x14\n\x10\x41UTH_SCHEME_MTLS\x10\x07\x12%\n!AUTH_SCHEME_OAUTH2_PASSWORD_GRANT\x10\x08\x12\x19\n\x15\x41UTH_SCHEME_APPLE_JWT\x10\t\x12&\n\"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT\x10\n\x12\x1f\n\x1b\x41UTH_SCHEME_SSH_PRIVATE_KEY\x10\x0b\x12\x16\n\x12\x41UTH_SCHEME_SSH_CA\x10\x0c*r\n\x10\x43redentialStatus\x12!\n\x1d\x43REDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x43REDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n\x19\x43REDENTIAL_STATUS_REVOKED\x10\x02\x32\x9c\x04\n\x0cVaultAdapter\x12`\n\rGetCredential\x12&.mintkey.vault.v1.GetCredentialRequest\x1a\'.mintkey.vault.v1.GetCredentialResponse\x12`\n\rPutCredential\x12&.mintkey.vault.v1.PutCredentialRequest\x1a\'.mintkey.vault.v1.PutCredentialResponse\x12i\n\x10RevokeCredential\x12).mintkey.vault.v1.RevokeCredentialRequest\x1a*.mintkey.vault.v1.RevokeCredentialResponse\x12]\n\x0cListVersions\x12%.mintkey.vault.v1.ListVersionsRequest\x1a&.mintkey.vault.v1.ListVersionsResponse\x12~\n\x17ValidateServiceIdentity\x12\x30.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a\x31.mintkey.vault.v1.ValidateServiceIdentityResponseBM\n\x13io.mintkey.vault.v1P\x01Z4github.com/mintkey/mintkey/internal/vault/v1;vaultv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,32 +33,32 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'vault_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\023io.mintkey.vault.v1P\001Z4github.com/mintkey/mintkey/internal/vault/v1;vaultv1'
-  _globals['_AUTHSCHEME']._serialized_start=1866
-  _globals['_AUTHSCHEME']._serialized_end=2235
-  _globals['_CREDENTIALSTATUS']._serialized_start=2237
-  _globals['_CREDENTIALSTATUS']._serialized_end=2351
+  _globals['_AUTHSCHEME']._serialized_start=1950
+  _globals['_AUTHSCHEME']._serialized_end=2376
+  _globals['_CREDENTIALSTATUS']._serialized_start=2378
+  _globals['_CREDENTIALSTATUS']._serialized_end=2492
   _globals['_GETCREDENTIALREQUEST']._serialized_start=66
   _globals['_GETCREDENTIALREQUEST']._serialized_end=173
   _globals['_GETCREDENTIALRESPONSE']._serialized_start=176
-  _globals['_GETCREDENTIALRESPONSE']._serialized_end=434
-  _globals['_PUTCREDENTIALREQUEST']._serialized_start=437
-  _globals['_PUTCREDENTIALREQUEST']._serialized_end=699
-  _globals['_PUTCREDENTIALRESPONSE']._serialized_start=701
-  _globals['_PUTCREDENTIALRESPONSE']._serialized_end=793
-  _globals['_REVOKECREDENTIALREQUEST']._serialized_start=795
-  _globals['_REVOKECREDENTIALREQUEST']._serialized_end=921
-  _globals['_REVOKECREDENTIALRESPONSE']._serialized_start=923
-  _globals['_REVOKECREDENTIALRESPONSE']._serialized_end=1049
-  _globals['_LISTVERSIONSREQUEST']._serialized_start=1051
-  _globals['_LISTVERSIONSREQUEST']._serialized_end=1178
-  _globals['_VERSIONDESCRIPTOR']._serialized_start=1181
-  _globals['_VERSIONDESCRIPTOR']._serialized_end=1532
-  _globals['_LISTVERSIONSRESPONSE']._serialized_start=1535
-  _globals['_LISTVERSIONSRESPONSE']._serialized_end=1673
-  _globals['_VALIDATESERVICEIDENTITYREQUEST']._serialized_start=1675
-  _globals['_VALIDATESERVICEIDENTITYREQUEST']._serialized_end=1751
-  _globals['_VALIDATESERVICEIDENTITYRESPONSE']._serialized_start=1753
-  _globals['_VALIDATESERVICEIDENTITYRESPONSE']._serialized_end=1863
-  _globals['_VAULTADAPTER']._serialized_start=2354
-  _globals['_VAULTADAPTER']._serialized_end=2894
+  _globals['_GETCREDENTIALRESPONSE']._serialized_end=476
+  _globals['_PUTCREDENTIALREQUEST']._serialized_start=479
+  _globals['_PUTCREDENTIALREQUEST']._serialized_end=783
+  _globals['_PUTCREDENTIALRESPONSE']._serialized_start=785
+  _globals['_PUTCREDENTIALRESPONSE']._serialized_end=877
+  _globals['_REVOKECREDENTIALREQUEST']._serialized_start=879
+  _globals['_REVOKECREDENTIALREQUEST']._serialized_end=1005
+  _globals['_REVOKECREDENTIALRESPONSE']._serialized_start=1007
+  _globals['_REVOKECREDENTIALRESPONSE']._serialized_end=1133
+  _globals['_LISTVERSIONSREQUEST']._serialized_start=1135
+  _globals['_LISTVERSIONSREQUEST']._serialized_end=1262
+  _globals['_VERSIONDESCRIPTOR']._serialized_start=1265
+  _globals['_VERSIONDESCRIPTOR']._serialized_end=1616
+  _globals['_LISTVERSIONSRESPONSE']._serialized_start=1619
+  _globals['_LISTVERSIONSRESPONSE']._serialized_end=1757
+  _globals['_VALIDATESERVICEIDENTITYREQUEST']._serialized_start=1759
+  _globals['_VALIDATESERVICEIDENTITYREQUEST']._serialized_end=1835
+  _globals['_VALIDATESERVICEIDENTITYRESPONSE']._serialized_start=1837
+  _globals['_VALIDATESERVICEIDENTITYRESPONSE']._serialized_end=1947
+  _globals['_VAULTADAPTER']._serialized_start=2495
+  _globals['_VAULTADAPTER']._serialized_end=3035
 # @@protoc_insertion_point(module_scope)

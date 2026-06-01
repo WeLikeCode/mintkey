@@ -128,11 +128,11 @@ func (s *PostgresStore) Put(ctx context.Context, rec CredentialRecord) (uint32, 
 		`INSERT INTO vault.credentials
 		        (credential_id, tenant_id, service_id, key_version, auth_scheme,
 		         wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-		         target_url, header_name, query_param)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8, $9, $10, $11)`,
+		         target_url, header_name, query_param, target_address, ssh_user)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8, $9, $10, $11, $12, $13)`,
 		rec.CredentialID, rec.TenantID, rec.ServiceID, nextVer, rec.AuthScheme,
 		rec.WrappedDEK, rec.EncPayload, createdAt,
-		rec.TargetURL, rec.HeaderName, rec.QueryParam,
+		rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser,
 	); err != nil {
 		return 0, fmt.Errorf("vault postgres: Put: insert: %w", err)
 	}
@@ -175,7 +175,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 
 	const cols = `credential_id, tenant_id, service_id, key_version, auth_scheme,
 	              wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-	              target_url, header_name, query_param`
+	              target_url, header_name, query_param, target_address, ssh_user`
 
 	var row pgx.Row
 	if keyVersion == 0 {
@@ -339,6 +339,7 @@ func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 		&r.WrappedDEK, &r.EncPayload,
 		&r.IsCurrent, &r.IsRevoked, &r.CreatedAt,
 		&r.TargetURL, &r.HeaderName, &r.QueryParam,
+		&r.TargetAddress, &r.SSHUser,
 	); err != nil {
 		return nil, err
 	}

@@ -178,6 +178,12 @@ message GetCredentialResponse {
   // Stored alongside the credential so the proxy plugin never needs to trust
   // the caller-supplied X-Mintkey-Target header.
   string target_url = 8;
+
+  // SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+  string target_address = 9;
+
+  // SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+  string ssh_user = 10;
 }
 
 // ----------------------------------------------------------------------
@@ -217,6 +223,12 @@ message PutCredentialRequest {
   // The service's registered base_url (e.g. "https://api.twilio.com").
   // Stored with the credential so GetCredential can return it to the proxy.
   string target_url = 9;
+
+  // SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+  string target_address = 10;
+
+  // SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+  string ssh_user = 11;
 }
 
 // PutCredentialResponse returns the new key_version.

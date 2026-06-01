@@ -278,6 +278,35 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		}, nil
 	}
 
+	// AUTH_SCHEME_SSH_PRIVATE_KEY: return raw PEM bytes + SSH routing metadata.
+	// No envelope generation — the stored plaintext IS the credential.
+	// The SSH proxy holds it in session scope and zeros it on disconnect (ADR-0021).
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PRIVATE_KEY) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+		}, nil
+	}
+
+	// AUTH_SCHEME_SSH_CA (Phase 2 stub): return raw CA key bytes.
+	// Certificate signing logic is deferred to Phase 2 (ADR-0021 §3).
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_CA) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+		}, nil
+	}
+
 	return &vaultv1.GetCredentialResponse{
 		AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
 		Value:              result.Plaintext,
@@ -300,6 +329,8 @@ func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCre
 		TargetURL:     req.GetTargetUrl(),
 		HeaderName:    req.GetHeaderName(),
 		QueryParam:    req.GetQueryParam(),
+		TargetAddress: req.GetTargetAddress(),
+		SSHUser:       req.GetSshUser(),
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "PutCredential: %v", err)

@@ -24,19 +24,21 @@ var ErrRevokeCurrent = errors.New("store: cannot revoke the current credential v
 // CredentialRecord holds one credential version as stored in SQLite.
 // WrappedDEK and EncPayload are omitted (empty) in ListVersions results.
 type CredentialRecord struct {
-	CredentialID string
-	TenantID     string
-	ServiceID    string
-	KeyVersion   uint32
-	AuthScheme   int32
-	WrappedDEK   []byte
-	EncPayload   []byte
-	IsCurrent    bool
-	IsRevoked    bool
-	CreatedAt    int64 // Unix nanoseconds
-	TargetURL    string
-	HeaderName   string // injection hint: HTTP header name (e.g. "X-API-Key") — UX-C6
-	QueryParam   string // injection hint: query parameter name (e.g. "api_key") — UX-C6
+	CredentialID  string
+	TenantID      string
+	ServiceID     string
+	KeyVersion    uint32
+	AuthScheme    int32
+	WrappedDEK    []byte
+	EncPayload    []byte
+	IsCurrent     bool
+	IsRevoked     bool
+	CreatedAt     int64 // Unix nanoseconds
+	TargetURL     string
+	HeaderName    string // injection hint: HTTP header name (e.g. "X-API-Key") — UX-C6
+	QueryParam    string // injection hint: query parameter name (e.g. "api_key") — UX-C6
+	TargetAddress string // SSH-only: "host:port" of the backend SSH server — ADR-0021
+	SSHUser       string // SSH-only: SSH username to authenticate as — ADR-0021
 }
 
 // Store wraps an SQLite database connection.
@@ -46,19 +48,21 @@ type Store struct {
 
 const schema = `
 CREATE TABLE IF NOT EXISTS credentials (
-    credential_id TEXT PRIMARY KEY,
-    tenant_id     TEXT    NOT NULL,
-    service_id    TEXT    NOT NULL,
-    key_version   INTEGER NOT NULL,
-    auth_scheme   INTEGER NOT NULL DEFAULT 0,
-    wrapped_dek   BLOB    NOT NULL,
-    enc_payload   BLOB    NOT NULL,
-    is_current    INTEGER NOT NULL DEFAULT 1,
-    is_revoked    INTEGER NOT NULL DEFAULT 0,
-    created_at    INTEGER NOT NULL,
-    target_url    TEXT    NOT NULL DEFAULT '',
-    header_name   TEXT    NOT NULL DEFAULT '',
-    query_param   TEXT    NOT NULL DEFAULT '',
+    credential_id  TEXT    PRIMARY KEY,
+    tenant_id      TEXT    NOT NULL,
+    service_id     TEXT    NOT NULL,
+    key_version    INTEGER NOT NULL,
+    auth_scheme    INTEGER NOT NULL DEFAULT 0,
+    wrapped_dek    BLOB    NOT NULL,
+    enc_payload    BLOB    NOT NULL,
+    is_current     INTEGER NOT NULL DEFAULT 1,
+    is_revoked     INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    target_url     TEXT    NOT NULL DEFAULT '',
+    header_name    TEXT    NOT NULL DEFAULT '',
+    query_param    TEXT    NOT NULL DEFAULT '',
+    target_address TEXT    NOT NULL DEFAULT '',
+    ssh_user       TEXT    NOT NULL DEFAULT '',
     UNIQUE(tenant_id, service_id, key_version)
 );
 CREATE INDEX IF NOT EXISTS idx_credentials_tenant_service
@@ -120,6 +124,8 @@ func migrateAddColumns(db *sql.DB) error {
 		{"target_url", `ALTER TABLE credentials ADD COLUMN target_url TEXT NOT NULL DEFAULT ''`},
 		{"header_name", `ALTER TABLE credentials ADD COLUMN header_name TEXT NOT NULL DEFAULT ''`},
 		{"query_param", `ALTER TABLE credentials ADD COLUMN query_param TEXT NOT NULL DEFAULT ''`},
+		{"target_address", `ALTER TABLE credentials ADD COLUMN target_address TEXT NOT NULL DEFAULT ''`},
+		{"ssh_user", `ALTER TABLE credentials ADD COLUMN ssh_user TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, m := range migrations {
 		if existing[m.col] {
@@ -181,11 +187,11 @@ func (s *Store) Put(ctx context.Context, rec CredentialRecord) (uint32, error) {
 		`INSERT INTO credentials
              (credential_id, tenant_id, service_id, key_version, auth_scheme,
               wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-              header_name, query_param)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)`,
+              header_name, query_param, target_address, ssh_user)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?)`,
 		rec.CredentialID, rec.TenantID, rec.ServiceID, nextVer, rec.AuthScheme,
 		rec.WrappedDEK, rec.EncPayload, createdAt, rec.TargetURL,
-		rec.HeaderName, rec.QueryParam,
+		rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser,
 	); err != nil {
 		return 0, fmt.Errorf("store.Put: insert: %w", err)
 	}
@@ -206,7 +212,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
                     wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-                    header_name, query_param
+                    header_name, query_param, target_address, ssh_user
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND is_current=1`,
 			tenantID, serviceID,
@@ -215,7 +221,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
                     wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-                    header_name, query_param
+                    header_name, query_param, target_address, ssh_user
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND key_version=?`,
 			tenantID, serviceID, keyVersion,
@@ -317,7 +323,7 @@ func scanRecord(row *sql.Row) (*CredentialRecord, error) {
 		&r.KeyVersion, &r.AuthScheme,
 		&r.WrappedDEK, &r.EncPayload,
 		&isCurrent, &isRevoked, &r.CreatedAt, &r.TargetURL,
-		&r.HeaderName, &r.QueryParam,
+		&r.HeaderName, &r.QueryParam, &r.TargetAddress, &r.SSHUser,
 	); err != nil {
 		return nil, err
 	}
