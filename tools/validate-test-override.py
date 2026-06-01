@@ -6,7 +6,7 @@ Checks:
      with host port = primary host port + 100.
   2. .env.test contains all 7 required MINTKEY_*_PUBLIC_URL variables with
      correct offset values.
-  3. All 10 locally-built services have image: pins in the override.
+  3. All 11 locally-built services have image: pins in the override.
 
 Exits non-zero with descriptive errors on any drift.
 """
@@ -31,7 +31,7 @@ PRIMARY_COMPOSE = REPO_ROOT / "infra" / "compose" / "docker-compose.yml"
 TEST_COMPOSE = REPO_ROOT / "infra" / "compose" / "docker-compose.test.yml"
 ENV_TEST = REPO_ROOT / ".env.test"
 
-# The 10 locally-built services that must have image: pins in the override.
+# The 11 locally-built services that must have image: pins in the override.
 LOCALLY_BUILT_SERVICES = frozenset(
     [
         "seed-job",
@@ -44,6 +44,7 @@ LOCALLY_BUILT_SERVICES = frozenset(
         "proxy-plugin",
         "mock-backend",
         "jaeger-auth",
+        "ssh-proxy",
     ]
 )
 
@@ -78,6 +79,18 @@ yaml.add_constructor("!override", _override_constructor, Loader=yaml.SafeLoader)
 # ---------------------------------------------------------------------------
 
 
+def _resolve_compose_var(s: str) -> str:
+    """Resolve compose-style ${VAR:-default} or ${VAR-default} to their default value.
+
+    Docker Compose allows variable substitution syntax in port mappings.  The
+    validator runs without a loaded .env, so we substitute the default portion
+    (e.g. ``${MINTKEY_SSH_PROXY_PORT:-2222}`` → ``2222``).  Variables without
+    a default resolve to ``"0"`` as a safe sentinel (they would fail at runtime
+    anyway).
+    """
+    return re.sub(r"\$\{[A-Z_][A-Z0-9_]*:?-?([^}]*)\}", lambda m: m.group(1) or "0", s)
+
+
 def parse_port_mapping(port_str: str) -> tuple[str | None, int, int]:
     """Parse a Docker Compose port string into (bind_addr, host_port, container_port).
 
@@ -85,7 +98,10 @@ def parse_port_mapping(port_str: str) -> tuple[str | None, int, int]:
       - "8080:8080"
       - "127.0.0.1:8001:8001"
       - "8080:8080/tcp"  (protocol suffix stripped)
+      - "${VAR:-default}:8080"  (compose variable substitution resolved to default)
     """
+    # Resolve ${VAR:-default} substitutions before any other parsing
+    port_str = _resolve_compose_var(port_str)
     # Strip protocol suffix if present
     port_str = re.sub(r"/(tcp|udp|sctp)$", "", port_str.strip())
 

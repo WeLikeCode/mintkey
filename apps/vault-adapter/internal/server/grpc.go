@@ -15,6 +15,7 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/applejwt"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/googleserviceaccount"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -60,6 +61,7 @@ var methodScopes = map[string]string{
 type VaultServer struct {
 	kek      []byte
 	dekCache *cache.DEKCache
+	sshStore store.SSHStore // optional; nil when backend is SQLite or when SSH is not configured
 }
 
 // New creates a VaultServer with the loaded KEK in memory.
@@ -72,6 +74,14 @@ func New(kek []byte, dekCache ...*cache.DEKCache) *VaultServer {
 		c = dekCache[0]
 	}
 	return &VaultServer{kek: kek, dekCache: c}
+}
+
+// WithSSHStore attaches an SSHStore to VaultServer so that ListenAndServe
+// can register the SSHVaultAdapter service alongside VaultAdapter.
+// Call before ListenAndServe. Passing nil disables SSH RPC registration.
+func (s *VaultServer) WithSSHStore(ss store.SSHStore) *VaultServer {
+	s.sshStore = ss
+	return s
 }
 
 // scopeInterceptor returns a gRPC unary server interceptor that enforces
@@ -278,6 +288,59 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		}, nil
 	}
 
+	// AUTH_SCHEME_SSH_PRIVATE_KEY: return raw PEM bytes + SSH routing metadata.
+	// No envelope generation — the stored plaintext IS the credential.
+	// The SSH proxy holds it in session scope and zeros it on disconnect (ADR-0021).
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PRIVATE_KEY) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_private_key",
+		}, nil
+	}
+
+	// AUTH_SCHEME_SSH_PASSWORD: return raw password bytes + SSH routing metadata.
+	// The password is stored as raw bytes (no envelope). The SSH proxy uses
+	// ssh.Password(cred.Value) and zeros the bytes immediately after use.
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PASSWORD) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_password",
+		}, nil
+	}
+
+	// AUTH_SCHEME_SSH_CA (Phase 2 stub): return raw CA key bytes.
+	// Certificate signing logic is deferred to Phase 2 (ADR-0021 §3).
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_CA) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
+			Value:              result.Plaintext,
+			ReturnedKeyVersion: result.ReturnedKeyVersion,
+			CurrentKeyVersion:  result.CurrentKeyVersion,
+			TargetUrl:          result.TargetURL,
+			TargetAddress:      result.TargetAddress,
+			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_ca",
+		}, nil
+	}
+
 	return &vaultv1.GetCredentialResponse{
 		AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
 		Value:              result.Plaintext,
@@ -300,6 +363,8 @@ func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCre
 		TargetURL:     req.GetTargetUrl(),
 		HeaderName:    req.GetHeaderName(),
 		QueryParam:    req.GetQueryParam(),
+		TargetAddress: req.GetTargetAddress(),
+		SSHUser:       req.GetSshUser(),
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "PutCredential: %v", err)
@@ -376,6 +441,11 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	healthSvc.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	vaultv1.RegisterVaultAdapterServer(grpcSrv, &grpcVaultServer{svc: svc})
+
+	// Register SSHVaultAdapter when an SSHStore is configured.
+	if s.sshStore != nil {
+		RegisterSSHVaultServer(grpcSrv, svc, s.sshStore)
+	}
 
 	// HTTP mux for non-gRPC requests (e.g. /metrics).
 	httpMux := http.NewServeMux()

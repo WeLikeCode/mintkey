@@ -17,9 +17,15 @@ section for the exact list (Docker, docker compose, ports, disk space).
 
 | Step | One-line summary | Full instructions |
 |---|---|---|
-| 1. Bring the stack up | `docker compose up -d` — 15 long-running containers + 2 one-shot jobs | [`QUICKSTART.md`](../QUICKSTART.md) §1 |
-| 2. Get the bootstrap admin password | Printed once to stdout; also at `./data/bootstrap-secrets/` (mode `0400`) | [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) §0 |
-| 3. Open the Admin UI | `http://localhost:8081` | [`PORTS.md`](../PORTS.md) "Quick access" |
+| 1. Generate the SSH proxy host key | `make ssh-proxy-init` — seeds the persistent Ed25519 host key into the `mintkey_ssh_proxy_hostkey` volume (idempotent; skips if key already exists). Must run before `make dev` the first time. | See `make help` |
+| 2. Bring the stack up | `make dev` — starts 15 long-running containers + 2 one-shot jobs | [`QUICKSTART.md`](../QUICKSTART.md) §1 |
+| 3. Get the bootstrap admin password | Printed once to stdout; also at `./data/bootstrap-secrets/` (mode `0400`) | [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) §0 |
+| 4. Open the Admin UI | `http://localhost:8081` | [`PORTS.md`](../PORTS.md) "Quick access" |
+
+> **Note on SSH proxy port exposure:** `make dev` binds `:2222` on all host interfaces by
+> default. In production, restrict this to a specific interface (e.g. `0.0.0.0:2222`) behind
+> a firewall or load balancer — do not expose it on a public IP without additional access
+> controls. The HTTP metrics port (`8089`) should not be publicly reachable.
 
 ---
 
@@ -125,7 +131,151 @@ make backup-list
 
 ---
 
-## 5. Vault migration: SQLite → Postgres
+## 5. SSH bastion onboarding
+
+Kong is HTTP-only; SSH is a long-lived TCP protocol. Mintkey therefore runs a separate
+SSH listener on `:2222` (the `ssh-proxy` container), independent of Kong.
+
+**Architecture deep-dive:** [docs/architecture/01-architecture/ssh-bastion.md](architecture/01-architecture/ssh-bastion.md) — data-flow diagram, single-port multiplexing explanation, port table, JWT claim map, connection lifecycle, and security boundary.  
+**Decision record:** [ADR-0022](architecture/01-architecture/adr/0022-ssh-bastion.md)
+
+### Architecture (overview)
+
+```
+agent (ssh client)
+        │
+        │  TCP :2222  JWT-as-password
+        ▼
+  ssh-proxy :2222
+  ├── validates JWT (JWKS from broker :8083)
+  ├── fetches credential (gRPC vault-adapter :8084)
+  │     └── vault-adapter JOINs public.services → returns base_url
+  └── dials upstream SSH server (host:port from services.base_url)
+             │
+             ▼
+     upstream SSH server (any host:port)
+```
+
+> **Routing address vs auth material.** The upstream host:port is owned by the **service's
+> `base_url`** (set via Admin UI Services → Edit, format: `ssh://host:port`). The credential row
+> holds only auth material: the private key or password, plus `ssh_user`. Per
+> [ADR-0023](architecture/01-architecture/adr/0023-ssh-upstream-base-url-canonical.md).
+
+### One-time setup
+
+| Step | Command | Notes |
+|---|---|---|
+| Seed bastion host key | `make ssh-proxy-init` | Idempotent; seeds Ed25519 host key into `mintkey_ssh_proxy_hostkey` volume. Run before `make dev` the first time. |
+| Start the stack | `make dev` | Binds `:2222` on all host interfaces. In production, restrict to a specific interface behind a firewall. |
+
+### Adding an SSH service via the Admin UI
+
+1. **Services → New → From Template**: choose `ssh-bastion-key` (private-key auth) or
+   `ssh-bastion-password` (username + password).
+2. Replace the placeholder base URL `ssh://CHANGE-ME:22` with your real target, e.g.
+   `ssh://internal-server.corp:22`. **This is the canonical upstream address** — ssh-proxy dials
+   whatever is set here. Changing this field later takes effect after the next credential fetch
+   (subject to DEKCache TTL, ≤ 10 min; see [ADR-0023](architecture/01-architecture/adr/0023-ssh-upstream-base-url-canonical.md) §Follow-up F1).
+3. Open the service → **Set Credential** — provide only auth material:
+   - For `ssh-bastion-key`: paste the private key (PEM/OpenSSH) in the text area and set
+     `ssh_user`. **Do not set `target_address`** — the host:port is inherited from `base_url`.
+   - For `ssh-bastion-password`: set `ssh_user` and `ssh_password`. **Do not set
+     `target_address`** — the host:port is inherited from `base_url`.
+4. **Permission Grants → New**: grant the relevant agent `call` on this service.
+
+> **To change the upstream host:port later:** edit the service's `base_url` (Admin UI Services →
+> Edit, or `PATCH /v1/tenants/{tid}/services/{sid}`). Do not edit the credential's `target_address`
+> — that field is deprecated and will be removed in a follow-up migration.
+
+### Using the service from an agent
+
+**Step 1 — request a token:**
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"call\"}" | jq -r '.token')
+```
+
+The response includes an `ssh_connect` block alongside the token:
+
+```json
+{
+  "token": "<JWS>",
+  "ssh_connect": {
+    "host": "ssh-proxy",
+    "port": 2222,
+    "external_host": "10.243.1.200",
+    "external_port": 2222,
+    "ssh_user": "<agent_id>",
+    "auth_method": "password",
+    "password_is_jwt": true,
+    "hint": "ssh -p 2222 <agent_id>@<host> with the token above used as the SSH password"
+  },
+  "expires_at": "...",
+  "service_id": "...",
+  "action": "call"
+}
+```
+
+**Step 2 — SSH in (use `ssh_connect.external_host` and `ssh_connect.ssh_user`):**
+
+```bash
+AGENT_ID=$(echo "$TOKEN_RESPONSE" | jq -r '.ssh_connect.ssh_user')
+BASTION="10.243.1.200"
+
+# Non-interactive (scripted):
+sshpass -p "$TOKEN" ssh -p 2222 \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -o StrictHostKeyChecking=accept-new \
+  "$AGENT_ID@$BASTION" 'whoami'
+
+# Interactive — paste the JWT when prompted:
+ssh -p 2222 -o PreferredAuthentications=password "$AGENT_ID@$BASTION"
+```
+
+> **JWT lifetime**: ~10 minutes. For long-running operations, re-request a token before
+> expiry and reconnect (`request_token` is cheap).
+
+### Verifying it works (operator's view)
+
+**Via Admin UI:** Services → select the SSH service → **Test Service** → "Test SSH
+Connection" panel → **Run Test**.
+
+**Via SQL (audit events):**
+
+```sql
+SELECT event_type, payload->>'agent_id', payload->>'target_host'
+FROM audit_events
+WHERE event_type LIKE 'ssh.%'
+ORDER BY at DESC LIMIT 10;
+```
+
+**Session recordings** are written to `/var/lib/mintkey/ssh-recordings/<session_id>.cast`
+inside the `ssh-proxy` container. SHA-256 integrity is embedded in the `ssh.session.ended`
+audit event.
+
+### Common confusions (FAQ)
+
+| Question | Answer |
+|---|---|
+| "Why does Kong return 404/502 for my SSH service?" | Kong is HTTP-only. SSH services have no Kong route. Use the bastion path (`:2222`). |
+| "Do I need a Mintkey CLI?" | No. Vanilla `ssh` + the JWT as password. No extra tooling required. |
+| "Does the agent see the upstream private key / password?" | No. Only the vault holds it. The agent presents a JWT; the bastion fetches and uses the credential internally. |
+| "Where does the JWT come from?" | The MCP `request_token` tool. The bastion validates it against the broker's JWKS endpoint. |
+
+### Security notes
+
+- JWTs are short-lived (~10 min) and single-use for the duration of each connection.
+- Upstream host-key trust uses TOFU (trust-on-first-use) at first connection.
+- Session recordings are tamper-evident: SHA-256 digest in the `ssh.session.ended` audit event.
+- Agent forwarding (`-A`), X11 (`-X`), and local/remote TCP forwarding (`-L`/`-R`) are disabled by the bastion.
+
+---
+
+## 6. Vault migration: SQLite → Postgres
 
 > **When to run:** only when upgrading from a pre-2026-05-31 deployment where `MINTKEY_VAULT_BACKEND=sqlite` (or the env var was unset and the stack was running the SQLite-default build). New deployments use Postgres by default and can skip this section entirely.
 
@@ -194,7 +344,7 @@ See [ADR-0021](architecture/01-architecture/adr/0021-vault-storage-backend-postg
 
 ---
 
-## 6. Operations
+## 7. Operations
 
 The proxy endpoint for all brokered calls is **`http://localhost:8000`** (env `MINTKEY_PROXY_URL`,
 per [`docs/guides/github-quickstart.md`](guides/github-quickstart.md) lines 358–360 and the Ports
@@ -215,7 +365,7 @@ If clients on other machines need to reach this Mintkey instance, set `MINTKEY_M
 
 ---
 
-## 7. Database schema changes
+## 8. Database schema changes
 
 Read [`CONTRIBUTING.md`](../CONTRIBUTING.md) first. The schema is owned by Liquibase per
 [ADR-0015](architecture/01-architecture/adr/0015-liquibase-schema-source-of-truth.md); never edit
@@ -224,7 +374,7 @@ still go through Liquibase changelogs — add a new changeset, never edit an exi
 
 ---
 
-## 8. Stack health checks
+## 9. Stack health checks
 
 | Command | Expected outcome |
 |---|---|
@@ -272,7 +422,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 9. Where else to look
+## 10. Where else to look
 
 | Need | Document |
 |---|---|
@@ -282,7 +432,7 @@ See [AUTH.md](AUTH.md) for the full header reference and [NETWORK.md](NETWORK.md
 
 ---
 
-## 10. Operator cookbook — step-by-step recipes
+## 11. Operator cookbook — step-by-step recipes
 
 Each recipe below is self-contained. Shared setup (session cookie, CSRF token, tenant ID)
 is shown once in Recipe 0 and referenced in subsequent recipes. Use either the Admin UI

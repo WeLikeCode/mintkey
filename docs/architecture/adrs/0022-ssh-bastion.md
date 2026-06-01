@@ -1,0 +1,1 @@
+../01-architecture/adr/0022-ssh-bastion.md

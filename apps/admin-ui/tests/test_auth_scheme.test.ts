@@ -19,7 +19,7 @@ import {
 } from "../src/lib/auth-scheme.js";
 
 describe("AUTH_SCHEMES", () => {
-  it("contains all 10 required schemes", () => {
+  it("contains all 13 required schemes (including ssh_password)", () => {
     const values = AUTH_SCHEMES.map((s) => s.value);
     expect(values).toContain("none");
     expect(values).toContain("api_key_header");
@@ -32,7 +32,10 @@ describe("AUTH_SCHEMES", () => {
     expect(values).toContain("mtls");
     expect(values).toContain("apple_jwt");
     expect(values).toContain("google_service_account");
-    expect(values).length(11);
+    expect(values).toContain("ssh_private_key");
+    expect(values).toContain("ssh_ca");
+    expect(values).toContain("ssh_password");
+    expect(values).length(14);
   });
 
   it("each scheme has a value and label", () => {
@@ -168,6 +171,64 @@ describe("getCredentialFields", () => {
     expect(scopeField.defaultValue).toBe("https://www.googleapis.com/auth/androidpublisher");
   });
 
+  it("ssh_private_key returns private_key_pem (textarea, secret), target_address (text), ssh_user (text)", () => {
+    const fields = getCredentialFields("ssh_private_key");
+    expect(fields).toHaveLength(3);
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("private_key_pem");
+    expect(names).toContain("target_address");
+    expect(names).toContain("ssh_user");
+    const keyField = fields.find((f) => f.name === "private_key_pem")!;
+    expect(keyField.type).toBe("textarea");
+    expect(keyField.secret).toBe(true);
+    expect(keyField.required).toBe(true);
+    const addrField = fields.find((f) => f.name === "target_address")!;
+    expect(addrField.type).toBe("text");
+    expect(addrField.secret).toBe(false);
+    expect(addrField.required).toBe(true);
+    const userField = fields.find((f) => f.name === "ssh_user")!;
+    expect(userField.type).toBe("text");
+    expect(userField.secret).toBe(false);
+    expect(userField.required).toBe(true);
+  });
+
+  it("ssh_ca returns ca_private_key_pem (textarea, secret), ca_principal_prefix (text, required)", () => {
+    const fields = getCredentialFields("ssh_ca");
+    expect(fields).toHaveLength(2);
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("ca_private_key_pem");
+    expect(names).toContain("ca_principal_prefix");
+    const caKeyField = fields.find((f) => f.name === "ca_private_key_pem")!;
+    expect(caKeyField.type).toBe("textarea");
+    expect(caKeyField.secret).toBe(true);
+    expect(caKeyField.required).toBe(true);
+    const prefixField = fields.find((f) => f.name === "ca_principal_prefix")!;
+    expect(prefixField.type).toBe("text");
+    expect(prefixField.secret).toBe(false);
+    expect(prefixField.required).toBe(true);
+  });
+
+  it("ssh_password returns username (text), password (password, secret), target_address (text)", () => {
+    const fields = getCredentialFields("ssh_password");
+    expect(fields).toHaveLength(3);
+    const names = fields.map((f) => f.name);
+    expect(names).toContain("username");
+    expect(names).toContain("password");
+    expect(names).toContain("target_address");
+    const userField = fields.find((f) => f.name === "username")!;
+    expect(userField.type).toBe("text");
+    expect(userField.secret).toBe(false);
+    expect(userField.required).toBe(true);
+    const pwField = fields.find((f) => f.name === "password")!;
+    expect(pwField.type).toBe("password");
+    expect(pwField.secret).toBe(true);
+    expect(pwField.required).toBe(true);
+    const addrField = fields.find((f) => f.name === "target_address")!;
+    expect(addrField.type).toBe("text");
+    expect(addrField.secret).toBe(false);
+    expect(addrField.required).toBe(true);
+  });
+
   it("unknown scheme returns empty fields (safe default)", () => {
     const fields = getCredentialFields("unknown_scheme");
     expect(fields).toEqual([]);
@@ -237,6 +298,86 @@ describe("buildCredentialPayload", () => {
     });
     const parsed = JSON.parse(payload.value);
     expect(Object.keys(parsed).sort()).toEqual(["scheme", "scope", "service_account_json"].sort());
+  });
+
+  it("ssh_private_key: value is JSON string with exactly 4 keys (scheme, private_key_pem, target_address, ssh_user)", () => {
+    const payload = buildCredentialPayload("ssh_private_key", {
+      private_key_pem: "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNza...\n-----END OPENSSH PRIVATE KEY-----",
+      target_address: "host:22",
+      ssh_user: "alice",
+    });
+    expect(payload.auth_scheme).toBe("ssh_private_key");
+    expect(typeof payload.value).toBe("string");
+    const parsed = JSON.parse(payload.value);
+    expect(parsed.scheme).toBe("ssh_private_key");
+    expect(parsed.private_key_pem).toBe("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNza...\n-----END OPENSSH PRIVATE KEY-----");
+    expect(parsed.target_address).toBe("host:22");
+    expect(parsed.ssh_user).toBe("alice");
+    expect(Object.keys(parsed)).toHaveLength(4);
+  });
+
+  it("ssh_private_key: round-trip JSON.parse returns expected object shape", () => {
+    const payload = buildCredentialPayload("ssh_private_key", {
+      private_key_pem: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----",
+      target_address: "10.0.0.5:22",
+      ssh_user: "ubuntu",
+    });
+    const parsed = JSON.parse(payload.value);
+    expect(Object.keys(parsed).sort()).toEqual(["private_key_pem", "scheme", "ssh_user", "target_address"].sort());
+    expect(parsed.target_address).toBe("10.0.0.5:22");
+    expect(parsed.ssh_user).toBe("ubuntu");
+  });
+
+  it("ssh_ca: value is JSON string with exactly 3 keys (scheme, ca_private_key_pem, ca_principal_prefix)", () => {
+    const payload = buildCredentialPayload("ssh_ca", {
+      ca_private_key_pem: "-----BEGIN OPENSSH PRIVATE KEY-----\nca_key\n-----END OPENSSH PRIVATE KEY-----",
+      ca_principal_prefix: "agent-",
+    });
+    expect(payload.auth_scheme).toBe("ssh_ca");
+    expect(typeof payload.value).toBe("string");
+    const parsed = JSON.parse(payload.value);
+    expect(parsed.scheme).toBe("ssh_ca");
+    expect(parsed.ca_private_key_pem).toBe("-----BEGIN OPENSSH PRIVATE KEY-----\nca_key\n-----END OPENSSH PRIVATE KEY-----");
+    expect(parsed.ca_principal_prefix).toBe("agent-");
+    expect(Object.keys(parsed)).toHaveLength(3);
+  });
+
+  it("ssh_ca: round-trip JSON.parse returns expected object shape", () => {
+    const payload = buildCredentialPayload("ssh_ca", {
+      ca_private_key_pem: "-----BEGIN OPENSSH PRIVATE KEY-----\nca\n-----END OPENSSH PRIVATE KEY-----",
+      ca_principal_prefix: "svc-",
+    });
+    const parsed = JSON.parse(payload.value);
+    expect(Object.keys(parsed).sort()).toEqual(["ca_principal_prefix", "ca_private_key_pem", "scheme"].sort());
+    expect(parsed.ca_principal_prefix).toBe("svc-");
+  });
+
+  it("ssh_password: value is JSON string with exactly 4 keys (scheme, username, password, target_address)", () => {
+    const payload = buildCredentialPayload("ssh_password", {
+      username: "alice",
+      password: "s3cr3t!",
+      target_address: "bastion.example.com:22",
+    });
+    expect(payload.auth_scheme).toBe("ssh_password");
+    expect(typeof payload.value).toBe("string");
+    const parsed = JSON.parse(payload.value);
+    expect(parsed.scheme).toBe("ssh_password");
+    expect(parsed.username).toBe("alice");
+    expect(parsed.password).toBe("s3cr3t!");
+    expect(parsed.target_address).toBe("bastion.example.com:22");
+    expect(Object.keys(parsed)).toHaveLength(4);
+  });
+
+  it("ssh_password: round-trip JSON.parse returns expected object shape", () => {
+    const payload = buildCredentialPayload("ssh_password", {
+      username: "deploy",
+      password: "hunter2",
+      target_address: "10.0.0.1:2222",
+    });
+    const parsed = JSON.parse(payload.value);
+    expect(Object.keys(parsed).sort()).toEqual(["password", "scheme", "target_address", "username"].sort());
+    expect(parsed.target_address).toBe("10.0.0.1:2222");
+    expect(parsed.username).toBe("deploy");
   });
 
   it("oauth2_password_grant: assembles nested value JSON with correct contract shape", () => {

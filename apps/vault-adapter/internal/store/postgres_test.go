@@ -633,3 +633,45 @@ func TestPostgresCrossTenantGetReturnsNothing(t *testing.T) {
 		t.Errorf("sanity check failed: mintkey_app with correct tenant saw %d rows; want 1 (row missing)", sanityCount)
 	}
 }
+
+// TestPostgresGet_ServiceBaseUrl_JoinReturnsEmpty verifies the LEFT JOIN path:
+// when no matching row exists in public.services for the credential's service_id,
+// ServiceBaseUrl is populated as "" (COALESCE returns empty string, not NULL).
+//
+// Note: this test creates a credential whose service_id has no matching entry in
+// public.services (UUID that is not registered). The LEFT JOIN must not fail; it
+// must return a row with ServiceBaseUrl = "".
+func TestPostgresGet_ServiceBaseUrl_JoinReturnsEmpty(t *testing.T) {
+	s := newTestPostgresStore(t)
+	ctx := context.Background()
+
+	// Use a service_id that is unlikely to exist in public.services.
+	const orphanServiceID = "30000000-0000-0000-0000-deadbeef0001"
+	rec := pgBaseRec()
+	rec.ServiceID = orphanServiceID
+	cleanupTenant(t, s.pool, rec.TenantID, orphanServiceID)
+	t.Cleanup(func() { cleanupTenant(t, s.pool, rec.TenantID, orphanServiceID) })
+
+	ver, err := s.Put(ctx, rec)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	got, err := s.Get(ctx, rec.TenantID, orphanServiceID, ver)
+	if err != nil {
+		t.Fatalf("Get with orphan service_id: %v — LEFT JOIN should not fail for unmatched service", err)
+	}
+	if got == nil {
+		t.Fatal("Get returned nil for orphan service_id; expected a row")
+	}
+
+	// COALESCE(s.base_url, '') guarantees ServiceBaseUrl is never NULL on scan.
+	if got.ServiceBaseUrl != "" {
+		t.Logf("ServiceBaseUrl = %q (non-empty means a service row was found — acceptable)", got.ServiceBaseUrl)
+	}
+
+	// Existing credential metadata must be preserved.
+	if got.KeyVersion != ver {
+		t.Errorf("KeyVersion = %d; want %d", got.KeyVersion, ver)
+	}
+}

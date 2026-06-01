@@ -84,7 +84,7 @@ $defs:
 
   auth_scheme:
     type: string
-    description: "Auth scheme of the registered backend service. Per ADR-0016.5."
+    description: "Auth scheme of the registered backend service. Per ADR-0016.5 and ADR-0021."
     enum:
       - api_key_header
       - api_key_query
@@ -95,6 +95,9 @@ $defs:
       - mtls
       - apple_jwt
       - google_service_account
+      - ssh_private_key
+      - ssh_ca
+      - ssh_password
 
   service_summary:
     type: object

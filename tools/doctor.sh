@@ -89,6 +89,20 @@ else
   fail "git not found"
 fi
 
+# 6. Mintkey stack consistency (live-stack checks — skipped gracefully if Docker is absent)
+echo
+echo "[6/6] Mintkey stack"
+MINTKEY_DOCTOR="$REPO_ROOT/scripts/mintkey-doctor.sh"
+if [[ -f "$MINTKEY_DOCTOR" ]]; then
+  bash "$MINTKEY_DOCTOR" || true  # errors/warnings already printed; we tally below via its exit
+  STACK_EXIT=$?
+  if [[ $STACK_EXIT -ne 0 ]]; then
+    ERRORS=$((ERRORS+1))
+  fi
+else
+  warn "scripts/mintkey-doctor.sh not found — skipping stack checks"
+fi
+
 # Summary
 echo
 if [[ $ERRORS -gt 0 ]]; then

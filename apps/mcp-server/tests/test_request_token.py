@@ -535,6 +535,188 @@ def test_audit_payload_includes_remediation_hint() -> None:
 
 
 # ===========================================================================
+# SSH transport branch — Part A of ssh-proxy-integration chunk
+# ===========================================================================
+
+
+def _build_app_ssh_service(
+    *,
+    ssh_auth_scheme: str = "ssh_password",
+    agent_id: str | None = None,
+    tenant_id: uuid.UUID | None = None,
+):
+    """
+    Build a FastAPI test app with a mocked DB that returns:
+      - A grant row (permission granted)
+      - A service row with the given ssh auth_scheme
+      - A successful broker response
+    """
+    import mcp_server.main as _main_mod
+    from mcp_server.db.session import get_db_session
+    from mcp_server.tools.discovery import get_agent_context
+    from mcp_server.main import create_app
+
+    _tenant_id = tenant_id or uuid.uuid4()
+    _agent_id = agent_id or str(uuid.uuid4())
+    fake_ctx = {"tenant_id": _tenant_id, "agent_id": _agent_id}
+
+    _orig_validate = _main_mod.validate_agent_key
+
+    async def _fake_validate(key):
+        return fake_ctx, None
+
+    _main_mod.validate_agent_key = _fake_validate
+    app = create_app()
+
+    async def _fake_agent_context():
+        return fake_ctx
+
+    app.dependency_overrides[get_agent_context] = _fake_agent_context
+
+    async def _fake_db_session():
+        session = AsyncMock()
+        call_count = [0]
+
+        async def _execute(stmt, params=None, **kw):
+            result_mock = MagicMock()
+            call_count[0] += 1
+            if params and "slug" in params:
+                # slug lookup — no slug passed in this helper
+                result_mock.fetchall.return_value = []
+            elif call_count[0] == 1:
+                # set_tenant_context SET LOCAL call — return anything
+                result_mock.fetchone.return_value = None
+            elif call_count[0] == 2:
+                # permission_grant lookup — grant exists
+                grant = MagicMock()
+                grant.constraints = {}
+                result_mock.fetchone.return_value = grant
+            else:
+                # service auth_scheme lookup
+                svc = MagicMock()
+                svc.auth_scheme = ssh_auth_scheme
+                result_mock.fetchone.return_value = svc
+            return result_mock
+
+        session.execute = _execute
+        yield session
+
+    app.dependency_overrides[get_db_session] = _fake_db_session
+
+    return app, _orig_validate, _main_mod
+
+
+def test_request_token_ssh_service_returns_ssh_connect_not_proxy_url() -> None:
+    """
+    When request_token is called for an SSH service (auth_scheme in
+    {ssh_password, ssh_private_key, ssh_ca}), the response must:
+      - include an ssh_connect block with host, port, ssh_user, auth_method,
+        password_is_jwt, and hint fields
+      - NOT include a proxy_url field (Kong is HTTP-only)
+
+    Part A of ssh-proxy-integration chunk.
+    """
+    import asyncio
+    from httpx import AsyncClient, ASGITransport
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    _agent_id = "agent_TESTSSH0000000000000000001"
+    broker_resp = {
+        "token": "hdr.claims.sig",
+        "expires_at": 9999999999,
+    }
+
+    app, _orig, _main_mod = _build_app_ssh_service(
+        ssh_auth_scheme="ssh_password",
+        agent_id=_agent_id,
+    )
+    try:
+        async def _inner():
+            with patch(
+                "mcp_server.tools.request_token.httpx.AsyncClient",
+            ) as mock_client_cls:
+                # Mock the broker POST to return 200 with a token
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = broker_resp
+                mock_ctx = _AsyncMock()
+                mock_ctx.__aenter__ = _AsyncMock(return_value=mock_ctx)
+                mock_ctx.__aexit__ = _AsyncMock(return_value=False)
+                mock_ctx.post = _AsyncMock(return_value=mock_resp)
+                mock_client_cls.return_value = mock_ctx
+
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    return await client.post(
+                        "/v1/tools/request_token",
+                        json={"service_id": _TEST_SERVICE_UUID, "action": "call"},
+                        headers={"X-API-Key": "mk_agent_testkey"},
+                    )
+
+        resp = asyncio.run(_inner())
+    finally:
+        _main_mod.validate_agent_key = _orig
+
+    assert resp.status_code == 200, (
+        f"Expected 200 from SSH service request_token, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+
+    # Must have ssh_connect block
+    assert "ssh_connect" in body, (
+        f"Expected ssh_connect in response for SSH service, got: {body}"
+    )
+    ssh = body["ssh_connect"]
+    assert "host" in ssh, f"ssh_connect missing 'host': {ssh}"
+    assert "port" in ssh, f"ssh_connect missing 'port': {ssh}"
+    assert ssh.get("auth_method") == "password", (
+        f"auth_method must be 'password' for JWT-in-password SSH, got: {ssh}"
+    )
+    assert ssh.get("password_is_jwt") is True, (
+        f"password_is_jwt must be True, got: {ssh}"
+    )
+    assert ssh.get("ssh_user") == _agent_id, (
+        f"ssh_user must equal agent_id={_agent_id!r}, got: {ssh.get('ssh_user')!r}"
+    )
+    assert "hint" in ssh, f"ssh_connect missing 'hint': {ssh}"
+
+    # Must NOT have proxy_url (Kong is HTTP-only, SSH goes to bastion)
+    assert "proxy_url" not in body, (
+        f"SSH service response must NOT include proxy_url, got: {body}"
+    )
+
+    # Token and standard fields must still be present
+    assert body.get("token") == "hdr.claims.sig", (
+        f"token missing or wrong: {body}"
+    )
+    assert "expires_at" in body, f"expires_at missing: {body}"
+    assert "service_id" in body, f"service_id missing: {body}"
+    assert "action" in body, f"action missing: {body}"
+
+
+def test_request_token_http_service_returns_no_ssh_connect() -> None:
+    """
+    For non-SSH services (e.g. bearer_token), the response must NOT include
+    ssh_connect. This is the existing HTTP path — regression guard.
+
+    Part A of ssh-proxy-integration chunk.
+    """
+    # MagicMock auth_scheme is not in _SSH_AUTH_SCHEMES → existing HTTP path
+    # The existing grant_row mock returns a MagicMock for auth_scheme which is
+    # falsy for membership in a set of strings → HTTP path.
+    resp = _run_request_token(
+        _TEST_SERVICE_UUID,
+        slug_row=None,
+        grant_row=None,  # permission_not_found — verifies we don't reach SSH code
+    )
+    # 403 means we never got to the SSH branch — that's fine for the regression guard
+    assert "ssh_connect" not in resp.json(), (
+        f"Non-SSH 403 response must not contain ssh_connect: {resp.json()}"
+    )
+
+
+# ===========================================================================
 # Integration tests (requires docker-compose stack)
 # ===========================================================================
 

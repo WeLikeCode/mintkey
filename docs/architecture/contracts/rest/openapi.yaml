@@ -3247,6 +3247,9 @@ components:
         - oidc_client_secret
         - apple_jwt
         - google_service_account
+        - ssh_private_key
+        - ssh_ca
+        - ssh_password
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -3257,6 +3260,9 @@ components:
         - `oidc_client_secret`: used for the operator IdP integration only.
         - `apple_jwt`: Apple Sign In with Apple JWT (p8 key, key_id, issuer_id).
         - `google_service_account`: Google IAM service account JSON key; Mintkey exchanges it for a short-lived access token.
+        - `ssh_private_key`: SSH private key (PEM/OpenSSH format) for SSH proxy (ADR-0021).
+        - `ssh_ca`: SSH Certificate Authority signing key for direct-connect mode (ADR-0021, Phase 2).
+        - `ssh_password`: SSH username+password for SSH proxy (ADR-0021). Prefer key-based when possible.
 
     Service:
       type: object
@@ -3491,6 +3497,8 @@ components:
         - $ref: "#/components/schemas/CredOidcClientSecret"
         - $ref: "#/components/schemas/CredAppleJWT"
         - $ref: "#/components/schemas/CredGoogleServiceAccount"
+        - $ref: "#/components/schemas/CredSSHPrivateKey"
+        - $ref: "#/components/schemas/CredSSHPassword"
       discriminator:
         propertyName: auth_scheme
         mapping:
@@ -3502,6 +3510,8 @@ components:
           oidc_client_secret: "#/components/schemas/CredOidcClientSecret"
           apple_jwt: "#/components/schemas/CredAppleJWT"
           google_service_account: "#/components/schemas/CredGoogleServiceAccount"
+          ssh_private_key: "#/components/schemas/CredSSHPrivateKey"
+          ssh_password: "#/components/schemas/CredSSHPassword"
 
     CredApiKeyHeader:
       type: object
@@ -3647,6 +3657,53 @@ components:
             OAuth2 scope(s) to request when exchanging the key for an access
             token. Defaults to the Android Publisher API scope.
       required: [auth_scheme, service_account_json]
+
+    CredSSHPrivateKey:
+      type: object
+      description: |
+        SSH private key credential for the SSH proxy (ADR-0021). The proxy
+        parses the PEM and uses it for public-key authentication to the
+        backend SSH server. The key is held in session scope and zeroed on
+        disconnect.
+      properties:
+        auth_scheme:
+          type: string
+          enum: [ssh_private_key]
+        private_key_pem:
+          type: string
+          description: |
+            PEM-encoded SSH private key (OpenSSH or PKCS#8 format).
+            Must begin with `-----BEGIN` and contain `PRIVATE KEY-----`.
+          x-mintkey-sensitive: true
+        target_address:
+          type: string
+          description: "Backend SSH server as 'host:port' (e.g. 'myhost.example.com:22')."
+        ssh_user:
+          type: string
+          description: "SSH username to authenticate as."
+      required: [auth_scheme, private_key_pem, target_address, ssh_user]
+
+    CredSSHPassword:
+      type: object
+      description: |
+        SSH username+password credential for the SSH proxy (ADR-0021). Prefer
+        key-based authentication when possible. The password is stored
+        envelope-encrypted by the Vault Adapter and never logged.
+      properties:
+        auth_scheme:
+          type: string
+          enum: [ssh_password]
+        username:
+          type: string
+          description: "SSH username for authentication."
+        password:
+          type: string
+          description: "SSH password. Stored encrypted; never returned."
+          x-mintkey-sensitive: true
+        target_address:
+          type: string
+          description: "Backend SSH server as 'host:port' (e.g. 'myhost.example.com:22')."
+      required: [auth_scheme, username, password, target_address]
 
     CredentialPage:
       type: object

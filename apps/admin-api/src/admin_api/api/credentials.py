@@ -41,7 +41,10 @@ from admin_api.services.credential_service import (
     AppleJWTPayload,
     GoogleServiceAccountPayload,
     OAuth2PasswordGrantPayload,
+    SSHPasswordPayload,
+    SSHPrivateKeyPayload,
 )
+from admin_api.services.audit_fingerprint import audit_fingerprint as _audit_fp
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
@@ -184,6 +187,7 @@ async def create_credential(
     if body.auth_scheme == "oauth2_password_grant":
         try:
             import json as _json_mod
+            import pydantic as _pydantic
             raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             OAuth2PasswordGrantPayload(**raw)
         except (_json_mod.JSONDecodeError, TypeError):
@@ -194,8 +198,28 @@ async def create_credential(
                     "title": "oauth2_password_grant value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents credential values from leaking into the HTTP
+            # response — ADR-0014.7, S-SEC-1.
+            # Extract errors into a plain list before the response to break the exception
+            # data-flow chain (CodeQL py/stack-trace-exposure — intentional: pydantic field
+            # errors are structured loc+msg pairs, not stack frames; include_input=False).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing user-supplied credential bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("oauth2_password_grant credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=422,
                 content={
@@ -215,6 +239,7 @@ async def create_credential(
     apple_jwt_validated: AppleJWTPayload | None = None
     if body.auth_scheme == "apple_jwt":
         import json as _json_mod
+        import pydantic as _pydantic
         try:
             raw_apple = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             if not isinstance(raw_apple, dict):
@@ -230,18 +255,37 @@ async def create_credential(
                     "title": "apple_jwt value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            # Log the error without including p8_key_pem in the message — ADR-0014.7.
-            logger.warning(
-                "apple_jwt payload validation failed: %s",
-                str(exc),  # exc text describes the field constraint, not the key value
-            )
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents p8_key_pem bytes from leaking into the HTTP
+            # response — ADR-0014.7, S-SEC-1.
+            # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
+            # Extract errors into a plain list to break the exception data-flow chain
+            # (CodeQL py/stack-trace-exposure — intentional: pydantic loc+msg pairs, not
+            # stack frames; include_input=False ensures no credential bytes are echoed).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "mintkey:code": "invalid_apple_jwt_payload",
-                    "title": "apple_jwt payload failed validation",
-                    "detail": str(exc),
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing p8_key_pem bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "apple_jwt payload malformed",
                 },
             )
         # Serialise the validated envelope for the vault — p8_key_pem is in this string
@@ -262,6 +306,7 @@ async def create_credential(
     _gsa_validated: GoogleServiceAccountPayload | None = None
     if body.auth_scheme == "google_service_account":
         import json as _json_mod
+        import pydantic as _pydantic
         try:
             raw_gsa = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             if not isinstance(raw_gsa, dict):
@@ -278,35 +323,191 @@ async def create_credential(
                     "detail": "google_service_account value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            # Log the error without including service_account_json — ADR-0014.7.
-            # Only the terse validation message is logged — NEVER private_key material.
-            logger.warning(
-                "google_service_account credential validation failed: %s", str(exc)
-            )
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents service_account_json / private_key bytes from
+            # leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            # Extract errors into a plain list to break the exception data-flow chain
+            # (CodeQL py/stack-trace-exposure — intentional: pydantic loc+msg pairs, not
+            # stack frames; include_input=False ensures no credential bytes are echoed).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": str(exc),
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing service_account_json / private_key.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account payload malformed",
                 },
             )
         # Serialise the validated envelope for the vault — service_account_json is in
         # these bytes but is passed directly to StoreCredential and never logged.
         _gsa_envelope = _gsa_validated.to_vault_envelope()
 
+    # Step 1f: For ssh_private_key, validate the structured payload — ADR-0021.
+    # body.value is expected to be a JSON object:
+    #   { "private_key_pem": ..., "target_address": ..., "ssh_user": ... }
+    # Validation: PEM header, host:port format, safe ssh_user characters.
+    # private_key_pem is scrubbed from all log calls — ADR-0014.7, S-SEC-1.
+    _ssh_validated: SSHPrivateKeyPayload | None = None
+    _ssh_envelope: bytes | None = None
+    _ssh_target_address: str = ""
+    _ssh_user: str = ""
+    if body.auth_scheme == "ssh_private_key":
+        import json as _json_mod
+        from pydantic import ValidationError
+        try:
+            raw_ssh = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh, dict):
+                raise TypeError("ssh_private_key value must be a JSON object")
+            raw_ssh.pop("scheme", None)
+            _ssh_validated = SSHPrivateKeyPayload(**raw_ssh)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key value must be a valid JSON object",
+                },
+            )
+        except ValidationError as exc:
+            # Return structured field errors so the UI can render per-field
+            # messages — C-2.  exc.errors() is pydantic v2 format:
+            # [{loc: [...], msg: "...", type: "..."}].
+            # include_input=False: prevents credential values (private_key_pem)
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing private_key_pem bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key payload malformed",
+                },
+            )
+        # Extract routing metadata for the separate gRPC fields — ADR-0021.
+        _ssh_envelope = _ssh_validated.to_vault_envelope()  # raw PEM bytes — NEVER logged
+        _ssh_target_address = _ssh_validated.target_address
+        _ssh_user = _ssh_validated.ssh_user
+
+    # Step 1g: For ssh_password, validate the structured payload — ADR-0021.
+    # body.value is expected to be a JSON object:
+    #   { "username": ..., "password": ..., "target_address": ... }
+    # Validation: safe username chars, password length 1..1024, host:port format.
+    # password is scrubbed from all log calls — ADR-0014.7, S-SEC-1.
+    _ssh_pwd_validated: SSHPasswordPayload | None = None
+    _ssh_pwd_envelope: bytes | None = None
+    _ssh_pwd_target_address: str = ""
+    _ssh_pwd_user: str = ""
+    if body.auth_scheme == "ssh_password":
+        import json as _json_mod
+        from pydantic import ValidationError
+        try:
+            raw_ssh_pwd = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_pwd, dict):
+                raise TypeError("ssh_password value must be a JSON object")
+            raw_ssh_pwd.pop("scheme", None)
+            _ssh_pwd_validated = SSHPasswordPayload(**raw_ssh_pwd)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password value must be a valid JSON object",
+                },
+            )
+        except ValidationError as exc:
+            # Return structured field errors so the UI can render per-field
+            # messages — C-2.  exc.errors() is pydantic v2 format:
+            # [{loc: [...], msg: "...", type: "..."}].
+            # include_input=False: prevents credential values (password)
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing password bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password payload malformed",
+                },
+            )
+        # Extract routing metadata for the separate gRPC fields — ADR-0021.
+        _ssh_pwd_envelope = _ssh_pwd_validated.to_vault_envelope()  # raw password bytes — NEVER logged
+        _ssh_pwd_target_address = _ssh_pwd_validated.target_address
+        _ssh_pwd_user = _ssh_pwd_validated.username
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     # For apple_jwt: pass the canonical JSON envelope as plaintext.
     # For google_service_account: pass the canonical JSON envelope as plaintext.
+    # For ssh_private_key: pass the raw PEM bytes as plaintext; routing metadata
+    #   goes as separate fields (target_address, ssh_user).
     vault_plaintext: str
+    vault_target_address: str
+    vault_ssh_user: str
     if apple_jwt_envelope is not None:
         vault_plaintext = apple_jwt_envelope
+        vault_target_address = ""
+        vault_ssh_user = ""
     elif _gsa_envelope is not None:
         vault_plaintext = _gsa_envelope.decode()
+        vault_target_address = ""
+        vault_ssh_user = ""
+    elif _ssh_envelope is not None:
+        vault_plaintext = _ssh_envelope.decode()
+        vault_target_address = _ssh_target_address
+        vault_ssh_user = _ssh_user
+    elif _ssh_pwd_envelope is not None:
+        vault_plaintext = _ssh_pwd_envelope.decode("utf-8")
+        vault_target_address = _ssh_pwd_target_address
+        vault_ssh_user = _ssh_pwd_user
     else:
         vault_plaintext = body.value
+        vault_target_address = ""
+        vault_ssh_user = ""
     vault_result = await vault.put_credential(
         tenant_id=str(tenant_id),
         service_id=db_svc_uuid,
@@ -315,6 +516,8 @@ async def create_credential(
         target_url=service_base_url,
         header_name=body.header_name or "",
         query_param=body.query_param or "",
+        target_address=vault_target_address,
+        ssh_user=vault_ssh_user,
     )
     key_version: int = cast(int, vault_result["key_version"])
 
@@ -326,6 +529,28 @@ async def create_credential(
     cred_wire_id = _new_cred_id()
     internal_id = uuid.UUID(_wire_to_db(cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
+
+    # Step 3b: Supersede any prior active rows for this (service_id, auth_scheme)
+    # before inserting the new credential — Bug C-6b fix (register path).
+    # If the operator registers a second credential for the same scheme without
+    # rotating first, the prior active row must become superseded so exactly one
+    # active row exists per (tenant_id, service_id, auth_scheme) after the write.
+    # The sweep uses `id IS DISTINCT FROM :new_id` (null-safe !=) for correctness.
+    # NOTE: a UNIQUE partial index is the DB-level guard; deferred to C-7 migration.
+    await session.execute(
+        text(
+            "UPDATE credentials SET status = 'superseded'"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            "   AND id IS DISTINCT FROM :new_id"
+        ),
+        {
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+            "scheme": body.auth_scheme,
+            "new_id": str(internal_id),
+        },
+    )
 
     # Step 4: Insert metadata-only record (NO plaintext stored) — ADR-0014.4
     # ciphertext/nonce/wrapped_dek are stored in the vault; local row holds metadata.
@@ -353,12 +578,28 @@ async def create_credential(
             "created_at": now,
         },
     )
+    # Sync services.current_key_version so the stored column stays in step with
+    # the new credential — Bug C-5 fix (register path).
+    await session.execute(
+        text(
+            "UPDATE services SET current_key_version = :kv, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "kv": key_version,
+            "now": now,
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+        },
+    )
 
     # Step 5: Emit audit event — ADR-0014.7
     # Rotation detected when vault returns key_version > 1 — T-1.8.2.
     # Payload MUST NOT include body.value or any plaintext — ADR-0014.4, S-SEC-1.
-    # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (SHA-256 hex[:16]);
+    # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (HMAC-SHA256 hex[:16]);
     # NEVER include p8_key_pem itself.
+    # fingerprint_scheme="pbkdf2_hmac_sha256_v1" identifies entries produced after the
+    # BLAKE2b → PBKDF2-HMAC-SHA256 migration (deploy ~2026-06-02); older rows lack this field.
     is_rotation = key_version > 1
     event_type = "credential.rotated" if is_rotation else "credential.registered"
     audit_payload: dict[str, Any] = {
@@ -370,24 +611,41 @@ async def create_credential(
     if is_rotation:
         audit_payload["previous_key_version"] = key_version - 1
     if apple_jwt_validated is not None:
-        import hashlib as _hashlib
         # Include non-sensitive metadata for the audit trail; NEVER p8_key_pem.
         audit_payload["key_id"] = apple_jwt_validated.key_id
         audit_payload["issuer_id"] = apple_jwt_validated.issuer_id
-        audit_payload["p8_fingerprint"] = _hashlib.sha256(
+        audit_payload["p8_fingerprint"] = _audit_fp(
             apple_jwt_validated.p8_key_pem.encode()
-        ).hexdigest()[:16]
+        )
+        audit_payload["fingerprint_scheme"] = "pbkdf2_hmac_sha256_v1"
     if _gsa_validated is not None:
-        import hashlib as _hashlib
         import json as _json_gsa
         # Include non-sensitive metadata only — NEVER service_account_json or private_key.
         _gsa_parsed: dict[str, object] = _json_gsa.loads(_gsa_validated.service_account_json)
         audit_payload["auth_scheme"] = "google_service_account"
         audit_payload["service_account_email"] = str(_gsa_parsed.get("client_email", ""))
         audit_payload["project_id"] = str(_gsa_parsed.get("project_id", ""))
-        audit_payload["json_key_fingerprint"] = _hashlib.sha256(
+        audit_payload["json_key_fingerprint"] = _audit_fp(
             _gsa_validated.service_account_json.encode()
-        ).hexdigest()[:16]
+        )
+        audit_payload["fingerprint_scheme"] = "pbkdf2_hmac_sha256_v1"
+    if _ssh_validated is not None:
+        # Include non-sensitive metadata only — NEVER private_key_pem.
+        # key_fingerprint is the first 16 hex chars of HMAC-SHA256(pem) — ADR-0021, ADR-0014.7.
+        audit_payload["target_address"] = _ssh_validated.target_address
+        audit_payload["ssh_user"] = _ssh_validated.ssh_user
+        audit_payload["key_fingerprint"] = _audit_fp(
+            _ssh_validated.private_key_pem.encode()
+        )
+        audit_payload["fingerprint_scheme"] = "pbkdf2_hmac_sha256_v1"
+    if _ssh_pwd_validated is not None:
+        # Include non-sensitive metadata only — NEVER the raw password.
+        # password_fingerprint is the first 16 hex chars of HMAC-SHA256(password) — ADR-0021, ADR-0014.7.
+        audit_payload["username"] = _ssh_pwd_validated.username
+        audit_payload["target_address"] = _ssh_pwd_validated.target_address
+        _pwd_bytes = _ssh_pwd_validated.password.encode("utf-8")
+        audit_payload["password_fingerprint"] = _audit_fp(_pwd_bytes)
+        audit_payload["fingerprint_scheme"] = "pbkdf2_hmac_sha256_v1"
 
     await audit_emit(
         session=session,
@@ -546,17 +804,23 @@ async def rotate_credential(
 
     old_internal_id: Any = old_row.id
 
-    # Step 4b: For oauth2_password_grant, validate the new credential value — BUG-2/BUG-9.
-    # Mirrors the create_credential validation (Step 1c) so that the rotate path
-    # cannot be used to bypass HTTPS + SSRF checks by rotating to a malicious token_url.
-    # Rejects: non-HTTPS token_url, loopback/private/link-local/IPv6-ULA (S-SEC-1),
-    # empty credential_fields. Requirements 19.2, 19.4, 19.5, 19.6.
+    # Step 4b: For structured-payload schemes, validate the new credential value.
+    # Mirrors the create_credential validation so that the rotate path cannot be used
+    # to bypass validation checks — same 5 pydantic-validated schemes apply.
+    # include_input=False on exc.errors() prevents credential bytes from leaking into
+    # the HTTP response — ADR-0014.7, S-SEC-1.
+    #
+    # Note: ssh_ca is intentionally skipped here (no SSHCAPayload model exists today;
+    # the catch would be unreachable). Follow-up TODO: add SSHCAPayload when
+    # ssh_ca scheme is fully implemented — track as TODO(ssh-ca-payload).
+    import json as _json_mod_rot
+    import pydantic as _pydantic_rot
+
     if body.auth_scheme == "oauth2_password_grant" and body.value is not None:
         try:
-            import json as _json_mod
-            raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            raw = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
             OAuth2PasswordGrantPayload(**raw)
-        except (_json_mod.JSONDecodeError, TypeError):
+        except (_json_mod_rot.JSONDecodeError, TypeError):
             return JSONResponse(
                 status_code=422,
                 content={
@@ -564,8 +828,21 @@ async def rotate_credential(
                     "title": "oauth2_password_grant value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+        except _pydantic_rot.ValidationError as exc:
+            # Structured field errors for the UI — C-2; include_input=False prevents leak.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("oauth2_password_grant credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=422,
                 content={
@@ -573,6 +850,233 @@ async def rotate_credential(
                     "title": "oauth2_password_grant payload failed validation",
                 },
             )
+
+    if body.auth_scheme == "apple_jwt" and body.value is not None:
+        try:
+            raw_apple_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_apple_rot, dict):
+                raise TypeError("apple_jwt value must be a JSON object")
+            raw_apple_rot.pop("scheme", None)
+            AppleJWTPayload(**raw_apple_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "title": "apple_jwt value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents p8_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "apple_jwt payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "google_service_account" and body.value is not None:
+        try:
+            raw_gsa_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_gsa_rot, dict):
+                raise TypeError("google_service_account value must be a JSON object")
+            raw_gsa_rot.pop("scheme", None)
+            GoogleServiceAccountPayload(**raw_gsa_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents service_account_json / private_key bytes
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "ssh_private_key" and body.value is not None:
+        try:
+            raw_ssh_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_rot, dict):
+                raise TypeError("ssh_private_key value must be a JSON object")
+            raw_ssh_rot.pop("scheme", None)
+            SSHPrivateKeyPayload(**raw_ssh_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents private_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key payload malformed",
+                },
+            )
+
+    # _rot_new_target_address / _rot_new_ssh_user are set below when the request
+    # body carries an SSH-scheme JSON payload with explicit routing metadata.
+    # They remain None when body.value is None or the scheme is non-SSH, in which
+    # case the carry-forward values from the prior credential are used instead.
+    _rot_new_target_address: str | None = None
+    _rot_new_ssh_user: str | None = None
+    _rot_new_header_name: str | None = None
+    _rot_new_query_param: str | None = None
+
+    if body.auth_scheme == "ssh_password" and body.value is not None:
+        try:
+            raw_ssh_pwd_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_pwd_rot, dict):
+                raise TypeError("ssh_password value must be a JSON object")
+            raw_ssh_pwd_rot.pop("scheme", None)
+            _ssh_pwd_rot_validated = SSHPasswordPayload(**raw_ssh_pwd_rot)
+            # Extract routing metadata for carry-forward override — ADR-0021.
+            _rot_new_target_address = _ssh_pwd_rot_validated.target_address
+            _rot_new_ssh_user = _ssh_pwd_rot_validated.username
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents password bytes from leaking — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "ssh_private_key" and body.value is not None:
+        # Re-validate to extract routing metadata for carry-forward override.
+        # Validation already happened in step 4b above; this second parse is cheap
+        # and keeps the extraction co-located with the plaintext construction.
+        try:
+            raw_ssh_key_rot2 = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if isinstance(raw_ssh_key_rot2, dict):
+                raw_ssh_key_rot2.pop("scheme", None)
+                _ssh_key_rot2_validated = SSHPrivateKeyPayload(**raw_ssh_key_rot2)
+                _rot_new_target_address = _ssh_key_rot2_validated.target_address
+                _rot_new_ssh_user = _ssh_key_rot2_validated.ssh_user
+        except Exception:
+            pass  # already validated in step 4b; extraction failure is non-fatal here
+
+    # Step 4c: Fetch prior credential from vault to carry forward routing metadata.
+    # Bug C-4: rotating without new plaintext created a new vault.credentials row
+    # with EMPTY target_address/ssh_user — ssh-proxy then failed "no target address".
+    # Fix: read the currently-active credential before overwriting it. Use its
+    # target_address, ssh_user, header_name, query_param as defaults for the new row
+    # when the request body doesn't explicitly provide them.
+    # ADR-0014.4: plaintext from get_credential is not stored, logged, or returned.
+    _prior_target_address: str = ""
+    _prior_ssh_user: str = ""
+    _prior_header_name: str = ""
+    _prior_query_param: str = ""
+    _prior_target_url: str = rotate_service_base_url  # default: current service base_url
+    try:
+        _prior_cred = await vault.get_credential(
+            tenant_id=str(tenant_id),
+            service_id=db_svc_uuid,
+        )
+        if _prior_cred is not None:
+            _prior_target_address = str(_prior_cred.get("target_address") or "")
+            _prior_ssh_user = str(_prior_cred.get("ssh_user") or "")
+            _prior_header_name = str(_prior_cred.get("header_name") or "")
+            _prior_query_param = str(_prior_cred.get("query_param") or "")
+    except Exception:
+        # Non-fatal: if vault is unreachable for the GET, proceed with empty defaults.
+        # The PUT will still be attempted; if vault is down the PUT will also fail.
+        logger.warning(
+            "rotate_credential: could not fetch prior credential for carry-forward "
+            "(tenant=%s service=%s) — routing metadata may be empty",
+            tenant_id,
+            db_svc_uuid,
+        )
+
+    # Resolved routing metadata: request override takes precedence over carry-forward.
+    rot_target_address: str = _rot_new_target_address if _rot_new_target_address is not None else _prior_target_address
+    rot_ssh_user: str = _rot_new_ssh_user if _rot_new_ssh_user is not None else _prior_ssh_user
+    rot_header_name: str = _rot_new_header_name if _rot_new_header_name is not None else _prior_header_name
+    rot_query_param: str = _rot_new_query_param if _rot_new_query_param is not None else _prior_query_param
 
     # Step 5: Call Vault Adapter for new credential — plaintext never stored
     # When body.value is None (e.g., operator clicked Rotate in the UI without
@@ -589,7 +1093,11 @@ async def rotate_credential(
         service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
         plaintext=plaintext,
-        target_url=rotate_service_base_url,
+        target_url=_prior_target_url,
+        header_name=rot_header_name,
+        query_param=rot_query_param,
+        target_address=rot_target_address,
+        ssh_user=rot_ssh_user,
     )
     new_key_version: int = cast(int, vault_result["key_version"])
 
@@ -600,13 +1108,31 @@ async def rotate_credential(
     new_internal_id = uuid.UUID(_wire_to_db(new_cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
 
-    # Step 7: Atomic DB transaction — mark old superseded, insert new active
+    # Step 7: Atomic DB transaction — mark old superseded, insert new active,
+    # and sync services.current_key_version (Bug C-5: stored column drifted from
+    # vault.credentials.is_current when rotate didn't update it).
+    #
+    # Bug C-6b fix: sweep ALL prior active rows for this (service_id, auth_scheme)
+    # pair, not just the single row identified by rotate_from.  Live DB can have
+    # multiple rows with status='active' for the same (service, scheme) — e.g.
+    # kv=3 AND kv=4 both active — which rotate's old single-row UPDATE missed.
+    # Using `id IS DISTINCT FROM :new_id` (null-safe != ) sweeps every prior active
+    # row even if old_internal_id was NULL (should not happen, but defensive).
+    # NOTE: a UNIQUE partial index on (service_id, auth_scheme) WHERE status='active'
+    # would be the DB-level guard; deferred to C-7 migration.
     await session.execute(
         text(
             "UPDATE credentials SET status = 'superseded'"
-            " WHERE id = :old_id AND tenant_id = :tid"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            "   AND id IS DISTINCT FROM :new_id"
         ),
-        {"old_id": str(old_internal_id), "tid": str(tenant_id)},
+        {
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+            "scheme": body.auth_scheme,
+            "new_id": str(new_internal_id),
+        },
     )
     await session.execute(
         text(
@@ -628,6 +1154,22 @@ async def rotate_credential(
             "auth_scheme": body.auth_scheme,
             "status": "active",
             "created_at": now,
+        },
+    )
+    # Sync services.current_key_version to match the new active credential's
+    # key_version — Bug C-5 fix.  Must be in the same logical unit of work so
+    # that if the session rolls back (e.g. on commit failure) the column doesn't
+    # drift. SQLAlchemy flushes all pending changes atomically on session.commit().
+    await session.execute(
+        text(
+            "UPDATE services SET current_key_version = :kv, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "kv": new_key_version,
+            "now": now,
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
         },
     )
 

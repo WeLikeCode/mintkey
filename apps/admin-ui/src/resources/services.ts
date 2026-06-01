@@ -486,7 +486,9 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           // POST with no payload (e.g. empty form submit): fall through gracefully.
-          if (!request.payload || !request.payload.method) {
+          // SSH services post {timeout_ms} only (no method/path/headers/body);
+          // HTTP services post {method, path, ...}. Either is valid.
+          if (!request.payload || (!request.payload.method && !request.payload.timeout_ms)) {
             return { record: await recordJSON(context) };
           }
 

@@ -30,7 +30,9 @@ import {
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { AUTH_SCHEMES, getCredentialFields, type KvRow } from "../../lib/auth-scheme.js";
+import { AUTH_SCHEMES, getCredentialFields, buildCredentialPayload, type KvRow } from "../../lib/auth-scheme.js";
+import { extractFieldErrors, type AdminApiErrorResponse } from "../../lib/credential-errors.js";
+import AsyncCombobox from "../properties/AsyncCombobox.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -167,6 +169,8 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
   // ── submission state ───────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-field validation errors — keyed by credFields field name — C-2.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState(false);
 
   // ── on mount: read service_id from URL ────────────────────────────────────
@@ -205,6 +209,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
 
     setSubmitting(true);
     setError(null);
+    setFieldErrors({});
 
     const api = new ApiClient();
     try {
@@ -218,6 +223,38 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
             scheme: "google_service_account",
             service_account_json: credFields["service_account_json"] ?? "",
             scope: credFields["scope"] ?? "https://www.googleapis.com/auth/androidpublisher",
+          }),
+        };
+      } else if (authScheme === "ssh_private_key") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_private_key",
+            private_key_pem: credFields["private_key_pem"] ?? "",
+            target_address: credFields["target_address"] ?? "",
+            ssh_user: credFields["ssh_user"] ?? "",
+          }),
+        };
+      } else if (authScheme === "ssh_ca") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_ca",
+            ca_private_key_pem: credFields["ca_private_key_pem"] ?? "",
+            ca_principal_prefix: credFields["ca_principal_prefix"] ?? "",
+          }),
+        };
+      } else if (authScheme === "ssh_password") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_password",
+            username: credFields["username"] ?? "",
+            password: credFields["password"] ?? "",
+            target_address: credFields["target_address"] ?? "",
           }),
         };
       } else if (authScheme === "oauth2_password_grant") {
@@ -246,11 +283,26 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
           value: valueJson,
           token_url: tokenUrl,
         };
-      } else {
+      } else if (authScheme === "apple_jwt") {
         credPayload = {
           auth_scheme: authScheme,
           service_id: serviceId.trim(),
-          ...credFields,
+          value: JSON.stringify({
+            scheme: "apple_jwt",
+            p8_key_pem: credFields["p8_key_pem"] ?? "",
+            key_id: credFields["key_id"] ?? "",
+            issuer_id: credFields["issuer_id"] ?? "",
+          }),
+        };
+      } else {
+        // Legacy flat-value schemes (bearer_token, basic_auth, api_key_header,
+        // api_key_query, oauth2_client_credentials, oidc_client_secret, mtls, none).
+        // buildCredentialPayload reads credFields at the top level — correct here
+        // because these schemes were never nested inside `value` by the frontend.
+        const built = buildCredentialPayload(authScheme, credFields);
+        credPayload = {
+          service_id: serviceId.trim(),
+          ...built,
         };
 
         // Remove empty optional fields so admin-api doesn't receive empty strings
@@ -271,9 +323,16 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
       const result = resp.data as {
         notice?: { message: string; type: string };
         redirectUrl?: string;
+        // fieldErrors is forwarded by the credentials `new` handler — C-2.
+        fieldErrors?: string | Array<{ loc: (string | number)[]; msg: string; type?: string }>;
       };
 
       if (result?.notice?.type === "error") {
+        // Parse per-field errors from the structured pydantic detail array.
+        const parsed = extractFieldErrors(
+          { detail: result.fieldErrors } as AdminApiErrorResponse
+        );
+        setFieldErrors(parsed);
         setError(result.notice.message || "Failed to register credential.");
         return;
       }
@@ -363,14 +422,13 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
               <input type="hidden" name="service_id" value={serviceId} />
             </Box>
           ) : (
-            <Input
-              id="service_id"
+            <AsyncCombobox
+              resourceId="services"
               value={serviceId}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServiceId(e.target.value)}
-              placeholder="svc_..."
-              style={inputStyle}
-              required
-              data-testid="field-input-service_id"
+              onChange={setServiceId}
+              placeholder="Search services by name or ID…"
+              disabled={false}
+              testId="field-combobox-service_id"
             />
           )}
           {serviceIdLocked && (
@@ -422,7 +480,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? (f.defaultValue ?? "")}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? f.defaultValue ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                     min={f.min}
                     max={f.max}
@@ -434,9 +492,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? (f.defaultValue ?? "")}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                   />
+                )}
+                {fieldErrors[f.name] && (
+                  <div
+                    style={{ color: "#dc3545", fontSize: 12, marginTop: 4 }}
+                    data-testid={`field-error-${f.name}`}
+                  >
+                    {f.label}: {fieldErrors[f.name]}
+                  </div>
                 )}
               </FieldRow>
             ))}
@@ -467,7 +533,7 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? ""}
                     onChange={(e) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={textareaStyle}
+                    style={fieldErrors[f.name] ? { ...textareaStyle, borderColor: "#dc3545" } : textareaStyle}
                     data-testid={`field-input-${f.name}`}
                   />
                 ) : (
@@ -477,9 +543,17 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
                     value={credFields[f.name] ?? ""}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCredField(f.name, e.target.value)}
                     placeholder={f.placeholder ?? ""}
-                    style={inputStyle}
+                    style={fieldErrors[f.name] ? { ...inputStyle, borderColor: "#dc3545" } : inputStyle}
                     data-testid={`field-input-${f.name}`}
                   />
+                )}
+                {fieldErrors[f.name] && (
+                  <div
+                    style={{ color: "#dc3545", fontSize: 12, marginTop: 4 }}
+                    data-testid={`field-error-${f.name}`}
+                  >
+                    {f.label}: {fieldErrors[f.name]}
+                  </div>
                 )}
               </FieldRow>
             ))}

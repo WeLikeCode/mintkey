@@ -10,7 +10,14 @@
  *   5. Renders a rich result panel: ok, status_code, latency_ms, final_url,
  *      response_body_truncated.
  *
- * Source: UX-CLARITY P0; ADMIN_UI_SPEC.md §1.4.
+ * SSH services (auth_scheme ∈ {ssh_private_key, ssh_password, ssh_ca}):
+ *   Method / Path / Headers / Body / curl preview are hidden — they are
+ *   meaningless for an SSH dial.  The panel shows the target URL from base_url
+ *   and a single Timeout field.  The SSH user comes from the vault credential
+ *   metadata at test time; we don't fetch it here to avoid an extra round-trip
+ *   (v1 simplicity — the test result message confirms the actual user used).
+ *
+ * Source: UX-CLARITY P0; ADMIN_UI_SPEC.md §1.4; ADR-0021.
  */
 
 import React, { useState, useMemo } from "react";
@@ -24,6 +31,10 @@ import {
   Input,
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
+
+// ── SSH schemes ───────────────────────────────────────────────────────────────
+
+const SSH_AUTH_SCHEMES = new Set(["ssh_private_key", "ssh_password", "ssh_ca"]);
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -232,6 +243,164 @@ const ResultPanel = ({ result }: ResultPanelProps): React.ReactElement => {
   );
 };
 
+// ── SSHTestPanel ─────────────────────────────────────────────────────────────
+
+interface SSHTestPanelProps {
+  baseUrl: string;
+  recordId: string;
+  resourceId: string;
+  actionName: string;
+  cancelHref: string;
+}
+
+const SSHTestPanel = ({
+  baseUrl,
+  recordId,
+  resourceId,
+  actionName,
+  cancelHref,
+}: SSHTestPanelProps): React.ReactElement => {
+  const [timeoutMs, setTimeoutMs] = useState(10000);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [result, setResult] = useState<TestResult | null>(null);
+
+  // Show planned connection. The actual SSH user lives in the credential's
+  // ssh_user metadata (not the service record); the planned-connection display
+  // stays credential-free — the SSH user is resolved server-side from vault.
+  const sshCommand = `ssh ${baseUrl.replace(/^ssh:\/\//, "")}  # SSH user + key/password from vault credential`;
+
+  const handleRun = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    setResult(null);
+
+    try {
+      const api = new ApiClient();
+      const response = await api.recordAction({
+        resourceId,
+        recordId,
+        actionName,
+        method: "post",
+        data: { timeout_ms: timeoutMs },
+      });
+
+      const data = response.data as {
+        notice?: { message: string; type: string };
+        testResult?: TestResult;
+        record?: { params?: Record<string, unknown> };
+      };
+
+      const embedded =
+        (data?.testResult as TestResult | undefined) ??
+        (data?.record?.params?.testResult as TestResult | undefined);
+
+      if (embedded) {
+        setResult(embedded);
+        return;
+      }
+
+      const noticeMsg = data?.notice?.message ?? "";
+      if (noticeMsg) {
+        try {
+          const parsed = JSON.parse(noticeMsg) as TestResult;
+          if (typeof parsed.ok === "boolean") {
+            setResult(parsed);
+            return;
+          }
+        } catch {
+          // not JSON
+        }
+        const isErr = data?.notice?.type === "error";
+        setResult({
+          ok: !isErr,
+          error: isErr ? noticeMsg : undefined,
+          response_body_truncated: isErr ? undefined : noticeMsg,
+        });
+        return;
+      }
+
+      setSubmitError("Unexpected response from server — no result data");
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Box variant="white" p="xxl" data-testid="ssh-test-panel">
+      <H3 mb="default">Test SSH Connection</H3>
+      <Text mb="xl" style={{ color: "#6c757d" }}>
+        Verifies that the stored SSH credential can authenticate to{" "}
+        <strong style={{ fontFamily: "monospace", fontSize: 13 }}>{baseUrl}</strong>.
+        {" "}The SSH user and key are taken from the vault — no credential is
+        exposed here.
+      </Text>
+
+      {/* Planned SSH command — shows target but never the credential */}
+      <Box mb="xl" data-testid="ssh-command-preview">
+        <Label>Planned connection</Label>
+        <div style={monoBlock} data-testid="ssh-command-block">
+          {sshCommand}
+        </div>
+      </Box>
+
+      {/* Timeout */}
+      <Box mb="xl">
+        <Label htmlFor="ssh-timeout">Timeout (ms)</Label>
+        <Input
+          id="ssh-timeout"
+          type="number"
+          value={String(timeoutMs)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            setTimeoutMs(parseInt(e.target.value, 10) || 10000)
+          }
+          style={{ ...inputStyle, maxWidth: 200 }}
+          data-testid="field-input-ssh-timeout"
+        />
+      </Box>
+
+      {submitError && (
+        <Box
+          mb="lg"
+          p="lg"
+          style={{
+            background: "#f8d7da",
+            border: "1px solid #f5c6cb",
+            borderRadius: 4,
+          }}
+          data-testid="submit-error"
+        >
+          <Text style={{ color: "#721c24" }}>{submitError}</Text>
+        </Box>
+      )}
+
+      <Box flex style={{ gap: 12 }}>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={submitting}
+          onClick={handleRun}
+          data-testid="test-service-submit"
+        >
+          {submitting ? "Testing…" : "Run Test"}
+        </Button>
+        <Button
+          as="a"
+          href={cancelHref}
+          variant="light"
+          data-testid="test-service-cancel"
+        >
+          Cancel
+        </Button>
+      </Box>
+
+      {result !== null && <ResultPanel result={result} />}
+    </Box>
+  );
+};
+
 // ── TestServiceForm (main component) ─────────────────────────────────────────
 
 const TestServiceForm = (props: Props): React.ReactElement => {
@@ -244,10 +413,32 @@ const TestServiceForm = (props: Props): React.ReactElement => {
     action: { name: string; label: string };
   };
 
-  // Extract base_url from the service record if available
+  // Extract base_url and auth_scheme from the service record if available
   const baseUrl =
     (record?.params?.base_url as string | undefined) ??
     "{base_url}";
+
+  const authScheme =
+    (record?.params?.auth_scheme as string | undefined) ?? "";
+
+  const cancelHref = record?.id
+    ? `/admin/resources/${resource.id}/records/${record.id}/show`
+    : `/admin/resources/${resource.id}`;
+
+  // SSH services: hide HTTP form fields entirely — they are meaningless for
+  // an SSH dial. Show SSHTestPanel instead. Detected via auth_scheme field
+  // (source of truth) which is always present on the service record params.
+  if (SSH_AUTH_SCHEMES.has(authScheme)) {
+    return (
+      <SSHTestPanel
+        baseUrl={baseUrl}
+        recordId={String(record.id)}
+        resourceId={resource.id}
+        actionName={action.name}
+        cancelHref={cancelHref}
+      />
+    );
+  }
 
   // ── form state ────────────────────────────────────────────────────────────
   const [method, setMethod] = useState<HttpMethod>("GET");
@@ -389,10 +580,6 @@ const TestServiceForm = (props: Props): React.ReactElement => {
       setSubmitting(false);
     }
   };
-
-  const cancelHref = record?.id
-    ? `/admin/resources/${resource.id}/records/${record.id}/show`
-    : `/admin/resources/${resource.id}`;
 
   return (
     <Box variant="white" p="xxl" data-testid="test-service-form">

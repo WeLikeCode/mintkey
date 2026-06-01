@@ -44,7 +44,7 @@ templates:
     credential_hint:
       field: service_account_json
       help: "Paste the full service account JSON key file. Mintkey auto-rotates access tokens for scope https://www.googleapis.com/auth/androidpublisher."
-      format: '{"type": "service_account", ...}'
+      format: 'Google service account JSON (see GCP Console → IAM → Service Accounts → Keys)'
       scope_default: "https://www.googleapis.com/auth/androidpublisher"
     test_path: /androidpublisher/v3/applications
 
@@ -241,6 +241,38 @@ templates:
       help: "Create an API key at https://platform.openai.com/api-keys"
       format: "sk-..."
     test_path: /models
+
+  - template_id: ssh-bastion-key
+    name: ssh-bastion-key
+    display_name: SSH Bastion (key-based)
+    description: "Generic SSH host accessed via Mintkey bastion using a private key (recommended)."
+    base_url: ssh://CHANGE-ME-HOST:22
+    auth_type: ssh_private_key
+    openapi_spec_url: null
+    category: infrastructure
+    version: "1.0.0"
+    config_notes: "Replace base_url with ssh://your-host:port. Provide private key + username + target_address when adding the credential."
+    credential_hint:
+      field: private_key_pem
+      help: "Paste an OpenSSH private key (BEGIN OPENSSH PRIVATE KEY)."
+      format: "-----BEGIN OPENSSH PRIVATE KEY-----\n..."
+    test_path: /
+
+  - template_id: ssh-bastion-password
+    name: ssh-bastion-password
+    display_name: SSH Bastion (username + password)
+    description: "Generic SSH host accessed via Mintkey bastion using username + password. Prefer key-based when possible."
+    base_url: ssh://CHANGE-ME-HOST:22
+    auth_type: ssh_password
+    openapi_spec_url: null
+    category: infrastructure
+    version: "1.0.0"
+    config_notes: "Replace base_url with ssh://your-host:port. Password is stored encrypted in vault; rotated only on operator update."
+    credential_hint:
+      field: password
+      help: "Provide username + password + target_address when adding the credential."
+      format: "<password>"
+    test_path: /
 
   - template_id: slack
     name: slack

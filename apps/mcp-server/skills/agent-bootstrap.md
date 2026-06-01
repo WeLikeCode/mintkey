@@ -249,6 +249,40 @@ The proxy:
 - Emits an audit event (`proxy.call`).
 </proxy_usage>
 
+<ssh_services>
+**SSH services** use a separate bastion path instead of the HTTP proxy. You can detect them via `connect_type: "ssh"` in `list_services` / `describe_service` output, or by `auth_scheme` in `{ssh_private_key, ssh_password, ssh_ca}`.
+
+**How to use an SSH service:**
+
+1. Call `request_token(service_id, action="call")` — same as HTTP services.
+2. The response includes an `ssh_connect` block alongside the token:
+   ```json
+   {
+     "token": "<JWS>",
+     "ssh_connect": {
+       "host": "ssh-proxy", "port": 2222,
+       "external_host": "10.243.1.200", "external_port": 2222,
+       "ssh_user": "<your_agent_id>",
+       "auth_method": "password", "password_is_jwt": true
+     }
+   }
+   ```
+3. SSH to `ssh_connect.external_host:ssh_connect.external_port` as `ssh_connect.ssh_user`, supplying the `token` value as the SSH **password**. The bastion validates the JWT, fetches the stored credential from the vault, and routes you to the real target. Your agent never sees the upstream credential.
+
+**Example (non-interactive):**
+```bash
+sshpass -p "$JWT" ssh -p 2222 \
+  -o PreferredAuthentications=password \
+  -o PubkeyAuthentication=no \
+  -o StrictHostKeyChecking=accept-new \
+  "$AGENT_ID@10.243.1.200" 'whoami'
+```
+
+**Do NOT route SSH service calls through Kong** — Kong is HTTP-only and has no route for SSH services. The bastion (`:2222`) is the only valid endpoint.
+
+**JWT lifetime is ~10 minutes.** If your operation takes longer, call `request_token` again and reconnect before expiry.
+</ssh_services>
+
 <errors_and_revocation>
 The proxy and MCP tools return errors with a structured `mintkey:code` field in the response body (for HTTP errors) or in the error frame (for streaming MCP). Handle these distinct cases:
 

@@ -25,7 +25,20 @@ import CredentialNewForm from "../src/components/actions/CredentialNewForm.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Render CredentialNewForm and mock the AsyncCombobox initial list call.
+ * The combobox fetches top-50 services on mount; we provide an empty list by
+ * default (sufficient for all tests that don't need to select a service).
+ *
+ * Tests that need to select a specific service must call
+ *   mockResourceAction.mockResolvedValueOnce({ data: { records: [...] } })
+ * BEFORE calling renderForm(), then interact with the combobox.
+ */
 async function renderForm() {
+  // Always provide a fallback list response for the combobox mount call.
+  // Use mockResolvedValue (not Once) so multiple uses across tests don't interfere.
+  mockResourceAction.mockResolvedValueOnce({ data: { records: [] } });
+
   let result!: ReturnType<typeof render>;
   await act(async () => {
     result = render(React.createElement(CredentialNewForm));
@@ -118,14 +131,33 @@ describe("CredentialNewForm — oauth2_password_grant (jsdom)", () => {
   // ── AC-3: submit payload contract ─────────────────────────────────────────
 
   it("AC-3: submit assembles correct value JSON matching contract (userName + $.data.token + timeout=30)", async () => {
-    await renderForm();
+    // Provide svc_spotus in the initial service list so the combobox can select it.
+    mockResourceAction.mockResolvedValueOnce({
+      data: {
+        records: [{ params: { id: "svc_spotus", name: "SpotUS Service" } }],
+      },
+    });
+
+    let result!: ReturnType<typeof render>;
+    await act(async () => {
+      result = render(React.createElement(CredentialNewForm));
+    });
+
     await selectScheme("oauth2_password_grant");
 
-    // Fill service_id
-    const serviceIdInput = screen.getByTestId("field-input-service_id");
+    // Select service via the combobox — open it and click the first option
+    const comboInput = screen.getByTestId("field-combobox-service_id-input");
     await act(async () => {
-      fireEvent.change(serviceIdInput, { target: { value: "svc_spotus" } });
+      fireEvent.click(comboInput);
     });
+    const opt = screen.getByTestId("field-combobox-service_id-option-0");
+    await act(async () => {
+      fireEvent.mouseDown(opt);
+    });
+
+    // Verify the hidden value is now the wire-form ID
+    const hiddenInput = screen.getByTestId("field-combobox-service_id-value") as HTMLInputElement;
+    expect(hiddenInput.value).toBe("svc_spotus");
 
     // Fill token_url
     const tokenUrlInput = screen.getByTestId("field-input-token_url");
@@ -161,7 +193,7 @@ describe("CredentialNewForm — oauth2_password_grant (jsdom)", () => {
       fireEvent.change(timeoutInput, { target: { value: "30" } });
     });
 
-    // Mock successful API response
+    // Mock successful API response (this is the new action call, NOT the list call)
     mockResourceAction.mockResolvedValueOnce({
       data: { notice: { type: "success" } },
     });
@@ -172,11 +204,15 @@ describe("CredentialNewForm — oauth2_password_grant (jsdom)", () => {
     });
 
     await waitFor(() => {
-      expect(mockResourceAction).toHaveBeenCalledTimes(1);
+      // First call = list (combobox mount), second call = new action
+      expect(mockResourceAction).toHaveBeenCalledTimes(2);
     });
 
-    const [call] = mockResourceAction.mock.calls;
-    const data = call[0].data as Record<string, string>;
+    const newCall = mockResourceAction.mock.calls.find(
+      (c) => c[0]?.resourceId === "credentials" && c[0]?.actionName === "new"
+    );
+    expect(newCall).toBeDefined();
+    const data = newCall![0].data as Record<string, string>;
 
     expect(data.auth_scheme).toBe("oauth2_password_grant");
     expect(data.service_id).toBe("svc_spotus");

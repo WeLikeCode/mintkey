@@ -312,6 +312,36 @@ def _validate_test_url(url: str) -> tuple[bool, str | None]:
     return (True, None)
 
 
+def _parse_ssh_host_port(base_url: str) -> str:
+    """
+    Parse an SSH base_url (scheme ssh://) into "host:port" for vault.credentials.target_address.
+
+    Examples:
+      "ssh://172.24.1.234:22"  → "172.24.1.234:22"
+      "ssh://target-host:2222" → "target-host:2222"
+
+    Raises ValueError if the URL is malformed:
+      - scheme is not "ssh"
+      - host is missing
+      - port is missing (port is required for SSH routing)
+
+    Non-SSH base_urls must not be passed here — the caller is responsible for
+    checking auth_scheme before calling this helper.
+
+    Source: C-6a; ADR-0021.
+    """
+    parsed = urlsplit(base_url)
+    if parsed.scheme != "ssh":
+        raise ValueError(f"Expected ssh:// scheme, got '{parsed.scheme}://'")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("ssh:// URL missing hostname")
+    port = parsed.port
+    if port is None:
+        raise ValueError("ssh:// URL missing port (required for SSH routing)")
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
 def _wire_id_to_db_uuid(wire_id: str) -> str:
     """
     Convert a wire svc_ ID back to the UUID string stored in the DB.
@@ -351,6 +381,85 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
     if hasattr(row, "template_id") and row.template_id is not None:
         result["template_id"] = row.template_id
     return result
+
+
+# ---------------------------------------------------------------------------
+# SSH test helper — ADR-0021 / OPS-T
+# Implemented in _ssh_test.py to keep this module importable without asyncssh
+# and to allow unit testing without pulling in mintkey_models.
+# ---------------------------------------------------------------------------
+
+from admin_api.api._ssh_test import SSH_SCHEMES as _SSH_SCHEMES  # noqa: E402
+from admin_api.api._ssh_test import test_ssh_credential as _test_ssh_credential  # noqa: E402
+
+
+async def _run_ssh_post_save_test(
+    auth_scheme: str,
+    cred_entry: dict[str, Any] | None,
+    base_url: str,
+    timeout_ms: int,
+) -> dict[str, Any]:
+    """
+    Build the envelope JSON for a post-save SSH credential test and call
+    _test_ssh_credential.  Credential plaintext NEVER appears in return dict.
+
+    For ssh_private_key: {"scheme": ..., "private_key_pem": ..., "ssh_user": ..., "target_address": ...}
+    For ssh_password:    {"scheme": ..., "username": ..., "password": ..., "target_address": ...}
+
+    Returns the same {ok, status_code, latency_ms, final_url, response_body_truncated}
+    shape as the HTTP test path so the UI renders it unchanged.
+
+    ADR-0021 / OPS-T / S-SEC-1.
+    """
+    import json as _json  # noqa: PLC0415
+
+    if not cred_entry:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "latency_ms": 0,
+            "final_url": base_url,
+            "response_body_truncated": "No credential found for this service.",
+        }
+
+    target_address: str = cast(str, cred_entry.get("target_address") or "")
+    ssh_user: str = cast(str, cred_entry.get("ssh_user") or "")
+    plaintext: str = cast(str, cred_entry.get("plaintext") or "")
+
+    # Guard: legacy credentials created before ADR-0021 may lack these fields.
+    if not target_address or not ssh_user:
+        return {
+            "ok": False,
+            "status_code": 400,
+            "latency_ms": 0,
+            "final_url": base_url,
+            "response_body_truncated": (
+                "Credential is missing target_address or ssh_user metadata. "
+                "Re-create the credential to populate these fields."
+            ),
+        }
+
+    if auth_scheme == "ssh_private_key":
+        envelope = _json.dumps({
+            "scheme": auth_scheme,
+            "private_key_pem": plaintext,
+            "ssh_user": ssh_user,
+            "target_address": target_address,
+        })
+    else:  # ssh_password
+        envelope = _json.dumps({
+            "scheme": auth_scheme,
+            "username": ssh_user,
+            "password": plaintext,
+            "target_address": target_address,
+        })
+
+    return await _test_ssh_credential(
+        scheme=auth_scheme,
+        credential_value=envelope,
+        base_url=base_url,
+        timeout_ms=timeout_ms,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +885,44 @@ async def test_service_transient(
     auth_scheme: str = body.service.auth_scheme
     test = body.test
 
+    # SSH schemes — dial the target directly via asyncssh; no HTTP involved.
+    # This branch MUST appear before the URL-building / httpx path below.
+    if auth_scheme in _SSH_SCHEMES:
+        ssh_result = await _test_ssh_credential(
+            scheme=auth_scheme,
+            credential_value=body.credential.value,
+            base_url=base_url,
+            timeout_ms=test.timeout_ms,
+        )
+        # Emit audit event for SSH test — same shape as HTTP test, no credential data.
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=None,
+                target_type="service",
+                payload={
+                    "method": "SSH",
+                    "path_template": test.path,
+                    "base_url": base_url,
+                    "auth_scheme": auth_scheme,
+                    "target_host": urlparse(ssh_result.get("final_url", base_url)).hostname,
+                    "status_code": ssh_result.get("status_code", 0),
+                    "latency_ms": ssh_result.get("latency_ms", 0),
+                    "ok": ssh_result.get("ok", False),
+                    "transient": True,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service_transient(SSH): audit_emit failed (non-fatal). tenant=%s",
+                str(tenant_id),
+            )
+        return JSONResponse(ssh_result)
+
     # Build the final URL
     base_url_stripped = base_url.rstrip("/")
     path_part = test.path if test.path.startswith("/") else "/" + test.path
@@ -855,7 +1002,9 @@ async def test_service_transient(
         error = "timeout"
     except Exception as exc:  # noqa: BLE001
         latency_ms = int((_time.monotonic() - start) * 1000)
-        error = str(exc)
+        # ADR-0014.7 / S-SEC-1: do NOT include str(exc) — may contain internal hostnames
+        # or stack frames. Emit exception type only; details go to structured logger.
+        error = type(exc).__name__
 
     # Emit audit event — ADR-0014.7, Req AUD-3
     # Wrapped in try/except so a logging failure never breaks the response.
@@ -944,6 +1093,48 @@ async def test_service(
     from admin_api.services.vault_client import get_vault_client  # noqa: PLC0415
     vault = await get_vault_client()
     cred_entry = await vault.get_credential(str(tenant_id), str(row.id))
+
+    # SSH schemes — dial via asyncssh; method/path/headers/body are meaningless.
+    # For ssh_* schemes, method/path/headers/body are ignored. — OPS-T / ADR-0021.
+    if auth_scheme in _SSH_SCHEMES:
+        ssh_result = await _run_ssh_post_save_test(
+            auth_scheme=auth_scheme,
+            cred_entry=cred_entry,
+            base_url=base_url,
+            timeout_ms=req.timeout_ms or 10000,
+        )
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=row.id,
+                target_type="service",
+                payload={
+                    "method": "SSH",
+                    "auth_scheme": auth_scheme,
+                    "target_host_port": (ssh_result.get("final_url") or base_url).replace("ssh://", ""),
+                    "status_code": ssh_result.get("status_code", 0),
+                    "latency_ms": ssh_result.get("latency_ms", 0),
+                    "ok": ssh_result.get("ok", False),
+                    "transient": False,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service(SSH): audit_emit failed (non-fatal). service=%s tenant=%s",
+                service_id,
+                str(tenant_id),
+            )
+        return JSONResponse({
+            "ok": ssh_result.get("ok", False),
+            "status_code": ssh_result.get("status_code", 0),
+            "latency_ms": ssh_result.get("latency_ms", 0),
+            "response_body_truncated": ssh_result.get("response_body_truncated", ""),
+            "final_url": ssh_result.get("final_url", base_url),
+        })
 
     # Build the final URL: urljoin handles leading-slash on path correctly.
     # urljoin('http://x:8999', '/health') == 'http://x:8999/health'
@@ -1142,15 +1333,85 @@ async def update_service(
     """
     Update mutable fields of a service.
 
-    Source: Req 3; ADR-0008; ADR-0014.7.
+    C-6a: When base_url changes on an SSH service (auth_scheme starts with "ssh_"),
+    the active credential's vault.credentials.target_address is updated in the same
+    SQL transaction so that ssh-proxy immediately routes to the new address.
+    Non-SSH services are unaffected. Malformed ssh:// URLs (missing port, etc.)
+    are rejected with a structured 400 before any writes occur.
+
+    Source: Req 3; ADR-0008; ADR-0014.7; C-6a.
     """
     if body.base_url is not None and _is_forbidden_destination(body.base_url):
         return _forbidden_response()
+
+    # C-6a: Validate ssh:// base_url early — reject before any DB write.
+    # Only applies when base_url is being updated for an SSH service.
+    # We check the requested auth_scheme first; if that's not set, we'll
+    # check the stored auth_scheme after the service lookup below.
+    new_target_address: str | None = None  # populated for SSH services below
+    if body.base_url is not None:
+        # Determine effective auth_scheme: prefer explicit override, fall back to stored.
+        # We must check the stored scheme when body.auth_scheme is None.
+        effective_scheme_hint = body.auth_scheme  # may be None; resolved below if needed
+        if effective_scheme_hint is not None and effective_scheme_hint.startswith("ssh_"):
+            # The caller is explicitly setting an SSH scheme — validate now.
+            try:
+                new_target_address = _parse_ssh_host_port(body.base_url)
+            except ValueError:
+                # Use a fixed message to avoid surfacing exception data in the response —
+                # ADR-0014.7, S-SEC-1. The validation constraint is always the same:
+                # base_url must be in ssh://host:port or host:port format.
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "mintkey:code": "invalid_ssh_base_url",
+                        "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
+                    },
+                )
+        elif effective_scheme_hint is None and body.base_url.startswith("ssh://"):
+            # base_url looks like SSH but we don't yet know the stored scheme.
+            # Validate the URL shape now; whether to cascade is decided after
+            # the service SELECT below.
+            try:
+                new_target_address = _parse_ssh_host_port(body.base_url)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "mintkey:code": "invalid_ssh_base_url",
+                        "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
+                    },
+                )
 
     await set_tenant_context(session, tenant_id)
 
     db_uuid = _wire_id_to_db_uuid(service_id)
     now = datetime.now(timezone.utc)
+
+    # C-6a: Fetch the current stored auth_scheme when the caller didn't supply one.
+    # We need it to decide whether to cascade the base_url change to vault.credentials.
+    stored_auth_scheme: str | None = None
+    if body.base_url is not None and body.auth_scheme is None:
+        svc_lookup = await session.execute(
+            text("SELECT auth_scheme FROM services WHERE id = :sid AND tenant_id = :tid"),
+            {"sid": db_uuid, "tid": str(tenant_id)},
+        )
+        svc_lookup_row = svc_lookup.fetchone()
+        if svc_lookup_row is not None:
+            stored_auth_scheme = str(svc_lookup_row.auth_scheme or "")
+            # Validate the base_url as SSH if stored scheme is ssh_* and we
+            # haven't parsed it yet (meaning it doesn't start with "ssh://").
+            if stored_auth_scheme.startswith("ssh_") and new_target_address is None:
+                try:
+                    new_target_address = _parse_ssh_host_port(body.base_url)
+                except ValueError:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "mintkey:code": "invalid_ssh_base_url",
+                            "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
+                        },
+                    )
 
     # Build the UPDATE using a fixed set of known columns to avoid dynamic SQL.
     # Each column is either updated to its new value or kept via COALESCE to the
@@ -1182,6 +1443,37 @@ async def update_service(
             "tid": str(tenant_id),
         },
     )
+
+    # C-6a: Cascade base_url change to vault.credentials.target_address for SSH services.
+    # The target_address column lives in vault.credentials (encrypted-blob store), NOT
+    # in public.credentials (admin metadata table).  mintkey_app has SELECT+UPDATE on
+    # vault.credentials (granted in 018-vault-schema.yaml + 019-grants-defensive.yaml).
+    # We UPDATE the is_current=true row — vault-adapter ensures at most one per service.
+    # If no credential exists yet, the WHERE matches nothing and the UPDATE is a no-op.
+    # Same session → same implicit transaction; both UPDATEs commit or rollback together.
+    # Source: C-6a; ADR-0021.
+    effective_auth_scheme = body.auth_scheme or stored_auth_scheme or ""
+    if body.base_url is not None and new_target_address is not None and effective_auth_scheme.startswith("ssh_"):
+        await session.execute(
+            text(
+                "UPDATE vault.credentials"
+                "   SET target_address = :target_address"
+                " WHERE service_id = :sid AND tenant_id = :tid"
+                "   AND is_current = true"
+            ),
+            {
+                "target_address": new_target_address,
+                "sid": db_uuid,
+                "tid": str(tenant_id),
+            },
+        )
+        logger.info(
+            "update_service: cascaded base_url → vault.credentials.target_address='%s'"
+            " for service=%s scheme=%s",
+            new_target_address,
+            service_id,
+            effective_auth_scheme,
+        )
 
     await audit_emit(
         session=session,

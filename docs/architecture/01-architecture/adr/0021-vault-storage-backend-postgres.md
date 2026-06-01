@@ -87,3 +87,24 @@ Summary:
 - [ADR-0015](0015-liquibase-schema-source-of-truth.md) — Liquibase as schema source of truth; changelog `018-vault-schema.yaml`.
 - [`docs/HOW-TO.md`](../../HOW-TO.md) — operator playbook; §4 Backup and restore; §5 Vault migration.
 - `remediation/active/2026-05-31-vault-pg-migration/00-state.md` — cutover evidence (C5 verification, pre/post gRPC hashes, live API probes).
+
+---
+
+## Corrigendum — vault.credentials.target_address deprecated for SSH per ADR-0023
+
+**Date:** 2026-06-01. **Authority:** [ADR-0023](0023-ssh-upstream-base-url-canonical.md).
+
+The §Decision §Schema block lists `target_address` as an active column read by ssh-proxy for SSH
+routing. As of ADR-0023:
+
+- For SSH auth schemes (`ssh_password`, `ssh_private_key`, `ssh_ca`), **`services.base_url` is the
+  canonical upstream address**. vault-adapter's `GetCredential` LEFT JOINs `public.services` and
+  returns `base_url`; ssh-proxy uses it directly.
+- `vault.credentials.target_address` is **deprecated** for SSH routing. It is retained in the
+  schema as a transition safety net and kept in sync via the C-6 cascade (admin-api writes
+  `target_address` when `base_url` changes), but it is no longer the authoritative field.
+- A follow-up migration (ADR-0023 §Follow-up F2) will `DROP COLUMN vault.credentials.target_address`
+  after a quiet observation period.
+
+This does not change the KEK/DEK scheme, RLS policy, backup procedure, or any other aspect of
+this ADR.

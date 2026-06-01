@@ -93,6 +93,18 @@ enum AuthScheme {
   AUTH_SCHEME_OAUTH2_PASSWORD_GRANT = 8;
   AUTH_SCHEME_APPLE_JWT = 9;
   AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT = 10;
+  // SSH_PRIVATE_KEY: Vault stores an SSH private key (PEM or OpenSSH format).
+  // Used by the SSH proxy (ADR-0021) to authenticate to backend SSH servers.
+  // The proxy holds the key in session scope and zeros it on disconnect.
+  AUTH_SCHEME_SSH_PRIVATE_KEY = 11;
+  // SSH_CA: Vault stores an SSH Certificate Authority signing key.
+  // Used by the SSH proxy (ADR-0021, Phase 2) to sign short-lived SSH certificates
+  // for direct-connect mode (agent connects directly to backend, no bastion in data path).
+  AUTH_SCHEME_SSH_CA = 12;
+  // SSH_PASSWORD: Vault stores a plaintext SSH password for username+password bastion auth.
+  // The password is stored as raw bytes in the encrypted payload; target_address and
+  // ssh_user are stored in the dedicated metadata columns (ADR-0021).
+  AUTH_SCHEME_SSH_PASSWORD = 13;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
@@ -141,6 +153,11 @@ message GetCredentialResponse {
   //   OAUTH2_CLIENT_CREDENTIALS, OIDC_CLIENT_SECRET ->
   //         JSON-encoded structured payload (see Cred*ClientSecret
   //         schemas in docs/contracts/rest/openapi.yaml).
+  //   SSH_PRIVATE_KEY -> PEM or OpenSSH format private key bytes.
+  //         The SSH proxy (ADR-0021) holds this in session scope and
+  //         zeros it on disconnect. Never injected into HTTP headers.
+  //   SSH_CA -> SSH Certificate Authority signing key bytes (Phase 2).
+  //         Used by the SSH proxy to sign short-lived SSH certificates.
   bytes value = 2;
 
   // Optional upstream expiry (e.g. for OAuth2 access tokens cached by
@@ -165,6 +182,23 @@ message GetCredentialResponse {
   // Stored alongside the credential so the proxy plugin never needs to trust
   // the caller-supplied X-Mintkey-Target header.
   string target_url = 8;
+
+  // SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+  string target_address = 9;
+
+  // SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+  string ssh_user = 10;
+
+  // The canonical upstream address from services.base_url (e.g. "ssh://host:22").
+  // For SSH schemes this is the SOLE source of truth for the dial target;
+  // ssh-proxy must prefer this over target_address (ADR-0023, Phase 3).
+  // Empty for non-SSH credentials or when the service has no base_url configured.
+  string base_url = 11;
+
+  // The auth scheme name as a string (e.g. "ssh_password", "ssh_private_key").
+  // Derived from services.auth_scheme. Allows ssh-proxy to branch on scheme
+  // without re-interpreting the int32 auth_scheme field.
+  string auth_scheme_name = 12;
 }
 
 // ----------------------------------------------------------------------
@@ -204,6 +238,12 @@ message PutCredentialRequest {
   // The service's registered base_url (e.g. "https://api.twilio.com").
   // Stored with the credential so GetCredential can return it to the proxy.
   string target_url = 9;
+
+  // SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
+  string target_address = 10;
+
+  // SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
+  string ssh_user = 11;
 }
 
 // PutCredentialResponse returns the new key_version.

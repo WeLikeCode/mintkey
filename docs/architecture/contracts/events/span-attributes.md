@@ -24,6 +24,11 @@ Mintkey-emitted spans MUST be named `mintkey.<container>.<operation>`:
 | `mintkey.proxy.verify_token`           | Egress Proxy      | JWT verification (signature, claims, revocation).            |
 | `mintkey.proxy.fetch_credential`       | Egress Proxy      | Vault Adapter call from the plugin.                          |
 | `mintkey.proxy.forward_backend`        | Egress Proxy      | Outbound HTTP to the registered backend.                     |
+| `mintkey.ssh.handle_session`           | SSH Proxy         | One span per SSH session (from connect to disconnect).       |
+| `mintkey.ssh.authenticate`             | SSH Proxy         | Agent authentication (JWT or API key).                       |
+| `mintkey.ssh.fetch_credential`         | SSH Proxy         | Vault Adapter call to fetch SSH private key.                 |
+| `mintkey.ssh.connect_backend`          | SSH Proxy         | Outbound SSH connection to backend server.                   |
+| `mintkey.ssh.bridge_channels`          | SSH Proxy         | Bidirectional I/O bridging (one span per channel).           |
 | `mintkey.vault.encrypt`                | Vault Adapter     | One span per `PutCredential` envelope-encrypt.               |
 | `mintkey.vault.decrypt`                | Vault Adapter     | One span per `GetCredential` envelope-decrypt.               |
 | `mintkey.vault.kek_load`               | Vault Adapter     | KEK source read at startup or on rotation.                   |
@@ -91,6 +96,14 @@ deliberately small.
 | `mintkey.error.code`                   | string | `mintkey:code` value when the request failed (matches REST codes). |
 | `mintkey.deny.reason_code`             | string | Set on `mintkey.proxy.handle_request` when `outcome=denied`.       |
 | `mintkey.auth_method`                  | string | Enum: `brokered_jwt`, `api_key`. Proxy only. ADR-0018 §2.6.        |
+| `mintkey.ssh.session_id`               | string | SSH Proxy. ULID-prefixed session identifier (`session_…`).         |
+| `mintkey.ssh.session_duration_seconds` | int    | SSH Proxy. Total session duration in seconds.                      |
+| `mintkey.ssh.bytes_sent`               | int    | SSH Proxy. Total bytes sent from agent to backend.                 |
+| `mintkey.ssh.bytes_received`           | int    | SSH Proxy. Total bytes received from backend to agent.             |
+| `mintkey.ssh.auth_method`              | string | SSH Proxy. Enum: `jwt`, `api_key`. ADR-0021 §D3.                   |
+| `mintkey.ssh.command_count`            | int    | SSH Proxy. Number of commands executed in the session.             |
+| `mintkey.ssh.sftp_operation_count`     | int    | SSH Proxy. Number of SFTP operations performed.                    |
+| `mintkey.ssh.command_blocked`          | bool   | SSH Proxy. True if a command was blocked by filter.                |
 | `mintkey.stability_tier`               | string | Constant `experimental` for v1.                                    |
 
 ### OTel semantic-convention (`http.*`, `rpc.*`, `db.*`, `messaging.*`, `error.*`)

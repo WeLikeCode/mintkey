@@ -1,0 +1,142 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 021-ssh-pubkey-and-hostkeys.yaml
+  #
+  # Wires the two storage surfaces for SSH proxy authentication (ADR-0021):
+  #
+  #   1. public.agents.ssh_pubkey TEXT NULL
+  #      Stores the agent's OpenSSH-format public key. Null means the agent
+  #      has not yet registered an SSH public key.  The SSH proxy uses this
+  #      column to authenticate inbound SSH connections via public-key auth.
+  #
+  #   2. vault.ssh_host_keys (tenant_id, service_id, fingerprint, ...)
+  #      TOFU (Trust-On-First-Use) host-key fingerprints, tenant-scoped.
+  #      The SSH proxy writes here on first connect to a backend and reads
+  #      back to detect host-key changes on subsequent connections.
+  #
+  # Idempotent: each changeset has preConditions (MARK_RAN) so re-running on
+  # an already-migrated database is a safe no-op.
+  #
+  # Source: ADR-0021 (SSH Proxy Support); chunk C7.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Add agents.ssh_pubkey column ------------------------------------
+  - changeSet:
+      id: "021-ssh-pubkey-and-hostkeys-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            columnExists:
+              schemaName: public
+              tableName: agents
+              columnName: ssh_pubkey
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.agents ADD COLUMN ssh_pubkey TEXT NULL;
+              COMMENT ON COLUMN public.agents.ssh_pubkey IS
+                'OpenSSH-format public key for SSH proxy authentication (ADR-0021).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE public.agents DROP COLUMN IF EXISTS ssh_pubkey;
+
+  # --- 2. Index on agents.ssh_pubkey (partial — only non-null rows) -------
+  - changeSet:
+      id: "021-ssh-pubkey-and-hostkeys-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: agents
+              indexName: idx_agents_ssh_pubkey_fingerprint
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_agents_ssh_pubkey_fingerprint
+                ON public.agents (ssh_pubkey)
+                WHERE ssh_pubkey IS NOT NULL;
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_agents_ssh_pubkey_fingerprint;
+
+  # --- 3. vault.ssh_host_keys table ---------------------------------------
+  - changeSet:
+      id: "021-ssh-pubkey-and-hostkeys-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: vault
+              tableName: ssh_host_keys
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE vault.ssh_host_keys (
+                  tenant_id   UUID        NOT NULL,
+                  service_id  UUID        NOT NULL,
+                  fingerprint TEXT        NOT NULL,
+                  first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  last_seen   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (tenant_id, service_id, fingerprint)
+              );
+              COMMENT ON TABLE vault.ssh_host_keys IS
+                'TOFU SSH host-key fingerprints per (tenant, service). Written by the SSH proxy on first connect; read back to detect host-key changes (ADR-0021).';
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS vault.ssh_host_keys;
+
+  # --- 4. RLS on vault.ssh_host_keys -------------------------------------
+  - changeSet:
+      id: "021-ssh-pubkey-and-hostkeys-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: vault
+              tableName: ssh_host_keys
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE vault.ssh_host_keys ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON vault.ssh_host_keys
+                USING (
+                  (tenant_id = (current_setting('app.current_tenant', true))::uuid)
+                  OR (current_setting('app.platform_admin_view', true) = 'on')
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON vault.ssh_host_keys;
+              ALTER TABLE vault.ssh_host_keys DISABLE ROW LEVEL SECURITY;
+
+  # --- 5. Grants on vault.ssh_host_keys (defensive 019-style) ------------
+  - changeSet:
+      id: "021-ssh-pubkey-and-hostkeys-5"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: vault
+            tableName: ssh_host_keys
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON vault.ssh_host_keys TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON vault.ssh_host_keys FROM mintkey_app;

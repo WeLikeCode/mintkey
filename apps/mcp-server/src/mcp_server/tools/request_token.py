@@ -33,7 +33,11 @@ from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.policy.constraints import RateLimiter, evaluate_rate_limit, evaluate_time_window
 from mcp_server.tools.discovery import get_agent_context
+from mcp_server.config.public_urls import resolve_ssh_proxy_public_host
 from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
+
+# Auth scheme IDs that indicate SSH transport (ssh-proxy handles these, not Kong).
+_SSH_AUTH_SCHEMES = {"ssh_private_key", "ssh_password", "ssh_ca"}
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -206,7 +210,16 @@ async def request_token(
                 _body["hint"] = _hint
             return JSONResponse(status_code=403, content=_body)
 
-    # 4. Call broker to issue a real JWT.
+    # 4. Query service auth_scheme to determine transport (SSH vs HTTP).
+    svc_result = await session.execute(
+        text("SELECT auth_scheme FROM services WHERE id = :sid"),
+        {"sid": db_service_id},
+    )
+    svc_row = svc_result.fetchone()
+    svc_auth_scheme: str = svc_row.auth_scheme if svc_row else ""
+    is_ssh = svc_auth_scheme in _SSH_AUTH_SCHEMES
+
+    # 5. Call broker to issue a real JWT.
     # Pass the DB UUID to the broker — broker is downstream and always uses UUIDs.
     # DO NOT change the broker payload format (out-of-scope for OPS-CC).
     broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
@@ -230,6 +243,33 @@ async def request_token(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
     data = resp.json()
+
+    # 6. Build transport-specific response.
+    #    SSH services: return ssh_connect block — omit proxy_url (Kong is HTTP-only).
+    #    HTTP services: return service_id only (proxy_url in discover/bootstrap).
+    if is_ssh:
+        ext_host, ext_port = resolve_ssh_proxy_public_host()
+        ssh_connect = {
+            "host": "ssh-proxy",
+            "port": 2222,
+            "external_host": ext_host,
+            "external_port": ext_port,
+            "ssh_user": agent_id,
+            "auth_method": "password",
+            "password_is_jwt": True,
+            "hint": (
+                f"ssh -p {ext_port} {agent_id}@{ext_host} "
+                "— use the token above as the SSH password"
+            ),
+        }
+        return JSONResponse({
+            "token": data["token"],
+            "ssh_connect": ssh_connect,
+            "expires_at": data["expires_at"],
+            "service_id": wire_service_id,
+            "action": body.action,
+        })
+
     return JSONResponse(
         {"token": data["token"], "expires_at": data["expires_at"], "service_id": wire_service_id}
     )

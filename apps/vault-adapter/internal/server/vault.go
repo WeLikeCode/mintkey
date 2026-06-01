@@ -45,6 +45,8 @@ type PutCredentialArgs struct {
 	TargetURL     string
 	HeaderName    string // injection hint for api_key_header scheme — UX-C6
 	QueryParam    string // injection hint for api_key_query scheme — UX-C6
+	TargetAddress string // SSH-only: "host:port" of the backend SSH server — ADR-0021
+	SSHUser       string // SSH-only: SSH username to authenticate as — ADR-0021
 }
 
 // PutCredentialResult is returned by PutCredential.
@@ -70,6 +72,9 @@ type GetCredentialResult struct {
 	TargetURL          string
 	HeaderName         string // injection hint for api_key_header scheme — UX-C6
 	QueryParam         string // injection hint for api_key_query scheme — UX-C6
+	TargetAddress      string // SSH-only: "host:port" of the backend SSH server — ADR-0021
+	SSHUser            string // SSH-only: SSH username to authenticate as — ADR-0021
+	BaseUrl            string // Canonical upstream address from services.base_url — ADR-0023 Phase 3
 }
 
 // RevokeCredentialArgs holds the input for RevokeCredential.
@@ -220,16 +225,18 @@ func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs
 
 	now := time.Now().UTC()
 	rec := store.CredentialRecord{
-		CredentialID: newCredentialID(),
-		TenantID:     args.TenantID,
-		ServiceID:    args.ServiceID,
-		AuthScheme:   args.AuthScheme,
-		WrappedDEK:   wrappedDEK,
-		EncPayload:   encPayload,
-		CreatedAt:    now.UnixNano(),
-		TargetURL:    args.TargetURL,
-		HeaderName:   args.HeaderName,
-		QueryParam:   args.QueryParam,
+		CredentialID:  newCredentialID(),
+		TenantID:      args.TenantID,
+		ServiceID:     args.ServiceID,
+		AuthScheme:    args.AuthScheme,
+		WrappedDEK:    wrappedDEK,
+		EncPayload:    encPayload,
+		CreatedAt:     now.UnixNano(),
+		TargetURL:     args.TargetURL,
+		HeaderName:    args.HeaderName,
+		QueryParam:    args.QueryParam,
+		TargetAddress: args.TargetAddress,
+		SSHUser:       args.SSHUser,
 	}
 
 	keyVer, err := v.store.Put(ctx, rec)
@@ -281,6 +288,9 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				TargetURL:          e.TargetURL,
 				HeaderName:         e.HeaderName,
 				QueryParam:         e.QueryParam,
+				TargetAddress:      e.TargetAddress,
+				SSHUser:            e.SSHUser,
+				BaseUrl:            e.ServiceBaseUrl,
 			}, nil
 		}
 	}
@@ -303,7 +313,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -322,6 +332,9 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 		TargetURL:          rec.TargetURL,
 		HeaderName:         rec.HeaderName,
 		QueryParam:         rec.QueryParam,
+		TargetAddress:      rec.TargetAddress,
+		SSHUser:            rec.SSHUser,
+		BaseUrl:            rec.ServiceBaseUrl,
 	}, nil
 }
 

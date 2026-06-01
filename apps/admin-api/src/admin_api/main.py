@@ -45,16 +45,26 @@ from admin_api.api.service_templates import router as service_templates_router
 from admin_api.api.services import router as services_router
 from admin_api.api.settings import router as settings_router
 from admin_api.api.tenants import router as tenants_router
+from admin_api.db.session import AsyncSessionLocal
 from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 from admin_api.middleware.metrics import MetricsMiddleware
 from admin_api.middleware.otel import configure_otel
+from admin_api.services.canonical_agents import check_canonical_agents
 from admin_api.services.vault_client import close_channel
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
     """FastAPI lifespan: startup → yield → shutdown."""
-    # Nothing to do on startup — channel opens lazily on first call.
+    # Startup: run canonical-agent drift check (soft signal — never blocks startup).
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await check_canonical_agents(session)
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning(
+            "canonical_agents startup check failed (non-fatal): %s", exc
+        )
     yield
     # Shutdown: close the singleton grpc.aio channel cleanly.
     await close_channel()

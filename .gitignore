@@ -12,6 +12,12 @@ __pycache__/
 # with offset ports for the dev-test namespace (no secrets).
 !.env.test
 data/
+# Canonical agent roster — names only, no keys or secrets — committed to repo.
+# git won't honour !data/seed-agents.yaml when the parent is ignored, so we
+# un-ignore data/ first then re-ignore everything except this file.
+!data/
+data/*
+!data/seed-agents.yaml
 # Stray root-level Node artefacts (Playwright config lives in admin-ui/)
 /package.json
 /pnpm-lock.yaml

@@ -109,6 +109,14 @@ func TestIssuedJWT_HasCorrectClaims(t *testing.T) {
 	if claims["tnt"] != "tenant_01HX00000000000000000000CC" {
 		t.Errorf("tnt = %v, want tenant_01HX...", claims["tnt"])
 	}
+	// Claim: tenant_id — flat copy of tnt for ssh-proxy compatibility
+	if claims["tenant_id"] != "tenant_01HX00000000000000000000CC" {
+		t.Errorf("tenant_id = %v, want tenant_01HX...", claims["tenant_id"])
+	}
+	// Claim: service_id — flat copy of first aud entry for ssh-proxy compatibility
+	if claims["service_id"] != "svc_01HX00000000000000000000BB" {
+		t.Errorf("service_id = %v, want svc_01HX...", claims["service_id"])
+	}
 	// Claim: scope
 	if claims["scope"] != "read" {
 		t.Errorf("scope = %v, want read", claims["scope"])

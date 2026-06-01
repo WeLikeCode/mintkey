@@ -63,6 +63,12 @@ services:
     ports: !override
       - "16786:4180"
 
+  ssh-proxy:
+    image: mintkey-ssh-proxy
+    ports: !override
+      - "2322:2222"
+      - "8189:8087"
+
   # ─── Third-party services: port overrides only ────────────────────────────
 
   keycloak:
