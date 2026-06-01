@@ -291,6 +291,7 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 	// AUTH_SCHEME_SSH_PRIVATE_KEY: return raw PEM bytes + SSH routing metadata.
 	// No envelope generation — the stored plaintext IS the credential.
 	// The SSH proxy holds it in session scope and zeros it on disconnect (ADR-0021).
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
 	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PRIVATE_KEY) {
 		return &vaultv1.GetCredentialResponse{
 			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
@@ -300,12 +301,15 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 			TargetUrl:          result.TargetURL,
 			TargetAddress:      result.TargetAddress,
 			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_private_key",
 		}, nil
 	}
 
 	// AUTH_SCHEME_SSH_PASSWORD: return raw password bytes + SSH routing metadata.
 	// The password is stored as raw bytes (no envelope). The SSH proxy uses
 	// ssh.Password(cred.Value) and zeros the bytes immediately after use.
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
 	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_PASSWORD) {
 		return &vaultv1.GetCredentialResponse{
 			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
@@ -315,11 +319,14 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 			TargetUrl:          result.TargetURL,
 			TargetAddress:      result.TargetAddress,
 			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_password",
 		}, nil
 	}
 
 	// AUTH_SCHEME_SSH_CA (Phase 2 stub): return raw CA key bytes.
 	// Certificate signing logic is deferred to Phase 2 (ADR-0021 §3).
+	// BaseUrl (field 11) is the canonical dial target per ADR-0023 Phase 3.
 	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_SSH_CA) {
 		return &vaultv1.GetCredentialResponse{
 			AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
@@ -329,6 +336,8 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 			TargetUrl:          result.TargetURL,
 			TargetAddress:      result.TargetAddress,
 			SshUser:            result.SSHUser,
+			BaseUrl:            result.BaseUrl,
+			AuthSchemeName:     "ssh_ca",
 		}, nil
 	}
 

@@ -173,9 +173,17 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 		return nil, fmt.Errorf("vault postgres: Get: set tenant: %w", err)
 	}
 
-	const cols = `credential_id, tenant_id, service_id, key_version, auth_scheme,
-	              wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-	              target_url, header_name, query_param, target_address, ssh_user`
+	// LEFT JOIN public.services so that services.base_url (the canonical SSH dial
+	// target per ADR-0023 Phase 3) is returned alongside the credential row.
+	// COALESCE(s.base_url, '') ensures a NULL base_url (orphaned credential or
+	// service without a base_url configured) still scans cleanly into a string.
+	// The JOIN is tenant-scoped via the WHERE clause; RLS on vault.credentials is
+	// already enforced by the set_config GUC above. public.services does not have
+	// RLS, so no additional platform_admin_view flag is required here.
+	const cols = `vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
+	              vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
+	              vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
+	              COALESCE(s.base_url, '') AS service_base_url`
 
 	var row pgx.Row
 	if keyVersion == 0 {
@@ -183,9 +191,10 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 		// is_current=true already implies is_revoked=false by the Put/Revoke invariant.
 		row = tx.QueryRow(ctx,
 			`SELECT `+cols+`
-			   FROM vault.credentials
-			  WHERE tenant_id = $1 AND service_id = $2
-			    AND is_current = true
+			   FROM vault.credentials vc
+			   LEFT JOIN public.services s ON s.id::text = vc.service_id
+			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
+			    AND vc.is_current = true
 			  LIMIT 1`,
 			tenantID, serviceID,
 		)
@@ -197,9 +206,10 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 		// (row{is_revoked=true}, nil) while postgres returned (nil, sql.ErrNoRows).
 		row = tx.QueryRow(ctx,
 			`SELECT `+cols+`
-			   FROM vault.credentials
-			  WHERE tenant_id = $1 AND service_id = $2
-			    AND key_version = $3
+			   FROM vault.credentials vc
+			   LEFT JOIN public.services s ON s.id::text = vc.service_id
+			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
+			    AND vc.key_version = $3
 			  LIMIT 1`,
 			tenantID, serviceID, keyVersion,
 		)
@@ -331,6 +341,12 @@ func (s *PostgresStore) ListVersions(ctx context.Context, tenantID, serviceID st
 }
 
 // scanPgRecord scans a pgx.Row into a CredentialRecord (full columns).
+// The query must SELECT the 16-column set produced by the Get() LEFT JOIN:
+//
+//	vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
+//	vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
+//	vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
+//	COALESCE(s.base_url, '') AS service_base_url
 func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 	var r CredentialRecord
 	if err := row.Scan(
@@ -340,6 +356,7 @@ func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 		&r.IsCurrent, &r.IsRevoked, &r.CreatedAt,
 		&r.TargetURL, &r.HeaderName, &r.QueryParam,
 		&r.TargetAddress, &r.SSHUser,
+		&r.ServiceBaseUrl,
 	); err != nil {
 		return nil, err
 	}

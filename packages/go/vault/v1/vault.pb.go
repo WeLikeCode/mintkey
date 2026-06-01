@@ -307,9 +307,18 @@ type GetCredentialResponse struct {
 	// SSH-only: "host:port" of the backend SSH server. Empty for non-SSH credentials.
 	TargetAddress string `protobuf:"bytes,9,opt,name=target_address,json=targetAddress,proto3" json:"target_address,omitempty"`
 	// SSH-only: SSH username to authenticate as. Empty for non-SSH credentials.
-	SshUser       string `protobuf:"bytes,10,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	SshUser string `protobuf:"bytes,10,opt,name=ssh_user,json=sshUser,proto3" json:"ssh_user,omitempty"`
+	// The canonical upstream address from services.base_url (e.g. "ssh://host:22").
+	// For SSH schemes this is the SOLE source of truth for the dial target;
+	// ssh-proxy must prefer this over target_address (ADR-0023, Phase 3).
+	// Empty for non-SSH credentials or when the service has no base_url configured.
+	BaseUrl string `protobuf:"bytes,11,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	// The auth scheme name as a string (e.g. "ssh_password", "ssh_private_key").
+	// Derived from services.auth_scheme. Allows ssh-proxy to branch on scheme
+	// without re-interpreting the int32 auth_scheme field.
+	AuthSchemeName string `protobuf:"bytes,12,opt,name=auth_scheme_name,json=authSchemeName,proto3" json:"auth_scheme_name,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetCredentialResponse) Reset() {
@@ -408,6 +417,20 @@ func (x *GetCredentialResponse) GetTargetAddress() string {
 func (x *GetCredentialResponse) GetSshUser() string {
 	if x != nil {
 		return x.SshUser
+	}
+	return ""
+}
+
+func (x *GetCredentialResponse) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *GetCredentialResponse) GetAuthSchemeName() string {
+	if x != nil {
+		return x.AuthSchemeName
 	}
 	return ""
 }
@@ -1143,7 +1166,7 @@ const file_vault_proto_rawDesc = "" +
 	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
 	"\vkey_version\x18\x03 \x01(\rR\n" +
 	"keyVersion\x12&\n" +
-	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xac\x03\n" +
+	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xf1\x03\n" +
 	"\x15GetCredentialResponse\x12=\n" +
 	"\vauth_scheme\x18\x01 \x01(\x0e2\x1c.mintkey.vault.v1.AuthSchemeR\n" +
 	"authScheme\x12\x14\n" +
@@ -1160,7 +1183,9 @@ const file_vault_proto_rawDesc = "" +
 	"target_url\x18\b \x01(\tR\ttargetUrl\x12%\n" +
 	"\x0etarget_address\x18\t \x01(\tR\rtargetAddress\x12\x19\n" +
 	"\bssh_user\x18\n" +
-	" \x01(\tR\asshUser\"\xad\x03\n" +
+	" \x01(\tR\asshUser\x12\x19\n" +
+	"\bbase_url\x18\v \x01(\tR\abaseUrl\x12(\n" +
+	"\x10auth_scheme_name\x18\f \x01(\tR\x0eauthSchemeName\"\xad\x03\n" +
 	"\x14PutCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +
@@ -1232,7 +1257,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12;\n" +
 	"\vvalid_until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"validUntil*\xaa\x03\n" +
+	"validUntil*\xc8\x03\n" +
 	"\n" +
 	"AuthScheme\x12\x1b\n" +
 	"\x17AUTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n" +
@@ -1248,7 +1273,8 @@ const file_vault_proto_rawDesc = "" +
 	"\"AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT\x10\n" +
 	"\x12\x1f\n" +
 	"\x1bAUTH_SCHEME_SSH_PRIVATE_KEY\x10\v\x12\x16\n" +
-	"\x12AUTH_SCHEME_SSH_CA\x10\f*r\n" +
+	"\x12AUTH_SCHEME_SSH_CA\x10\f\x12\x1c\n" +
+	"\x18AUTH_SCHEME_SSH_PASSWORD\x10\r*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
@@ -39,18 +40,39 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 		return nil, nil, fmt.Errorf("failed to fetch credential: %w", err)
 	}
 
-	// Verify auth scheme is SSH private key or SSH password
-	if cred.AuthScheme != vault.AuthSchemeSSHPrivateKey && cred.AuthScheme != vault.AuthSchemeSSHPassword {
-		return nil, nil, fmt.Errorf("invalid auth scheme: expected SSH_PRIVATE_KEY or SSH_PASSWORD, got %v", cred.AuthScheme)
+	// Verify auth scheme is SSH private key, SSH password, or SSH CA.
+	if cred.AuthScheme != vault.AuthSchemeSSHPrivateKey &&
+		cred.AuthScheme != vault.AuthSchemeSSHPassword &&
+		cred.AuthScheme != vault.AuthSchemeSSHCA {
+		return nil, nil, fmt.Errorf("invalid auth scheme: expected SSH_PRIVATE_KEY, SSH_PASSWORD, or SSH_CA, got %v", cred.AuthScheme)
 	}
 
-	// Determine target address
-	// If targetAddr is empty, use the service's default address from vault
-	if targetAddr == "" {
-		targetAddr = cred.TargetAddress
-		if targetAddr == "" {
-			return nil, nil, fmt.Errorf("no target address specified and service has no default")
+	// Determine target address — ADR-0023 Phase 3 dial-target derivation.
+	// For SSH schemes, services.base_url is the SOLE source of truth. The
+	// fallback to vault.credentials.target_address is a transition safety net
+	// that will be removed after a quiet period (follow-up migration).
+	var dialTarget string
+	var dialSource string
+	if cred.AuthScheme == vault.AuthSchemeSSHPrivateKey ||
+		cred.AuthScheme == vault.AuthSchemeSSHPassword ||
+		cred.AuthScheme == vault.AuthSchemeSSHCA {
+		if cred.BaseUrl != "" {
+			// Strip optional ssh:// scheme prefix; Dial expects "host:port".
+			dialTarget = strings.TrimPrefix(cred.BaseUrl, "ssh://")
+			dialSource = "base_url"
 		}
+	}
+	if dialTarget == "" && cred.TargetAddress != "" {
+		dialTarget = cred.TargetAddress
+		dialSource = "target_address_fallback"
+	}
+	// Caller-supplied targetAddr overrides only when dialTarget is still unset.
+	if dialTarget == "" && targetAddr != "" {
+		dialTarget = targetAddr
+		dialSource = "caller_supplied"
+	}
+	if dialTarget == "" {
+		return nil, nil, fmt.Errorf("no SSH target: base_url=%q target_address=%q", cred.BaseUrl, cred.TargetAddress)
 	}
 
 	// Determine SSH user
@@ -93,21 +115,23 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 		Timeout:         10 * time.Second,
 	}
 
-	// Connect to backend
-	slog.Info("connecting to backend",
-		"session_id", sessCtx.AgentID, // Use agent_id as session identifier for now
-		"target", targetAddr,
+	// Connect to backend — log dial-target source for observability (ADR-0023).
+	slog.Info("ssh dial target resolved",
+		"session_id", sessCtx.AgentID,
+		"target", dialTarget,
+		"source", dialSource,
 		"user", user,
 	)
 
-	client, err := ssh.Dial("tcp", targetAddr, config)
+	client, err := ssh.Dial("tcp", dialTarget, config)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to backend %s: %w", targetAddr, err)
+		return nil, nil, fmt.Errorf("failed to connect to backend %s: %w", dialTarget, err)
 	}
 
 	slog.Info("backend connection established",
 		"session_id", sessCtx.AgentID,
-		"target", targetAddr,
+		"target", dialTarget,
+		"source", dialSource,
 	)
 
 	return client, cred.Value, nil

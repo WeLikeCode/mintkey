@@ -11,7 +11,7 @@ func TestCacheHit(t *testing.T) {
 	c := cache.New(5 * time.Minute)
 	wrappedDEK := []byte("wrapped-dek-bytes")
 	encPayload := []byte("enc-payload-bytes")
-	c.Put("tenant_01", "svc_01", 1, wrappedDEK, encPayload, 1, false, "", "", "", "", "")
+	c.Put("tenant_01", "svc_01", 1, wrappedDEK, encPayload, 1, false, "", "", "", "", "", "")
 
 	entry, ok := c.Get("tenant_01", "svc_01", 1)
 	if !ok {
@@ -41,7 +41,7 @@ func TestCacheMiss(t *testing.T) {
 
 func TestCacheExpiry(t *testing.T) {
 	c := cache.New(10 * time.Millisecond)
-	c.Put("tenant_01", "svc_01", 1, []byte("dek"), []byte("payload"), 0, false, "", "", "", "", "")
+	c.Put("tenant_01", "svc_01", 1, []byte("dek"), []byte("payload"), 0, false, "", "", "", "", "", "")
 	time.Sleep(20 * time.Millisecond)
 	_, ok := c.Get("tenant_01", "svc_01", 1)
 	if ok {
@@ -51,9 +51,9 @@ func TestCacheExpiry(t *testing.T) {
 
 func TestCacheInvalidateByServicePair(t *testing.T) {
 	c := cache.New(5 * time.Minute)
-	c.Put("tenant_01", "svc_01", 1, []byte("dek_v1"), []byte("pay_v1"), 0, false, "", "", "", "", "")
-	c.Put("tenant_01", "svc_01", 2, []byte("dek_v2"), []byte("pay_v2"), 0, false, "", "", "", "", "")
-	c.Put("tenant_01", "svc_02", 1, []byte("dek_other"), []byte("pay_other"), 0, false, "", "", "", "", "")
+	c.Put("tenant_01", "svc_01", 1, []byte("dek_v1"), []byte("pay_v1"), 0, false, "", "", "", "", "", "")
+	c.Put("tenant_01", "svc_01", 2, []byte("dek_v2"), []byte("pay_v2"), 0, false, "", "", "", "", "", "")
+	c.Put("tenant_01", "svc_02", 1, []byte("dek_other"), []byte("pay_other"), 0, false, "", "", "", "", "", "")
 
 	c.InvalidateByService("tenant_01", "svc_01")
 
@@ -71,7 +71,7 @@ func TestCacheInvalidateByServicePair(t *testing.T) {
 
 func TestCacheMetrics(t *testing.T) {
 	c := cache.New(5 * time.Minute)
-	c.Put("tenant_01", "svc_01", 1, []byte("dek"), []byte("payload"), 0, false, "", "", "", "", "")
+	c.Put("tenant_01", "svc_01", 1, []byte("dek"), []byte("payload"), 0, false, "", "", "", "", "", "")
 	c.Get("tenant_01", "svc_01", 1)  // hit
 	c.Get("tenant_01", "svc_01", 99) // miss
 
@@ -86,7 +86,7 @@ func TestCacheMetrics(t *testing.T) {
 
 func TestCacheHitsMissesGetters(t *testing.T) {
 	c := cache.New(5 * time.Minute)
-	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "")
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "", "")
 	c.Get("t", "s", 1)  // hit
 	c.Get("t", "s", 2)  // miss
 	c.Get("t", "s", 3)  // miss
@@ -104,7 +104,7 @@ func TestCacheConcurrentHitsMisses(t *testing.T) {
 	const opsEach = 100
 
 	c := cache.New(5 * time.Minute)
-	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "")
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "", "")
 
 	done := make(chan struct{})
 	for i := 0; i < goroutines; i++ {
@@ -132,7 +132,7 @@ func TestCacheConcurrentHitsMisses(t *testing.T) {
 
 func TestCacheMetricsInWriteToOutput(t *testing.T) {
 	c := cache.New(5 * time.Minute)
-	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "")
+	c.Put("t", "s", 1, []byte("dek"), []byte("enc"), 0, false, "", "", "", "", "", "")
 	c.Get("t", "s", 1)  // 1 hit
 	c.Get("t", "s", 99) // 1 miss
 

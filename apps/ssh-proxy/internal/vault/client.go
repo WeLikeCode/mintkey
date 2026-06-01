@@ -52,13 +52,22 @@ type Credential struct {
 	// KeyVersion is the version actually returned (resolves 0 → current).
 	KeyVersion uint32
 
-	// TargetAddress is the SSH backend "host:port". Zero until C3 wires proto
-	// extensions.
+	// TargetAddress is the SSH backend "host:port" from vault.credentials.
+	// Retained as a fallback safety net — prefer BaseUrl for SSH dials (ADR-0023).
 	TargetAddress string
 
-	// SSHUser is the SSH username for the backend. Zero until C3 wires proto
-	// extensions.
+	// SSHUser is the SSH username for the backend.
 	SSHUser string
+
+	// BaseUrl is the canonical upstream address from services.base_url
+	// (e.g. "ssh://host:22"). For SSH schemes this is the SOLE source of truth
+	// for the dial target. Empty if the service has no base_url configured.
+	// ADR-0023 Phase 3 — replaces TargetAddress as the primary dial target.
+	BaseUrl string
+
+	// AuthSchemeName is the string form of the auth scheme (e.g. "ssh_password",
+	// "ssh_private_key", "ssh_ca"). Populated from the vault response field 12.
+	AuthSchemeName string
 }
 
 // Agent represents a Mintkey agent entity as returned by the vault.
@@ -133,11 +142,13 @@ func (c *Client) GetCredential(ctx context.Context, tenantID, serviceID string) 
 	}
 
 	return &Credential{
-		Value:         resp.GetValue(),
-		AuthScheme:    AuthScheme(resp.GetAuthScheme()),
-		KeyVersion:    resp.GetReturnedKeyVersion(),
-		TargetAddress: resp.GetTargetAddress(),
-		SSHUser:       resp.GetSshUser(),
+		Value:          resp.GetValue(),
+		AuthScheme:     AuthScheme(resp.GetAuthScheme()),
+		KeyVersion:     resp.GetReturnedKeyVersion(),
+		TargetAddress:  resp.GetTargetAddress(),
+		SSHUser:        resp.GetSshUser(),
+		BaseUrl:        resp.GetBaseUrl(),
+		AuthSchemeName: resp.GetAuthSchemeName(),
 	}, nil
 }
 

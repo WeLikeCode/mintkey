@@ -39,6 +39,11 @@ type CredentialRecord struct {
 	QueryParam    string // injection hint: query parameter name (e.g. "api_key") — UX-C6
 	TargetAddress string // SSH-only: "host:port" of the backend SSH server — ADR-0021
 	SSHUser       string // SSH-only: SSH username to authenticate as — ADR-0021
+
+	// ServiceBaseUrl is the canonical upstream address from public.services.base_url
+	// (e.g. "ssh://host:22"). Populated only by PostgresStore.Get via a LEFT JOIN on
+	// public.services. SQLite store leaves this empty. ADR-0023 / Phase 3.
+	ServiceBaseUrl string
 }
 
 // Store wraps an SQLite database connection.
