@@ -32,6 +32,7 @@ import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { AUTH_SCHEMES, getCredentialFields, buildCredentialPayload, type KvRow } from "../../lib/auth-scheme.js";
 import { extractFieldErrors, type AdminApiErrorResponse } from "../../lib/credential-errors.js";
+import AsyncCombobox from "../properties/AsyncCombobox.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -421,14 +422,13 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
               <input type="hidden" name="service_id" value={serviceId} />
             </Box>
           ) : (
-            <Input
-              id="service_id"
+            <AsyncCombobox
+              resourceId="services"
               value={serviceId}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setServiceId(e.target.value)}
-              placeholder="svc_..."
-              style={inputStyle}
-              required
-              data-testid="field-input-service_id"
+              onChange={setServiceId}
+              placeholder="Search services by name or ID…"
+              disabled={false}
+              testId="field-combobox-service_id"
             />
           )}
           {serviceIdLocked && (
