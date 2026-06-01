@@ -354,6 +354,16 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# SSH test helper — ADR-0021 / OPS-T
+# Implemented in _ssh_test.py to keep this module importable without asyncssh
+# and to allow unit testing without pulling in mintkey_models.
+# ---------------------------------------------------------------------------
+
+from admin_api.api._ssh_test import SSH_SCHEMES as _SSH_SCHEMES  # noqa: E402
+from admin_api.api._ssh_test import test_ssh_credential as _test_ssh_credential  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -775,6 +785,44 @@ async def test_service_transient(
     base_url: str = body.service.base_url
     auth_scheme: str = body.service.auth_scheme
     test = body.test
+
+    # SSH schemes — dial the target directly via asyncssh; no HTTP involved.
+    # This branch MUST appear before the URL-building / httpx path below.
+    if auth_scheme in _SSH_SCHEMES:
+        ssh_result = await _test_ssh_credential(
+            scheme=auth_scheme,
+            credential_value=body.credential.value,
+            base_url=base_url,
+            timeout_ms=test.timeout_ms,
+        )
+        # Emit audit event for SSH test — same shape as HTTP test, no credential data.
+        try:
+            await audit_emit(
+                session=session,
+                tenant_id=tenant_id,
+                event_type="service.test_executed",
+                actor_id=None,
+                actor_type="operator",
+                target_id=None,
+                target_type="service",
+                payload={
+                    "method": "SSH",
+                    "path_template": test.path,
+                    "base_url": base_url,
+                    "auth_scheme": auth_scheme,
+                    "target_host": urlparse(ssh_result.get("final_url", base_url)).hostname,
+                    "status_code": ssh_result.get("status_code", 0),
+                    "latency_ms": ssh_result.get("latency_ms", 0),
+                    "ok": ssh_result.get("ok", False),
+                    "transient": True,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "test_service_transient(SSH): audit_emit failed (non-fatal). tenant=%s",
+                str(tenant_id),
+            )
+        return JSONResponse(ssh_result)
 
     # Build the final URL
     base_url_stripped = base_url.rstrip("/")

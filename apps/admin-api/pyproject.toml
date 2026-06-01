@@ -21,6 +21,7 @@ dependencies = [
     "protobuf>=6.31",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     "prometheus-client>=0.20",
+    "asyncssh>=2.20",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -60,4 +61,8 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = "mintkey_models.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "asyncssh.*"
 ignore_missing_imports = true
