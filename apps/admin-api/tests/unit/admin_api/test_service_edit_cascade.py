@@ -18,8 +18,22 @@ Test cases:
          service NOT updated
   4. test_update_ssh_base_url_no_credential_yet
        → PATCH succeeds; cascade UPDATE is a no-op (no credential exists yet)
+  5. test_parse_ssh_host_port_ipv6_loopback
+       → _parse_ssh_host_port("ssh://[::1]:22") → "[::1]:22"
+  6. test_parse_ssh_host_port_ipv6_link_local
+       → _parse_ssh_host_port("ssh://[fe80::1]:2222") → "[fe80::1]:2222"
+  7. test_parse_ssh_host_port_ipv4_unchanged
+       → _parse_ssh_host_port("ssh://172.24.1.234:22") → "172.24.1.234:22"
+  8. test_parse_ssh_host_port_hostname_unchanged
+       → _parse_ssh_host_port("ssh://host.example:22") → "host.example:22"
+  9. test_parse_ssh_host_port_ipv6_no_port_raises
+       → _parse_ssh_host_port("ssh://[::1]") → ValueError
+  10. test_update_ssh_service_ipv6_base_url_cascades
+       → PATCH base_url=ssh://[::1]:22, cascade writes target_address='[::1]:22'
+  11. test_update_ssh_service_ipv6_link_local_cascades
+       → PATCH base_url=ssh://[fe80::1]:2222, cascade writes '[fe80::1]:2222'
 
-Source: C-6a chunk goal; ADR-0021; ADR-0008.
+Source: C-6a chunk goal; C-6 round-2 IPv6 fix; ADR-0021; ADR-0008.
 """
 from __future__ import annotations
 
@@ -29,7 +43,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from admin_api.api.services import ServiceUpdate, update_service
+from admin_api.api.services import ServiceUpdate, _parse_ssh_host_port, update_service
 
 # ---------------------------------------------------------------------------
 # Shared constants
@@ -403,5 +417,170 @@ async def test_update_ssh_base_url_no_credential_yet(
     )
     assert vault_update_attempted, (
         "C-6a: vault.credentials UPDATE was not attempted even with explicit ssh_password scheme. "
+        f"Calls: {[str(c.args[0]) for c in session.execute.call_args_list if c.args]}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests 5-9: _parse_ssh_host_port unit tests (IPv6 + regression)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_ssh_host_port_ipv6_loopback() -> None:
+    """ssh://[::1]:22 must produce '[::1]:22' so Go net.SplitHostPort can parse it."""
+    assert _parse_ssh_host_port("ssh://[::1]:22") == "[::1]:22"
+
+
+def test_parse_ssh_host_port_ipv6_link_local() -> None:
+    """ssh://[fe80::1]:2222 must produce '[fe80::1]:2222'."""
+    assert _parse_ssh_host_port("ssh://[fe80::1]:2222") == "[fe80::1]:2222"
+
+
+def test_parse_ssh_host_port_ipv4_unchanged() -> None:
+    """IPv4 addresses must not be double-bracketed."""
+    assert _parse_ssh_host_port("ssh://172.24.1.234:22") == "172.24.1.234:22"
+
+
+def test_parse_ssh_host_port_hostname_unchanged() -> None:
+    """Plain hostnames must not be bracketed."""
+    assert _parse_ssh_host_port("ssh://host.example:22") == "host.example:22"
+
+
+def test_parse_ssh_host_port_ipv6_no_port_raises() -> None:
+    """ssh://[::1] (no port) must raise ValueError."""
+    with pytest.raises(ValueError, match="missing port"):
+        _parse_ssh_host_port("ssh://[::1]")
+
+
+# ---------------------------------------------------------------------------
+# Tests 10-11: IPv6 cascade end-to-end via update_service
+# ---------------------------------------------------------------------------
+
+
+def _make_service_session_ipv6(base_url: str, target_address: str) -> MagicMock:
+    """Session for IPv6 cascade tests (explicit auth_scheme, no lookup SELECT)."""
+    session = MagicMock()
+    session.execute = AsyncMock()
+
+    response_row = MagicMock()
+    response_row.id = _SERVICE_ID
+    response_row.tenant_id = str(_TENANT_ID)
+    response_row.name = "test-service"
+    response_row.slug = "test-service"
+    response_row.display_name = None
+    response_row.description = None
+    response_row.base_url = base_url
+    response_row.auth_scheme = "ssh_password"
+    response_row.openapi_url = None
+    response_row.status = "active"
+    response_row.current_key_version = 1
+    response_row.created_at = None
+    response_row.updated_at = None
+    response_row.template_id = None
+
+    response_result = MagicMock()
+    response_result.fetchone.return_value = response_row
+
+    empty_result = MagicMock()
+    empty_result.fetchone.return_value = None
+
+    session.execute.side_effect = [
+        empty_result,     # UPDATE services
+        empty_result,     # UPDATE vault.credentials (cascade)
+        response_result,  # SELECT for response
+    ]
+    return session
+
+
+@pytest.mark.asyncio
+@_apply_patches
+async def test_update_ssh_service_ipv6_base_url_cascades(
+    mock_wire_to_db: Any,
+    mock_forbidden: Any,
+    mock_require_tenant: Any,
+    mock_set_tenant: Any,
+    mock_notify: Any,
+    mock_audit: Any,
+) -> None:
+    """PATCH base_url=ssh://[::1]:22 must cascade target_address='[::1]:22'."""
+    ipv6_url = "ssh://[::1]:22"
+    expected_addr = "[::1]:22"
+    session = _make_service_session_ipv6(ipv6_url, expected_addr)
+
+    body = ServiceUpdate(auth_scheme="ssh_password", base_url=ipv6_url)
+
+    response = await update_service(
+        tenant_id=_TENANT_ID,
+        service_id=_SERVICE_ID,
+        body=body,
+        session=session,
+        _authz=None,
+    )
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+    vault_update_found = False
+    for c in session.execute.call_args_list:
+        args = c.args
+        if args and hasattr(args[0], "text"):
+            sql = str(args[0])
+            if "vault.credentials" in sql and "target_address" in sql:
+                params = c.args[1] if len(c.args) > 1 else {}
+                assert params.get("target_address") == expected_addr, (
+                    f"IPv6 cascade: expected target_address='{expected_addr}', "
+                    f"got '{params.get('target_address')}'"
+                )
+                vault_update_found = True
+                break
+
+    assert vault_update_found, (
+        "IPv6 cascade: No vault.credentials UPDATE with target_address found. "
+        f"Calls: {[str(c.args[0]) for c in session.execute.call_args_list if c.args]}"
+    )
+
+
+@pytest.mark.asyncio
+@_apply_patches
+async def test_update_ssh_service_ipv6_link_local_cascades(
+    mock_wire_to_db: Any,
+    mock_forbidden: Any,
+    mock_require_tenant: Any,
+    mock_set_tenant: Any,
+    mock_notify: Any,
+    mock_audit: Any,
+) -> None:
+    """PATCH base_url=ssh://[fe80::1]:2222 must cascade target_address='[fe80::1]:2222'."""
+    ipv6_url = "ssh://[fe80::1]:2222"
+    expected_addr = "[fe80::1]:2222"
+    session = _make_service_session_ipv6(ipv6_url, expected_addr)
+
+    body = ServiceUpdate(auth_scheme="ssh_password", base_url=ipv6_url)
+
+    response = await update_service(
+        tenant_id=_TENANT_ID,
+        service_id=_SERVICE_ID,
+        body=body,
+        session=session,
+        _authz=None,
+    )
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+    vault_update_found = False
+    for c in session.execute.call_args_list:
+        args = c.args
+        if args and hasattr(args[0], "text"):
+            sql = str(args[0])
+            if "vault.credentials" in sql and "target_address" in sql:
+                params = c.args[1] if len(c.args) > 1 else {}
+                assert params.get("target_address") == expected_addr, (
+                    f"IPv6 link-local cascade: expected target_address='{expected_addr}', "
+                    f"got '{params.get('target_address')}'"
+                )
+                vault_update_found = True
+                break
+
+    assert vault_update_found, (
+        "IPv6 link-local cascade: No vault.credentials UPDATE with target_address found. "
         f"Calls: {[str(c.args[0]) for c in session.execute.call_args_list if c.args]}"
     )

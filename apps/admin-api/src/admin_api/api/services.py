@@ -339,7 +339,7 @@ def _parse_ssh_host_port(base_url: str) -> str:
     port = parsed.port
     if port is None:
         raise ValueError("ssh:// URL missing port (required for SSH routing)")
-    return f"{host}:{port}"
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 def _wire_id_to_db_uuid(wire_id: str) -> str:
