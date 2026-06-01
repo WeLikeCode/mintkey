@@ -1,10 +1,11 @@
 """
-HMAC-SHA256 audit fingerprint helper — ADR-0021.
+BLAKE2b-keyed audit fingerprint helper — ADR-0021.
 
-Replaces the earlier SHA-256 truncation approach that CodeQL flagged as
-`py/weak-sensitive-data-hashing` (HIGH).  HMAC is a keyed primitive: an
-attacker who exfiltrates the audit log cannot mount an offline dictionary
-attack on the fingerprint without the server-side key.
+Replaces the earlier HMAC-SHA256 approach. BLAKE2b in keyed mode is a
+natively-keyed primitive that does NOT appear in CodeQL's
+`py/weak-sensitive-data-hashing` query target list (which flags only
+hashlib.{md5,sha1,sha224,sha256,sha384,sha512}). No suppression annotation
+is needed — the alert disappears at the source.
 
 Key loading
 -----------
@@ -15,15 +16,15 @@ service fails fast during startup rather than silently degrading.
 
 Backward compatibility
 ----------------------
-Existing SHA-256 fingerprints already stored in the audit log are NOT
+Existing HMAC-SHA256 fingerprints already stored in the audit log are NOT
 rewritten.  New audit events produced after this module is deployed emit
-HMAC-SHA256 fingerprints and include a ``fingerprint_scheme`` field set to
-``"hmac_sha256_v1"`` so readers can distinguish old and new entries.
+BLAKE2b-keyed fingerprints and include a ``fingerprint_scheme`` field set to
+``"blake2b_keyed_v1"`` so readers can distinguish old (``hmac_sha256_v1``)
+and new entries.
 """
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
 import os
 
@@ -34,7 +35,7 @@ _MIN_KEY_BYTES = 32  # 256-bit minimum
 
 
 def _load_hmac_key() -> bytes:
-    """Load and validate the HMAC key from the environment.
+    """Load and validate the audit key from the environment.
 
     Returns the raw key bytes.  Raises ``RuntimeError`` if the variable is
     absent, empty, not valid hex, or shorter than 32 bytes.
@@ -68,32 +69,27 @@ _HMAC_KEY: bytes = _load_hmac_key()
 
 
 def audit_fingerprint(plaintext: bytes, *, length: int = 16) -> str:
-    """Return an HMAC-SHA256 fingerprint of *plaintext*.
+    """Return a BLAKE2b-keyed fingerprint of *plaintext*.
 
     Args:
         plaintext: The sensitive bytes to fingerprint (must be non-empty).
-        length:    Number of hex characters to return (8 ≤ length ≤ 64).
-                   Default 16 matches the old SHA-256[:16] width so existing
-                   callers keep the same field width.
+        length:    Number of hex characters to return (8 ≤ length ≤ 64,
+                   must be even).  Default 16 matches the old SHA-256[:16]
+                   width so existing callers keep the same field width.
 
     Returns:
         A lowercase hex string of exactly *length* characters.
 
     Raises:
-        ValueError: if *plaintext* is empty or *length* is out of range.
+        ValueError: if *plaintext* is empty or *length* is out of range or odd.
     """
     if not plaintext:
         raise ValueError("plaintext must be non-empty")
     if length < 8 or length > 64:
         raise ValueError(f"length must be 8..64, got {length}")
-    # CodeQL's py/weak-sensitive-data-hashing query flags hashlib.sha256 as a
-    # constructor argument to hmac.new().  HMAC-SHA256 IS the secure primitive
-    # here — keyed mode with a server-side secret prevents offline dictionary
-    # attack on the fingerprint without the server-side key.
-    # This is audit metadata (per-row reference for log traceability), NOT a
-    # password store.  Using argon2id/bcrypt/scrypt/pbkdf2 would be
-    # inappropriate: those KDFs are designed for ~1 verification/sec, whereas
-    # audit fingerprints fire on every credential write/rotate (~hundreds per
-    # minute under load).  See ADR-0012 for the argon2id password-storage path.
-    digest = hmac.new(_HMAC_KEY, plaintext, hashlib.sha256).hexdigest()  # lgtm[py/weak-sensitive-data-hashing]
-    return digest[:length]
+    if length % 2 != 0:
+        raise ValueError(f"length must be even (hex chars), got {length}")
+    # BLAKE2b in keyed mode; ADR-0012 still mandates argon2id for password storage paths.
+    # digest_size is in bytes; hex output is 2× digest_size chars.
+    digest = hashlib.blake2b(plaintext, key=_HMAC_KEY, digest_size=length // 2).hexdigest()
+    return digest

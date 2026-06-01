@@ -598,8 +598,8 @@ async def create_credential(
     # Payload MUST NOT include body.value or any plaintext — ADR-0014.4, S-SEC-1.
     # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (HMAC-SHA256 hex[:16]);
     # NEVER include p8_key_pem itself.
-    # fingerprint_scheme="hmac_sha256_v1" identifies entries produced after the
-    # SHA-256 → HMAC migration (deploy ~2026-06-02); older rows lack this field.
+    # fingerprint_scheme="blake2b_keyed_v1" identifies entries produced after the
+    # HMAC-SHA256 → BLAKE2b migration (deploy ~2026-06-02); older rows lack this field.
     is_rotation = key_version > 1
     event_type = "credential.rotated" if is_rotation else "credential.registered"
     audit_payload: dict[str, Any] = {
@@ -617,7 +617,7 @@ async def create_credential(
         audit_payload["p8_fingerprint"] = _audit_fp(
             apple_jwt_validated.p8_key_pem.encode()
         )
-        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
+        audit_payload["fingerprint_scheme"] = "blake2b_keyed_v1"
     if _gsa_validated is not None:
         import json as _json_gsa
         # Include non-sensitive metadata only — NEVER service_account_json or private_key.
@@ -628,7 +628,7 @@ async def create_credential(
         audit_payload["json_key_fingerprint"] = _audit_fp(
             _gsa_validated.service_account_json.encode()
         )
-        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
+        audit_payload["fingerprint_scheme"] = "blake2b_keyed_v1"
     if _ssh_validated is not None:
         # Include non-sensitive metadata only — NEVER private_key_pem.
         # key_fingerprint is the first 16 hex chars of HMAC-SHA256(pem) — ADR-0021, ADR-0014.7.
@@ -637,7 +637,7 @@ async def create_credential(
         audit_payload["key_fingerprint"] = _audit_fp(
             _ssh_validated.private_key_pem.encode()
         )
-        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
+        audit_payload["fingerprint_scheme"] = "blake2b_keyed_v1"
     if _ssh_pwd_validated is not None:
         # Include non-sensitive metadata only — NEVER the raw password.
         # password_fingerprint is the first 16 hex chars of HMAC-SHA256(password) — ADR-0021, ADR-0014.7.
@@ -645,7 +645,7 @@ async def create_credential(
         audit_payload["target_address"] = _ssh_pwd_validated.target_address
         _pwd_bytes = _ssh_pwd_validated.password.encode("utf-8")
         audit_payload["password_fingerprint"] = _audit_fp(_pwd_bytes)
-        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
+        audit_payload["fingerprint_scheme"] = "blake2b_keyed_v1"
 
     await audit_emit(
         session=session,

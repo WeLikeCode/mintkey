@@ -175,6 +175,12 @@ def test_length_too_long_raises(af) -> None:
         af(b"data", length=65)
 
 
+def test_length_odd_raises(af) -> None:
+    """ValueError when length is odd (hex string must be even for whole bytes)."""
+    with pytest.raises(ValueError, match="length must be even"):
+        af(b"data", length=9)
+
+
 # ---------------------------------------------------------------------------
 # Key sensitivity — different HMAC keys produce different fingerprints
 # ---------------------------------------------------------------------------
