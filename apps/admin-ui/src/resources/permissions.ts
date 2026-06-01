@@ -107,7 +107,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
       },
       action: {
         description:
-          "Action scope this agent may invoke on this service. Use `call` for unrestricted access, or a `<verb>:<resource>` pattern for narrower scopes (e.g., `read:contacts`, `write:invoices`, `delete:invoices`). The API key created from this grant must include only actions from this set.",
+          "What this agent is allowed to do on this service.\n\nDefault: `call` — lets the agent invoke any operation on the service. This is the right choice for most grants.\n\nAdvanced: a `<verb>:<resource>` pattern restricts the agent to a narrower subset (examples: `read:contacts`, `write:invoices`, `delete:invoices`). The agent's API key can then only request actions from this exact set; anything else is rejected with a 422.",
       },
       constraints: {
         type: "mixed",
@@ -125,7 +125,14 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: true,
         handler: async (request, response, context) => {
           if (request.method === "get") {
-            return { record: await recordJSON(context, {}) };
+            // Prefill action="call" so operators don't have to guess; ~95% of grants
+            // are unrestricted invoke-the-service. They can still type a narrower
+            // <verb>:<resource> pattern.
+            return { record: await recordJSON(context, { action: "call" }) };
+          }
+          // On POST, default the action field if the form somehow submitted empty.
+          if (!request.payload?.action) {
+            request.payload = { ...(request.payload ?? {}), action: "call" };
           }
           const { currentAdmin } = context;
           const tenantId = (currentAdmin as { tenantId: string }).tenantId;
