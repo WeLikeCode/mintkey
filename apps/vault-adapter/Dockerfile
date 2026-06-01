@@ -14,6 +14,7 @@ COPY packages/go/ packages/go/
 COPY apps/broker/go.mod apps/broker/go.sum apps/broker/
 COPY apps/kong-syncer/go.mod apps/kong-syncer/go.sum apps/kong-syncer/
 COPY apps/proxy-plugin/go.mod apps/proxy-plugin/go.sum apps/proxy-plugin/
+COPY apps/ssh-proxy/go.mod apps/ssh-proxy/go.sum apps/ssh-proxy/
 COPY apps/vault-adapter/go.mod apps/vault-adapter/go.sum apps/vault-adapter/
 
 # Copy only this service's full source.
