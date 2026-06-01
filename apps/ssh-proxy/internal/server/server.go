@@ -15,8 +15,10 @@ import (
 	"sync"
 
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/auth"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/backend"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/vault"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/time/rate"
@@ -58,9 +60,22 @@ type Server struct {
 
 // New creates a new SSH Proxy server.
 func New(cfg *config.Config) (*Server, error) {
+	// Wire the backend connector so sessions can reach upstream SSH targets.
+	vaultClient, err := vault.NewClient(cfg.VaultAddr, cfg.VaultIdentityID, cfg.VaultToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vault client for backend: %w", err)
+	}
+	connector := backend.NewConnector(vaultClient, nil)
+
+	deps := session.Deps{
+		Connector:      connector,
+		RecordingPath:  cfg.RecordingStoragePath,
+		SessionTimeout: cfg.SessionTimeout,
+	}
+
 	s := &Server{
 		cfg:        cfg,
-		sessionMgr: session.NewManager(cfg.MaxConcurrentSessionsPerAgent),
+		sessionMgr: session.NewManagerWithDeps(cfg.MaxConcurrentSessionsPerAgent, deps),
 		shutdownCh: make(chan struct{}),
 		limiter:    rate.NewLimiter(rate.Limit(cfg.RateLimitPerSecond), cfg.RateLimitBurst),
 		sem:        make(chan struct{}, cfg.MaxConcurrentHandshakes),

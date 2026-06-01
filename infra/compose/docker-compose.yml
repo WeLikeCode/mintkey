@@ -330,6 +330,9 @@ services:
       # Public-facing URLs (see docs/NETWORK.md).
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
       MINTKEY_PROXY_PUBLIC_URL: "${MINTKEY_PROXY_PUBLIC_URL:-http://localhost:8000}"
+      # SSH bastion external address returned in request_token ssh_connect blocks.
+      # Set to the host:port reachable by agents running outside Docker.
+      MINTKEY_SSH_PROXY_PUBLIC_URL: "${MINTKEY_SSH_PROXY_PUBLIC_URL:-}"
       # Legacy aliases (accepted with deprecation warning).
       # MINTKEY_MCP_URL: "..."
       # MINTKEY_PROXY_URL: "..."
@@ -510,7 +513,7 @@ services:
       SSH_PROXY_RECORDING_DIR: /var/lib/mintkey/ssh-recordings
       SSH_PROXY_RECORDING_ENABLED: "true"
       VAULT_ADAPTER_ADDR: vault-adapter:8084
-      BROKER_ADDR: broker:8080
+      BROKER_ADDR: broker:8083
       MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID: ${MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID:-svcid_ssh_proxy}
       MINTKEY_VAULT_SSH_PROXY_TOKEN: ${MINTKEY_VAULT_SSH_PROXY_TOKEN:-mk_vault_ssh_proxy_dev_shared_secret!}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317

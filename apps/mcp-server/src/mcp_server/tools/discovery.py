@@ -17,7 +17,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from mcp_server.config.public_urls import resolve_proxy_public_url
+from mcp_server.config.public_urls import resolve_proxy_public_url, resolve_ssh_proxy_public_host
+
+# Auth schemes that use SSH transport (ssh-proxy) rather than Kong HTTP proxy.
+_SSH_AUTH_SCHEMES = {"ssh_private_key", "ssh_password", "ssh_ca"}
+
+
+def _connect_type(auth_scheme: str) -> str:
+    """Return 'ssh' for SSH auth schemes, 'http' for everything else."""
+    return "ssh" if auth_scheme in _SSH_AUTH_SCHEMES else "http"
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -143,6 +151,7 @@ async def list_services(
             "slug": r.slug,
             "base_url": r.base_url,
             "auth_scheme": r.auth_scheme,
+            "connect_type": _connect_type(r.auth_scheme),
         }
         for r in rows
     ]
@@ -189,6 +198,7 @@ async def discover(
             "slug": r.slug,
             "base_url": r.base_url,
             "auth_scheme": r.auth_scheme,
+            "connect_type": _connect_type(r.auth_scheme),
             "how_to_call": _make_how_to_call(db_uuid_to_wire(r.id, "svc"), r.base_url),
         }
         for r in rows
