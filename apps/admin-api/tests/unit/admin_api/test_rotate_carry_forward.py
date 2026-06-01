@@ -1,5 +1,5 @@
 """
-Unit tests for C-4 + C-5 fixes in rotate_credential / create_credential.
+Unit tests for C-4 + C-5 + C-6b fixes in rotate_credential / create_credential.
 
 C-4: Rotating without new plaintext must carry forward target_address, ssh_user,
      header_name, query_param from the prior is_current vault credential.
@@ -11,6 +11,11 @@ C-5: services.current_key_version must be updated atomically alongside the
      is_current flag.  Previously the column was not updated on rotate or
      create, causing the UI Show page to display a stale version number.
 
+C-6b: Rotate and register must sweep ALL prior active rows for
+      (service_id, auth_scheme), not just the single row identified by
+      rotate_from.  Live DB can have multiple rows with status='active' for
+      the same pair — the old single-row UPDATE missed them.
+
 Test cases:
   1. test_rotate_without_value_carries_forward_routing_metadata
        → new put_credential call receives prior target_address + ssh_user
@@ -20,11 +25,12 @@ Test cases:
        → services UPDATE executed with new_key_version after rotate
   4. test_create_credential_syncs_services_current_key_version
        → services UPDATE executed after credential INSERT
-  5. test_rotate_carry_forward_bearer_token_scheme
-       → non-SSH scheme: put_credential called without target_address/ssh_user
-         but get_credential is still called for header_name/query_param carry-forward
+  5. test_rotate_supersedes_all_prior_active_rows
+       → C-6b: rotate sweep uses service_id+auth_scheme filter (not just old_id)
+  6. test_register_supersedes_prior_active_for_same_scheme
+       → C-6b: create_credential sweeps prior active rows before INSERT
 
-Source: C-4 + C-5 chunk goal; ADR-0013 §3.1; ADR-0021.
+Source: C-4 + C-5 + C-6b chunk goals; ADR-0013 §3.1; ADR-0021.
 """
 from __future__ import annotations
 
@@ -369,15 +375,17 @@ async def test_create_credential_syncs_services_current_key_version(
     empty_result.fetchone.return_value = None
     empty_result.fetchall.return_value = []
 
-    # create_credential does:
+    # create_credential does (post-C-6b):
     #   1. SELECT FROM services  → svc_result
     #   2. PUT credential (vault, not DB)
-    #   3. INSERT INTO credentials  → empty_result
-    #   4. UPDATE services  → empty_result
-    #   5. audit_emit (mocked)
-    #   6. notify_change (mocked)
+    #   3. UPDATE credentials (C-6b sweep prior active rows)  → empty_result
+    #   4. INSERT INTO credentials  → empty_result
+    #   5. UPDATE services  → empty_result
+    #   6. audit_emit (mocked)
+    #   7. notify_change (mocked)
     session.execute.side_effect = [
         svc_result,   # SELECT FROM services
+        empty_result, # UPDATE credentials (C-6b sweep prior active rows)
         empty_result, # INSERT INTO credentials
         empty_result, # UPDATE services (current_key_version)
     ]
@@ -420,4 +428,175 @@ async def test_create_credential_syncs_services_current_key_version(
 
     assert services_update_found, (
         "C-5: No 'UPDATE services SET current_key_version' found in create_credential execute() calls"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: C-6b — rotate uses broad sweep (service_id+auth_scheme, not just old_id)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@_apply_patches
+async def test_rotate_supersedes_all_prior_active_rows(
+    mock_wire_to_db: Any,
+    mock_set_tenant: Any,
+    mock_notify: Any,
+    mock_audit: Any,
+) -> None:
+    """C-6b: rotate_credential supersede UPDATE must filter by service_id+auth_scheme.
+
+    The old implementation used `WHERE id = :old_id` — only one row.
+    The new implementation uses `WHERE service_id=:sid AND auth_scheme=:scheme
+    AND status='active' AND id IS DISTINCT FROM :new_id` — sweeps all prior actives.
+    """
+    session = _make_session(old_cred_key_version=3)
+    vault = _make_vault(new_key_version=4)
+
+    body = CredentialRotateRequest(
+        auth_scheme="ssh_password",
+        value=None,
+    )
+
+    response = await rotate_credential(
+        tenant_id=_TENANT_ID,
+        service_id=_SERVICE_UUID,
+        body=body,
+        session=session,
+        vault=vault,
+    )
+
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+
+    # Find the supersede UPDATE — must use service_id+auth_scheme filter, not old_id.
+    supersede_found = False
+    for c in session.execute.call_args_list:
+        args = c.args
+        if not args or not hasattr(args[0], "text"):
+            continue
+        sql = str(args[0])
+        if "UPDATE credentials" in sql and "superseded" in sql:
+            # C-6b: the WHERE must reference service_id and auth_scheme, not just old_id.
+            assert "service_id" in sql, (
+                f"C-6b: supersede UPDATE missing 'service_id' filter — got: {sql}"
+            )
+            assert "auth_scheme" in sql, (
+                f"C-6b: supersede UPDATE missing 'auth_scheme' filter — got: {sql}"
+            )
+            assert "IS DISTINCT FROM" in sql, (
+                f"C-6b: supersede UPDATE missing 'IS DISTINCT FROM' null-safe exclusion — got: {sql}"
+            )
+            params = c.args[1] if len(c.args) > 1 else {}
+            # Must NOT pass old_id as the sole filter (old behaviour)
+            assert "old_id" not in params, (
+                "C-6b: supersede UPDATE still uses old_id parameter — should use new_id exclusion"
+            )
+            supersede_found = True
+            break
+
+    assert supersede_found, (
+        "C-6b: No 'UPDATE credentials SET status=superseded' found in rotate execute() calls. "
+        f"Calls: {[str(c.args[0]) for c in session.execute.call_args_list if c.args]}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 6: C-6b — create_credential sweeps prior active rows before INSERT
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@_apply_patches
+async def test_register_supersedes_prior_active_for_same_scheme(
+    mock_wire_to_db: Any,
+    mock_set_tenant: Any,
+    mock_notify: Any,
+    mock_audit: Any,
+) -> None:
+    """C-6b: create_credential must sweep prior active rows before inserting the new one.
+
+    When an operator registers a second credential for the same (service, scheme)
+    without going through rotate, the old active row must become superseded so the
+    invariant "at most one active per (service, auth_scheme)" holds.
+    """
+    session = MagicMock()
+    session.execute = AsyncMock()
+
+    svc_row = MagicMock()
+    svc_row.base_url = _BASE_URL
+    svc_result = MagicMock()
+    svc_result.fetchone.return_value = svc_row
+
+    empty_result = MagicMock()
+    empty_result.fetchone.return_value = None
+    empty_result.fetchall.return_value = []
+
+    # create_credential (post-C-6b):
+    #   1. SELECT FROM services
+    #   2. UPDATE credentials (C-6b sweep prior active)
+    #   3. INSERT INTO credentials
+    #   4. UPDATE services (current_key_version)
+    session.execute.side_effect = [
+        svc_result,   # SELECT FROM services
+        empty_result, # UPDATE credentials (C-6b sweep)
+        empty_result, # INSERT INTO credentials
+        empty_result, # UPDATE services
+    ]
+
+    vault = MagicMock()
+    vault.put_credential = AsyncMock(return_value={
+        "credential_id": "cred_test_xxx",
+        "key_version": 2,
+        "created_at": datetime.now(timezone.utc).timestamp(),
+    })
+
+    from admin_api.api.credentials import CredentialCreate, create_credential  # noqa: PLC0415
+
+    body = CredentialCreate(
+        auth_scheme="ssh_password",
+        value='{"username": "ops", "password": "s3cr3t", "target_address": "host:22"}',
+    )
+
+    response = await create_credential(
+        tenant_id=_TENANT_ID,
+        service_id=_SERVICE_UUID,
+        body=body,
+        session=session,
+        vault=vault,
+    )
+
+    assert response.status_code == 201, f"Expected 201, got {response.status_code}"
+
+    # Find the sweep UPDATE — must appear BEFORE the INSERT.
+    sweep_found = False
+    insert_found = False
+    sweep_index = -1
+    insert_index = -1
+
+    for i, c in enumerate(session.execute.call_args_list):
+        args = c.args
+        if not args or not hasattr(args[0], "text"):
+            continue
+        sql = str(args[0])
+        if "UPDATE credentials" in sql and "superseded" in sql and not sweep_found:
+            # C-6b: sweep must use service_id + auth_scheme filter.
+            assert "service_id" in sql, (
+                f"C-6b: register sweep UPDATE missing 'service_id' filter — got: {sql}"
+            )
+            assert "auth_scheme" in sql, (
+                f"C-6b: register sweep UPDATE missing 'auth_scheme' filter — got: {sql}"
+            )
+            assert "IS DISTINCT FROM" in sql, (
+                f"C-6b: register sweep UPDATE missing 'IS DISTINCT FROM' exclusion — got: {sql}"
+            )
+            sweep_found = True
+            sweep_index = i
+        elif "INSERT INTO credentials" in sql and not insert_found:
+            insert_found = True
+            insert_index = i
+
+    assert sweep_found, "C-6b: No supersede sweep UPDATE found in create_credential execute() calls"
+    assert insert_found, "C-6b: No INSERT INTO credentials found in create_credential execute() calls"
+    assert sweep_index < insert_index, (
+        f"C-6b: sweep (index={sweep_index}) must precede INSERT (index={insert_index})"
     )

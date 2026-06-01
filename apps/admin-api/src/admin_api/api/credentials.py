@@ -512,6 +512,28 @@ async def create_credential(
     internal_id = uuid.UUID(_wire_to_db(cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
 
+    # Step 3b: Supersede any prior active rows for this (service_id, auth_scheme)
+    # before inserting the new credential — Bug C-6b fix (register path).
+    # If the operator registers a second credential for the same scheme without
+    # rotating first, the prior active row must become superseded so exactly one
+    # active row exists per (tenant_id, service_id, auth_scheme) after the write.
+    # The sweep uses `id IS DISTINCT FROM :new_id` (null-safe !=) for correctness.
+    # NOTE: a UNIQUE partial index is the DB-level guard; deferred to C-7 migration.
+    await session.execute(
+        text(
+            "UPDATE credentials SET status = 'superseded'"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            "   AND id IS DISTINCT FROM :new_id"
+        ),
+        {
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+            "scheme": body.auth_scheme,
+            "new_id": str(internal_id),
+        },
+    )
+
     # Step 4: Insert metadata-only record (NO plaintext stored) — ADR-0014.4
     # ciphertext/nonce/wrapped_dek are stored in the vault; local row holds metadata.
     # The stub fills placeholder bytes; the real integration will receive them from
@@ -1062,12 +1084,28 @@ async def rotate_credential(
     # Step 7: Atomic DB transaction — mark old superseded, insert new active,
     # and sync services.current_key_version (Bug C-5: stored column drifted from
     # vault.credentials.is_current when rotate didn't update it).
+    #
+    # Bug C-6b fix: sweep ALL prior active rows for this (service_id, auth_scheme)
+    # pair, not just the single row identified by rotate_from.  Live DB can have
+    # multiple rows with status='active' for the same (service, scheme) — e.g.
+    # kv=3 AND kv=4 both active — which rotate's old single-row UPDATE missed.
+    # Using `id IS DISTINCT FROM :new_id` (null-safe != ) sweeps every prior active
+    # row even if old_internal_id was NULL (should not happen, but defensive).
+    # NOTE: a UNIQUE partial index on (service_id, auth_scheme) WHERE status='active'
+    # would be the DB-level guard; deferred to C-7 migration.
     await session.execute(
         text(
             "UPDATE credentials SET status = 'superseded'"
-            " WHERE id = :old_id AND tenant_id = :tid"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            "   AND id IS DISTINCT FROM :new_id"
         ),
-        {"old_id": str(old_internal_id), "tid": str(tenant_id)},
+        {
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+            "scheme": body.auth_scheme,
+            "new_id": str(new_internal_id),
+        },
     )
     await session.execute(
         text(
