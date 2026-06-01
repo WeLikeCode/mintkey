@@ -44,6 +44,7 @@ from admin_api.services.credential_service import (
     SSHPasswordPayload,
     SSHPrivateKeyPayload,
 )
+from admin_api.services.audit_fingerprint import audit_fingerprint as _audit_fp
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from admin_api.utils.wire_ids import wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
@@ -595,8 +596,10 @@ async def create_credential(
     # Step 5: Emit audit event — ADR-0014.7
     # Rotation detected when vault returns key_version > 1 — T-1.8.2.
     # Payload MUST NOT include body.value or any plaintext — ADR-0014.4, S-SEC-1.
-    # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (SHA-256 hex[:16]);
+    # For apple_jwt: emit key_id + issuer_id + p8_fingerprint (HMAC-SHA256 hex[:16]);
     # NEVER include p8_key_pem itself.
+    # fingerprint_scheme="hmac_sha256_v1" identifies entries produced after the
+    # SHA-256 → HMAC migration (deploy ~2026-06-02); older rows lack this field.
     is_rotation = key_version > 1
     event_type = "credential.rotated" if is_rotation else "credential.registered"
     audit_payload: dict[str, Any] = {
@@ -608,43 +611,41 @@ async def create_credential(
     if is_rotation:
         audit_payload["previous_key_version"] = key_version - 1
     if apple_jwt_validated is not None:
-        import hashlib as _hashlib
         # Include non-sensitive metadata for the audit trail; NEVER p8_key_pem.
         audit_payload["key_id"] = apple_jwt_validated.key_id
         audit_payload["issuer_id"] = apple_jwt_validated.issuer_id
-        audit_payload["p8_fingerprint"] = _hashlib.sha256(
+        audit_payload["p8_fingerprint"] = _audit_fp(
             apple_jwt_validated.p8_key_pem.encode()
-        ).hexdigest()[:16]
+        )
+        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
     if _gsa_validated is not None:
-        import hashlib as _hashlib
         import json as _json_gsa
         # Include non-sensitive metadata only — NEVER service_account_json or private_key.
         _gsa_parsed: dict[str, object] = _json_gsa.loads(_gsa_validated.service_account_json)
         audit_payload["auth_scheme"] = "google_service_account"
         audit_payload["service_account_email"] = str(_gsa_parsed.get("client_email", ""))
         audit_payload["project_id"] = str(_gsa_parsed.get("project_id", ""))
-        audit_payload["json_key_fingerprint"] = _hashlib.sha256(
+        audit_payload["json_key_fingerprint"] = _audit_fp(
             _gsa_validated.service_account_json.encode()
-        ).hexdigest()[:16]
+        )
+        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
     if _ssh_validated is not None:
-        import hashlib as _hashlib_ssh
         # Include non-sensitive metadata only — NEVER private_key_pem.
-        # key_fingerprint is the first 16 hex chars of SHA-256(pem) — ADR-0021, ADR-0014.7.
+        # key_fingerprint is the first 16 hex chars of HMAC-SHA256(pem) — ADR-0021, ADR-0014.7.
         audit_payload["target_address"] = _ssh_validated.target_address
         audit_payload["ssh_user"] = _ssh_validated.ssh_user
-        audit_payload["key_fingerprint"] = _hashlib_ssh.sha256(
+        audit_payload["key_fingerprint"] = _audit_fp(
             _ssh_validated.private_key_pem.encode()
-        ).hexdigest()[:16]
+        )
+        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
     if _ssh_pwd_validated is not None:
-        import hashlib as _hashlib_sshpwd
         # Include non-sensitive metadata only — NEVER the raw password.
-        # password_fingerprint is the first 16 hex chars of SHA-256(password) — ADR-0021, ADR-0014.7.
+        # password_fingerprint is the first 16 hex chars of HMAC-SHA256(password) — ADR-0021, ADR-0014.7.
         audit_payload["username"] = _ssh_pwd_validated.username
         audit_payload["target_address"] = _ssh_pwd_validated.target_address
-        # SHA-256 used as non-reversible audit fingerprint (first 16 hex chars) per ADR-0021;
-        # NOT for password authentication or key derivation — high-entropy input, no KDF needed.
         _pwd_bytes = _ssh_pwd_validated.password.encode("utf-8")
-        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(_pwd_bytes).hexdigest()[:16]  # lgtm[py/weak-sensitive-data-hashing]
+        audit_payload["password_fingerprint"] = _audit_fp(_pwd_bytes)
+        audit_payload["fingerprint_scheme"] = "hmac_sha256_v1"
 
     await audit_emit(
         session=session,
