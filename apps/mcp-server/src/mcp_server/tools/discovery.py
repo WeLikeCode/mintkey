@@ -27,6 +27,39 @@ def _connect_type(auth_scheme: str) -> str:
     """Return 'ssh' for SSH auth schemes, 'http' for everything else."""
     return "ssh" if auth_scheme in _SSH_AUTH_SCHEMES else "http"
 
+
+def _ssh_agent_connection_guide() -> dict:
+    """
+    Return the agent_connection_guide block for SSH-scheme services.
+    The bastion host/port come from the env-driven resolver so the returned
+    text matches the actual external address (not a hardcoded IP).
+    """
+    ext_host, ext_port = resolve_ssh_proxy_public_host()
+    return {
+        "summary": (
+            "This service is accessed via the Mintkey SSH bastion, not the HTTP proxy."
+        ),
+        "steps": [
+            "1. Call request_token({service_id, action: 'call'}) to get a JWT.",
+            f"2. SSH to the bastion: ssh -p {ext_port} <agent_id>@{ext_host}",
+            "3. Use the JWT (from step 1) as the SSH PASSWORD when prompted.",
+            "4. The bastion validates the JWT, fetches the stored credential from the vault, "
+            "and routes you to the real target.",
+        ],
+        "example_command_template": (
+            f'sshpass -p "$JWT" ssh -p {ext_port} '
+            "-o PreferredAuthentications=password "
+            f"-o PubkeyAuthentication=no <agent_id>@{ext_host} '<your-command>'"
+        ),
+        "do_not": [
+            "Do not route through Kong (HTTP-only).",
+            "Do not store the JWT — it expires in ~10 minutes.",
+            "Do not attempt agent forwarding (-A), X11 (-X), or local port forwarding (-L) "
+            "— the bastion rejects them.",
+        ],
+        "lifetime_seconds": 600,
+    }
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -268,19 +301,20 @@ async def describe_service(
     if row is None:
         return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
 
-    return JSONResponse(
-        {
-            "service": {
-                "id": db_uuid_to_wire(row.id, "svc"),
-                "name": row.name,
-                "slug": row.slug,
-                "base_url": row.base_url,
-                "auth_scheme": row.auth_scheme,
-                "description": row.description,  # may be null
-                "openapi_url": row.openapi_url,   # may be null
-            }
-        }
-    )
+    ct = _connect_type(row.auth_scheme)
+    service_payload: dict = {
+        "id": db_uuid_to_wire(row.id, "svc"),
+        "name": row.name,
+        "slug": row.slug,
+        "base_url": row.base_url,
+        "auth_scheme": row.auth_scheme,
+        "description": row.description,  # may be null
+        "openapi_url": row.openapi_url,   # may be null
+        "connect_type": ct,
+    }
+    if ct == "ssh":
+        service_payload["agent_connection_guide"] = _ssh_agent_connection_guide()
+    return JSONResponse({"service": service_payload})
 
 
 @router.get("/get_openapi/{service_id}")

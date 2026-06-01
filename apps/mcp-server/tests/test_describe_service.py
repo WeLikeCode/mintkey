@@ -510,6 +510,70 @@ def test_describe_service_cross_tenant_slug_returns_404() -> None:
 
 
 # ===========================================================================
+# SSH connect_type / agent_connection_guide tests
+# ===========================================================================
+
+
+def test_describe_service_ssh_scheme_returns_connect_type_ssh_and_guide() -> None:
+    """
+    SSH auth_scheme services must have connect_type='ssh' and a full
+    agent_connection_guide block in the describe_service response.
+
+    Source: SSH bastion onboarding — Part C objective.
+    """
+    fake_row = _make_fake_row(auth_scheme="ssh_private_key")
+    resp = _run_describe(fake_row)
+
+    assert resp.status_code == 200, resp.text
+    svc = resp.json()["service"]
+
+    assert svc.get("connect_type") == "ssh", (
+        f"Expected connect_type='ssh' for ssh_private_key service, got: {svc.get('connect_type')!r}"
+    )
+    guide = svc.get("agent_connection_guide")
+    assert guide is not None, (
+        f"Expected agent_connection_guide block for SSH service, not present. Keys: {svc.keys()}"
+    )
+    # Validate required keys inside the guide
+    for key in ("summary", "steps", "example_command_template", "do_not", "lifetime_seconds"):
+        assert key in guide, (
+            f"agent_connection_guide missing '{key}'. Got keys: {guide.keys()}"
+        )
+    assert isinstance(guide["steps"], list) and len(guide["steps"]) >= 4, (
+        f"Expected at least 4 steps in agent_connection_guide, got: {guide['steps']}"
+    )
+    assert guide["lifetime_seconds"] == 600, (
+        f"Expected lifetime_seconds=600, got: {guide['lifetime_seconds']}"
+    )
+    # Guide must not recommend Kong
+    for do_not_item in guide["do_not"]:
+        assert "Kong" in do_not_item or "port forward" in do_not_item or "X11" in do_not_item or "agent forward" in do_not_item or "store" in do_not_item, (
+            f"Unexpected do_not item: {do_not_item!r}"
+        )
+
+
+def test_describe_service_http_scheme_returns_connect_type_http_and_no_guide() -> None:
+    """
+    HTTP auth_scheme services must have connect_type='http' and NO
+    agent_connection_guide block in the describe_service response.
+
+    Source: SSH bastion onboarding — Part C objective (HTTP-shape check).
+    """
+    fake_row = _make_fake_row(auth_scheme="bearer_token")
+    resp = _run_describe(fake_row)
+
+    assert resp.status_code == 200, resp.text
+    svc = resp.json()["service"]
+
+    assert svc.get("connect_type") == "http", (
+        f"Expected connect_type='http' for bearer_token service, got: {svc.get('connect_type')!r}"
+    )
+    assert "agent_connection_guide" not in svc, (
+        f"HTTP services must NOT have agent_connection_guide. Keys: {svc.keys()}"
+    )
+
+
+# ===========================================================================
 # Integration tests (requires docker-compose stack)
 # ===========================================================================
 
