@@ -36,6 +36,8 @@ export const AUTH_SCHEMES: AuthSchemeOption[] = [
   { value: "mtls", label: "mTLS — client certificate" },
   { value: "apple_jwt", label: "Apple JWT — .p8 key (App Store Connect)" },
   { value: "google_service_account", label: "Google Service Account (auto-rotating OAuth2)" },
+  { value: "ssh_private_key", label: "SSH Private Key (bastion)" },
+  { value: "ssh_ca", label: "SSH CA Signing Key (bastion — Phase 2)" },
 ];
 
 const SCHEME_FIELDS: Record<string, CredentialField[]> = {
@@ -97,6 +99,17 @@ const SCHEME_FIELDS: Record<string, CredentialField[]> = {
     { name: "service_account_json", label: "Service Account JSON Key", type: "textarea", secret: true, required: true, placeholder: '{"type":"service_account","project_id":"...","private_key_id":"..."}' },
     { name: "scope", label: "OAuth2 Scope", type: "text", secret: false, required: true, defaultValue: "https://www.googleapis.com/auth/androidpublisher" },
   ],
+
+  ssh_private_key: [
+    { name: "private_key_pem", label: "SSH Private Key (PEM)", type: "textarea", secret: true, required: true, placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----\n..." },
+    { name: "target_address",  label: "Target host:port",       type: "text",     secret: false, required: true, placeholder: "10.0.0.5:22" },
+    { name: "ssh_user",        label: "SSH user",                type: "text",     secret: false, required: true, placeholder: "ubuntu" },
+  ],
+
+  ssh_ca: [
+    { name: "ca_private_key_pem", label: "SSH CA Private Key (PEM)", type: "textarea", secret: true, required: true },
+    { name: "ca_principal_prefix", label: "Principal prefix (e.g. 'agent-')", type: "text", secret: false, required: true },
+  ],
 };
 
 /**
@@ -149,6 +162,25 @@ export function buildCredentialPayload(
       scheme: "google_service_account",
       service_account_json: formData["service_account_json"] ?? "",
       scope: formData["scope"] ?? "https://www.googleapis.com/auth/androidpublisher",
+    });
+    return payload;
+  }
+
+  if (scheme === "ssh_private_key") {
+    payload["value"] = JSON.stringify({
+      scheme: "ssh_private_key",
+      private_key_pem: formData.private_key_pem ?? "",
+      target_address: formData.target_address ?? "",
+      ssh_user: formData.ssh_user ?? "",
+    });
+    return payload;
+  }
+
+  if (scheme === "ssh_ca") {
+    payload["value"] = JSON.stringify({
+      scheme: "ssh_ca",
+      ca_private_key_pem: formData.ca_private_key_pem ?? "",
+      ca_principal_prefix: formData.ca_principal_prefix ?? "",
     });
     return payload;
   }

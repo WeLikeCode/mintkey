@@ -220,6 +220,27 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
             scope: credFields["scope"] ?? "https://www.googleapis.com/auth/androidpublisher",
           }),
         };
+      } else if (authScheme === "ssh_private_key") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_private_key",
+            private_key_pem: credFields["private_key_pem"] ?? "",
+            target_address: credFields["target_address"] ?? "",
+            ssh_user: credFields["ssh_user"] ?? "",
+          }),
+        };
+      } else if (authScheme === "ssh_ca") {
+        credPayload = {
+          auth_scheme: authScheme,
+          service_id: serviceId.trim(),
+          value: JSON.stringify({
+            scheme: "ssh_ca",
+            ca_private_key_pem: credFields["ca_private_key_pem"] ?? "",
+            ca_principal_prefix: credFields["ca_principal_prefix"] ?? "",
+          }),
+        };
       } else if (authScheme === "oauth2_password_grant") {
         // Assemble the value JSON per contract
         const credentialFields: Record<string, string> = {};
