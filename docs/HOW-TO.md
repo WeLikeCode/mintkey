@@ -149,11 +149,17 @@ agent (ssh client)
   ssh-proxy :2222
   ├── validates JWT (JWKS from broker :8083)
   ├── fetches credential (gRPC vault-adapter :8084)
-  └── dials upstream SSH server (target_address from vault row)
+  │     └── vault-adapter JOINs public.services → returns base_url
+  └── dials upstream SSH server (host:port from services.base_url)
              │
              ▼
      upstream SSH server (any host:port)
 ```
+
+> **Routing address vs auth material.** The upstream host:port is owned by the **service's
+> `base_url`** (set via Admin UI Services → Edit, format: `ssh://host:port`). The credential row
+> holds only auth material: the private key or password, plus `ssh_user`. Per
+> [ADR-0023](architecture/01-architecture/adr/0023-ssh-upstream-base-url-canonical.md).
 
 ### One-time setup
 
@@ -167,11 +173,19 @@ agent (ssh client)
 1. **Services → New → From Template**: choose `ssh-bastion-key` (private-key auth) or
    `ssh-bastion-password` (username + password).
 2. Replace the placeholder base URL `ssh://CHANGE-ME:22` with your real target, e.g.
-   `ssh://internal-server.corp:22`.
-3. Open the service → **Set Credential**:
-   - For `ssh-bastion-key`: paste the private key (PEM/OpenSSH) in the text area, set `ssh_user` and `target_address` (host:port).
-   - For `ssh-bastion-password`: set `ssh_user`, `ssh_password`, and `target_address`.
+   `ssh://internal-server.corp:22`. **This is the canonical upstream address** — ssh-proxy dials
+   whatever is set here. Changing this field later takes effect after the next credential fetch
+   (subject to DEKCache TTL, ≤ 10 min; see [ADR-0023](architecture/01-architecture/adr/0023-ssh-upstream-base-url-canonical.md) §Follow-up F1).
+3. Open the service → **Set Credential** — provide only auth material:
+   - For `ssh-bastion-key`: paste the private key (PEM/OpenSSH) in the text area and set
+     `ssh_user`. **Do not set `target_address`** — the host:port is inherited from `base_url`.
+   - For `ssh-bastion-password`: set `ssh_user` and `ssh_password`. **Do not set
+     `target_address`** — the host:port is inherited from `base_url`.
 4. **Permission Grants → New**: grant the relevant agent `call` on this service.
+
+> **To change the upstream host:port later:** edit the service's `base_url` (Admin UI Services →
+> Edit, or `PATCH /v1/tenants/{tid}/services/{sid}`). Do not edit the credential's `target_address`
+> — that field is deprecated and will be removed in a follow-up migration.
 
 ### Using the service from an agent
 

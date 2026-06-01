@@ -144,3 +144,25 @@ Kong cannot proxy SSH. The bastion is a sibling data-plane component that reads 
 - [ADR-0018](0018-classical-service-api-keys.md) — classical API keys (similar auth indirection pattern).
 - [docs/architecture/01-architecture/ssh-bastion.md](../ssh-bastion.md) — full architecture narrative and data-flow diagram.
 - [docs/HOW-TO.md § 5](../../../HOW-TO.md#5-ssh-bastion-onboarding) — operator runbook.
+
+---
+
+## Corrigendum — superseded in part by ADR-0023
+
+**Date:** 2026-06-01. **Authority:** [ADR-0023](0023-ssh-upstream-base-url-canonical.md).
+
+§D2 states: "The credential row also carries `target_address` (host:port) and `ssh_user` — the
+bastion dials these directly without any additional lookup."
+
+This is **no longer accurate** for `target_address`. As of ADR-0023:
+
+- `services.base_url` is the canonical upstream address for SSH routing. vault-adapter LEFT JOINs
+  `public.services` in `GetCredential` and returns `base_url`; ssh-proxy reads `base_url` for all
+  SSH auth schemes (`ssh_password`, `ssh_private_key`, `ssh_ca`).
+- `vault.credentials.target_address` is **deprecated**. It is retained as a transition safety net
+  (ssh-proxy falls back to it when `base_url` is absent), but operators should not set it
+  explicitly — it is inherited from `services.base_url` via the C-6 cascade.
+- `ssh_user` remains per-credential (auth material, not routing) — §D2 is correct for that field.
+
+See [ADR-0023](0023-ssh-upstream-base-url-canonical.md) for the full decision, consequences, and
+follow-up items (including planned removal of `target_address`).
