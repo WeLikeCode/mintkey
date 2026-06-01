@@ -1,10 +1,11 @@
 """
 Agent CRUD endpoints.
 
-POST   /v1/tenants/{tenant_id}/agents              — create agent (201, api_key shown once)
-GET    /v1/tenants/{tenant_id}/agents              — list agents (200)
-GET    /v1/tenants/{tenant_id}/agents/{agent_id}   — get agent (200, no plaintext key)
-DELETE /v1/tenants/{tenant_id}/agents/{agent_id}   — delete agent (204)
+POST   /v1/tenants/{tenant_id}/agents                              — create agent (201, api_key shown once)
+GET    /v1/tenants/{tenant_id}/agents                              — list agents (200)
+GET    /v1/tenants/{tenant_id}/agents/{agent_id}                   — get agent (200, no plaintext key)
+DELETE /v1/tenants/{tenant_id}/agents/{agent_id}                   — delete agent (204)
+POST   /v1/tenants/{tenant_id}/agents/{agent_id}/ssh-pubkey        — set/rotate agent SSH public key (200)
 
 Architecture constraints:
   - API key returned plaintext exactly once at creation — S-SEC-1, ADR-0014.4.
@@ -21,6 +22,7 @@ Source: T-1.4.1; ADR-0008; ADR-0014.7; ADR-0017.11; S-SEC-1.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import secrets
@@ -696,6 +698,186 @@ async def rotate_agent_key(
         "api_key_last_rotated_at": now.isoformat(),
         "api_key_expires_at": new_expires_at.isoformat() if new_expires_at else None,
     })
+
+
+@router.post("/{agent_id}/ssh-pubkey", status_code=200)
+async def set_agent_ssh_pubkey(
+    tenant_id: UUID,
+    agent_id: str,
+    body: "AgentSetSSHPubKeyRequest",
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Set or rotate the SSH public key for an agent.
+
+    The key must be in OpenSSH authorized-keys format (single line, e.g.
+    ``ssh-ed25519 AAAA... mintkey-agent``). Key type must be one of:
+    ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256/384/521,
+    sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com.
+
+    Audit:
+      - ``agent.ssh_pubkey.set``     — first time a key is set (previous was NULL).
+      - ``agent.ssh_pubkey.rotated`` — key replaced (previous was non-NULL).
+
+    The audit payload carries the SHA-256 fingerprint of the NEW key (not the
+    key itself) for traceability. Per ADR-0014.7, raw key material is never
+    written to the audit log.
+
+    Admin-UI gap: the Admin-UI does not yet have a page for this action.
+    Operators must use ``curl`` or the REST API directly.  This will be
+    addressed in a follow-up UI chunk.
+
+    Source: ADR-0021; chunk C7.
+    """
+    try:
+        agent_uuid = _wire_id_to_uuid(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+    await set_tenant_context(session, tenant_id)
+
+    # Validate the ssh_pubkey.
+    pubkey = body.ssh_pubkey.strip()
+    if not pubkey:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_ssh_pubkey", "title": "ssh_pubkey is required"},
+        )
+    if "\n" in pubkey or "\r" in pubkey:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_ssh_pubkey", "title": "ssh_pubkey must be a single line"},
+        )
+    _VALID_PREFIXES = (
+        "ssh-ed25519 ",
+        "ssh-rsa ",
+        "ecdsa-sha2-nistp256 ",
+        "ecdsa-sha2-nistp384 ",
+        "ecdsa-sha2-nistp521 ",
+        "sk-ssh-ed25519@openssh.com ",
+        "sk-ecdsa-sha2-nistp256@openssh.com ",
+    )
+    if not any(pubkey.startswith(pfx) for pfx in _VALID_PREFIXES):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_ssh_pubkey",
+                "title": "ssh_pubkey must start with a recognized key type (ssh-ed25519, ssh-rsa, ecdsa-sha2-*)",
+            },
+        )
+    parts = pubkey.split()
+    if len(parts) < 2:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_ssh_pubkey", "title": "ssh_pubkey has no key body"},
+        )
+    try:
+        key_bytes = base64.b64decode(parts[1])
+    except Exception:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_ssh_pubkey", "title": "ssh_pubkey base64 body is invalid"},
+        )
+    if len(key_bytes) < 4:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_ssh_pubkey", "title": "ssh_pubkey key body is too short"},
+        )
+
+    # Compute the SHA-256 fingerprint (OpenSSH style: "SHA256:<base64-no-padding>").
+    # This matches what ssh.FingerprintSHA256 produces on the Go side.
+    fp_raw = hashlib.sha256(key_bytes).digest()
+    # OpenSSH uses base64 without padding.
+    fingerprint = "SHA256:" + base64.b64encode(fp_raw).decode().rstrip("=")
+
+    # Fetch the current ssh_pubkey to distinguish set vs rotate.
+    result = await session.execute(
+        text("SELECT id, ssh_pubkey FROM agents WHERE id = :aid AND tenant_id = :tid"),
+        {"aid": agent_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Agent not found"},
+        )
+
+    old_pubkey = row.ssh_pubkey  # None or a non-empty string
+    event_type = "agent.ssh_pubkey.rotated" if old_pubkey else "agent.ssh_pubkey.set"
+
+    # Compute old fingerprint for the audit payload (if rotating).
+    old_fingerprint: Optional[str] = None
+    if old_pubkey:
+        try:
+            old_parts = old_pubkey.strip().split()
+            old_key_bytes = base64.b64decode(old_parts[1])
+            old_fp_raw = hashlib.sha256(old_key_bytes).digest()
+            old_fingerprint = "SHA256:" + base64.b64encode(old_fp_raw).decode().rstrip("=")
+        except Exception:
+            old_fingerprint = None  # Best-effort; don't fail the rotation
+
+    await session.execute(
+        text(
+            "UPDATE agents SET ssh_pubkey = :pubkey, updated_at = now()"
+            " WHERE id = :aid AND tenant_id = :tid"
+        ),
+        {"pubkey": pubkey, "aid": agent_uuid, "tid": str(tenant_id)},
+    )
+
+    # Audit: carry the fingerprint (SHA-256 hash of the key bytes), NOT the key.
+    # Per ADR-0014.7: raw key material is never written to the audit log.
+    audit_payload: dict[str, Any] = {
+        "agent_id": agent_id,
+        "new_fingerprint": fingerprint,
+    }
+    if old_fingerprint is not None:
+        audit_payload["old_fingerprint"] = old_fingerprint
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type=event_type,
+        actor_id=None,
+        actor_type="operator",
+        target_id=row.id,
+        target_type="agent",
+        payload=audit_payload,
+    )
+
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event": event_type,
+            "tenant_id": str(tenant_id),
+            "agent_id": agent_id,
+        },
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "agent_id": agent_id,
+            "ssh_pubkey_fingerprint": fingerprint,
+            "event": event_type,
+        },
+    )
+
+
+class AgentSetSSHPubKeyRequest(BaseModel):
+    """Request body for POST /v1/tenants/{tenant_id}/agents/{agent_id}/ssh-pubkey."""
+
+    ssh_pubkey: str
+    """
+    OpenSSH authorized-keys format public key, e.g.:
+      ssh-ed25519 AAAA... mintkey-agent
+
+    Must be a single line. Accepted key types:
+      ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256/384/521,
+      sk-ssh-ed25519@openssh.com, sk-ecdsa-sha2-nistp256@openssh.com
+    """
 
 
 @router.delete("/{agent_id}", status_code=204)

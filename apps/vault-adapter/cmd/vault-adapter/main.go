@@ -120,11 +120,22 @@ func main() {
 	if len(sshProxyToken) == 0 {
 		log.Printf("vault-adapter: MINTKEY_VAULT_SSH_PROXY_TOKEN not set; SSH proxy credential fetches WILL fail with PERMISSION_DENIED")
 	} else {
-		if err := svc.RegisterServiceIdentity(sshProxyIdentityID, sshProxyToken, []string{"vault.read"}); err != nil {
+		// vault.read for GetCredential + GetAgentByFingerprint + GetHostKeyFingerprint
+		// vault.put for StoreHostKeyFingerprint (TOFU write)
+		if err := svc.RegisterServiceIdentity(sshProxyIdentityID, sshProxyToken, []string{"vault.read", "vault.put"}); err != nil {
 			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", sshProxyIdentityID, err)
 			os.Exit(1)
 		}
-		log.Printf("vault-adapter: registered SSH proxy service identity %q with scopes [vault.read]", sshProxyIdentityID)
+		log.Printf("vault-adapter: registered SSH proxy service identity %q with scopes [vault.read vault.put]", sshProxyIdentityID)
+	}
+
+	// Wire the SSHStore so ListenAndServe registers the SSHVaultAdapter service.
+	// Only PostgresStore implements SSHStore; SQLite falls back to no SSH RPCs.
+	if pgStore, ok := st.(*store.PostgresStore); ok {
+		srv.WithSSHStore(pgStore)
+		log.Printf("vault-adapter: SSHVaultAdapter service enabled (postgres backend)")
+	} else {
+		log.Printf("vault-adapter: SSHVaultAdapter service disabled (non-postgres backend)")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

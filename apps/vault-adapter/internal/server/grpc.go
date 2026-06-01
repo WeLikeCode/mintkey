@@ -15,6 +15,7 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/applejwt"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/googleserviceaccount"
+	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -60,6 +61,7 @@ var methodScopes = map[string]string{
 type VaultServer struct {
 	kek      []byte
 	dekCache *cache.DEKCache
+	sshStore store.SSHStore // optional; nil when backend is SQLite or when SSH is not configured
 }
 
 // New creates a VaultServer with the loaded KEK in memory.
@@ -72,6 +74,14 @@ func New(kek []byte, dekCache ...*cache.DEKCache) *VaultServer {
 		c = dekCache[0]
 	}
 	return &VaultServer{kek: kek, dekCache: c}
+}
+
+// WithSSHStore attaches an SSHStore to VaultServer so that ListenAndServe
+// can register the SSHVaultAdapter service alongside VaultAdapter.
+// Call before ListenAndServe. Passing nil disables SSH RPC registration.
+func (s *VaultServer) WithSSHStore(ss store.SSHStore) *VaultServer {
+	s.sshStore = ss
+	return s
 }
 
 // scopeInterceptor returns a gRPC unary server interceptor that enforces
@@ -407,6 +417,11 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	healthSvc.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	vaultv1.RegisterVaultAdapterServer(grpcSrv, &grpcVaultServer{svc: svc})
+
+	// Register SSHVaultAdapter when an SSHStore is configured.
+	if s.sshStore != nil {
+		RegisterSSHVaultServer(grpcSrv, svc, s.sshStore)
+	}
 
 	// HTTP mux for non-gRPC requests (e.g. /metrics).
 	httpMux := http.NewServeMux()
