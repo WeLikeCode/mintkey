@@ -44,7 +44,7 @@ templates:
     credential_hint:
       field: service_account_json
       help: "Paste the full service account JSON key file. Mintkey auto-rotates access tokens for scope https://www.googleapis.com/auth/androidpublisher."
-      format: '{"type": "service_account", ...}'
+      format: 'Google service account JSON (see GCP Console → IAM → Service Accounts → Keys)'
       scope_default: "https://www.googleapis.com/auth/androidpublisher"
     test_path: /androidpublisher/v3/applications
 
