@@ -136,7 +136,10 @@ make backup-list
 Kong is HTTP-only; SSH is a long-lived TCP protocol. Mintkey therefore runs a separate
 SSH listener on `:2222` (the `ssh-proxy` container), independent of Kong.
 
-### Architecture
+**Architecture deep-dive:** [docs/architecture/01-architecture/ssh-bastion.md](architecture/01-architecture/ssh-bastion.md) — data-flow diagram, single-port multiplexing explanation, port table, JWT claim map, connection lifecycle, and security boundary.  
+**Decision record:** [ADR-0022](architecture/01-architecture/adr/0022-ssh-bastion.md)
+
+### Architecture (overview)
 
 ```
 agent (ssh client)
@@ -144,9 +147,9 @@ agent (ssh client)
         │  TCP :2222  JWT-as-password
         ▼
   ssh-proxy :2222
-  ├── validates JWT (JWKS from admin-api)
-  ├── fetches credential from vault
-  └── dials upstream SSH server
+  ├── validates JWT (JWKS from broker :8083)
+  ├── fetches credential (gRPC vault-adapter :8084)
+  └── dials upstream SSH server (target_address from vault row)
              │
              ▼
      upstream SSH server (any host:port)

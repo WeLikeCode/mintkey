@@ -28,6 +28,7 @@ See [`PROGRESS.md`](PROGRESS.md) for the full milestone checklist.
 **Is:**
 - A credential broker for AI agents: register services, store credentials encrypted, grant agents scoped access.
 - An egress proxy (Kong + Go plugin) that injects the real credential in-flight — the agent never holds it.
+- An SSH bastion on `:2222` that multiplexes agent SSH sessions to any registered upstream host via a single listener, dispatching by JWT claim — no custom client needed, no per-service ports ([architecture](docs/architecture/01-architecture/ssh-bastion.md), [ADR-0022](docs/architecture/01-architecture/adr/0022-ssh-bastion.md)).
 - An MCP server: agents discover services and request JWTs without out-of-band setup.
 - Per-request audit with a mandatory hash chain ([ADR-0014.7](docs/architecture/01-architecture/adr/0014-iter-1-2-corrections.md)).
 - Self-hostable via `docker compose up`.
