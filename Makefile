@@ -20,7 +20,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
-        deps bootstrap doctor audit-steering vibe-check spec-trace contract-lint \
+        deps bootstrap doctor stack-doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull \
         demo demo-mock \
         create-operator \
@@ -71,7 +71,8 @@ help:
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
 	@echo "  bootstrap              Run the project-setup wizard"
-	@echo "  doctor                 Verify local environment health"
+	@echo "  doctor                 Verify local environment health (Kiro template + Mintkey stack)"
+	@echo "  stack-doctor           Run only the Mintkey stack consistency checks (subset of doctor)"
 	@echo "  audit-steering         Audit steering files"
 	@echo "  vibe-check             Pre-PR spec-reference scan on staged files"
 	@echo "  spec-trace             Generate ADR/contract traceability matrix"
@@ -343,6 +344,13 @@ bootstrap:
 
 doctor:
 	@bash $(TOOLS)/doctor.sh
+
+## stack-doctor: Run only the Mintkey live-stack consistency checks (subset of
+##   'make doctor'). Checks: registered MCP key fingerprint, vault-adapter
+##   token env vars, SSH credential completeness, agent NULL-hash integrity,
+##   and kong-syncer health + last-reconcile age. Safe to re-run; read-only.
+stack-doctor:
+	@bash $(REPO_ROOT)/scripts/mintkey-doctor.sh
 
 audit-steering:
 	@bash $(TOOLS)/kiro-steering-audit.sh $(if $(JSON),--json,)

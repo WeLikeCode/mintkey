@@ -1,0 +1,39 @@
+# data/seed-agents.yaml — Canonical dev-stack agent roster
+#
+# Lists the agent NAMES the local dev stack expects to be present.
+# Keys are NOT committed here — they are operator-owned secrets.
+#
+# On admin-api startup, the canonical_agents module queries the DB and logs:
+#   agents: <N> canonical present, <X> orphans, <Y> missing
+#
+# A discrepancy here (Y > 0 or X > 0) is a soft signal — admin-api still
+# starts. Operators should investigate unexpected drift.
+#
+# To add a new canonical agent, append its name here and re-create it via
+# the admin-ui or 'make create-operator'.  The seed-agents list is intentionally
+# names-only; rotating the actual key does not require changing this file.
+#
+# 'purpose' is free-text documentation for operators.
+# 'mcp_registered' marks the agent whose key is registered as the Claude MCP
+# bearer (mk_agent_* in 'claude mcp get mintkey').  Exactly one should be true.
+
+agents:
+  - name: Hermes_agent1
+    purpose: "Primary Claude MCP bearer — registered via 'claude mcp add mintkey'"
+    mcp_registered: true
+
+  - name: Claudiu_1
+    purpose: "Secondary agent for Claude / Claudiu persona tests"
+    mcp_registered: false
+
+  - name: Codex_1
+    purpose: "Codex / OpenAI-bridge integration tests"
+    mcp_registered: false
+
+  - name: Hermes_2
+    purpose: "Secondary Hermes agent for parallel-call tests"
+    mcp_registered: false
+
+  - name: spotus-test-agent
+    purpose: "Operator smoke-test agent (spotus4space@gmail.com)"
+    mcp_registered: false
