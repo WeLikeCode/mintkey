@@ -30,7 +30,7 @@ import {
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { AUTH_SCHEMES, getCredentialFields, type KvRow } from "../../lib/auth-scheme.js";
+import { AUTH_SCHEMES, getCredentialFields, buildCredentialPayload, type KvRow } from "../../lib/auth-scheme.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -278,11 +278,26 @@ const CredentialNewForm = (props: Props): React.ReactElement => {
           value: valueJson,
           token_url: tokenUrl,
         };
-      } else {
+      } else if (authScheme === "apple_jwt") {
         credPayload = {
           auth_scheme: authScheme,
           service_id: serviceId.trim(),
-          ...credFields,
+          value: JSON.stringify({
+            scheme: "apple_jwt",
+            p8_key_pem: credFields["p8_key_pem"] ?? "",
+            key_id: credFields["key_id"] ?? "",
+            issuer_id: credFields["issuer_id"] ?? "",
+          }),
+        };
+      } else {
+        // Legacy flat-value schemes (bearer_token, basic_auth, api_key_header,
+        // api_key_query, oauth2_client_credentials, oidc_client_secret, mtls, none).
+        // buildCredentialPayload reads credFields at the top level — correct here
+        // because these schemes were never nested inside `value` by the frontend.
+        const built = buildCredentialPayload(authScheme, credFields);
+        credPayload = {
+          service_id: serviceId.trim(),
+          ...built,
         };
 
         // Remove empty optional fields so admin-api doesn't receive empty strings

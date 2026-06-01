@@ -11,7 +11,6 @@
 
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { buildCredentialPayload } from "../lib/auth-scheme.js";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
@@ -89,13 +88,14 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
           const serviceId = request.payload?.service_id as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
+          // Frontend (CredentialNewForm) builds the full wire-form payload for
+          // all schemes; handler is a pure pass-through (see CredentialNewForm.tsx).
+          // Do NOT call buildCredentialPayload here — it reads top-level keys that
+          // special schemes nest inside `value`, clobbering the correct payload.
           const resp = await apiWrite(
             `/v1/tenants/${tenantId}/services/${serviceId}/credentials`,
             "POST",
-            buildCredentialPayload(
-              request.payload?.auth_scheme as string ?? "none",
-              request.payload as Record<string, string> ?? {}
-            ),
+            request.payload as Record<string, string>,
             operatorOpts
           );
 
