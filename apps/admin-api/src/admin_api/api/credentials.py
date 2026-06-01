@@ -186,6 +186,7 @@ async def create_credential(
     if body.auth_scheme == "oauth2_password_grant":
         try:
             import json as _json_mod
+            import pydantic as _pydantic
             raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             OAuth2PasswordGrantPayload(**raw)
         except (_json_mod.JSONDecodeError, TypeError):
@@ -196,8 +197,24 @@ async def create_credential(
                     "title": "oauth2_password_grant value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents credential values from leaking into the HTTP
+            # response — ADR-0014.7, S-SEC-1.
+            logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing user-supplied credential bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("oauth2_password_grant credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=422,
                 content={
@@ -217,6 +234,7 @@ async def create_credential(
     apple_jwt_validated: AppleJWTPayload | None = None
     if body.auth_scheme == "apple_jwt":
         import json as _json_mod
+        import pydantic as _pydantic
         try:
             raw_apple = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             if not isinstance(raw_apple, dict):
@@ -232,18 +250,30 @@ async def create_credential(
                     "title": "apple_jwt value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            # Log the error without including p8_key_pem in the message — ADR-0014.7.
-            logger.warning(
-                "apple_jwt payload validation failed: %s",
-                str(exc),  # exc text describes the field constraint, not the key value
-            )
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents p8_key_pem bytes from leaking into the HTTP
+            # response — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
-                    "mintkey:code": "invalid_apple_jwt_payload",
-                    "title": "apple_jwt payload failed validation",
-                    "detail": str(exc),
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing p8_key_pem bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "apple_jwt payload malformed",
                 },
             )
         # Serialise the validated envelope for the vault — p8_key_pem is in this string
@@ -264,6 +294,7 @@ async def create_credential(
     _gsa_validated: GoogleServiceAccountPayload | None = None
     if body.auth_scheme == "google_service_account":
         import json as _json_mod
+        import pydantic as _pydantic
         try:
             raw_gsa = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
             if not isinstance(raw_gsa, dict):
@@ -280,18 +311,30 @@ async def create_credential(
                     "detail": "google_service_account value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            # Log the error without including service_account_json — ADR-0014.7.
-            # Only the terse validation message is logged — NEVER private_key material.
-            logger.warning(
-                "google_service_account credential validation failed: %s", str(exc)
-            )
+        except _pydantic.ValidationError as exc:
+            # Return structured field errors so the UI can render per-field messages — C-2.
+            # include_input=False: prevents service_account_json / private_key bytes from
+            # leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": str(exc),
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing service_account_json / private_key.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account payload malformed",
                 },
             )
         # Serialise the validated envelope for the vault — service_account_json is in
@@ -326,13 +369,12 @@ async def create_credential(
                 },
             )
         except ValidationError as exc:
-            # Log the error without including private_key_pem — ADR-0014.7.
             # Return structured field errors so the UI can render per-field
             # messages — C-2.  exc.errors() is pydantic v2 format:
             # [{loc: [...], msg: "...", type: "..."}].
             # include_input=False: prevents credential values (private_key_pem)
             # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
-            logger.warning("ssh_private_key credential validation failed: %s", str(exc))
+            logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
@@ -341,15 +383,17 @@ async def create_credential(
                     "detail": exc.errors(include_url=False, include_context=False, include_input=False),
                 },
             )
-        except ValueError as exc:
-            # Log the error without including private_key_pem — ADR-0014.7.
-            logger.warning("ssh_private_key credential validation failed: %s", str(exc))
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing private_key_pem bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": str(exc),
+                    "detail": "ssh_private_key payload malformed",
                 },
             )
         # Extract routing metadata for the separate gRPC fields — ADR-0021.
@@ -385,13 +429,12 @@ async def create_credential(
                 },
             )
         except ValidationError as exc:
-            # Log without including password — ADR-0014.7.
             # Return structured field errors so the UI can render per-field
             # messages — C-2.  exc.errors() is pydantic v2 format:
             # [{loc: [...], msg: "...", type: "..."}].
             # include_input=False: prevents credential values (password)
             # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
-            logger.warning("ssh_password credential validation failed: %s", str(exc))
+            logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
@@ -400,15 +443,17 @@ async def create_credential(
                     "detail": exc.errors(include_url=False, include_context=False, include_input=False),
                 },
             )
-        except ValueError as exc:
-            # Log without including password — ADR-0014.7.
-            logger.warning("ssh_password credential validation failed: %s", str(exc))
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing password bytes.
+            # Static title only — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": str(exc),
+                    "detail": "ssh_password payload malformed",
                 },
             )
         # Extract routing metadata for the separate gRPC fields — ADR-0021.
@@ -704,17 +749,23 @@ async def rotate_credential(
 
     old_internal_id: Any = old_row.id
 
-    # Step 4b: For oauth2_password_grant, validate the new credential value — BUG-2/BUG-9.
-    # Mirrors the create_credential validation (Step 1c) so that the rotate path
-    # cannot be used to bypass HTTPS + SSRF checks by rotating to a malicious token_url.
-    # Rejects: non-HTTPS token_url, loopback/private/link-local/IPv6-ULA (S-SEC-1),
-    # empty credential_fields. Requirements 19.2, 19.4, 19.5, 19.6.
+    # Step 4b: For structured-payload schemes, validate the new credential value.
+    # Mirrors the create_credential validation so that the rotate path cannot be used
+    # to bypass validation checks — same 5 pydantic-validated schemes apply.
+    # include_input=False on exc.errors() prevents credential bytes from leaking into
+    # the HTTP response — ADR-0014.7, S-SEC-1.
+    #
+    # Note: ssh_ca is intentionally skipped here (no SSHCAPayload model exists today;
+    # the catch would be unreachable). Follow-up TODO: add SSHCAPayload when
+    # ssh_ca scheme is fully implemented — track as TODO(ssh-ca-payload).
+    import json as _json_mod_rot
+    import pydantic as _pydantic_rot
+
     if body.auth_scheme == "oauth2_password_grant" and body.value is not None:
         try:
-            import json as _json_mod
-            raw = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            raw = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
             OAuth2PasswordGrantPayload(**raw)
-        except (_json_mod.JSONDecodeError, TypeError):
+        except (_json_mod_rot.JSONDecodeError, TypeError):
             return JSONResponse(
                 status_code=422,
                 content={
@@ -722,13 +773,181 @@ async def rotate_credential(
                     "title": "oauth2_password_grant value must be a valid JSON object",
                 },
             )
-        except ValueError as exc:
-            logger.warning("oauth2_password_grant payload validation failed", exc_info=exc)
+        except _pydantic_rot.ValidationError as exc:
+            # Structured field errors for the UI — C-2; include_input=False prevents leak.
+            logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("oauth2_password_grant credential malformed (non-pydantic): non-pydantic error")
             return JSONResponse(
                 status_code=422,
                 content={
                     "mintkey:code": "invalid_oauth2_payload",
                     "title": "oauth2_password_grant payload failed validation",
+                },
+            )
+
+    if body.auth_scheme == "apple_jwt" and body.value is not None:
+        try:
+            raw_apple_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_apple_rot, dict):
+                raise TypeError("apple_jwt value must be a JSON object")
+            raw_apple_rot.pop("scheme", None)
+            AppleJWTPayload(**raw_apple_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "mintkey:code": "invalid_apple_jwt_payload",
+                    "title": "apple_jwt value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents p8_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("apple_jwt credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "apple_jwt payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "google_service_account" and body.value is not None:
+        try:
+            raw_gsa_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_gsa_rot, dict):
+                raise TypeError("google_service_account value must be a JSON object")
+            raw_gsa_rot.pop("scheme", None)
+            GoogleServiceAccountPayload(**raw_gsa_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents service_account_json / private_key bytes
+            # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("google_service_account credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "google_service_account payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "ssh_private_key" and body.value is not None:
+        try:
+            raw_ssh_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_rot, dict):
+                raise TypeError("ssh_private_key value must be a JSON object")
+            raw_ssh_rot.pop("scheme", None)
+            SSHPrivateKeyPayload(**raw_ssh_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents private_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_private_key credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_private_key payload malformed",
+                },
+            )
+
+    if body.auth_scheme == "ssh_password" and body.value is not None:
+        try:
+            raw_ssh_pwd_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_ssh_pwd_rot, dict):
+                raise TypeError("ssh_password value must be a JSON object")
+            raw_ssh_pwd_rot.pop("scheme", None)
+            SSHPasswordPayload(**raw_ssh_pwd_rot)
+        except (_json_mod_rot.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password value must be a valid JSON object",
+                },
+            )
+        except _pydantic_rot.ValidationError as exc:
+            # include_input=False: prevents password bytes from leaking — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — ADR-0014.7, S-SEC-1.
+            logger.warning("ssh_password credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": "ssh_password payload malformed",
                 },
             )
 

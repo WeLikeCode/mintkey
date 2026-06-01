@@ -124,4 +124,15 @@ describe("extractFieldErrors", () => {
     const body: AdminApiErrorResponse = { detail: [] };
     expect(extractFieldErrors(body)).toEqual({});
   });
+
+  // ISSUE 3 (C-2 round-2): detail can be an arbitrary object (not array, not string).
+  // The Array.isArray guard must treat this as "no parseable field errors".
+  it("returns {} when detail is a plain object (not an array)", () => {
+    const body = {
+      type: "about:blank",
+      title: "validation error",
+      detail: { foo: "bar" } as any,
+    };
+    expect(extractFieldErrors(body as AdminApiErrorResponse)).toEqual({});
+  });
 });
