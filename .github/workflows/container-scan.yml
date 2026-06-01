@@ -122,6 +122,13 @@ jobs:
           image-ref: "${{ matrix.image }}:scan"
           format: sarif
           output: "trivy-${{ matrix.service }}.sarif"
+          # Scan for vulnerabilities only; disable secret scanner.
+          # Rationale: Trivy's secret scanner generates false positives on template
+          # files that document credential formats (e.g. GCP SA JSON shape hints).
+          # GitHub's own secret scanning covers actual secrets in the repo.
+          # CVE-only scope keeps the exit-code policy consistent: only NEW
+          # HIGH/CRITICAL CVEs (not suppressed by .trivyignore) fail the PR gate.
+          scanners: vuln
           # Exit-code policy:
           # - pull_request → "1" so PRs that ADD new HIGH/CRITICAL CVEs are blocked.
           # - push / schedule / workflow_dispatch → "0" so main-branch and cron
