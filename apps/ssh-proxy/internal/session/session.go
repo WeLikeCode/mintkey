@@ -353,6 +353,10 @@ func (s *Session) handlePTYRequest(req *ssh.Request) error {
 	return nil
 }
 
+// handleShellRequest starts an interactive shell session.
+// NOTE: the command filter (deps.Filter) is NOT applied here. The filter is
+// exec-only; per-keystroke command extraction from an interactive shell stream
+// is out of scope for this proxy implementation.
 func (s *Session) handleShellRequest(req *ssh.Request) error {
 	s.mu.Lock()
 	ptyReq := s.pendingPTY
@@ -744,7 +748,8 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	// perspective of the clean-shutdown path; it will unblock once s.Channel
 	// is closed below.
 	var outWg sync.WaitGroup
-	var bytesSent, bytesRecv int64
+	var bytesSentAtomic atomic.Int64
+	var bytesRecv int64
 
 	// agent → backend stdin (fire-and-forget w.r.t. exit sequencing)
 	go func() {
@@ -753,7 +758,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 			w = &recordingWriter{w: backendStdin, rec: recorder, input: true}
 		}
 		n, _ := io.Copy(w, s.Channel)
-		_ = n // bytesSent tracked in outWg goroutines only
+		bytesSentAtomic.Add(n)
 		backendStdin.Close()
 	}()
 
@@ -801,7 +806,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 			slog.Debug("failed to emit session.exec ended", "session_id", s.ID, "error", err)
 		}
 		if err := s.deps.AuditEmitter.EmitSessionEnded(ctx, s.Context, s.ID,
-			int64(duration.Seconds()), bytesSent, bytesRecv); err != nil {
+			int64(duration.Seconds()), bytesSentAtomic.Load(), bytesRecv); err != nil {
 			slog.Debug("failed to emit session.ended", "session_id", s.ID, "error", err)
 		}
 	}
@@ -1022,13 +1027,12 @@ func (s *Session) handleSignalRequest(req *ssh.Request) error {
 			slog.Debug("signal: failed to forward to backend",
 				"session_id", s.ID, "signal", sigReq.Signal, "error", err)
 		}
-	}
-
-	slog.Debug("signal forwarded", "session_id", s.ID, "signal", sigReq.Signal)
-	if s.deps.AuditEmitter != nil {
-		// Re-use exec slot with a synthetic "signal:<name>" command string.
-		s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID,
-			"signal:"+sigReq.Signal, 0)
+		slog.Debug("signal forwarded", "session_id", s.ID, "signal", sigReq.Signal)
+		if s.deps.AuditEmitter != nil {
+			// Re-use exec slot with a synthetic "signal:<name>" command string.
+			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID,
+				"signal:"+sigReq.Signal, 0)
+		}
 	}
 
 	// No reply for signal (RFC 4254 §6.9).
