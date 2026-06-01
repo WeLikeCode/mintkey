@@ -1357,15 +1357,15 @@ async def update_service(
             # The caller is explicitly setting an SSH scheme — validate now.
             try:
                 new_target_address = _parse_ssh_host_port(body.base_url)
-            except ValueError as exc:
-                # lgtm[py/stack-trace-exposure] ValueError from _parse_ssh_host_port contains
-                # only controlled validation text (e.g. "Expected ssh://host:port"), never
-                # internal state or stack frames. Safe to surface per ADR-0014.7.
+            except ValueError:
+                # Use a fixed message to avoid surfacing exception data in the response —
+                # ADR-0014.7, S-SEC-1. The validation constraint is always the same:
+                # base_url must be in ssh://host:port or host:port format.
                 return JSONResponse(
                     status_code=400,
                     content={
                         "mintkey:code": "invalid_ssh_base_url",
-                        "title": "Malformed ssh:// base_url — " + str(exc),  # lgtm[py/stack-trace-exposure]
+                        "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
                     },
                 )
         elif effective_scheme_hint is None and body.base_url.startswith("ssh://"):
@@ -1374,13 +1374,12 @@ async def update_service(
             # the service SELECT below.
             try:
                 new_target_address = _parse_ssh_host_port(body.base_url)
-            except ValueError as exc:
-                # lgtm[py/stack-trace-exposure] same as above — controlled validation text only.
+            except ValueError:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "mintkey:code": "invalid_ssh_base_url",
-                        "title": "Malformed ssh:// base_url — " + str(exc),  # lgtm[py/stack-trace-exposure]
+                        "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
                     },
                 )
 
@@ -1405,14 +1404,12 @@ async def update_service(
             if stored_auth_scheme.startswith("ssh_") and new_target_address is None:
                 try:
                     new_target_address = _parse_ssh_host_port(body.base_url)
-                except ValueError as exc:
-                    # lgtm[py/stack-trace-exposure] controlled validation text from
-                    # _parse_ssh_host_port only; no stack frames or internal state.
+                except ValueError:
                     return JSONResponse(
                         status_code=400,
                         content={
                             "mintkey:code": "invalid_ssh_base_url",
-                            "title": "Malformed ssh:// base_url — " + str(exc),  # lgtm[py/stack-trace-exposure]
+                            "title": "Malformed ssh:// base_url — expected ssh://host:port or host:port",
                         },
                     )
 

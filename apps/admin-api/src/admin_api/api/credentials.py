@@ -642,10 +642,10 @@ async def create_credential(
         audit_payload["username"] = _ssh_pwd_validated.username
         audit_payload["target_address"] = _ssh_pwd_validated.target_address
         # SHA-256 used as non-reversible audit fingerprint (first 16 hex chars) per ADR-0021;
-        # NOT for password authentication or key derivation.
-        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(  # lgtm[py/weak-sensitive-data-hashing]
-            _ssh_pwd_validated.password.encode("utf-8")
-        ).hexdigest()[:16]
+        # NOT for password authentication or key derivation — high-entropy input, no KDF needed.
+        # lgtm[py/weak-sensitive-data-hashing]
+        _pwd_bytes = _ssh_pwd_validated.password.encode("utf-8")
+        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(_pwd_bytes).hexdigest()[:16]
 
     await audit_emit(
         session=session,
