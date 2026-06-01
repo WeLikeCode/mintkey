@@ -351,3 +351,31 @@ CVE-2026-28390
 #   Mintkey services do not use Kerberos authentication; krb5 is a Debian base
 #   image transitive dependency that is not loaded in any service code path.
 CVE-2026-40356
+
+# ── Perl-base CVEs added 2026-06-01 (third CVE-DB flip — IO::Compress / Archive::Tar) ──
+
+# CVE-2026-48962  perl-base (all Debian base images) HIGH
+#   IO::Compress: Arbitrary code execution via attacker-controlled output glob in
+#   File::GlobMapper._getFiles() eval.
+#   Mintkey Python/Node services never invoke IO::Compress / File::GlobMapper from
+#   user-supplied input.  perl-base is a Debian base image transitive dependency;
+#   no IO::Compress code path is reachable from any service.  No fix available in
+#   Debian 12 repos.
+CVE-2026-48962
+
+# CVE-2026-9538   perl-base (all Debian base images) HIGH
+#   Archive::Tar: Memory exhaustion via crafted tar archive before version 3.10.
+#   No Mintkey service processes user-supplied tar archives via Archive::Tar.
+#   perl-base is a Debian base image dep that is never loaded at runtime.
+CVE-2026-9538
+
+# CVE-2026-42497  perl-base (all Debian base images) HIGH
+#   Archive::Tar < 3.08: Hardlink extraction to attacker-controlled paths.
+#   No Mintkey service extracts tar archives using Archive::Tar.
+#   perl-base is a Debian base image dep that is never loaded at runtime.
+CVE-2026-42497
+
+# CVE-2026-42496  perl-base (all Debian base images) CRITICAL
+#   Archive::Tar < 3.08: Symlink extraction with attacker-controlled targets.
+#   Same mitigation as CVE-2026-42497; no Archive::Tar usage in any service.
+CVE-2026-42496

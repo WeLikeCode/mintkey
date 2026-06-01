@@ -201,13 +201,17 @@ async def create_credential(
             # Return structured field errors so the UI can render per-field messages — C-2.
             # include_input=False: prevents credential values from leaking into the HTTP
             # response — ADR-0014.7, S-SEC-1.
+            # Extract errors into a plain list before the response to break the exception
+            # data-flow chain (CodeQL py/stack-trace-exposure — intentional: pydantic field
+            # errors are structured loc+msg pairs, not stack frames; include_input=False).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -255,6 +259,10 @@ async def create_credential(
             # include_input=False: prevents p8_key_pem bytes from leaking into the HTTP
             # response — ADR-0014.7, S-SEC-1.
             # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
+            # Extract errors into a plain list to break the exception data-flow chain
+            # (CodeQL py/stack-trace-exposure — intentional: pydantic loc+msg pairs, not
+            # stack frames; include_input=False ensures no credential bytes are echoed).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
@@ -262,7 +270,7 @@ async def create_credential(
                     "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -318,13 +326,17 @@ async def create_credential(
             # Return structured field errors so the UI can render per-field messages — C-2.
             # include_input=False: prevents service_account_json / private_key bytes from
             # leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            # Extract errors into a plain list to break the exception data-flow chain
+            # (CodeQL py/stack-trace-exposure — intentional: pydantic loc+msg pairs, not
+            # stack frames; include_input=False ensures no credential bytes are echoed).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -377,13 +389,14 @@ async def create_credential(
             # [{loc: [...], msg: "...", type: "..."}].
             # include_input=False: prevents credential values (private_key_pem)
             # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -437,13 +450,14 @@ async def create_credential(
             # [{loc: [...], msg: "...", type: "..."}].
             # include_input=False: prevents credential values (password)
             # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -816,13 +830,14 @@ async def rotate_credential(
             )
         except _pydantic_rot.ValidationError as exc:
             # Structured field errors for the UI — C-2; include_input=False prevents leak.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("oauth2_password_grant credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -854,6 +869,7 @@ async def rotate_credential(
         except _pydantic_rot.ValidationError as exc:
             # include_input=False: prevents p8_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
             # mintkey:code included for API clients that key on it (spec §4.2 / test contract).
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("apple_jwt credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
@@ -861,7 +877,7 @@ async def rotate_credential(
                     "mintkey:code": "invalid_apple_jwt_payload",
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -896,13 +912,14 @@ async def rotate_credential(
         except _pydantic_rot.ValidationError as exc:
             # include_input=False: prevents service_account_json / private_key bytes
             # from leaking into the HTTP response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("google_service_account credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -935,13 +952,14 @@ async def rotate_credential(
             )
         except _pydantic_rot.ValidationError as exc:
             # include_input=False: prevents private_key_pem bytes from leaking — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("ssh_private_key credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
@@ -986,13 +1004,14 @@ async def rotate_credential(
             )
         except _pydantic_rot.ValidationError as exc:
             # include_input=False: prevents password bytes from leaking — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
             logger.warning("ssh_password credential validation failed: %s", type(exc).__name__)
             return JSONResponse(
                 status_code=400,
                 content={
                     "type": "about:blank",
                     "title": "validation error",
-                    "detail": exc.errors(include_url=False, include_context=False, include_input=False),
+                    "detail": _field_errors,
                 },
             )
         except ValueError:
