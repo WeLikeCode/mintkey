@@ -217,37 +217,3 @@ func TestJWTTokenCreation(t *testing.T) {
 	}
 }
 
-func TestHandler_ValidateAPIKey_InvalidFormat(t *testing.T) {
-	handler := &Handler{}
-
-	tests := []struct {
-		name   string
-		apiKey string
-	}{
-		{
-			name:   "empty string",
-			apiKey: "",
-		},
-		{
-			name:   "missing prefix",
-			apiKey: "agent_test123_random456",
-		},
-		{
-			name:   "wrong prefix",
-			apiKey: "mk_service_test123_random456",
-		},
-		{
-			name:   "too few parts",
-			apiKey: "mk_agent",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := handler.ValidateAPIKey(tt.apiKey)
-			if err == nil {
-				t.Error("ValidateAPIKey() should fail with invalid format")
-			}
-		})
-	}
-}

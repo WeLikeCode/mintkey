@@ -3,12 +3,9 @@ package auth
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
@@ -173,41 +170,3 @@ func (h *Handler) AuthenticatePublicKey(user string, key ssh.PublicKey) (*sessio
 	}, nil
 }
 
-// ValidateAPIKey validates an API key and returns the agent information.
-func (h *Handler) ValidateAPIKey(apiKey string) (*vault.Agent, error) {
-	// Extract fingerprint from API key
-	// API key format: mk_agent_<fingerprint>_<random>
-	parts := strings.Split(apiKey, "_")
-	if len(parts) < 3 || parts[0] != "mk" || parts[1] != "agent" {
-		return nil, errors.New("invalid API key format")
-	}
-
-	fingerprint := parts[2]
-
-	// Query vault for agent by fingerprint
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	agent, err := h.vaultClient.GetAgentByFingerprint(ctx, fingerprint)
-	if err != nil {
-		return nil, fmt.Errorf("failed to lookup agent: %w", err)
-	}
-
-	// Verify API key hash matches.
-	// SHA-256 is appropriate for API key verification: API keys are high-entropy random tokens
-	// (mk_agent_<fingerprint>_<random>), making brute-force infeasible without a KDF.
-	// The admin-api uses the same SHA-256 scheme per ADR-0012.
-	expectedHash := sha256.Sum256([]byte(apiKey)) // lgtm[go/weak-sensitive-data-hashing]
-	expectedHashHex := hex.EncodeToString(expectedHash[:])
-
-	if agent.APIKeyHash != expectedHashHex {
-		return nil, errors.New("API key hash mismatch")
-	}
-
-	// Verify agent is active
-	if agent.Status != "active" {
-		return nil, fmt.Errorf("agent %s is not active", agent.ID)
-	}
-
-	return agent, nil
-}

@@ -254,6 +254,10 @@ services:
       MINTKEY_ADMIN_API_PUBLIC_URL: "${MINTKEY_ADMIN_API_PUBLIC_URL:-http://localhost:8080}"
       MINTKEY_ADMIN_UI_PUBLIC_URL: "${MINTKEY_ADMIN_UI_PUBLIC_URL:-http://localhost:8081}"
       OIDC_CLIENT_SECRET_FILE: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
+      # HMAC key for audit fingerprints (ADR-0021 / chunk α).
+      # Generate with: openssl rand -hex 32
+      # Set in .env for production; the .env.example documents the format.
+      MINTKEY_AUDIT_HMAC_KEY: "${MINTKEY_AUDIT_HMAC_KEY}"
     volumes:
       - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets:ro
     ports:

@@ -121,6 +121,11 @@ jobs:
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - name: Test admin-api unit
         working-directory: apps/admin-api
+        env:
+          # Required by admin_api.services.audit_fingerprint at import time (ADR-0021).
+          # Falls back to a dev-only 64-char hex placeholder when the secret is not set.
+          # Production deployers provide the real value via .env (see .env.example).
+          MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
         run: |
           uv sync
           uv run pytest ../../tests/unit/admin_api/ -v --tb=short
@@ -147,6 +152,8 @@ jobs:
   test-architecture:
     name: Architecture Tests
     runs-on: ubuntu-latest
+    env:
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
@@ -178,6 +185,8 @@ jobs:
   test-schema-gates:
     name: Schema Integrity Gates
     runs-on: ubuntu-latest
+    env:
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
@@ -201,6 +210,8 @@ jobs:
     name: Acceptance Tests
     runs-on: ubuntu-latest
     needs: [test-python-unit, test-go-unit]
+    env:
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
@@ -232,6 +243,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
     needs: [test-acceptance, test-architecture]
+    env:
+      # Required by admin-api container at startup (ADR-0021 audit fingerprint HMAC key).
+      # Also needed by pytest when running integration/acceptance tests that import admin_api.
+      # Production deployers provide the real value via repository secrets.
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4

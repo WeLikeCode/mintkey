@@ -71,14 +71,12 @@ type Credential struct {
 }
 
 // Agent represents a Mintkey agent entity as returned by the vault.
-// Status and APIKeyHash are consumed by auth.go (ValidateAPIKey).
 type Agent struct {
-	ID         string
-	TenantID   string
-	Name       string
-	SSHPubKey  string // OpenSSH-format public key (wired in a later chunk)
-	Status     string // "active" | "revoked" | etc.
-	APIKeyHash string // SHA-256 hex of the agent's API key
+	ID        string
+	TenantID  string
+	Name      string
+	SSHPubKey string // OpenSSH-format public key (wired in a later chunk)
+	Status    string // "active" | "revoked" | etc.
 }
 
 // Client is the Vault Adapter gRPC client used by the SSH Proxy.
