@@ -538,6 +538,20 @@ async def create_credential(
             "created_at": now,
         },
     )
+    # Sync services.current_key_version so the stored column stays in step with
+    # the new credential — Bug C-5 fix (register path).
+    await session.execute(
+        text(
+            "UPDATE services SET current_key_version = :kv, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "kv": key_version,
+            "now": now,
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
+        },
+    )
 
     # Step 5: Emit audit event — ADR-0014.7
     # Rotation detected when vault returns key_version > 1 — T-1.8.2.
@@ -912,13 +926,25 @@ async def rotate_credential(
                 },
             )
 
+    # _rot_new_target_address / _rot_new_ssh_user are set below when the request
+    # body carries an SSH-scheme JSON payload with explicit routing metadata.
+    # They remain None when body.value is None or the scheme is non-SSH, in which
+    # case the carry-forward values from the prior credential are used instead.
+    _rot_new_target_address: str | None = None
+    _rot_new_ssh_user: str | None = None
+    _rot_new_header_name: str | None = None
+    _rot_new_query_param: str | None = None
+
     if body.auth_scheme == "ssh_password" and body.value is not None:
         try:
             raw_ssh_pwd_rot = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
             if not isinstance(raw_ssh_pwd_rot, dict):
                 raise TypeError("ssh_password value must be a JSON object")
             raw_ssh_pwd_rot.pop("scheme", None)
-            SSHPasswordPayload(**raw_ssh_pwd_rot)
+            _ssh_pwd_rot_validated = SSHPasswordPayload(**raw_ssh_pwd_rot)
+            # Extract routing metadata for carry-forward override — ADR-0021.
+            _rot_new_target_address = _ssh_pwd_rot_validated.target_address
+            _rot_new_ssh_user = _ssh_pwd_rot_validated.username
         except (_json_mod_rot.JSONDecodeError, TypeError):
             return JSONResponse(
                 status_code=400,
@@ -951,6 +977,58 @@ async def rotate_credential(
                 },
             )
 
+    if body.auth_scheme == "ssh_private_key" and body.value is not None:
+        # Re-validate to extract routing metadata for carry-forward override.
+        # Validation already happened in step 4b above; this second parse is cheap
+        # and keeps the extraction co-located with the plaintext construction.
+        try:
+            raw_ssh_key_rot2 = _json_mod_rot.loads(body.value) if isinstance(body.value, str) else body.value
+            if isinstance(raw_ssh_key_rot2, dict):
+                raw_ssh_key_rot2.pop("scheme", None)
+                _ssh_key_rot2_validated = SSHPrivateKeyPayload(**raw_ssh_key_rot2)
+                _rot_new_target_address = _ssh_key_rot2_validated.target_address
+                _rot_new_ssh_user = _ssh_key_rot2_validated.ssh_user
+        except Exception:
+            pass  # already validated in step 4b; extraction failure is non-fatal here
+
+    # Step 4c: Fetch prior credential from vault to carry forward routing metadata.
+    # Bug C-4: rotating without new plaintext created a new vault.credentials row
+    # with EMPTY target_address/ssh_user — ssh-proxy then failed "no target address".
+    # Fix: read the currently-active credential before overwriting it. Use its
+    # target_address, ssh_user, header_name, query_param as defaults for the new row
+    # when the request body doesn't explicitly provide them.
+    # ADR-0014.4: plaintext from get_credential is not stored, logged, or returned.
+    _prior_target_address: str = ""
+    _prior_ssh_user: str = ""
+    _prior_header_name: str = ""
+    _prior_query_param: str = ""
+    _prior_target_url: str = rotate_service_base_url  # default: current service base_url
+    try:
+        _prior_cred = await vault.get_credential(
+            tenant_id=str(tenant_id),
+            service_id=db_svc_uuid,
+        )
+        if _prior_cred is not None:
+            _prior_target_address = str(_prior_cred.get("target_address") or "")
+            _prior_ssh_user = str(_prior_cred.get("ssh_user") or "")
+            _prior_header_name = str(_prior_cred.get("header_name") or "")
+            _prior_query_param = str(_prior_cred.get("query_param") or "")
+    except Exception:
+        # Non-fatal: if vault is unreachable for the GET, proceed with empty defaults.
+        # The PUT will still be attempted; if vault is down the PUT will also fail.
+        logger.warning(
+            "rotate_credential: could not fetch prior credential for carry-forward "
+            "(tenant=%s service=%s) — routing metadata may be empty",
+            tenant_id,
+            db_svc_uuid,
+        )
+
+    # Resolved routing metadata: request override takes precedence over carry-forward.
+    rot_target_address: str = _rot_new_target_address if _rot_new_target_address is not None else _prior_target_address
+    rot_ssh_user: str = _rot_new_ssh_user if _rot_new_ssh_user is not None else _prior_ssh_user
+    rot_header_name: str = _rot_new_header_name if _rot_new_header_name is not None else _prior_header_name
+    rot_query_param: str = _rot_new_query_param if _rot_new_query_param is not None else _prior_query_param
+
     # Step 5: Call Vault Adapter for new credential — plaintext never stored
     # When body.value is None (e.g., operator clicked Rotate in the UI without
     # supplying a new value), auto-generate a cryptographically-random secret.
@@ -966,7 +1044,11 @@ async def rotate_credential(
         service_id=db_svc_uuid,
         auth_scheme=body.auth_scheme,
         plaintext=plaintext,
-        target_url=rotate_service_base_url,
+        target_url=_prior_target_url,
+        header_name=rot_header_name,
+        query_param=rot_query_param,
+        target_address=rot_target_address,
+        ssh_user=rot_ssh_user,
     )
     new_key_version: int = cast(int, vault_result["key_version"])
 
@@ -977,7 +1059,9 @@ async def rotate_credential(
     new_internal_id = uuid.UUID(_wire_to_db(new_cred_wire_id, "cred"))
     now = datetime.now(timezone.utc)
 
-    # Step 7: Atomic DB transaction — mark old superseded, insert new active
+    # Step 7: Atomic DB transaction — mark old superseded, insert new active,
+    # and sync services.current_key_version (Bug C-5: stored column drifted from
+    # vault.credentials.is_current when rotate didn't update it).
     await session.execute(
         text(
             "UPDATE credentials SET status = 'superseded'"
@@ -1005,6 +1089,22 @@ async def rotate_credential(
             "auth_scheme": body.auth_scheme,
             "status": "active",
             "created_at": now,
+        },
+    )
+    # Sync services.current_key_version to match the new active credential's
+    # key_version — Bug C-5 fix.  Must be in the same logical unit of work so
+    # that if the session rolls back (e.g. on commit failure) the column doesn't
+    # drift. SQLAlchemy flushes all pending changes atomically on session.commit().
+    await session.execute(
+        text(
+            "UPDATE services SET current_key_version = :kv, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "kv": new_key_version,
+            "now": now,
+            "sid": db_svc_uuid,
+            "tid": str(tenant_id),
         },
     )
 
