@@ -19,7 +19,26 @@ import (
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/time/rate"
 )
+
+// deniedChannelTypes lists SSH channel types that the bastion explicitly
+// rejects. Only "session" channels are permitted (B5/B6).
+var deniedChannelTypes = map[string]bool{
+	"direct-tcpip":              true,
+	"forwarded-tcpip":           true,
+	"x11":                       true,
+	"direct-streamlocal@openssh.com": true,
+	"auth-agent@openssh.com":    true,
+}
+
+// deniedGlobalRequests lists SSH global request names that are rejected.
+var deniedGlobalRequests = map[string]bool{
+	"tcpip-forward":                  true,
+	"cancel-tcpip-forward":           true,
+	"streamlocal-forward@openssh.com": true,
+	"cancel-streamlocal-forward@openssh.com": true,
+}
 
 // Server is the SSH Proxy bastion server.
 type Server struct {
@@ -31,6 +50,10 @@ type Server struct {
 	mu           sync.Mutex
 	running      bool
 	shutdownCh   chan struct{}
+
+	// Rate limiting (B20): token-bucket limiter and concurrent-handshake semaphore.
+	limiter *rate.Limiter
+	sem     chan struct{} // semaphore: bounded concurrent unauthenticated handshakes
 }
 
 // New creates a new SSH Proxy server.
@@ -39,6 +62,8 @@ func New(cfg *config.Config) (*Server, error) {
 		cfg:        cfg,
 		sessionMgr: session.NewManager(cfg.MaxConcurrentSessionsPerAgent),
 		shutdownCh: make(chan struct{}),
+		limiter:    rate.NewLimiter(rate.Limit(cfg.RateLimitPerSecond), cfg.RateLimitBurst),
+		sem:        make(chan struct{}, cfg.MaxConcurrentHandshakes),
 	}
 
 	// Load or generate host key
@@ -47,10 +72,15 @@ func New(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to load host key: %w", err)
 	}
 
-	// Create SSH server config
+	// Create SSH server config (G: server version, banner, MaxAuthTries)
 	s.sshConfig = &ssh.ServerConfig{
 		PasswordCallback:  s.passwordCallback,
 		PublicKeyCallback: s.publicKeyCallback,
+		MaxAuthTries:      2,
+		ServerVersion:     "SSH-2.0-Mintkey-1",
+		BannerCallback: func(conn ssh.ConnMetadata) string {
+			return "Mintkey SSH bastion. Sessions are recorded and audited per policy.\r\n"
+		},
 	}
 	s.sshConfig.AddHostKey(hostKey)
 
@@ -162,7 +192,33 @@ func (s *Server) acceptLoop() {
 			}
 		}
 
-		go s.handleConnection(conn)
+		// Rate limiting (B20): token-bucket check. Allow() is non-blocking;
+		// excess connections are dropped early before they consume goroutine resources.
+		if !s.limiter.Allow() {
+			slog.Warn("ssh.connection.rate_limited: dropping connection",
+				"remote_addr", conn.RemoteAddr(),
+			)
+			conn.Close()
+			continue
+		}
+
+		// Concurrent-handshake semaphore (B20): acquire before handing off.
+		// Non-blocking try; if full, drop the connection.
+		select {
+		case s.sem <- struct{}{}:
+			// acquired
+		default:
+			slog.Warn("ssh.connection.rate_limited: handshake semaphore full, dropping connection",
+				"remote_addr", conn.RemoteAddr(),
+			)
+			conn.Close()
+			continue
+		}
+
+		go func(c net.Conn) {
+			defer func() { <-s.sem }() // release semaphore after handshake completes
+			s.handleConnection(c)
+		}(conn)
 	}
 }
 
@@ -189,19 +245,66 @@ func (s *Server) handleConnection(conn net.Conn) {
 		"remote_addr", conn.RemoteAddr(),
 	)
 
-	// Handle global requests (e.g., keepalive)
-	go ssh.DiscardRequests(reqs)
+	// Handle global requests — reject port-forward/streamlocal, discard the rest.
+	go s.handleGlobalRequests(reqs)
 
-	// Handle channels
+	// Handle channels — only "session" is allowed.
 	for newChannel := range chans {
 		go s.handleChannel(sshConn, newChannel, sessionCtx)
 	}
 }
 
+// handleGlobalRequests processes the server-level SSH request stream.
+// Port-forwarding and streamlocal requests are explicitly rejected with audit.
+// Keepalive requests get a polite "no" without audit noise.
+// Everything else is discarded.
+func (s *Server) handleGlobalRequests(reqs <-chan *ssh.Request) {
+	for req := range reqs {
+		if req == nil {
+			continue
+		}
+
+		if req.Type == "keepalive@openssh.com" {
+			// Reply false — don't audit (noisy and expected from some clients).
+			if req.WantReply {
+				req.Reply(false, nil)
+			}
+			continue
+		}
+
+		if deniedGlobalRequests[req.Type] {
+			slog.Info("ssh.global_request.denied",
+				"request_type", req.Type,
+			)
+			if req.WantReply {
+				req.Reply(false, nil)
+			}
+			continue
+		}
+
+		// Discard anything else silently.
+		if req.WantReply {
+			req.Reply(false, nil)
+		}
+	}
+}
+
 func (s *Server) handleChannel(sshConn *ssh.ServerConn, newChannel ssh.NewChannel, sessionCtx string) {
-	// Only accept session channels
-	if newChannel.ChannelType() != "session" {
-		newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+	chanType := newChannel.ChannelType()
+
+	// Channel-type denylist (B5/B6): reject everything except "session".
+	if chanType != "session" {
+		user, remoteAddr := "<unknown>", "<unknown>"
+		if sshConn != nil {
+			user = sshConn.User()
+			remoteAddr = sshConn.RemoteAddr().String()
+		}
+		slog.Info("ssh.channel.denied",
+			"channel_type", chanType,
+			"user", user,
+			"remote_addr", remoteAddr,
+		)
+		newChannel.Reject(ssh.Prohibited, "Mintkey SSH bastion: channel type not permitted")
 		return
 	}
 
@@ -223,6 +326,23 @@ func (s *Server) handleChannel(sshConn *ssh.ServerConn, newChannel ssh.NewChanne
 
 	// Handle session requests (pty, shell, exec, etc.)
 	for req := range requests {
+		// Explicitly reject agent-forwarding channel requests (B5).
+		if req.Type == "auth-agent-req@openssh.com" {
+			connUser := "<unknown>"
+			if sshConn != nil {
+				connUser = sshConn.User()
+			}
+			slog.Info("ssh.channel.denied",
+				"channel_type", "session",
+				"request_type", req.Type,
+				"user", connUser,
+			)
+			if req.WantReply {
+				req.Reply(false, nil)
+			}
+			continue
+		}
+
 		if err := sess.HandleRequest(req); err != nil {
 			slog.Error("session request failed", "error", err, "type", req.Type)
 			if req.WantReply {

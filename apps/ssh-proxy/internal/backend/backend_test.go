@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"testing"
@@ -89,39 +90,30 @@ func TestVerifyHostKey(t *testing.T) {
 }
 
 func TestHostKeyStore_Cache(t *testing.T) {
-	// Create a mock store (without vault client)
-	store := &HostKeyStore{
-		cache: make(map[string]string),
-	}
+	// Create a store without vault client (in-memory only).
+	store := NewHostKeyStore(nil)
 
 	hostname := "test.example.com"
 	fingerprint := "SHA256:abc123"
 
-	// Initially not in cache
-	store.mu.RLock()
-	_, ok := store.cache[hostname]
-	store.mu.RUnlock()
-
-	if ok {
-		t.Error("hostname should not be in cache initially")
+	// Initially not in cache → GetFingerprint returns error.
+	_, err := store.GetFingerprint(context.Background(), hostname)
+	if err == nil {
+		t.Error("GetFingerprint should return error when hostname not in cache")
 	}
 
-	// Add to cache
-	store.mu.Lock()
-	store.cache[hostname] = fingerprint
-	store.mu.Unlock()
-
-	// Now should be in cache
-	store.mu.RLock()
-	fp, ok := store.cache[hostname]
-	store.mu.RUnlock()
-
-	if !ok {
-		t.Error("hostname should be in cache after adding")
+	// Store a fingerprint.
+	if err := store.StoreFingerprint(context.Background(), hostname, fingerprint); err != nil {
+		t.Fatalf("StoreFingerprint() error = %v", err)
 	}
 
+	// Now should be retrievable.
+	fp, err := store.GetFingerprint(context.Background(), hostname)
+	if err != nil {
+		t.Fatalf("GetFingerprint() after store error = %v", err)
+	}
 	if fp != fingerprint {
-		t.Errorf("cache fingerprint = %s, want %s", fp, fingerprint)
+		t.Errorf("GetFingerprint() = %s, want %s", fp, fingerprint)
 	}
 }
 
@@ -154,5 +146,108 @@ func TestConnector_Close(t *testing.T) {
 
 	if allZero {
 		t.Error("original key should not be all zeros")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TOFU tests (C6 — Part A)
+// ---------------------------------------------------------------------------
+
+// TestTOFU_HappyPath verifies that on first connection the fingerprint is
+// stored in-memory and subsequent calls succeed with the same key.
+func TestTOFU_HappyPath(t *testing.T) {
+	store := NewTOFUStore(nil, false)
+	ctx := context.Background()
+
+	_, key1, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	sshKey1, _ := ssh.NewPublicKey(key1.Public())
+
+	cb := TOFUCallback(store, false)
+
+	// First call: fingerprint stored, no error.
+	if err := cb("host1:22", nil, sshKey1); err != nil {
+		t.Fatalf("first TOFU call should succeed: %v", err)
+	}
+
+	// Second call with the same key: should succeed (fingerprint matches).
+	if err := cb("host1:22", nil, sshKey1); err != nil {
+		t.Fatalf("second TOFU call with same key should succeed: %v", err)
+	}
+
+	// Confirm the fingerprint is now in the store.
+	fp, err := store.GetFingerprint(ctx, "host1:22")
+	if err != nil {
+		t.Fatalf("GetFingerprint after TOFU store: %v", err)
+	}
+	if fp == "" {
+		t.Error("stored fingerprint should not be empty")
+	}
+}
+
+// TestTOFU_Mismatch verifies that a different key for the same host is rejected.
+func TestTOFU_Mismatch(t *testing.T) {
+	store := NewTOFUStore(nil, false)
+
+	_, key1, _ := ed25519.GenerateKey(rand.Reader)
+	_, key2, _ := ed25519.GenerateKey(rand.Reader)
+	sshKey1, _ := ssh.NewPublicKey(key1.Public())
+	sshKey2, _ := ssh.NewPublicKey(key2.Public())
+
+	cb := TOFUCallback(store, false)
+
+	// First call stores key1.
+	if err := cb("host2:22", nil, sshKey1); err != nil {
+		t.Fatalf("first TOFU call: %v", err)
+	}
+
+	// Second call with different key2 must be rejected.
+	err := cb("host2:22", nil, sshKey2)
+	if err == nil {
+		t.Fatal("TOFU mismatch: expected rejection but got nil")
+	}
+	// Error should contain mismatch signal.
+	if len(err.Error()) < 8 {
+		t.Errorf("mismatch error too short: %q", err.Error())
+	}
+}
+
+// TestTOFU_StrictMode verifies that in strict mode an unknown host is rejected
+// even on the first connection.
+func TestTOFU_StrictMode(t *testing.T) {
+	store := NewTOFUStore(nil, true /* strict */)
+
+	_, key1, _ := ed25519.GenerateKey(rand.Reader)
+	sshKey1, _ := ssh.NewPublicKey(key1.Public())
+
+	cb := TOFUCallback(store, true)
+
+	// In strict mode, first connection to an unknown host must be rejected.
+	err := cb("stricthost:22", nil, sshKey1)
+	if err == nil {
+		t.Fatal("strict mode: expected rejection for unknown host, got nil")
+	}
+}
+
+// TestTOFU_VaultNotImplemented_FallsBackToMemory verifies that when the vault
+// stub returns ErrNotImplemented, StoreFingerprint still works via in-memory.
+func TestTOFU_VaultNotImplemented_FallsBackToMemory(t *testing.T) {
+	// NewHostKeyStore with nil vault → pure in-memory.
+	store := NewHostKeyStore(nil)
+	ctx := context.Background()
+
+	err := store.StoreFingerprint(ctx, "myhost:22", "SHA256:deadbeef")
+	if err != nil {
+		t.Fatalf("StoreFingerprint with nil vault: %v", err)
+	}
+
+	fp, err := store.GetFingerprint(ctx, "myhost:22")
+	if err != nil {
+		t.Fatalf("GetFingerprint after in-memory store: %v", err)
+	}
+	if fp != "SHA256:deadbeef" {
+		t.Errorf("fp = %q, want %q", fp, "SHA256:deadbeef")
 	}
 }

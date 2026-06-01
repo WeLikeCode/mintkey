@@ -2,6 +2,8 @@ package recording
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -16,7 +18,7 @@ func TestNewRecorder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRecorder() error = %v", err)
 	}
-	defer recorder.Close()
+	recorder.Close()
 
 	// Verify file was created
 	filename := filepath.Join(tmpDir, "test_session.cast")
@@ -141,7 +143,7 @@ func TestRecorder_WriteInput(t *testing.T) {
 	}
 }
 
-func TestRecorder_Close(t *testing.T) {
+func TestRecorder_Close_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	recorder, err := NewRecorder(tmpDir, "test_close", 80, 24)
@@ -149,19 +151,100 @@ func TestRecorder_Close(t *testing.T) {
 		t.Fatalf("NewRecorder() error = %v", err)
 	}
 
-	// Close once
-	if err := recorder.Close(); err != nil {
+	// Close once — should return a non-empty digest
+	digest, err := recorder.Close()
+	if err != nil {
 		t.Errorf("Close() error = %v", err)
 	}
+	if digest == "" {
+		t.Error("Close() should return a non-empty digest")
+	}
 
-	// Close again (should be idempotent)
-	if err := recorder.Close(); err != nil {
+	// Close again (should be idempotent, return empty digest with nil error)
+	digest2, err := recorder.Close()
+	if err != nil {
 		t.Errorf("second Close() error = %v", err)
+	}
+	if digest2 != "" {
+		t.Errorf("second Close() should return empty digest, got %q", digest2)
 	}
 
 	// Try to write after close
 	if err := recorder.WriteOutput([]byte("test")); err == nil {
 		t.Error("WriteOutput() should fail after Close()")
+	}
+}
+
+// TestRecorder_IntegrityDigest verifies that Close() returns a SHA-256 digest
+// that matches sha256sum of the .cast file content.
+func TestRecorder_IntegrityDigest(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	recorder, err := NewRecorder(tmpDir, "test_integrity", 80, 24)
+	if err != nil {
+		t.Fatalf("NewRecorder() error = %v", err)
+	}
+
+	// Write some frames
+	recorder.WriteOutput([]byte("hello"))
+	recorder.WriteInput([]byte("world"))
+	recorder.WriteOutput([]byte("more output"))
+
+	digest, err := recorder.Close()
+	if err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	if digest == "" {
+		t.Fatal("Close() returned empty digest")
+	}
+
+	// Verify digest prefix
+	if len(digest) < 7 || digest[:7] != "sha256:" {
+		t.Errorf("digest should start with 'sha256:', got %q", digest)
+	}
+
+	// Compare against sha256 of the file content
+	castPath := filepath.Join(tmpDir, "test_integrity.cast")
+	fileData, err := os.ReadFile(castPath)
+	if err != nil {
+		t.Fatalf("failed to read cast file: %v", err)
+	}
+
+	h := sha256.Sum256(fileData)
+	expectedDigest := "sha256:" + hex.EncodeToString(h[:])
+
+	if digest != expectedDigest {
+		t.Errorf("digest mismatch:\n  got      %s\n  expected %s", digest, expectedDigest)
+	}
+}
+
+// TestRecorder_SidecarFile verifies that Close() writes a sidecar .cast.sha256 file.
+func TestRecorder_SidecarFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	recorder, err := NewRecorder(tmpDir, "test_sidecar", 80, 24)
+	if err != nil {
+		t.Fatalf("NewRecorder() error = %v", err)
+	}
+
+	recorder.WriteOutput([]byte("some output"))
+
+	digest, err := recorder.Close()
+	if err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	sidecarPath := filepath.Join(tmpDir, "test_sidecar.cast.sha256")
+	sidecarData, err := os.ReadFile(sidecarPath)
+	if err != nil {
+		t.Fatalf("sidecar file not created at %s: %v", sidecarPath, err)
+	}
+
+	sidecarContent := string(sidecarData)
+	if len(sidecarContent) < len(digest) || sidecarContent[:len(digest)] != digest {
+		t.Errorf("sidecar content does not start with digest:\n  sidecar: %q\n  digest:  %q",
+			sidecarContent, digest)
 	}
 }
 

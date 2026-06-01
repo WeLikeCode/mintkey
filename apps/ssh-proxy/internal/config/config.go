@@ -13,7 +13,7 @@ type Config struct {
 	// SSH server configuration
 	SSHAddr         string
 	HostKeyPath     string
-	HostKeyGenerate bool
+	HostKeyGenerate bool // default false — operator must seed via make ssh-proxy-init (G)
 
 	// HTTP server configuration (health/metrics)
 	HTTPAddr string
@@ -29,6 +29,7 @@ type Config struct {
 
 	// Session management
 	SessionTimeout                time.Duration
+	SessionIdleTimeout            time.Duration // B14: idle timeout; 0 = disabled
 	MaxConcurrentSessionsPerAgent int
 
 	// Recording
@@ -45,6 +46,19 @@ type Config struct {
 	// Vault identity for outbound vault calls (C1: empty default; C3 wires real values).
 	VaultIdentityID string
 	VaultToken      string
+
+	// TOFU host-key strict mode (A): when true, reject unknown host keys.
+	// Default false (dev); set SSH_PROXY_HOSTKEY_STRICT=true in production.
+	HostKeyStrict bool
+
+	// Password auth (allow JWT-in-password slot) — default true until ssh_pubkey
+	// is wired in C7, at which point it can default false.
+	AllowPasswordAuth bool
+
+	// Rate limiting (B20)
+	RateLimitPerSecond float64 // token-bucket refill rate
+	RateLimitBurst     int     // token-bucket burst size
+	MaxConcurrentHandshakes int // semaphore size for unauthenticated handshakes
 }
 
 // Load loads configuration from environment variables and optional config file.
@@ -54,13 +68,19 @@ func Load(configPath string) (*Config, error) {
 		SSHAddr:                       ":2222",
 		HTTPAddr:                      ":8087",
 		HostKeyPath:                   "/etc/ssh/ssh_host_ed25519_key",
-		HostKeyGenerate:               true,
+		HostKeyGenerate:               false, // G: operator must seed key
 		SessionTimeout:                1 * time.Hour,
+		SessionIdleTimeout:            0, // disabled by default
 		MaxConcurrentSessionsPerAgent: 5,
 		RecordingEnabled:              true,
 		RecordingStoragePath:          "/var/lib/mintkey/ssh-recordings",
 		RecordingRetention:            30 * 24 * time.Hour, // 30 days
 		CommandFilterMode:             "denylist",
+		HostKeyStrict:                 false, // set true in production
+		AllowPasswordAuth:             true,  // JWT-in-password slot; C7 can flip to false
+		RateLimitPerSecond:            10,
+		RateLimitBurst:                20,
+		MaxConcurrentHandshakes:       200,
 	}
 
 	// Override from environment
@@ -75,6 +95,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if v := os.Getenv("SSH_PROXY_HOST_KEY_GENERATE"); v != "" {
 		cfg.HostKeyGenerate = v == "true" || v == "1"
+	}
+	if v := os.Getenv("SSH_PROXY_HOSTKEY_STRICT"); v != "" {
+		cfg.HostKeyStrict = v == "true" || v == "1"
 	}
 
 	if v := os.Getenv("VAULT_ADAPTER_ADDR"); v != "" {
@@ -99,6 +122,14 @@ func Load(configPath string) (*Config, error) {
 			return nil, fmt.Errorf("invalid SSH_SESSION_TIMEOUT: %w", err)
 		}
 		cfg.SessionTimeout = d
+	}
+
+	if v := os.Getenv("SSH_SESSION_IDLE_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SSH_SESSION_IDLE_TIMEOUT: %w", err)
+		}
+		cfg.SessionIdleTimeout = d
 	}
 
 	if v := os.Getenv("SSH_MAX_SESSIONS_PER_AGENT"); v != "" {
@@ -143,6 +174,29 @@ func Load(configPath string) (*Config, error) {
 	}
 	if v := os.Getenv("MINTKEY_VAULT_SSH_PROXY_TOKEN"); v != "" {
 		cfg.VaultToken = v
+	}
+
+	// Rate limiting overrides.
+	if v := os.Getenv("SSH_RATE_LIMIT_PER_SECOND"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SSH_RATE_LIMIT_PER_SECOND: %w", err)
+		}
+		cfg.RateLimitPerSecond = f
+	}
+	if v := os.Getenv("SSH_RATE_LIMIT_BURST"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SSH_RATE_LIMIT_BURST: %w", err)
+		}
+		cfg.RateLimitBurst = n
+	}
+	if v := os.Getenv("SSH_MAX_CONCURRENT_HANDSHAKES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SSH_MAX_CONCURRENT_HANDSHAKES: %w", err)
+		}
+		cfg.MaxConcurrentHandshakes = n
 	}
 
 	return cfg, nil

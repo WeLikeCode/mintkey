@@ -47,10 +47,12 @@ type CommandFilter interface {
 // Deps holds the optional external dependencies for session handlers.
 // All fields are optional; nil means the corresponding capability is disabled.
 type Deps struct {
-	Connector     BackendConnector
-	AuditEmitter  AuditEmitter
-	Filter        CommandFilter
-	RecordingPath string // directory for asciicast recordings; empty → no recording
+	Connector          BackendConnector
+	AuditEmitter       AuditEmitter
+	Filter             CommandFilter
+	RecordingPath      string        // directory for asciicast recordings; empty → no recording
+	SessionTimeout     time.Duration // 0 = no max-duration limit
+	SessionIdleTimeout time.Duration // 0 = no idle-timeout
 }
 
 // Manager tracks active SSH sessions and enforces per-agent limits.
@@ -100,13 +102,28 @@ func (m *Manager) CreateSession(sessionCtx string, sshConn *ssh.ServerConn, chan
 
 	// Use a fresh ULID as the session ID (not the agent_id).
 	sessionID := ulid.New("session_")
+
+	// Build the session lifecycle context.  If SessionTimeout > 0 we wrap with
+	// WithTimeout so the context is cancelled automatically; otherwise we use a
+	// plain cancellable context (Terminate() will call the cancel).
+	var (
+		sessCtxBase context.Context
+		cancelFn    context.CancelFunc
+	)
+	if m.deps.SessionTimeout > 0 {
+		sessCtxBase, cancelFn = context.WithTimeout(context.Background(), m.deps.SessionTimeout)
+	} else {
+		sessCtxBase, cancelFn = context.WithCancel(context.Background())
+	}
+
 	sess := &Session{
 		ID:         sessionID,
 		Context:    ctx,
 		SSHConn:    sshConn,
 		Channel:    channel,
 		StartTime:  time.Now(),
-		cancelFunc: func() {}, // Will be replaced by session goroutine via SetCancelFunc
+		cancelFunc: cancelFn,
+		sessionCtx: sessCtxBase,
 		deps:       m.deps,
 	}
 
@@ -215,6 +232,11 @@ type Session struct {
 	cancelFunc context.CancelFunc
 	mu         sync.Mutex
 	terminated bool
+
+	// sessionCtx is the lifecycle context for this session. It is cancelled
+	// when the max-duration (SessionTimeout) or idle timer (SessionIdleTimeout)
+	// fires, propagating closure to all running goroutines.
+	sessionCtx context.Context
 
 	// Handler dependencies (optional; nil = capability disabled).
 	deps Deps
@@ -361,7 +383,7 @@ func (s *Session) handleShellRequest(req *ssh.Request) error {
 }
 
 func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
-	ctx := context.Background()
+	ctx := s.sessionCtxOrBackground()
 	start := time.Now()
 
 	connector := s.deps.Connector
@@ -429,7 +451,13 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 			slog.Warn("shell: failed to create recorder (continuing without recording)",
 				"session_id", s.ID, "error", err)
 		} else {
-			defer recorder.Close()
+			defer func(rec *recording.Recorder, sid string) {
+				if digest, closeErr := rec.Close(); closeErr != nil {
+					slog.Warn("shell: failed to close recorder", "session_id", sid, "error", closeErr)
+				} else if digest != "" {
+					slog.Info("shell: recording closed", "session_id", sid, "recording_sha256", digest)
+				}
+			}(recorder, s.ID)
 		}
 	}
 
@@ -473,15 +501,22 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 
 	slog.Info("shell: started", "session_id", s.ID)
 
+	// Set up idle-timeout reset function (no-op if idle timeout is disabled).
+	var resetIdle func() = func() {}
+	if s.deps.SessionIdleTimeout > 0 {
+		sessCancel := s.cancelFunc // capture current cancel
+		resetIdle = startIdleTimer(ctx, s.deps.SessionIdleTimeout, sessCancel)
+	}
+
 	// Bridge bidirectional I/O.
 	var wg sync.WaitGroup
 	var bytesRecv int64
 
 	// agent → backend stdin (fire-and-forget; unblocked when s.Channel is closed).
 	go func() {
-		var w io.Writer = backendStdin
+		var w io.Writer = &idleResetWriter{w: backendStdin, resetIdle: resetIdle}
 		if recorder != nil {
-			w = &recordingWriter{w: backendStdin, rec: recorder, input: true}
+			w = &recordingWriter{w: w, rec: recorder, input: true}
 		}
 		io.Copy(w, s.Channel)
 		backendStdin.Close()
@@ -491,9 +526,9 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var r io.Reader = backendStdout
+		var r io.Reader = &idleResetReader{r: backendStdout, resetIdle: resetIdle}
 		if recorder != nil {
-			r = &recordingReader{r: backendStdout, rec: recorder}
+			r = &recordingReader{r: r, rec: recorder}
 		}
 		n, _ := io.Copy(s.Channel, r)
 		bytesRecv += n
@@ -506,8 +541,22 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 		io.Copy(s.Channel.Stderr(), backendStderr)
 	}()
 
-	// Wait for backend to exit, flush all output, then close the agent channel.
-	backendSess.Wait()
+	// Wait for backend to exit (or session context cancellation), flush output.
+	doneCh := make(chan struct{})
+	go func() {
+		backendSess.Wait()
+		close(doneCh)
+	}()
+	select {
+	case <-doneCh:
+	case <-ctx.Done():
+		slog.Info("shell: session context expired (timeout/idle), closing backend",
+			"session_id", s.ID)
+		backendSess.Close()
+		if s.deps.AuditEmitter != nil {
+			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, "shell:timeout", -1)
+		}
+	}
 	wg.Wait()
 	s.Channel.Close()
 
@@ -575,7 +624,7 @@ func (s *Session) handleExecRequest(req *ssh.Request) error {
 }
 
 func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
-	ctx := context.Background()
+	ctx := s.sessionCtxOrBackground()
 	start := time.Now()
 
 	connector := s.deps.Connector
@@ -642,7 +691,13 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 			slog.Warn("exec: failed to create recorder (continuing without recording)",
 				"session_id", s.ID, "error", err)
 		} else {
-			defer recorder.Close()
+			defer func(rec *recording.Recorder, sid string) {
+				if digest, closeErr := rec.Close(); closeErr != nil {
+					slog.Warn("exec: failed to close recorder", "session_id", sid, "error", closeErr)
+				} else if digest != "" {
+					slog.Info("exec: recording closed", "session_id", sid, "recording_sha256", digest)
+				}
+			}(recorder, s.ID)
 		}
 	}
 
@@ -986,6 +1041,79 @@ func (s *Session) handleSignalRequest(req *ssh.Request) error {
 
 func (s *Session) emitAudit(fn func(ctx context.Context)) {
 	fn(context.Background())
+}
+
+// sessionCtxOrBackground returns the session lifecycle context if it has been
+// set (i.e. when CreateSession wired a timeout), otherwise context.Background().
+func (s *Session) sessionCtxOrBackground() context.Context {
+	s.mu.Lock()
+	ctx := s.sessionCtx
+	s.mu.Unlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+// idleResetWriter wraps an io.Writer and resets an idle timer on each write.
+type idleResetWriter struct {
+	w         io.Writer
+	resetIdle func()
+}
+
+func (w *idleResetWriter) Write(p []byte) (int, error) {
+	w.resetIdle()
+	return w.w.Write(p)
+}
+
+// idleResetReader wraps an io.Reader and resets an idle timer on each read.
+type idleResetReader struct {
+	r         io.Reader
+	resetIdle func()
+}
+
+func (r *idleResetReader) Read(p []byte) (int, error) {
+	n, err := r.r.Read(p)
+	if n > 0 {
+		r.resetIdle()
+	}
+	return n, err
+}
+
+// startIdleTimer starts a goroutine that cancels cancelFn if no activity
+// resets the timer within idleTimeout. The returned resetFn is thread-safe.
+// The goroutine exits when ctx is done or when the timer fires and cancels.
+func startIdleTimer(ctx context.Context, idleTimeout time.Duration, cancelFn context.CancelFunc) (resetFn func()) {
+	resetCh := make(chan struct{}, 1)
+
+	go func() {
+		timer := time.NewTimer(idleTimeout)
+		defer timer.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-resetCh:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(idleTimeout)
+			case <-timer.C:
+				cancelFn()
+				return
+			}
+		}
+	}()
+
+	return func() {
+		select {
+		case resetCh <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // recordingWriter wraps a writer and records all writes as input events.

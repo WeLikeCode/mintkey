@@ -16,12 +16,18 @@ import (
 // Connector manages SSH connections to backend servers.
 type Connector struct {
 	vaultClient *vault.Client
+	tofu        *TOFUStore
 }
 
 // NewConnector creates a new backend connector.
-func NewConnector(vaultClient *vault.Client) *Connector {
+// tofu may be nil; in that case an in-memory-only TOFUStore is created.
+func NewConnector(vaultClient *vault.Client, tofu *TOFUStore) *Connector {
+	if tofu == nil {
+		tofu = NewHostKeyStore(vaultClient)
+	}
 	return &Connector{
 		vaultClient: vaultClient,
+		tofu:        tofu,
 	}
 }
 
@@ -69,7 +75,7 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
-		HostKeyCallback: c.hostKeyCallback(sessCtx),
+		HostKeyCallback: c.hostKeyCallback(ctx, sessCtx),
 		Timeout:         10 * time.Second,
 	}
 
@@ -93,15 +99,54 @@ func (c *Connector) Connect(ctx context.Context, sessCtx *session.SessionContext
 	return client, cred.Value, nil
 }
 
-// hostKeyCallback returns a host key callback that implements TOFU (Trust On First Use).
-func (c *Connector) hostKeyCallback(sessCtx *session.SessionContext) ssh.HostKeyCallback {
+// hostKeyCallback returns a host key callback that implements TOFU.
+func (c *Connector) hostKeyCallback(ctx context.Context, sessCtx *session.SessionContext) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		// For now, accept all host keys (TOFU will be implemented later)
-		// TODO: Implement proper TOFU with database storage
-		slog.Debug("accepting host key",
+		fingerprint := ComputeFingerprint(key)
+
+		storedFP, err := c.tofu.GetFingerprint(ctx, hostname)
+		if err != nil {
+			// No stored fingerprint — first connection.
+			if c.tofu.strict {
+				slog.Error("TOFU strict mode: rejecting unknown host key",
+					"hostname", hostname,
+					"fingerprint", fingerprint,
+					"session_id", sessCtx.AgentID,
+				)
+				return fmt.Errorf("ssh.hostkey.mismatch: strict mode — no pre-registered key for %s (fingerprint %s)", hostname, fingerprint)
+			}
+
+			slog.Warn("TOFU: first connection to host — storing fingerprint (persistence may not be wired)",
+				"hostname", hostname,
+				"fingerprint", fingerprint,
+				"session_id", sessCtx.AgentID,
+			)
+			if storeErr := c.tofu.StoreFingerprint(ctx, hostname, fingerprint); storeErr != nil {
+				// Non-fatal: in-memory fallback already updated inside StoreFingerprint.
+				slog.Warn("TOFU: failed to persist fingerprint (non-fatal)",
+					"hostname", hostname,
+					"error", storeErr,
+				)
+			}
+			return nil
+		}
+
+		// Fingerprint on record — verify.
+		if storedFP != fingerprint {
+			slog.Error("ssh.hostkey.mismatch: host key changed",
+				"hostname", hostname,
+				"stored_fingerprint", storedFP,
+				"current_fingerprint", fingerprint,
+				"session_id", sessCtx.AgentID,
+			)
+			// Always reject mismatches regardless of strict mode — changed key = possible MITM.
+			return fmt.Errorf("ssh.hostkey.mismatch: key changed for %s (stored: %s, current: %s)",
+				hostname, storedFP, fingerprint)
+		}
+
+		slog.Debug("TOFU: host key verified",
 			"hostname", hostname,
-			"remote", remote.String(),
-			"fingerprint", ssh.FingerprintSHA256(key),
+			"fingerprint", fingerprint,
 		)
 		return nil
 	}

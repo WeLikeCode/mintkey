@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -121,16 +120,32 @@ func (h *Handler) AuthenticateJWT(user string, password []byte) (*session.Sessio
 }
 
 // AuthenticatePublicKey authenticates an agent using a public key (public key callback).
+// It looks up the agent by SSH public key fingerprint via the vault client.
+// If the vault client returns ErrNotImplemented (stub not yet wired), it emits
+// an ssh.auth.pubkey.unsupported audit log and rejects the authentication.
 func (h *Handler) AuthenticatePublicKey(user string, key ssh.PublicKey) (*session.SessionContext, error) {
-	// Derive fingerprint from public key
 	fingerprint := ssh.FingerprintSHA256(key)
 
-	// Query vault for agent by fingerprint
+	if h.vaultClient == nil {
+		slog.Warn("ssh.auth.pubkey.unsupported: vault client not configured",
+			"user", user,
+			"fingerprint", fingerprint,
+		)
+		return nil, errors.New("ssh.auth.pubkey.unsupported: vault client not configured")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	agent, err := h.vaultClient.GetAgentByFingerprint(ctx, fingerprint)
 	if err != nil {
+		if errors.Is(err, vault.ErrNotImplemented) {
+			slog.Warn("ssh.auth.pubkey.unsupported: vault GetAgentByFingerprint not yet implemented (C7 wires this); rejecting public key auth",
+				"user", user,
+				"fingerprint", fingerprint,
+			)
+			return nil, errors.New("ssh.auth.pubkey.unsupported: public key authentication not available (vault wiring pending)")
+		}
 		return nil, fmt.Errorf("failed to lookup agent by fingerprint: %w", err)
 	}
 
@@ -150,35 +165,12 @@ func (h *Handler) AuthenticatePublicKey(user string, key ssh.PublicKey) (*sessio
 		"fingerprint", fingerprint,
 	)
 
-	// Note: For public key auth, we don't have a service_id in the token.
-	// The agent will need to specify the service when requesting a session.
-	// For now, we'll use a placeholder that will be validated later.
 	return &session.SessionContext{
 		TenantID:   agent.TenantID,
 		AgentID:    agent.ID,
 		ServiceID:  "", // Will be specified later
 		AuthMethod: "api_key",
 	}, nil
-}
-
-// DerivePublicKeyFromAPIKey derives an Ed25519 public key from an API key.
-// This is used for the "API key as SSH key" authentication method.
-func DerivePublicKeyFromAPIKey(apiKey string) (ssh.PublicKey, error) {
-	// Hash the API key to get a seed
-	hash := sha256.Sum256([]byte(apiKey))
-	seed := hash[:ed25519.SeedSize]
-
-	// Generate Ed25519 key from seed
-	privKey := ed25519.NewKeyFromSeed(seed)
-	pubKey := privKey.Public().(ed25519.PublicKey)
-
-	// Convert to SSH public key
-	sshPubKey, err := ssh.NewPublicKey(pubKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH public key: %w", err)
-	}
-
-	return sshPubKey, nil
 }
 
 // ValidateAPIKey validates an API key and returns the agent information.

@@ -2,8 +2,11 @@
 package recording
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,14 +15,18 @@ import (
 )
 
 // Recorder records SSH session I/O in asciicast v2 format.
+// On Close() it flushes, computes a SHA-256 digest of the entire .cast file,
+// writes a sidecar <sessionID>.cast.sha256 file, and returns the digest.
 type Recorder struct {
 	file      *os.File
+	hasher    hash.Hash // accumulates over every byte written
 	sessionID string
 	startTime time.Time
 	width     int
 	height    int
 	mu        sync.Mutex
 	closed    bool
+	storagePath string
 }
 
 // NewRecorder creates a new session recorder.
@@ -37,11 +44,13 @@ func NewRecorder(storagePath, sessionID string, width, height int) (*Recorder, e
 	}
 
 	recorder := &Recorder{
-		file:      file,
-		sessionID: sessionID,
-		startTime: time.Now(),
-		width:     width,
-		height:    height,
+		file:        file,
+		hasher:      sha256.New(),
+		sessionID:   sessionID,
+		startTime:   time.Now(),
+		width:       width,
+		height:      height,
+		storagePath: storagePath,
 	}
 
 	// Write header
@@ -78,7 +87,7 @@ func (r *Recorder) WriteOutput(data []byte) error {
 
 	line = append(line, '\n')
 
-	if _, err := r.file.Write(line); err != nil {
+	if _, err := r.writeBytes(line); err != nil {
 		return fmt.Errorf("failed to write event: %w", err)
 	}
 
@@ -109,24 +118,62 @@ func (r *Recorder) WriteInput(data []byte) error {
 
 	line = append(line, '\n')
 
-	if _, err := r.file.Write(line); err != nil {
+	if _, err := r.writeBytes(line); err != nil {
 		return fmt.Errorf("failed to write event: %w", err)
 	}
 
 	return nil
 }
 
-// Close closes the recorder.
-func (r *Recorder) Close() error {
+// Close closes the recorder, computes the SHA-256 digest of the recording file,
+// writes a sidecar .cast.sha256 file, and returns the hex digest string.
+// Calling Close() on an already-closed Recorder returns ("", nil) idempotently.
+func (r *Recorder) Close() (digest string, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.closed {
-		return nil
+		return "", nil
 	}
 
 	r.closed = true
-	return r.file.Close()
+
+	// Flush and close the file.
+	if closeErr := r.file.Close(); closeErr != nil {
+		return "", fmt.Errorf("failed to close recording file: %w", closeErr)
+	}
+
+	// The hasher has accumulated all bytes written through writeBytes.
+	digest = "sha256:" + hex.EncodeToString(r.hasher.Sum(nil))
+
+	// Write sidecar file: <sessionID>.cast.sha256
+	sidecarPath := filepath.Join(r.storagePath, r.sessionID+".cast.sha256")
+	sidecarContent := digest + "  " + r.sessionID + ".cast\n"
+	if writeErr := os.WriteFile(sidecarPath, []byte(sidecarContent), 0644); writeErr != nil {
+		// Non-fatal: log but don't fail; the digest is still returned to caller
+		// so the audit event can carry it.
+		fmt.Fprintf(os.Stderr, "recording: failed to write sidecar %s: %v\n", sidecarPath, writeErr)
+	}
+
+	return digest, nil
+}
+
+// Digest returns the current (partial) digest without closing the recorder.
+// Only useful before Close(); after Close() use the returned value from Close().
+func (r *Recorder) Digest() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return "sha256:" + hex.EncodeToString(r.hasher.Sum(nil))
+}
+
+// writeBytes writes to both the file and the SHA-256 hasher.
+// Caller must hold r.mu.
+func (r *Recorder) writeBytes(data []byte) (int, error) {
+	n, err := r.file.Write(data)
+	if n > 0 {
+		r.hasher.Write(data[:n])
+	}
+	return n, err
 }
 
 func (r *Recorder) writeHeader() error {
@@ -148,7 +195,7 @@ func (r *Recorder) writeHeader() error {
 
 	line = append(line, '\n')
 
-	if _, err := r.file.Write(line); err != nil {
+	if _, err := r.writeBytes(line); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
 
