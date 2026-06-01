@@ -194,12 +194,10 @@ func (h *Handler) ValidateAPIKey(apiKey string) (*vault.Agent, error) {
 	}
 
 	// Verify API key hash matches.
-	// lgtm[go/weak-sensitive-data-hashing] SHA-256 is used here for API key verification,
-	// not password storage. API keys are high-entropy random tokens (mk_agent_<fingerprint>_<random>),
-	// making brute-force infeasible. The admin-api uses the same SHA-256 scheme for all API keys
-	// per ADR-0012. A KDF like bcrypt would be 100-1000x slower per auth request with no
-	// security benefit for random high-entropy tokens.
-	expectedHash := sha256.Sum256([]byte(apiKey)) // #nosec G401 — see lgtm comment above
+	// SHA-256 is appropriate for API key verification: API keys are high-entropy random tokens
+	// (mk_agent_<fingerprint>_<random>), making brute-force infeasible without a KDF.
+	// The admin-api uses the same SHA-256 scheme per ADR-0012.
+	expectedHash := sha256.Sum256([]byte(apiKey)) // lgtm[go/weak-sensitive-data-hashing]
 	expectedHashHex := hex.EncodeToString(expectedHash[:])
 
 	if agent.APIKeyHash != expectedHashHex {

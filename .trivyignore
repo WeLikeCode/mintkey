@@ -307,3 +307,40 @@ CVE-2023-45853
 #   Perl is a Debian base image dep; none of the Python/Node services execute
 #   Perl regexes from user input.  Not exploitable in container context.
 CVE-2026-8376
+
+# ── Additional OpenSSL CVEs added 2026-06-01 (second CVE-DB update in same run) ──
+
+# CVE-2026-31789  openssl (all Debian/distroless base images) CRITICAL
+#   Heap buffer overflow on 32-bit systems from large X.509 certificate processing.
+#   Mintkey containers run on 64-bit Linux only (amd64); the 32-bit overflow code
+#   path is not reachable.  No fix available yet in Debian repos.
+CVE-2026-31789
+
+# CVE-2026-28387  openssl (all Debian/distroless base images) HIGH
+#   Arbitrary code execution due to use-after-free in DANE TLSA authentication.
+#   DANE TLSA is not used in Mintkey; TLS is handled by Kong / cert-manager with
+#   standard X.509 certificates.
+CVE-2026-28387
+
+# CVE-2026-28388  openssl (all Debian/distroless base images) HIGH
+#   Denial of Service due to NULL pointer dereference in delta CRL processing.
+#   Mintkey does not use delta CRLs; cert revocation is handled by cert-manager
+#   with OCSP stapling.
+CVE-2026-28388
+
+# CVE-2026-28389  openssl (all Debian/distroless base images) HIGH
+#   Denial of Service in CMS processing.
+#   Mintkey services do not process CMS (Cryptographic Message Syntax) objects
+#   from user-controlled input.
+CVE-2026-28389
+
+# CVE-2026-28390  openssl (all Debian/distroless base images) HIGH
+#   Denial of Service due to NULL pointer dereference in CMS EnvelopedData.
+#   Same context as CVE-2026-28389; CMS not used.
+CVE-2026-28390
+
+# CVE-2026-40356  krb5 (libkrb5-3, libkrb5support0, etc. — Debian base images) HIGH
+#   MIT Kerberos 5: Denial of Service via integer underflow and out-of-bounds read.
+#   Mintkey services do not use Kerberos authentication; krb5 is a Debian base
+#   image transitive dependency that is not loaded in any service code path.
+CVE-2026-40356

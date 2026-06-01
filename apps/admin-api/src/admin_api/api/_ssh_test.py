@@ -58,13 +58,13 @@ async def test_ssh_credential(
     # ------------------------------------------------------------------ parse
     try:
         cred = json.loads(credential_value)
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError):
         return {
             "ok": False,
             "status_code": 400,
             "latency_ms": 0,
             "final_url": base_url,
-            "response_body_truncated": f"Invalid credential JSON: {exc}",
+            "response_body_truncated": "Invalid credential JSON",
         }
 
     # ---------------------------------------------------------------- resolve target
@@ -118,13 +118,13 @@ async def test_ssh_credential(
             }
         try:
             client_key = asyncssh.import_private_key(pem_str.encode())
-        except (asyncssh.KeyImportError, ValueError) as exc:
+        except (asyncssh.KeyImportError, ValueError):
             return {
                 "ok": False,
                 "status_code": 400,
                 "latency_ms": int((_time.monotonic() - start) * 1000),
                 "final_url": final_url,
-                "response_body_truncated": f"Cannot import private key: {exc}",
+                "response_body_truncated": "Cannot import private key: invalid PEM format",
             }
         connect_kwargs["username"] = username
         connect_kwargs["client_keys"] = [client_key]
@@ -189,6 +189,7 @@ async def test_ssh_credential(
 
     except asyncssh.PermissionDenied as exc:
         latency_ms = int((_time.monotonic() - start) * 1000)
+        # ADR-0014.7: log exc for debugging but do NOT echo it to the HTTP response.
         logger.info(
             "test_ssh_credential: auth failed host=%s:%d user=%s reason=%s",
             host, port, username, exc,
@@ -198,7 +199,7 @@ async def test_ssh_credential(
             "status_code": 401,
             "latency_ms": latency_ms,
             "final_url": final_url,
-            "response_body_truncated": f"SSH authentication failed: {exc}",
+            "response_body_truncated": "SSH authentication failed",
         }
 
     except (TimeoutError, asyncio.TimeoutError):
@@ -217,6 +218,7 @@ async def test_ssh_credential(
 
     except (ConnectionRefusedError, OSError) as exc:
         latency_ms = int((_time.monotonic() - start) * 1000)
+        # ADR-0014.7: log exc for debugging but do NOT echo it to the HTTP response.
         logger.info(
             "test_ssh_credential: connect failed host=%s:%d user=%s error=%s",
             host, port, username, exc,
@@ -226,7 +228,7 @@ async def test_ssh_credential(
             "status_code": 502,
             "latency_ms": latency_ms,
             "final_url": final_url,
-            "response_body_truncated": f"SSH connect failed: {exc}",
+            "response_body_truncated": "SSH connect failed",
         }
 
     except Exception as exc:  # noqa: BLE001

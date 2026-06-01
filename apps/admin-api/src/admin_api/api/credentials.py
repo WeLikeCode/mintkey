@@ -627,10 +627,9 @@ async def create_credential(
         # password_fingerprint is the first 16 hex chars of SHA-256(password) — ADR-0021, ADR-0014.7.
         audit_payload["username"] = _ssh_pwd_validated.username
         audit_payload["target_address"] = _ssh_pwd_validated.target_address
-        # lgtm[py/weak-sensitive-data-hashing] SHA-256 used as non-reversible audit
-        # fingerprint (first 16 hex chars), NOT for password authentication or key derivation.
-        # ADR-0021: display token for audit trails; actual auth uses Vault-stored encrypted creds.
-        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(
+        # SHA-256 used as non-reversible audit fingerprint (first 16 hex chars) per ADR-0021;
+        # NOT for password authentication or key derivation.
+        audit_payload["password_fingerprint"] = _hashlib_sshpwd.sha256(  # lgtm[py/weak-sensitive-data-hashing]
             _ssh_pwd_validated.password.encode("utf-8")
         ).hexdigest()[:16]
 

@@ -47,13 +47,27 @@ jobs:
           #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
-          #   - golang.org/x/{sync,net,time}: BSD-3-Clause + the standard Go patent grant
+          #   - golang.org/x/{sync,net,time,text}: BSD-3-Clause + the standard Go patent grant
           #     (reported as a compound expr with a non-SPDX scancode LicenseRef);
           #     permissive Go stdlib-adjacent libs (singleflight, HTTP/2, rate-limiter, etc.).
           #     golang.org/x/time added as transitive dep of ssh-proxy in PR #138.
+          #     golang.org/x/text added as transitive dep of ssh-proxy in PR #139.
+          #   - google.golang.org/protobuf: BSD-3-Clause + Google patent grant (same LicenseRef
+          #     pattern as golang.org/x/*); permissive in practice, required by gRPC.
           #   - stretchr/testify, gopkg.in/yaml.v3, types-PyYAML: permissive
           #     test/build deps (MIT / MIT-Apache / Apache-2.0) whose license the
           #     scanner could not auto-resolve (reported "unknown").
+          #   - asyncssh: LGPL-2.1 (scanner reports "unknown"); used in admin-api for
+          #     SSH credential validation. LGPL-2.1 permits use as a library without
+          #     copyleft obligation on the consuming application (weak copyleft).
+          #   - pytest-asyncio: Apache-2.0 (scanner reports "unknown" for some versions).
+          #   - ssh-proxy Go transitive deps (beorn7/perks, cespare/xxhash/v2, go-logr/logr,
+          #     go-logr/stdr, golang-jwt/jwt/v5, google/uuid, pmezard/go-difflib,
+          #     prometheus/client_golang, prometheus/client_model, prometheus/common,
+          #     prometheus/procfs, go.opentelemetry.io/auto/sdk, genproto/googleapis/rpc,
+          #     google.golang.org/grpc): MIT / Apache-2.0 / BSD-3-Clause; scanner reports
+          #     "unknown" for some due to LicenseRef compound expressions. All are
+          #     well-known permissive open-source libraries.
           allow-dependencies-licenses: >-
             pkg:golang/pgregory.net/rapid,
             pkg:pypi/hypothesis,
@@ -63,9 +77,31 @@ jobs:
             pkg:golang/golang.org/x/sync,
             pkg:golang/golang.org/x/net,
             pkg:golang/golang.org/x/time,
+            pkg:golang/golang.org/x/text,
+            pkg:golang/google.golang.org/protobuf,
             pkg:golang/github.com/stretchr/testify,
             pkg:golang/gopkg.in/yaml.v3,
-            pkg:pypi/types-pyyaml
+            pkg:pypi/types-pyyaml,
+            pkg:pypi/asyncssh,
+            pkg:pypi/pytest-asyncio,
+            pkg:golang/github.com/beorn7/perks,
+            pkg:golang/github.com/cespare/xxhash/v2,
+            pkg:golang/github.com/go-logr/logr,
+            pkg:golang/github.com/go-logr/stdr,
+            pkg:golang/github.com/golang-jwt/jwt/v5,
+            pkg:golang/github.com/google/uuid,
+            pkg:golang/github.com/pmezard/go-difflib,
+            pkg:golang/github.com/prometheus/client_golang,
+            pkg:golang/github.com/prometheus/client_model,
+            pkg:golang/github.com/prometheus/common,
+            pkg:golang/github.com/prometheus/procfs,
+            pkg:golang/go.opentelemetry.io/auto/sdk,
+            pkg:golang/go.opentelemetry.io/otel,
+            pkg:golang/go.opentelemetry.io/otel/metric,
+            pkg:golang/go.opentelemetry.io/otel/sdk,
+            pkg:golang/go.opentelemetry.io/otel/trace,
+            pkg:golang/google.golang.org/genproto/googleapis/rpc,
+            pkg:golang/google.golang.org/grpc
 
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
