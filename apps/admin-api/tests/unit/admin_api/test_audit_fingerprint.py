@@ -15,7 +15,7 @@ Covers:
   - Env var with too-short key raises RuntimeError.
   - Env var with non-hex value raises RuntimeError.
 
-Source: ADR-0021; py/weak-sensitive-data-hashing fix (chunk α).
+Source: ADR-0021; py/weak-sensitive-data-hashing fix (chunk α, η).
 """
 from __future__ import annotations
 
@@ -198,3 +198,24 @@ def test_different_keys_different_output() -> None:
     fp_b = mod_b.audit_fingerprint(b"canary")
 
     assert fp_a != fp_b, "Different keys should produce different fingerprints"
+
+
+# ---------------------------------------------------------------------------
+# Performance smoke test — PBKDF2 100k iterations must finish < 500ms
+# ---------------------------------------------------------------------------
+
+
+def test_audit_fingerprint_completes_under_500ms() -> None:
+    """PBKDF2 100k-iteration fingerprint must complete under 500ms on commodity HW.
+
+    Guards against accidental parameter inflation (e.g. iteration count bumped
+    to 10M) turning a hot-ish path into a latency cliff.  500ms is a generous
+    ceiling; production commodity HW typically hits 30-100ms.
+    """
+    import time
+
+    mod = _import_fresh(key_hex=_FIXED_KEY_HEX)
+    start = time.perf_counter()
+    mod.audit_fingerprint(b"perf-probe")
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    assert elapsed_ms < 500, f"audit_fingerprint took {elapsed_ms:.0f}ms — exceeds 500ms ceiling"
