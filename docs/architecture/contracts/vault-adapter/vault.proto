@@ -93,6 +93,14 @@ enum AuthScheme {
   AUTH_SCHEME_OAUTH2_PASSWORD_GRANT = 8;
   AUTH_SCHEME_APPLE_JWT = 9;
   AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT = 10;
+  // SSH_PRIVATE_KEY: Vault stores an SSH private key (PEM or OpenSSH format).
+  // Used by the SSH proxy (ADR-0021) to authenticate to backend SSH servers.
+  // The proxy holds the key in session scope and zeros it on disconnect.
+  AUTH_SCHEME_SSH_PRIVATE_KEY = 11;
+  // SSH_CA: Vault stores an SSH Certificate Authority signing key.
+  // Used by the SSH proxy (ADR-0021, Phase 2) to sign short-lived SSH certificates
+  // for direct-connect mode (agent connects directly to backend, no bastion in data path).
+  AUTH_SCHEME_SSH_CA = 12;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
@@ -141,6 +149,11 @@ message GetCredentialResponse {
   //   OAUTH2_CLIENT_CREDENTIALS, OIDC_CLIENT_SECRET ->
   //         JSON-encoded structured payload (see Cred*ClientSecret
   //         schemas in docs/contracts/rest/openapi.yaml).
+  //   SSH_PRIVATE_KEY -> PEM or OpenSSH format private key bytes.
+  //         The SSH proxy (ADR-0021) holds this in session scope and
+  //         zeros it on disconnect. Never injected into HTTP headers.
+  //   SSH_CA -> SSH Certificate Authority signing key bytes (Phase 2).
+  //         Used by the SSH proxy to sign short-lived SSH certificates.
   bytes value = 2;
 
   // Optional upstream expiry (e.g. for OAuth2 access tokens cached by

@@ -231,6 +231,40 @@
         "event_type",
         "key_fingerprint"
       ]
+    },
+    "ev_ssh_session_started": {
+      "type": "object",
+      "description": "An SSH session was established via the SSH proxy bastion. Published on mintkey:agent for session tracking. target_id = session_id. ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "ssh.session.started"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_ssh_session_ended": {
+      "type": "object",
+      "description": "An SSH session was terminated. Published on mintkey:agent for session tracking. target_id = session_id. ADR-0021.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "ssh.session.ended"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
     }
   },
   "oneOf": [
@@ -257,6 +291,12 @@
     },
     {
       "$ref": "#/$defs/ev_api_key_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_started"
+    },
+    {
+      "$ref": "#/$defs/ev_ssh_session_ended"
     }
   ],
   "discriminator": {
@@ -269,7 +309,9 @@
       "credential.revoked": "#/$defs/ev_credential_revoked",
       "agent.revoked": "#/$defs/ev_agent_revoked",
       "token.revoked": "#/$defs/ev_token_revoked",
-      "api_key.revoked": "#/$defs/ev_api_key_revoked"
+      "api_key.revoked": "#/$defs/ev_api_key_revoked",
+      "ssh.session.started": "#/$defs/ev_ssh_session_started",
+      "ssh.session.ended": "#/$defs/ev_ssh_session_ended"
     }
   },
   "x-mintkey-channels": {
@@ -295,7 +337,9 @@
         "carries": [
           "agent.revoked",
           "token.revoked",
-          "api_key.revoked"
+          "api_key.revoked",
+          "ssh.session.started",
+          "ssh.session.ended"
         ]
       },
       {
