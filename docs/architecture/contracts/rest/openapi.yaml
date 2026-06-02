@@ -2981,6 +2981,8 @@ paths:
             schema:
               type: object
               description: Empty body — all parameters are in path/query.
+      security:
+        - ServiceIdentity: []
       responses:
         "200":
           description: Fresh access token.
@@ -3460,6 +3462,16 @@ components:
         (ADR-0017.3). Issued on session creation; required on every POST/
         PATCH/DELETE/PUT. Not required for service-to-service calls (those
         use AdminUiSignedRequest or ServiceIdentity).
+    BrokeredJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Mintkey-broker-issued JWS-Ed25519 token. Issued by the broker via
+        POST /v1/tools/request_token after an agent's api-key auth. Carries
+        scope claims (read:email, send:email, write:email, delete:email).
+        Validated by email-proxy via broker JWKS (Ed25519, kid-pinned per
+        ADR-0016.2). Bearer header: `Authorization: Bearer <JWS-EdDSA>`.
 
   ###########################################################################
   # Reusable parameters

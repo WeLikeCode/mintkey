@@ -259,6 +259,37 @@ interface Mailbox {
 }
 ```
 
+### oauth2_state — CSRF nonce store for OAuth2 authorize flow
+
+Short-lived table holding the opaque `state` value generated at the start of
+the OAuth2 authorization code flow. Ensures the callback is bound to the
+operator session that initiated the flow, preventing CSRF attacks on the
+redirect endpoint (ADR-0024 §B2).
+
+```sql
+-- oauth2_state — short-lived CSRF nonce store for OAuth2 authorize flow
+CREATE TABLE oauth2_state (
+  state_value     TEXT PRIMARY KEY,                     -- crypto-random opaque token
+  session_id      UUID NOT NULL,                        -- operator's session
+  operator_id     UUID NOT NULL,
+  tenant_id       UUID NOT NULL,                        -- for RLS
+  provider        TEXT NOT NULL CHECK (provider IN ('gmail','outlook')),
+  redirect_uri    TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at      TIMESTAMPTZ NOT NULL,                 -- created_at + 10 min
+  service_id      UUID                                  -- nullable until callback resolves it
+);
+
+CREATE INDEX idx_oauth2_state_expires_at ON oauth2_state(expires_at);
+
+ALTER TABLE oauth2_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY oauth2_state_tenant_iso ON oauth2_state
+  USING (tenant_id::text = current_setting('app.current_tenant', true));
+```
+
+Opportunistic GC: `DELETE WHERE expires_at < now()` on each INSERT (cheap,
+no cron needed). The Liquibase migration for this table is authored in C-9.
+
 ## REST API Design
 
 ### Endpoints

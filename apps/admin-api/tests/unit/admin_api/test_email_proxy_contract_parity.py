@@ -415,3 +415,74 @@ class TestCrossFileParity:
         assert not missing, (
             f"email schemes in vault.proto absent from mcp/tools.yaml auth_scheme enum: {sorted(missing)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Security scheme reference resolution — catches Issue-1's class of bug
+# ---------------------------------------------------------------------------
+
+class TestOpenAPISecuritySchemesResolve:
+    """Every security: reference in every operation must resolve in components.securitySchemes."""
+
+    def _collect_operation_security_refs(self, openapi_doc: dict) -> dict[str, list[str]]:
+        """
+        Walk all paths → operations → security blocks.
+        Returns {operationId-or-path+method: [scheme_name, ...]} for
+        every operation that has a non-empty security block.
+        """
+        refs: dict[str, list[str]] = {}
+        paths = openapi_doc.get("paths", {})
+        http_methods = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+        for path, path_item in paths.items():
+            if not isinstance(path_item, dict):
+                continue
+            for method, operation in path_item.items():
+                if method not in http_methods:
+                    continue
+                if not isinstance(operation, dict):
+                    continue
+                security_list = operation.get("security")
+                if not security_list:
+                    continue
+                scheme_names = []
+                for requirement in security_list:
+                    if isinstance(requirement, dict):
+                        scheme_names.extend(requirement.keys())
+                if scheme_names:
+                    op_id = operation.get("operationId", f"{method.upper()} {path}")
+                    refs[op_id] = scheme_names
+        return refs
+
+    def test_all_security_scheme_references_resolve(self, openapi_doc: dict) -> None:
+        """
+        Every scheme name referenced in any operation's security: block must be
+        defined in components.securitySchemes.
+
+        This test catches the class of bug where a new security scheme name is
+        used in a security: block but never added to components.securitySchemes
+        (which fails OpenAPI 3 validators, Redocly, Spectral, swagger-cli,
+        openapi-spec-validator, and SDK code-generators).
+        """
+        defined = set(
+            openapi_doc.get("components", {}).get("securitySchemes", {}).keys()
+        )
+        assert defined, (
+            "openapi.yaml has no components.securitySchemes — cannot validate references."
+        )
+
+        op_refs = self._collect_operation_security_refs(openapi_doc)
+        undefined_by_op: dict[str, list[str]] = {}
+        for op_id, scheme_names in op_refs.items():
+            missing = [s for s in scheme_names if s not in defined]
+            if missing:
+                undefined_by_op[op_id] = missing
+
+        assert not undefined_by_op, (
+            "openapi.yaml has operations referencing undefined security schemes.\n"
+            f"Defined schemes: {sorted(defined)}\n"
+            "Undefined references per operation:\n"
+            + "\n".join(
+                f"  {op}: {sorted(set(names))}"
+                for op, names in sorted(undefined_by_op.items())
+            )
+        )

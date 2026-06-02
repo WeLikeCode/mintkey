@@ -90,7 +90,7 @@ See §5 below.
 
 | # | AC | Status |
 |---|---|---|
-| AC-1 | **Contracts**: vault.proto adds `AUTH_SCHEME_EMAIL_PASSWORD=14`, `AUTH_SCHEME_EMAIL_OAUTH2=15`, `AUTH_SCHEME_EMAIL_APP_PASSWORD=16`. openapi.yaml + mcp/tools.yaml + audit-event.schema.json + change-event.schema.json + span-attributes.md all reflect email surface. `make contracts-test` green. | red |
+| AC-1 | **Contracts**: vault.proto adds `AUTH_SCHEME_EMAIL_PASSWORD=14`, `AUTH_SCHEME_EMAIL_OAUTH2=15`, `AUTH_SCHEME_EMAIL_APP_PASSWORD=16`. openapi.yaml + mcp/tools.yaml + audit-event.schema.json + change-event.schema.json + span-attributes.md all reflect email surface. `make contracts-test` green. | green (pending C-FINAL) — all deliverables landed in C-1 rounds 1+2; `make contracts-test` Makefile target wiring deferred to C-2 |
 | AC-2 | **Backend skeleton**: `apps/email-proxy/` builds (`go build ./...`), unit tests `go test ./... -short` green, Dockerfile produces a runnable image. Module path `github.com/mintkey/mintkey/services/email-proxy`. `go.work` updated. | red |
 | AC-3 | **Auth + security primitives**: JWT validation via broker JWKS (Ed25519, force-refresh on unknown kid per ADR-0016.2), RFC 5322 address parser rejects `\r\n` injection, domain allowlist enforced, rate limiting via Postgres advisory locks. Red-team tests pass (`tests/security/test_email_proxy_redteam.py`). | red |
 | AC-4 | **REST API + 9 endpoints**: all endpoints in design.md §"REST API Design" implemented and reachable on :8088 with brokered-JWT auth. Permission checks enforce `read:email` / `send:email` / `write:email` / `delete:email`. Handler unit tests cover success + 4xx paths. | red |
