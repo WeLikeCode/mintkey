@@ -2212,6 +2212,30 @@
       },
       "required": ["event_type", "target_type", "payload"]
     },
+    "ev_email_oauth2_authorize_initiated": {
+      "title": "email.oauth2.authorize_initiated",
+      "description": "OAuth2 authorization code flow initiated; state token inserted into oauth2_state with 10-min TTL. Payload contains only state_token_hash (sha256 of raw state) — never the raw state value (NFR-17). Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.oauth2.authorize_initiated"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tenant_id": {"type": "string", "description": "Tenant UUID (string form)."},
+            "service_id": {"type": "string", "description": "Email service UUID (string form)."},
+            "provider": {"type": "string", "enum": ["gmail", "outlook"]},
+            "state_token_hash": {
+              "type": "string",
+              "description": "sha256(raw_state_value) hex digest. Raw state value is NEVER stored in audit (NFR-17)."
+            }
+          },
+          "required": ["tenant_id", "service_id", "provider", "state_token_hash"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
     "ev_email_oauth2_authorized": {
       "title": "email.oauth2.authorized",
       "description": "OAuth2 consent flow completed; refresh token stored in vault. Per ADR-0024.",
@@ -2538,6 +2562,9 @@
       "$ref": "#/$defs/ev_email_service_deleted"
     },
     {
+      "$ref": "#/$defs/ev_email_oauth2_authorize_initiated"
+    },
+    {
       "$ref": "#/$defs/ev_email_oauth2_authorized"
     },
     {
@@ -2612,6 +2639,7 @@
       "email.service.registered": "#/$defs/ev_email_service_registered",
       "email.service.updated": "#/$defs/ev_email_service_updated",
       "email.service.deleted": "#/$defs/ev_email_service_deleted",
+      "email.oauth2.authorize_initiated": "#/$defs/ev_email_oauth2_authorize_initiated",
       "email.oauth2.authorized": "#/$defs/ev_email_oauth2_authorized",
       "email.oauth2.refreshed": "#/$defs/ev_email_oauth2_refreshed",
       "email.oauth2.expired": "#/$defs/ev_email_oauth2_expired",

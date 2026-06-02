@@ -278,6 +278,87 @@ class TestOAuth2Authorize:
         insert_calls = [sql for sql, _ in session.executed_sql if "INSERT INTO oauth2_state" in sql]
         assert len(insert_calls) == 1
 
+    @pytest.mark.asyncio
+    async def test_05b_authorize_emits_audit_event(self) -> None:
+        """
+        T-05b: oauth2_authorize emits email.oauth2.authorize_initiated audit event.
+
+        Verifies:
+        - Exactly one audit_emit call fires on happy path.
+        - event_type is 'email.oauth2.authorize_initiated'.
+        - Payload contains tenant_id, service_id, provider, state_token_hash.
+        - Payload does NOT contain the raw state value (NFR-17).
+        - state_token_hash is sha256(raw_state_value) — hash-only, never plaintext.
+        """
+        import hashlib
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session(**{
+            "SELECT id FROM email_services": _FakeResult(_FakeRow(id=service_id)),
+        })
+
+        fake_request = MagicMock()
+        fake_request.cookies.get.return_value = ""
+        fake_request.base_url = "http://localhost:8080/"
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "fake_client_id",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "fake_secret",
+        }
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit_emit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit_emit):
+            result = await oauth2_authorize(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        body_content = json.loads(result.body)
+        raw_state = body_content["state"]
+
+        # Exactly one audit event must be emitted
+        assert len(audit_calls) == 1, (
+            f"Expected 1 audit_emit call, got {len(audit_calls)}"
+        )
+
+        ev = audit_calls[0]
+        assert ev["event_type"] == "email.oauth2.authorize_initiated"
+        assert ev["actor_type"] == "operator"
+
+        payload = ev["payload"]
+        assert payload["provider"] == "gmail"
+        assert payload["service_id"] == service_id
+        assert str(tenant_id) == payload["tenant_id"]
+
+        # state_token_hash must be sha256 of the raw state value
+        expected_hash = hashlib.sha256(raw_state.encode()).hexdigest()
+        assert payload["state_token_hash"] == expected_hash, (
+            "state_token_hash must be sha256(raw_state_value)"
+        )
+
+        # NFR-17: raw state value must NOT appear in the audit payload
+        payload_str = json.dumps(payload)
+        assert raw_state not in payload_str, (
+            "NFR-17 violation: raw state value must not appear in audit payload"
+        )
+
+        # NFR-17: no credential fields in payload
+        for forbidden in ("refresh_token", "client_secret", "access_token"):
+            assert forbidden not in payload, (
+                f"NFR-17 violation: forbidden key '{forbidden}' in audit payload"
+            )
+
     def test_06_authorize_unsupported_provider_sync(self) -> None:
         """
         T-06: Provider 'generic' does not support OAuth2.

@@ -37,6 +37,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
 
+import hashlib
+
 import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -434,6 +436,24 @@ async def oauth2_authorize(
             f"&redirect_uri={redirect_uri}"
             f"&state={state_value}"
         )
+
+    # Emit audit event — state_token_hash only; raw state value NEVER in payload (NFR-17)
+    state_token_hash = hashlib.sha256(state_value.encode()).hexdigest()
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorize_initiated",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "tenant_id": str(tenant_id),
+            "service_id": service_id,
+            "provider": provider,
+            "state_token_hash": state_token_hash,
+        },
+    )
 
     return JSONResponse(
         status_code=200,

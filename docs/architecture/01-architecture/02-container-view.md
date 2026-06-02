@@ -166,7 +166,7 @@ flowchart LR
 - **IMAP pool**: per-`(tenant_id, service_id)` pool (default 5 conns, 5-min idle, UIDVALIDITY tracking). SMTP connections are per-operation (no pool).
 - **OAuth2 refresh**: expired access tokens trigger a call to the admin-api internal refresh endpoint (`POST /v1/internal/oauth2/{provider}/refresh`). email-proxy NEVER holds the `client_secret` or calls the provider directly for token exchange.
 - **Talks to**: Broker (JWKS), Vault Adapter (credential fetch via gRPC), Admin REST API (OAuth2 refresh), Audit (hash-chain events), upstream IMAP/SMTP servers.
-- **Quality drivers**: credential isolation (agent never sees plaintext); 13 audit event types; rate limiting per `(agent_id, service_id, hour)` via Postgres advisory locks; IMAP/SMTP injection prevention (RFC 5322 validation, `\r\n` rejection, parameterized SEARCH).
+- **Quality drivers**: credential isolation (agent never sees plaintext); 14 audit event types; rate limiting per `(agent_id, service_id, hour)` via Postgres advisory locks; IMAP/SMTP injection prevention (RFC 5322 validation, `\r\n` rejection, parameterized SEARCH).
 - **Decision record**: [ADR-0024](adr/0024-email-proxy-support.md).
 
 ### Observability stack (commodity, but in scope)

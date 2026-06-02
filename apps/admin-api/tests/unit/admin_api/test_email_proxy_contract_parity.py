@@ -13,7 +13,7 @@ Asserts that ALL contract files stay in lockstep on the email-proxy surface:
    - /v1/email-proxy/messages
    - /v1/email-proxy/mailboxes
    - /v1/internal/oauth2/{provider}/refresh
-4. audit-event.schema.json contains all 13 email.* event type values in the
+4. audit-event.schema.json contains all 14 email.* event type values in the
    discriminator mapping.
 5. mcp/tools.yaml lists all 9 mintkey_*_email tools.
 6. change-event.schema.json contains the 3 email.service.* change events in
@@ -70,6 +70,7 @@ EXPECTED_AUDIT_EVENT_TYPES = {
     "email.service.registered",
     "email.service.updated",
     "email.service.deleted",
+    "email.oauth2.authorize_initiated",
     "email.oauth2.authorized",
     "email.oauth2.refreshed",
     "email.oauth2.expired",
@@ -305,8 +306,8 @@ class TestOpenAPIPaths:
 # ---------------------------------------------------------------------------
 
 class TestAuditEventSchema:
-    def test_all_13_email_event_types_in_discriminator(self, audit_schema: dict) -> None:
-        """audit-event.schema.json discriminator.mapping must contain all 13 email.* events."""
+    def test_all_14_email_event_types_in_discriminator(self, audit_schema: dict) -> None:
+        """audit-event.schema.json discriminator.mapping must contain all 14 email.* events."""
         mapping = audit_schema.get("discriminator", {}).get("mapping", {})
         present = set(mapping.keys())
         missing = EXPECTED_AUDIT_EVENT_TYPES - present
@@ -316,8 +317,8 @@ class TestAuditEventSchema:
             f"  Present email types: {sorted(k for k in present if k.startswith('email.'))}"
         )
 
-    def test_all_13_email_event_defs_in_defs(self, audit_schema: dict) -> None:
-        """$defs must contain sub-schemas for all 13 email.* event types."""
+    def test_all_14_email_event_defs_in_defs(self, audit_schema: dict) -> None:
+        """$defs must contain sub-schemas for all 14 email.* event types."""
         defs = set(audit_schema.get("$defs", {}).keys())
         # Each event_type "email.x.y" maps to def "ev_email_x_y"
         expected_defs = {

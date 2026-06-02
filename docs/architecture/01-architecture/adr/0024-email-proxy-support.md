@@ -308,6 +308,16 @@ original §D13. Event 13 (`email.flags.updated`) covers the `mark_email` MCP too
 The `target_type` values for all 13 events are `email_service`, `email_message`, or
 `email_attachment` as specified in §D13.
 
+### C-12 corrigendum — Audit event types (14, not 13)
+
+The `oauth2_authorize` handler inserts a row into `oauth2_state` (a state-changing write
+per ADR-0014.7 / Req AUD-3) but the initial implementation omitted the audit emit call.
+PR #144 adds `email.oauth2.authorize_initiated` as the **14th** audit event type.
+
+Payload: `{tenant_id, service_id, provider, state_token_hash}` — `state_token_hash` is
+`sha256(raw_state_value)` hex digest; the raw state value is never persisted in audit
+(NFR-17). Actor: operator.
+
 ### services.base_url divergence from ADR-0023
 
 ADR-0023 established `services.base_url` as the canonical upstream host:port for SSH
