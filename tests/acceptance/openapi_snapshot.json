@@ -6,6 +6,7 @@
   "auth": "/v1/auth",
   "changes": "/v1/changes",
   "credentials": "/v1/tenants/{tenant_id}/services/{service_id}/credentials",
+  "email_permission_grants": "/v1/tenants/{tenant_id}/email-permission-grants",
   "email_services": "/v1/tenants/{tenant_id}/email-services",
   "health": "/metrics",
   "internal": "/v1/internal",
