@@ -253,17 +253,27 @@ jobs:
       - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
       - name: Build stack images
         run: docker compose build
+      - name: Prepare ssh-proxy host-key volume (chown to non-root)
+        # The ssh-proxy container runs as distroless USER 65532:65532
+        # (nonroot). A fresh docker volume's root dir is owned by root:root,
+        # so when SSH_PROXY_HOST_KEY_GENERATE=true the bastion tries to write
+        # /var/lib/mintkey/ssh_host_ed25519_key and hits "permission denied".
+        # Pre-chown the volume to 65532:65532 here. Idempotent.
+        # (In dev `make ssh-proxy-init` does the equivalent.)
+        run: |
+          docker volume create mintkey_ssh_proxy_hostkey >/dev/null
+          docker run --rm -v mintkey_ssh_proxy_hostkey:/mnt alpine:3.20 \
+            chown -R 65532:65532 /mnt
       - name: Start stack
         # SSH_PROXY_HOST_KEY_GENERATE=true tells ssh-proxy to auto-generate
         # an Ed25519 host key at boot if the file is absent. Production
         # default in compose is "false" (operator-provisioned via
-        # `make ssh-proxy-init`), but CI has no out-of-band seed step —
-        # without this override the container restart-loops on missing
-        # /var/lib/mintkey/ssh_host_ed25519_key and the wait-loop below
-        # times out. Earlier attempt (a `docker volume create + docker
-        # run alpine ssh-keygen` step) did seed the volume but compose
-        # did NOT pick it up — labels/project-prefix mismatch with the
-        # named volume. Env-interpolation is the clean fix.
+        # `make ssh-proxy-init`), but CI has no out-of-band seed step.
+        # Compose env-interpolation picks up the var from this step's
+        # `env:` block below. Prior attempt (seeding the key directly in
+        # a docker volume) had a label/project-prefix mismatch; this
+        # generate-on-boot path sidesteps it entirely as long as the
+        # volume is writable by UID 65532 (handled by the chown step above).
         # 300s health-wait (was 180s): cold-cache runs on slow GitHub-hosted
         # runners have repeatedly hit the 3-min ceiling and bailed with exit
         # 124 (e.g. PR #140 first run; main post-merge for #140 at f84803db).
