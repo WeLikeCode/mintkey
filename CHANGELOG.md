@@ -11,6 +11,23 @@ pre-release (`0.1.0-preview.N`) during pre-alpha.
 
 ---
 
+## [Unreleased] — feat/email-service-templates
+
+### Added
+- **4 email service templates** (Gmail OAuth2, Outlook/O365 OAuth2, iCloud App Password,
+  Generic IMAP+SMTP) in `service_templates.yaml` with a new `kind: email_service`
+  discriminator field. Existing HTTP templates default to `kind: http_service` — additive
+  change, no breakage.
+- **New admin-api endpoint** `POST /v1/tenants/{tid}/email-services/from-template` — creates
+  an `email_services` row pre-filled from the template (imap/smtp/auth_scheme/provider).
+  Emits `email.service.registered` audit event.
+- **Admin UI `ServiceTemplatePicker`**: reads the `kind` field and routes `email_service`
+  template selections to the `email_services` AdminJS resource (not the HTTP services
+  resource). Category "Email" added to `CATEGORY_LABELS`.
+- **HOW-TO.md §6** ("Email services") — quick-start instructions and OAuth2 prerequisites.
+
+---
+
 ## [0.3.0-preview.1] — 2026-06-02
 
 ### Added

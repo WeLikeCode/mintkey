@@ -27,21 +27,32 @@ router = APIRouter(prefix="/v1/service-templates")
 def _template_to_list_item(t: ServiceTemplate) -> dict[str, Any]:
     """Map a ServiceTemplate to the list-item wire representation.
 
-    Includes all fields required by Req 2.2 and 18.3:
-    template_id, name, display_name, description, base_url, auth_type,
-    openapi_spec_url, category, version.
+    Includes all fields required by Req 2.2 and 18.3, plus the kind
+    discriminator so clients can distinguish http_service from email_service.
+    Email templates also carry imap_host/port + smtp_host/port; base_url is
+    None for them.
     """
-    return {
+    item: dict[str, Any] = {
         "template_id": t.template_id,
+        "kind": t.kind,
         "name": t.name,
         "display_name": t.display_name,
         "description": t.description,
         "base_url": t.base_url,
         "auth_type": t.auth_type,
+        "auth_scheme": t.auth_scheme,
         "openapi_spec_url": t.openapi_spec_url,
         "category": t.category,
         "version": t.version,
     }
+    # Additive: include email fields when present (non-None)
+    if t.kind == "email_service":
+        item["provider"] = t.provider
+        item["imap_host"] = t.imap_host
+        item["imap_port"] = t.imap_port
+        item["smtp_host"] = t.smtp_host
+        item["smtp_port"] = t.smtp_port
+    return item
 
 
 @router.get("")
@@ -91,4 +102,4 @@ async def get_template(template_id: str) -> JSONResponse:
         )
     else:
         detail["credential_hint"] = None
-    return JSONResponse(detail)
+    return JSONResponse(detail)  # type: ignore[return-value]

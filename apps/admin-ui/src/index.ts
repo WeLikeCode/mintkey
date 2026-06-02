@@ -28,6 +28,7 @@ import { dashboardHandler } from "./dashboard.js";
 import { componentLoader, Components } from "./components/index.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
 import { ServicesResource } from "./resources/services.js";
+import { EmailServicesResource } from "./resources/email-services.js";
 import { CredentialsResource } from "./resources/credentials.js";
 import { AgentsResource } from "./resources/agents.js";
 import { ApiKeysResource } from "./resources/api_keys.js";
@@ -141,9 +142,10 @@ async function main() {
       component: Components.Dashboard,
       handler: dashboardHandler,
     },
-    // Nav order: Dashboard → Services → Agents → Permissions → API Keys → Audit → Tenants
+    // Nav order: Dashboard → Services → Email Services → Agents → Permissions → API Keys → Audit → Tenants
     resources: [
       { resource: ServicesResource.adminResource, options: ServicesResource.options },
+      { resource: EmailServicesResource.adminResource, options: EmailServicesResource.options },
       { resource: AgentsResource.adminResource, options: AgentsResource.options },
       { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
       { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },

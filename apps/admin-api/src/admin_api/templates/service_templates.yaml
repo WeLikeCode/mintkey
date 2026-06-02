@@ -1,4 +1,83 @@
 templates:
+
+  # ── Email service templates (kind: email_service) ─────────────────────────
+  # These use imap_host/port + smtp_host/port instead of a single base_url.
+  # Created via POST /v1/tenants/{tid}/email-services/from-template.
+
+  - template_id: email_gmail_oauth2
+    kind: email_service
+    name: gmail
+    display_name: Gmail (OAuth2)
+    description: "Gmail IMAP+SMTP via OAuth2. Refresh-token stored encrypted in vault."
+    category: email
+    provider: gmail
+    imap_host: imap.gmail.com
+    imap_port: 993
+    smtp_host: smtp.gmail.com
+    smtp_port: 465
+    auth_scheme: email_oauth2
+    config_notes: |
+      Requires Gmail OAuth2 client_id/_secret configured on admin-api env
+      (MINTKEY_OAUTH2_GMAIL_CLIENT_ID / _SECRET). Operator completes auth by
+      clicking "Authorize Gmail" → consent → callback. Refresh-token stored
+      encrypted in vault; access-token cached 90% of TTL by email-proxy.
+    version: 1
+
+  - template_id: email_outlook_oauth2
+    kind: email_service
+    name: outlook
+    display_name: Outlook / Office 365 (OAuth2)
+    description: "Outlook / Office 365 IMAP+SMTP via OAuth2."
+    category: email
+    provider: outlook
+    imap_host: outlook.office365.com
+    imap_port: 993
+    smtp_host: smtp.office365.com
+    smtp_port: 587
+    auth_scheme: email_oauth2
+    config_notes: |
+      Requires Outlook OAuth2 client_id/_secret on admin-api env
+      (MINTKEY_OAUTH2_OUTLOOK_CLIENT_ID / _SECRET). Same flow as Gmail.
+    version: 1
+
+  - template_id: email_icloud_app_password
+    kind: email_service
+    name: icloud
+    display_name: iCloud Mail (App Password)
+    description: "iCloud Mail IMAP+SMTP via Apple app-specific password."
+    category: email
+    provider: generic
+    imap_host: imap.mail.me.com
+    imap_port: 993
+    smtp_host: smtp.mail.me.com
+    smtp_port: 587
+    auth_scheme: email_app_password
+    config_notes: |
+      iCloud Mail requires an app-specific password (Apple ID → Security →
+      App-Specific Passwords). Standard email + password do NOT work — Apple
+      blocks third-party access without an app password.
+    version: 1
+
+  - template_id: email_generic_imap_smtp
+    kind: email_service
+    name: generic_imap_smtp
+    display_name: Generic IMAP + SMTP (Password)
+    description: "Any IMAP+SMTP provider that supports username+password auth."
+    category: email
+    provider: generic
+    imap_host: ""
+    imap_port: 993
+    smtp_host: ""
+    smtp_port: 587
+    auth_scheme: email_password
+    config_notes: |
+      Use for any IMAP+SMTP provider that supports username+password auth
+      (Fastmail, Zoho, self-hosted, etc.). Operator fills imap_host and
+      smtp_host; defaults to ports 993 (IMAPS) and 587 (SMTP STARTTLS).
+    version: 1
+
+  # ── HTTP service templates (kind: http_service, default) ──────────────────
+
   - template_id: gitlab
     name: gitlab
     display_name: GitLab
