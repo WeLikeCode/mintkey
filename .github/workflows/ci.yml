@@ -254,9 +254,15 @@ jobs:
       - name: Build stack images
         run: docker compose build
       - name: Start stack
+        # 300s health-wait (was 180s): cold-cache runs on slow GitHub-hosted
+        # runners have repeatedly hit the 3-min ceiling and bailed with exit
+        # 124 (e.g. PR #140 first run; main post-merge for #140 at f84803db).
+        # The compose stack itself reaches `running` in ~2 min on a warm
+        # runner and ~3-4 min cold; 300s clears the headroom without masking
+        # real hangs (a genuine deadlock would still trip the limit).
         run: |
           docker compose up -d
-          timeout 180 bash -c 'until docker compose ps --format json | python3 -c "
+          timeout 300 bash -c 'until docker compose ps --format json | python3 -c "
           import sys, json
           data = sys.stdin.read()
           for line in data.strip().splitlines():
