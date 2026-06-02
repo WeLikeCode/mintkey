@@ -19,11 +19,12 @@ import (
 
 // TokenRequest is the input for JWT issuance.
 type TokenRequest struct {
-	AgentID    string
-	ServiceID  string
-	TenantID   string // MUST be prefixed ULID (tenant_<ULID>), NOT a slug
-	Scope      string
-	TTLSeconds int
+	AgentID     string
+	ServiceID   string
+	TenantID    string // MUST be prefixed ULID (tenant_<ULID>), NOT a slug
+	Scope       string
+	ServiceKind string // optional — "email" for email_services tokens
+	TTLSeconds  int
 }
 
 // Issuer issues Ed25519-signed JWTs.
@@ -57,16 +58,20 @@ func (i *Issuer) Issue(req TokenRequest) (string, error) {
 	// tenant_id mirrors tnt for the same reason — ssh-proxy AuthenticateJWT reads
 	// claims["tenant_id"] and claims["service_id"] directly.
 	claims := map[string]any{
-		"iss":       "mintkey/broker",
-		"sub":       req.AgentID,
-		"aud":       []string{req.ServiceID},
-		"tnt":       req.TenantID, // prefixed ULID — ADR-0017.11, ADR-0008
-		"tenant_id": req.TenantID, // flat copy for ssh-proxy compatibility
+		"iss":        "mintkey/broker",
+		"sub":        req.AgentID,
+		"aud":        []string{req.ServiceID},
+		"tnt":        req.TenantID, // prefixed ULID — ADR-0017.11, ADR-0008
+		"tenant_id":  req.TenantID, // flat copy for ssh-proxy compatibility
 		"service_id": req.ServiceID, // flat copy for ssh-proxy compatibility
-		"scope": req.Scope,
-		"jti":   jti,
-		"iat":   now,
-		"exp":   exp,
+		"scope":      req.Scope,
+		"jti":        jti,
+		"iat":        now,
+		"exp":        exp,
+	}
+	// service_kind — optional claim; omit when empty to keep tokens lean.
+	if req.ServiceKind != "" {
+		claims["service_kind"] = req.ServiceKind
 	}
 
 	headerBytes, err := json.Marshal(header)

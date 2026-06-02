@@ -129,6 +129,27 @@ async def get_agent_context(request: Request):
     return getattr(request.state, "agent_context", None)
 
 
+def _make_email_how_to_call(email_service_id: str) -> dict:
+    """Build the how_to_call usage hint for an email_service entry."""
+    return {
+        "step1_request_token": (
+            f'POST /v1/tools/request_token {{"service_id": "{email_service_id}", "action": "call"}}'
+        ),
+        "step2_list_mailboxes": (
+            f"GET /v1/tools/email_list_mailboxes?email_service_id={email_service_id}"
+        ),
+        "step3_send_email": (
+            "POST /v1/tools/email_send — body: {email_service_id, to, subject, body}"
+        ),
+        "notes": (
+            "For email services, use the email_* MCP tools directly — they handle "
+            "broker token exchange internally. "
+            "Alternatively, call request_token to get a JWT, then call email-proxy "
+            "endpoints directly with ?service_id=<id>."
+        ),
+    }
+
+
 def _make_how_to_call(service_id: str, base_url: str) -> dict:
     """Build the how_to_call usage hint for a service entry."""
     proxy_url = resolve_proxy_public_url()
@@ -158,6 +179,8 @@ async def list_services(
 ) -> JSONResponse:
     """
     Return services the requesting agent has at least one permission grant for.
+    Includes both HTTP/SSH services (permission_grants) and email services
+    (email_permission_grants) — feat/agent-email-e2e.
     RLS enforced via set_tenant_context.
     Source: Req 6 AC3; ADR-0008.
     """
@@ -184,11 +207,40 @@ async def list_services(
             "base_url": r.base_url,
             "auth_scheme": r.auth_scheme,
             "connect_type": _connect_type(r.auth_scheme),
+            "kind": "service",
         }
         for r in rows
     ]
-    payload: dict = {"services": services}
-    if not services:
+
+    # Email services — union from email_permission_grants + email_services.
+    email_result = await session.execute(
+        text(
+            "SELECT DISTINCT es.id, es.name, es.imap_host, es.smtp_host,"
+            " es.auth_scheme, es.allowed_recipient_domains"
+            " FROM email_services es"
+            " JOIN email_permission_grants epg ON epg.email_service_id = es.id"
+            " WHERE epg.agent_id = :agent_id AND es.deleted_at IS NULL"
+        ),
+        {"agent_id": agent_ctx["agent_id"]},
+    )
+    email_rows = email_result.fetchall()
+    email_services = [
+        {
+            "id": db_uuid_to_wire(r.id, "svc"),
+            "name": r.name,
+            "imap_host": r.imap_host,
+            "smtp_host": r.smtp_host,
+            "auth_scheme": r.auth_scheme,
+            "allowed_recipient_domains": r.allowed_recipient_domains,
+            "connect_type": "email",
+            "kind": "email_service",
+        }
+        for r in email_rows
+    ]
+
+    all_services = services + email_services
+    payload: dict = {"services": all_services}
+    if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
             "Ask your operator to add a Permission Grant in the admin UI: "
@@ -205,6 +257,7 @@ async def discover(
 ) -> JSONResponse:
     """
     List services with per-service how_to_call usage hints.
+    Includes both HTTP/SSH services and email_services — feat/agent-email-e2e.
     Used by E2E smoke test (T-1.11.2) and LLM agents.
     Source: Req 6 AC3; ADR-0008.
     """
@@ -231,12 +284,42 @@ async def discover(
             "base_url": r.base_url,
             "auth_scheme": r.auth_scheme,
             "connect_type": _connect_type(r.auth_scheme),
+            "kind": "service",
             "how_to_call": _make_how_to_call(db_uuid_to_wire(r.id, "svc"), r.base_url),
         }
         for r in rows
     ]
-    payload: dict = {"services": services}
-    if not services:
+
+    # Email services — union from email_permission_grants + email_services.
+    email_result = await session.execute(
+        text(
+            "SELECT DISTINCT es.id, es.name, es.imap_host, es.smtp_host,"
+            " es.auth_scheme, es.allowed_recipient_domains"
+            " FROM email_services es"
+            " JOIN email_permission_grants epg ON epg.email_service_id = es.id"
+            " WHERE epg.agent_id = :agent_id AND es.deleted_at IS NULL"
+        ),
+        {"agent_id": agent_ctx["agent_id"]},
+    )
+    email_rows = email_result.fetchall()
+    email_services_list = [
+        {
+            "id": db_uuid_to_wire(r.id, "svc"),
+            "name": r.name,
+            "imap_host": r.imap_host,
+            "smtp_host": r.smtp_host,
+            "auth_scheme": r.auth_scheme,
+            "allowed_recipient_domains": r.allowed_recipient_domains,
+            "connect_type": "email",
+            "kind": "email_service",
+            "how_to_call": _make_email_how_to_call(db_uuid_to_wire(r.id, "svc")),
+        }
+        for r in email_rows
+    ]
+
+    all_services = services + email_services_list
+    payload: dict = {"services": all_services}
+    if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
             "Ask your operator to add a Permission Grant in the admin UI: "

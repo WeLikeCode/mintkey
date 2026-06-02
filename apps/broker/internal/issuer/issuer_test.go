@@ -196,6 +196,53 @@ func TestJTI_IsUnique(t *testing.T) {
 	}
 }
 
+// TestServiceKind_EmailIncludesClaimOthersOmit asserts that service_kind=email
+// is present when set and absent when empty.
+// Source: feat/agent-email-e2e.
+func TestServiceKind_EmailIncludesClaimOthersOmit(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ring := keys.NewKeyRing()
+	kid := "kid_01TESTULID0000000000000004"
+	ring.Add(kid, pub)
+	iss := issuer.New(priv, kid, ring)
+
+	// With service_kind=email
+	tok, err := iss.Issue(issuer.TokenRequest{
+		AgentID:     "agent_01HX00000000000000000000AA",
+		ServiceID:   "d28eec49-bb20-4991-866c-675c3be41aea",
+		TenantID:    "tenant_01HX00000000000000000000CC",
+		Scope:       "read:email send:email",
+		ServiceKind: "email",
+		TTLSeconds:  600,
+	})
+	if err != nil {
+		t.Fatalf("Issue (email): %v", err)
+	}
+	_, claims := parseJWT(t, tok)
+	if claims["service_kind"] != "email" {
+		t.Errorf("service_kind = %v, want email", claims["service_kind"])
+	}
+
+	// Without service_kind — claim must be absent (not an empty string)
+	tok2, err := iss.Issue(issuer.TokenRequest{
+		AgentID:    "agent_01HX00000000000000000000AA",
+		ServiceID:  "svc_01HX00000000000000000000BB",
+		TenantID:   "tenant_01HX00000000000000000000CC",
+		Scope:      "call",
+		TTLSeconds: 600,
+	})
+	if err != nil {
+		t.Fatalf("Issue (http): %v", err)
+	}
+	_, claims2 := parseJWT(t, tok2)
+	if _, ok := claims2["service_kind"]; ok {
+		t.Errorf("service_kind should be absent for HTTP services, got %v", claims2["service_kind"])
+	}
+}
+
 // TestTNT_IsPrefixedULID_NotSlug asserts tnt is the prefixed ULID, not a slug.
 // Sources: ADR-0008, ADR-0017.11, ADR-0017.9, T-1.5.3.
 func TestTNT_IsPrefixedULID_NotSlug(t *testing.T) {

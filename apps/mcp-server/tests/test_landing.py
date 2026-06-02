@@ -142,15 +142,22 @@ def test_v1_mcp_alias_note() -> None:
 
 
 def test_v1_rest_endpoints_present() -> None:
-    """GET /v1 must list all 7 REST tool entries."""
+    """GET /v1 must list all REST tool entries (7 original + 4 email tools)."""
     body = _get("/v1").json()
     rest = body["endpoints"]["rest"]
-    expected = {
+    # Original 7 endpoints.
+    required = {
         "bootstrap", "instructions", "list_services", "discover",
         "describe_service", "get_openapi", "request_token",
     }
-    assert set(rest.keys()) == expected, (
-        f"REST endpoints mismatch in /v1. Got: {set(rest.keys())}"
+    # Email tools added in feat/agent-email-e2e.
+    required |= {
+        "email_list_mailboxes", "email_fetch_message",
+        "email_search_messages", "email_send",
+    }
+    missing = required - set(rest.keys())
+    assert not missing, (
+        f"Missing REST endpoints in /v1: {missing}. Got: {set(rest.keys())}"
     )
 
 
@@ -217,15 +224,22 @@ def test_tools_index_top_level_key() -> None:
 
 
 def test_tools_index_all_seven_tools() -> None:
-    """GET /v1/tools must list exactly 7 tool entries."""
+    """GET /v1/tools must list all tool entries (7 original + 4 email tools)."""
     body = _get("/v1/tools").json()
     tools = body["tools"]
-    expected = {
+    # Original 7 tools.
+    required = {
         "bootstrap", "instructions", "list_services", "discover",
         "describe_service", "get_openapi", "request_token",
     }
-    assert set(tools.keys()) == expected, (
-        f"Tool index keys mismatch. Got: {set(tools.keys())}"
+    # Email tools added in feat/agent-email-e2e.
+    required |= {
+        "email_list_mailboxes", "email_fetch_message",
+        "email_search_messages", "email_send",
+    }
+    missing = required - set(tools.keys())
+    assert not missing, (
+        f"Missing tools in /v1/tools: {missing}. Got: {set(tools.keys())}"
     )
 
 
