@@ -99,6 +99,7 @@ def _make_session(**results: Any) -> _FakeSession:
 
 from admin_api.api.email_services import (
     EmailServiceCreate,
+    EmailServiceCredentialBody,
     _oauth2_config,
     _valid_host_port,
     _is_valid_uuid,
@@ -109,6 +110,8 @@ from admin_api.api.email_services import (
     oauth2_authorize,
     oauth2_callback,
     oauth2_refresh,
+    set_email_service_credential,
+    delete_email_service_credential,
 )
 
 
@@ -1255,3 +1258,360 @@ class TestRLSTenantIsolationStrengthened:
         assert result.status_code == 422
         body = json.loads(result.body)
         assert body["mintkey:code"] == "invalid_tenant_id"
+
+
+# ---------------------------------------------------------------------------
+# Credential-set / credential-delete endpoint tests (feat/email-credentials-and-ui-fixes)
+# ---------------------------------------------------------------------------
+
+
+class TestEmailServiceCredentialSet:
+    """
+    Tests for:
+      POST /v1/tenants/{tid}/email-services/{sid}/credentials
+      DELETE /v1/tenants/{tid}/email-services/{sid}/credentials
+
+    NFR-17: username and password MUST NEVER appear in audit payloads.
+    """
+
+    def _make_vault_mock(self) -> Any:
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"credential_id": "cred_test1234"})
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": '{"username":"u","password":"p"}',
+            "auth_scheme": "email_password",
+        })
+        return mock_vault
+
+    @pytest.mark.asyncio
+    async def test_set_credential_email_password_valid(self) -> None:
+        """
+        test_set_credential_email_password_valid — happy path.
+        Assert vault.put_credential called with correct shape, 201 returned,
+        audit row emitted, no username/password in audit.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        mock_vault = self._make_vault_mock()
+
+        body = EmailServiceCredentialBody(
+            username="testuser@example.com",
+            password="supersecret123",
+            auth_scheme="email_password",
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await set_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        response_body = json.loads(result.body)
+        assert response_body["auth_scheme"] == "email_password"
+        assert response_body["status"] == "set"
+
+        # Vault put_credential must have been called with correct auth_scheme
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs["auth_scheme"] == "email_password"
+        assert call_kwargs["tenant_id"] == str(tenant_id)
+        assert call_kwargs["service_id"] == service_id
+
+        # The plaintext must be a JSON blob with username+password
+        import json as _json
+        plaintext = call_kwargs["plaintext"]
+        cred_blob = _json.loads(plaintext)
+        assert cred_blob["username"] == "testuser@example.com"
+        assert cred_blob["password"] == "supersecret123"
+
+        # Audit event emitted
+        assert len(audit_calls) == 1
+        assert audit_calls[0]["event_type"] == "email.credential.set"
+
+        # NFR-17: audit payload must NOT contain username or password
+        payload_str = json.dumps(audit_calls[0]["payload"])
+        assert "testuser@example.com" not in payload_str
+        assert "supersecret123" not in payload_str
+
+    @pytest.mark.asyncio
+    async def test_set_credential_rejects_oauth2_scheme(self) -> None:
+        """
+        test_set_credential_rejects_oauth2_scheme — body with email_oauth2 → 422.
+        Must redirect to the OAuth2 authorize flow.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        body = EmailServiceCredentialBody(
+            username="user@gmail.com",
+            password="doesnotmatter",
+            auth_scheme="email_oauth2",
+        )
+
+        session = _make_session()
+        mock_vault = self._make_vault_mock()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await set_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 422
+        response_body = json.loads(result.body)
+        assert response_body["mintkey:code"] == "use_oauth2_flow"
+
+    @pytest.mark.asyncio
+    async def test_set_credential_scheme_mismatch_with_row(self) -> None:
+        """
+        test_set_credential_scheme_mismatch_with_row — row has email_password,
+        body has email_app_password → 422 with auth_scheme_mismatch code.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # Row has email_password
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        # Body says email_app_password — mismatch
+        body = EmailServiceCredentialBody(
+            username="user@example.com",
+            password="pass",
+            auth_scheme="email_app_password",
+        )
+
+        mock_vault = self._make_vault_mock()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await set_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 422
+        response_body = json.loads(result.body)
+        assert response_body["mintkey:code"] == "auth_scheme_mismatch"
+
+    @pytest.mark.asyncio
+    async def test_set_credential_nonexistent_service(self) -> None:
+        """
+        test_set_credential_nonexistent_service — service not found → 422 not_found.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # No row found
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(None),
+        })
+
+        body = EmailServiceCredentialBody(
+            username="user@example.com",
+            password="pass",
+            auth_scheme="email_password",
+        )
+
+        mock_vault = self._make_vault_mock()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await set_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 422
+        response_body = json.loads(result.body)
+        assert response_body["mintkey:code"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_set_credential_audit_payload_redacts_username_and_password(self) -> None:
+        """
+        test_set_credential_audit_payload_redacts_username_and_password
+
+        NFR-17 mandatory assertion: the audit event payload must NEVER contain
+        the literal username or password values. Uses distinctive canary strings
+        so any accidental inclusion is immediately obvious.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # Canary values — distinctive, easy to grep for if they leak
+        canary_username = "redactme-username-XXX"
+        canary_password = "redactme-password-YYY"
+
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        mock_vault = self._make_vault_mock()
+
+        body = EmailServiceCredentialBody(
+            username=canary_username,
+            password=canary_password,
+            auth_scheme="email_password",
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await set_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+
+        # Must have exactly 1 audit call
+        assert len(audit_calls) == 1, f"Expected 1 audit call, got {len(audit_calls)}"
+
+        # Stringify the serializable parts of the audit call
+        audit_call = audit_calls[0]
+        serializable_audit = {
+            k: v for k, v in audit_call.items()
+            if k not in ("session", "tenant_id", "target_id")
+        }
+        full_audit_str = json.dumps(serializable_audit)
+
+        assert canary_username not in full_audit_str, (
+            f"NFR-17 VIOLATION: canary username '{canary_username}' found in audit event payload. "
+            f"Audit dump: {full_audit_str}"
+        )
+        assert canary_password not in full_audit_str, (
+            f"NFR-17 VIOLATION: canary password '{canary_password}' found in audit event payload. "
+            f"Audit dump: {full_audit_str}"
+        )
+
+        # Also verify the response body doesn't echo credentials
+        response_str = result.body.decode("utf-8")
+        assert canary_username not in response_str, (
+            f"NFR-17 VIOLATION: canary username found in HTTP response body: {response_str}"
+        )
+        assert canary_password not in response_str, (
+            f"NFR-17 VIOLATION: canary password found in HTTP response body: {response_str}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_delete_credential(self) -> None:
+        """
+        test_delete_credential — DELETE removes the credential, audit row emitted, 204 returned.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        mock_vault = self._make_vault_mock()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await delete_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 204
+
+        # Audit event must be emitted
+        assert len(audit_calls) == 1
+        assert audit_calls[0]["event_type"] == "email.credential.deleted"
+        payload = audit_calls[0]["payload"]
+        assert "service_id" in payload
+        # NFR-17: no credential material in audit
+        payload_str = json.dumps(payload)
+        assert "password" not in payload_str
+        assert "username" not in payload_str
+
+    @pytest.mark.asyncio
+    async def test_delete_credential_uses_row_auth_scheme(self) -> None:
+        """
+        test_delete_credential_uses_row_auth_scheme — regression for reviewer finding #2.
+
+        DELETE /credentials was hardcoding auth_scheme="email_password" on the vault
+        revocation call, silently mis-routing services with auth_scheme="email_app_password"
+        (proto enum 16 vs 14).
+
+        This test sets up a row with auth_scheme="email_app_password", calls DELETE,
+        and asserts that vault.put_credential received auth_scheme="email_app_password"
+        — NOT "email_password".
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # Row uses email_app_password (proto enum 16 — NOT email_password=14)
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_app_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"credential_id": "cred_app_pass"})
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": '{"username":"u","password":"p"}',
+            "auth_scheme": "email_app_password",
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await delete_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 204
+
+        # The vault.put_credential revocation call MUST use the row's auth_scheme
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs["auth_scheme"] == "email_app_password", (
+            f"Expected auth_scheme='email_app_password' (proto enum 16) on vault revocation, "
+            f"got auth_scheme='{call_kwargs['auth_scheme']}'. "
+            "Hardcoding 'email_password' silently mis-routes app-password services."
+        )

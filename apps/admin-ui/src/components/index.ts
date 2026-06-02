@@ -63,6 +63,8 @@ export const Components = {
   AgentKeyRotatedNotice: componentLoader.add("AgentKeyRotatedNotice", "./actions/AgentKeyRotatedNotice"),
   // Email service OAuth2 setup — authorize/re-authorize widget on show page (C-10)
   EmailServiceOAuth2Setup: componentLoader.add("EmailServiceOAuth2Setup", "./actions/EmailServiceOAuth2Setup"),
+  // Email service credential form — username+password for email_password/email_app_password (feat/email-credentials-and-ui-fixes)
+  EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
 };
 
 // Global override: show-page renderer that inlines property.description below

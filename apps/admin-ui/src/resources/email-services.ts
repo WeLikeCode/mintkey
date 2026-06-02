@@ -55,6 +55,7 @@ const _emailServicesResource = new RestResource({
     { path: "allowed_recipient_domains", type: "string" },
     { path: "pool_size_max", type: "number" },
     { path: "oauth2_authorized", type: "boolean" },
+    { path: "tls_insecure_skip_verify", type: "boolean" },
     { path: "created_at", type: "datetime" },
     { path: "updated_at", type: "datetime" },
     // Virtual filter-only: free-text search on name
@@ -70,7 +71,7 @@ export const EmailServicesResource: ResourceWithOptions & {
   resource: _emailServicesResource.resource,
   adminResource: _emailServicesResource,
   options: {
-    navigation: { name: "Email Services", icon: "Mail" },
+    navigation: { name: "Email", icon: "Mail" },
     listProperties: [
       "tenant_id",
       "provider",
@@ -90,6 +91,7 @@ export const EmailServicesResource: ResourceWithOptions & {
       "auth_scheme",
       "allowed_recipient_domains",
       "pool_size_max",
+      "tls_insecure_skip_verify",
     ],
     showProperties: [
       "_oauth2_setup",
@@ -104,6 +106,7 @@ export const EmailServicesResource: ResourceWithOptions & {
       "auth_scheme",
       "allowed_recipient_domains",
       "pool_size_max",
+      "tls_insecure_skip_verify",
       "oauth2_authorized",
       "created_at",
       "updated_at",
@@ -134,6 +137,16 @@ export const EmailServicesResource: ResourceWithOptions & {
         label: "Max Pool Size",
         description: "Maximum number of concurrent IMAP/SMTP connections. Default: 5.",
       },
+      tls_insecure_skip_verify: {
+        type: "boolean",
+        label: "Disable TLS Certificate Verification",
+        description:
+          "⚠ TLS certificate verification DISABLED for this service. Connections to\n" +
+          "the IMAP/SMTP server will not validate the server's TLS certificate.\n" +
+          "Only enable this for trusted internal servers with self-signed or\n" +
+          "private-CA certificates. NEVER enable this on a public mail provider\n" +
+          "(Gmail, Outlook, iCloud, etc.).",
+      },
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (name)",
@@ -157,6 +170,72 @@ export const EmailServicesResource: ResourceWithOptions & {
       },
     },
     actions: {
+      // Explicit show action — AdminJS 7.x will not auto-generate show when other
+      // actions are declared. Without this the show page 404s with:
+      // "Resource ... does not have an action with name: show or you are not authorized to use it!"
+      show: {
+        isVisible: true,
+        handler: async (_request, _response, context) => ({
+          record: await recordJSON(context),
+        }),
+      },
+
+      // set-credential: record action for email_password / email_app_password services
+      "set-credential": {
+        actionType: "record",
+        icon: "Key",
+        label: "Set credential",
+        isVisible: (context) => {
+          const scheme = context.record?.params?.["auth_scheme"] as string | undefined;
+          return scheme === "email_password" || scheme === "email_app_password";
+        },
+        component: Components.EmailServiceCredentialForm,
+        handler: async (request, _response, context) => {
+          const { currentAdmin } = context;
+
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const serviceId = request.params.recordId;
+          const operatorOpts = operatorOptsFromAdmin(
+            currentAdmin as Record<string, unknown>
+          );
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/email-services/${serviceId}/credentials`,
+            "POST",
+            request.payload,
+            operatorOpts
+          );
+
+          const body = (await resp.json().catch(() => ({}))) as {
+            id?: string;
+            title?: string;
+            status?: string;
+          };
+
+          if (!resp.ok) {
+            return {
+              record: await recordJSON(context),
+              notice: {
+                message: body.title ?? "Failed to set credential",
+                type: "error",
+              },
+            };
+          }
+
+          return {
+            record: await recordJSON(context),
+            notice: {
+              message: "Credential set successfully.",
+              type: "success",
+            },
+          };
+        },
+      },
+
       new: {
         isVisible: true,
         handler: async (request, _response, context) => {

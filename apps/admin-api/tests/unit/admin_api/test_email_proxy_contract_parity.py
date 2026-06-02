@@ -81,6 +81,9 @@ EXPECTED_AUDIT_EVENT_TYPES = {
     "email.message.deleted",
     "email.message.moved",
     "email.message.sent",
+    # Added in feat/email-credentials-and-ui-fixes (ADR-0024)
+    "email.credential.set",
+    "email.credential.deleted",
 }
 
 EXPECTED_CHANGE_EVENT_TYPES = {
@@ -306,8 +309,8 @@ class TestOpenAPIPaths:
 # ---------------------------------------------------------------------------
 
 class TestAuditEventSchema:
-    def test_all_14_email_event_types_in_discriminator(self, audit_schema: dict) -> None:
-        """audit-event.schema.json discriminator.mapping must contain all 14 email.* events."""
+    def test_all_email_event_types_in_discriminator(self, audit_schema: dict) -> None:
+        """audit-event.schema.json discriminator.mapping must contain all expected email.* events."""
         mapping = audit_schema.get("discriminator", {}).get("mapping", {})
         present = set(mapping.keys())
         missing = EXPECTED_AUDIT_EVENT_TYPES - present
@@ -317,8 +320,8 @@ class TestAuditEventSchema:
             f"  Present email types: {sorted(k for k in present if k.startswith('email.'))}"
         )
 
-    def test_all_14_email_event_defs_in_defs(self, audit_schema: dict) -> None:
-        """$defs must contain sub-schemas for all 14 email.* event types."""
+    def test_all_email_event_defs_in_defs(self, audit_schema: dict) -> None:
+        """$defs must contain sub-schemas for all expected email.* event types."""
         defs = set(audit_schema.get("$defs", {}).keys())
         # Each event_type "email.x.y" maps to def "ev_email_x_y"
         expected_defs = {

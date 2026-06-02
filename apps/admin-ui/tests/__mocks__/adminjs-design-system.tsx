@@ -45,3 +45,6 @@ export const Label = ({
   ...rest
 }: AnyProps & { htmlFor?: string }) =>
   React.createElement("label", { htmlFor, ...rest }, children);
+
+export const FormGroup = ({ children, ...rest }: AnyProps) =>
+  React.createElement("div", rest, children);

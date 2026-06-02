@@ -208,6 +208,23 @@ class OAuth2CallbackBody(BaseModel):
     redirect_uri: Optional[str] = None
 
 
+# Auth schemes supported by the credential-set endpoint (not OAuth2 — use the authorize flow)
+_CREDENTIAL_SET_ALLOWED_SCHEMES = {"email_password", "email_app_password"}
+
+
+class EmailServiceCredentialBody(BaseModel):
+    username: str
+    password: str
+    auth_scheme: str
+
+    @field_validator("auth_scheme")
+    @classmethod
+    def validate_credential_auth_scheme(cls, v: str) -> str:
+        if v not in _VALID_AUTH_SCHEMES:
+            raise ValueError(f"auth_scheme must be one of {sorted(_VALID_AUTH_SCHEMES)}")
+        return v
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/tenants/{tenant_id}/email-services
 # ---------------------------------------------------------------------------
@@ -987,6 +1004,228 @@ async def oauth2_refresh(
             "token_type": token_data.get("token_type", "Bearer"),
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/tenants/{tenant_id}/email-services/{service_id}/credentials
+# DELETE /v1/tenants/{tenant_id}/email-services/{service_id}/credentials
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{service_id}/credentials", status_code=201)
+async def set_email_service_credential(
+    tenant_id: UUID,
+    service_id: str,
+    body: EmailServiceCredentialBody,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> JSONResponse:
+    """
+    Store a username+password credential for an email_password or email_app_password
+    email service.
+
+    Rejects email_oauth2 — use the /authorize flow instead (ADR-0024).
+    Verifies the email_services row exists under this tenant and that its
+    auth_scheme matches the body.
+
+    Stores {"username": ..., "password": ...} as a JSON blob in vault via
+    put_credential. The plaintext leaves scope immediately after the vault call.
+
+    Emits email.credential.set audit event — payload NEVER contains username
+    or password (NFR-17). Returns {"id": ..., "auth_scheme": ..., "status": "set"}.
+
+    Source: ADR-0024; NFR-17.
+    """
+    # Reject OAuth2 scheme — use the /authorize flow
+    if body.auth_scheme == "email_oauth2":
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "use_oauth2_flow",
+                "title": (
+                    "auth_scheme 'email_oauth2' requires the OAuth2 authorization flow. "
+                    "Use POST /v1/tenants/{tid}/email-services/{sid}/oauth2/{provider}/authorize instead."
+                ),
+            },
+        )
+
+    if body.auth_scheme not in _CREDENTIAL_SET_ALLOWED_SCHEMES:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_auth_scheme",
+                "title": (
+                    f"auth_scheme '{body.auth_scheme}' is not valid for this endpoint. "
+                    f"Allowed: {sorted(_CREDENTIAL_SET_ALLOWED_SCHEMES)}"
+                ),
+            },
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    # Look up the email service — verify it exists under this tenant
+    svc_row_result = await session.execute(
+        text(
+            "SELECT id, auth_scheme FROM email_services"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"sid": service_id, "tid": str(tenant_id)},
+    )
+    svc_row = svc_row_result.fetchone()
+    if svc_row is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "not_found",
+                "title": "Email service not found or does not belong to this tenant.",
+            },
+        )
+
+    # Verify auth_scheme of the row matches the body
+    row_auth_scheme = svc_row.auth_scheme
+    if row_auth_scheme != body.auth_scheme:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "auth_scheme_mismatch",
+                "title": (
+                    f"The email service has auth_scheme='{row_auth_scheme}' but "
+                    f"the request body specifies auth_scheme='{body.auth_scheme}'. "
+                    "They must match."
+                ),
+            },
+        )
+
+    # Store the credential as a JSON blob — plaintext leaves scope after this call
+    import json as _json  # noqa: PLC0415
+
+    plaintext = _json.dumps({"username": body.username, "password": body.password})
+    try:
+        vault_result = await vault.put_credential(
+            tenant_id=str(tenant_id),
+            service_id=service_id,
+            auth_scheme=body.auth_scheme,
+            plaintext=plaintext,  # NEVER logged or returned after this point
+        )
+    except Exception as exc:
+        logger.error(
+            "set_email_service_credential: vault put_credential failed for service=%s: %s",
+            service_id,
+            type(exc).__name__,
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"mintkey:code": "vault_error", "title": "Failed to store credential in vault"},
+        )
+    finally:
+        # Scrub plaintext from local scope
+        del plaintext
+
+    credential_id = vault_result.get("credential_id", f"cred_{service_id[:8]}")
+
+    # Emit audit event — payload NEVER contains username or password (NFR-17)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.credential.set",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            # NFR-17: only service_id and auth_scheme — NO username, NO password
+            "service_id": service_id,
+            "auth_scheme": body.auth_scheme,
+        },
+    )
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": str(credential_id),
+            "auth_scheme": body.auth_scheme,
+            "status": "set",
+        },
+    )
+
+
+@router.delete("/{service_id}/credentials", status_code=204)
+async def delete_email_service_credential(
+    tenant_id: UUID,
+    service_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> JSONResponse:
+    """
+    Revoke the stored credential for an email service.
+
+    Looks up the row's auth_scheme so the vault revocation uses the correct
+    proto enum value (email_password=14 vs email_app_password=16 — ADR-0024).
+    Emits email.credential.deleted audit event. Returns 204.
+
+    Source: ADR-0024; NFR-17.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    # Verify the email service exists under this tenant; fetch auth_scheme for vault call
+    svc_row_result = await session.execute(
+        text(
+            "SELECT id, auth_scheme FROM email_services"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"sid": service_id, "tid": str(tenant_id)},
+    )
+    svc_row = svc_row_result.fetchone()
+    if svc_row is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "not_found",
+                "title": "Email service not found or does not belong to this tenant.",
+            },
+        )
+
+    # Use the row's actual auth_scheme — not a hardcoded value — so the vault
+    # proto enum is correct for both email_password (14) and email_app_password (16).
+    row_auth_scheme = svc_row.auth_scheme
+
+    # Revoke via vault — get_credential first to confirm existence, then overwrite with empty
+    try:
+        existing = await vault.get_credential(tenant_id=str(tenant_id), service_id=service_id)
+        if existing is not None:
+            # Revoke by overwriting with an empty value; vault adapter marks the cred revoked
+            await vault.put_credential(
+                tenant_id=str(tenant_id),
+                service_id=service_id,
+                auth_scheme=row_auth_scheme,
+                plaintext="",
+            )
+    except Exception as exc:
+        logger.error(
+            "delete_email_service_credential: vault operation failed for service=%s: %s",
+            service_id,
+            type(exc).__name__,
+        )
+        return JSONResponse(
+            status_code=502,
+            content={"mintkey:code": "vault_error", "title": "Failed to revoke credential in vault"},
+        )
+
+    # Emit audit event (NFR-17: no credential material)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.credential.deleted",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": service_id,
+        },
+    )
+
+    return JSONResponse(status_code=204, content=None)
 
 
 # ---------------------------------------------------------------------------
