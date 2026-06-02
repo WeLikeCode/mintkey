@@ -129,6 +129,27 @@ func main() {
 		log.Printf("vault-adapter: registered SSH proxy service identity %q with scopes [vault.read vault.put]", sshProxyIdentityID)
 	}
 
+	// Register the email-proxy service identity so ValidateServiceIdentity (and
+	// future GetCredential calls) are allowed. Email proxy has vault.read (to
+	// fetch email credentials) and vault.put is not needed.
+	// MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID defaults to "svcid_email_proxy".
+	// MINTKEY_VAULT_EMAIL_PROXY_TOKEN must be a shared secret (≥ 32 bytes)
+	// provisioned via a Docker/Kubernetes secret and identical on both sides.
+	emailProxyIdentityID := os.Getenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID")
+	if emailProxyIdentityID == "" {
+		emailProxyIdentityID = "svcid_email_proxy"
+	}
+	emailProxyToken := []byte(os.Getenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN"))
+	if len(emailProxyToken) == 0 {
+		log.Printf("vault-adapter: MINTKEY_VAULT_EMAIL_PROXY_TOKEN not set; email-proxy identity validation WILL fail with PERMISSION_DENIED")
+	} else {
+		if err := svc.RegisterServiceIdentity(emailProxyIdentityID, emailProxyToken, []string{"vault.read"}); err != nil {
+			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", emailProxyIdentityID, err)
+			os.Exit(1)
+		}
+		log.Printf("vault-adapter: registered email-proxy service identity %q with scopes [vault.read]", emailProxyIdentityID)
+	}
+
 	// Wire the SSHStore so ListenAndServe registers the SSHVaultAdapter service.
 	// Only PostgresStore implements SSHStore; SQLite falls back to no SSH RPCs.
 	if pgStore, ok := st.(*store.PostgresStore); ok {
