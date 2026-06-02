@@ -45,7 +45,7 @@ class _FakeRow:
 
 
 class _FakeResult:
-    """Simulate fetchone() returning a row or None."""
+    """Simulate fetchone() / fetchall() returning a row or None."""
     def __init__(self, row: Any = None) -> None:
         self._row = row
 
@@ -54,6 +54,40 @@ class _FakeResult:
 
     def one_or_none(self) -> Any:
         return self._row
+
+    def fetchall(self) -> list[Any]:
+        if self._row is None:
+            return []
+        if isinstance(self._row, list):
+            return self._row
+        return [self._row]
+
+
+class _FakeListResult:
+    """Simulate fetchall() returning a list of rows."""
+    def __init__(self, rows: list[Any]) -> None:
+        self._rows = rows
+
+    def fetchall(self) -> list[Any]:
+        return self._rows
+
+    def fetchone(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+    def one_or_none(self) -> Any:
+        return self._rows[0] if self._rows else None
+
+
+class _FakeCountResult:
+    """Simulate fetchone() returning a row with a 'total' attribute."""
+    def __init__(self, total: int) -> None:
+        self._row = _FakeRow(total=total)
+
+    def fetchone(self) -> Any:
+        return self._row
+
+    def fetchall(self) -> list[Any]:
+        return [self._row]
 
 
 class _FakeSession:
@@ -100,6 +134,7 @@ def _make_session(**results: Any) -> _FakeSession:
 from admin_api.api.email_services import (
     EmailServiceCreate,
     EmailServiceCredentialBody,
+    EmailServicePatch,
     _oauth2_config,
     _valid_host_port,
     _is_valid_uuid,
@@ -107,6 +142,10 @@ from admin_api.api.email_services import (
     _VALID_AUTH_SCHEMES,
     _PROVIDER_AUTH_SCHEMES,
     create_email_service,
+    list_email_services,
+    get_email_service,
+    patch_email_service,
+    delete_email_service,
     oauth2_authorize,
     oauth2_callback,
     oauth2_refresh,
@@ -1792,3 +1831,451 @@ class TestTlsInsecureSkipVerify:
             f"Expected tls_insecure_skip_verify=True in response, "
             f"got: {response_body.get('tls_insecure_skip_verify')!r}"
         )
+
+
+# ===========================================================================
+# New CRUD read/update/delete tests (fix/email-services-crud-readonly)
+# ===========================================================================
+
+def _make_email_svc_row(**overrides: Any) -> _FakeRow:
+    """Return a minimal _FakeRow for an email_services record."""
+    defaults: dict[str, Any] = {
+        "id": str(uuid.uuid4()),
+        "tenant_id": str(uuid.uuid4()),
+        "provider": "gmail",
+        "name": "cici-softuraj",
+        "imap_host": "imap.gmail.com",
+        "imap_port": 993,
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+        "auth_scheme": "email_password",
+        "allowed_recipient_domains": None,
+        "pool_size_max": 5,
+        "tls_insecure_skip_verify": False,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    defaults.update(overrides)
+    return _FakeRow(**defaults)
+
+
+class TestListEmailServices:
+    """Tests for GET /v1/tenants/{tid}/email-services."""
+
+    @pytest.mark.asyncio
+    async def test_list_email_services_returns_registered_rows(self) -> None:
+        """test_list_email_services_returns_registered_rows — POST 2, GET list, expect 2."""
+        tenant_id = uuid.uuid4()
+        row1 = _make_email_svc_row(id=str(uuid.uuid4()), tenant_id=str(tenant_id), name="svc-1")
+        row2 = _make_email_svc_row(id=str(uuid.uuid4()), tenant_id=str(tenant_id), name="svc-2")
+
+        session = _make_session(**{
+            "SELECT COUNT(*)": _FakeCountResult(2),
+            "SELECT id, tenant_id": _FakeListResult([row1, row2]),
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await list_email_services(
+                tenant_id=tenant_id,
+                limit=50,
+                offset=0,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert "email_services" in body
+        assert "pagination" in body
+        assert len(body["email_services"]) == 2
+        names = {s["name"] for s in body["email_services"]}
+        assert names == {"svc-1", "svc-2"}
+
+    @pytest.mark.asyncio
+    async def test_list_email_services_filters_soft_deleted(self) -> None:
+        """test_list_email_services_filters_soft_deleted — only live rows returned."""
+        tenant_id = uuid.uuid4()
+        live_row = _make_email_svc_row(id=str(uuid.uuid4()), tenant_id=str(tenant_id), name="live")
+
+        session = _make_session(**{
+            "SELECT COUNT(*)": _FakeCountResult(1),
+            "SELECT id, tenant_id": _FakeListResult([live_row]),
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await list_email_services(
+                tenant_id=tenant_id,
+                limit=50,
+                offset=0,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert len(body["email_services"]) == 1
+        assert body["email_services"][0]["name"] == "live"
+        # Verify the SQL included deleted_at IS NULL
+        list_queries = [sql for sql, _ in session.executed_sql if "FROM email_services" in sql]
+        assert any("deleted_at IS NULL" in sql for sql in list_queries), (
+            "List query must filter deleted_at IS NULL"
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_email_services_tenant_scoped(self) -> None:
+        """test_list_email_services_tenant_scoped — tenant_id bound in every query."""
+        tenant_b = uuid.uuid4()
+
+        session = _make_session(**{
+            "SELECT COUNT(*)": _FakeCountResult(0),
+            "SELECT id, tenant_id": _FakeListResult([]),
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await list_email_services(
+                tenant_id=tenant_b,
+                limit=50,
+                offset=0,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["email_services"] == []
+        assert body["pagination"]["total"] == 0
+
+        list_params = [params for sql, params in session.executed_sql if "FROM email_services" in sql]
+        assert any("tid" in params for params in list_params), (
+            "List queries must bind tenant_id via :tid parameter"
+        )
+
+
+class TestGetEmailService:
+    """Tests for GET /v1/tenants/{tid}/email-services/{sid}."""
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_happy(self) -> None:
+        """test_get_email_service_happy — GET by ID returns matching record."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id), name="cici-softuraj")
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["id"] == service_id
+        assert body["name"] == "cici-softuraj"
+        assert "auth_scheme" in body
+        assert "tls_insecure_skip_verify" in body
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_nonexistent_404(self) -> None:
+        """test_get_email_service_nonexistent_404 — random UUID → 404."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(None),
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 404
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "not_found"
+
+
+class TestPatchEmailService:
+    """Tests for PATCH /v1/tenants/{tid}/email-services/{sid}."""
+
+    def _make_patch_request(self, body: dict[str, Any]) -> Any:
+        fake_req = MagicMock()
+        fake_req.json = AsyncMock(return_value=body)
+        return fake_req
+
+    @pytest.mark.asyncio
+    async def test_patch_email_service_updates_mutable_fields(self) -> None:
+        """test_patch_email_service_updates_mutable_fields — PATCH name+tls → 200."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            name="old-name", tls_insecure_skip_verify=False,
+        )
+        updated_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            name="new-name", tls_insecure_skip_verify=True,
+        )
+
+        call_count: dict[str, int] = {"n": 0}
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                return _FakeResult(None)
+            # First SELECT is the existence check; subsequent is refetch
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        patch_body = EmailServicePatch(name="new-name", tls_insecure_skip_verify=True)
+        fake_request = self._make_patch_request({"name": "new-name", "tls_insecure_skip_verify": True})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["name"] == "new-name"
+
+        assert len(audit_calls) == 1
+        assert audit_calls[0]["event_type"] == "email_service.updated"
+        payload = audit_calls[0]["payload"]
+        assert "changed_fields" in payload
+        for field in ["name", "tls_insecure_skip_verify"]:
+            assert field in payload["changed_fields"]
+
+    @pytest.mark.asyncio
+    async def test_patch_email_service_rejects_immutable(self) -> None:
+        """test_patch_email_service_rejects_immutable — auth_scheme → 422."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        patch_body = EmailServicePatch()
+        fake_request = self._make_patch_request({"auth_scheme": "email_oauth2"})
+        session = _make_session()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 422
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "immutable_fields"
+        assert "auth_scheme" in body["title"]
+
+    @pytest.mark.asyncio
+    async def test_patch_email_service_empty_body_returns_422(self) -> None:
+        """test_patch_email_service_empty_body_returns_422 — empty body → 422."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        patch_body = EmailServicePatch()  # all None
+        fake_request = self._make_patch_request({})
+        session = _make_session()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 422
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "no_fields_to_update"
+
+    @pytest.mark.asyncio
+    async def test_patch_emits_audit_with_changed_field_names_not_values(self) -> None:
+        """test_patch_emits_audit_with_changed_field_names_not_values — NFR-17 check."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id), tls_insecure_skip_verify=False)
+
+        call_count2: dict[str, int] = {"n": 0}
+
+        async def _fake_execute2(stmt: Any, params: Any = None) -> Any:
+            call_count2["n"] += 1
+            sql = str(stmt)
+            if "UPDATE" in sql:
+                return _FakeResult(None)
+            return _FakeResult(row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute2  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        patch_body = EmailServicePatch(tls_insecure_skip_verify=True)
+        fake_request = self._make_patch_request({"tls_insecure_skip_verify": True})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert len(audit_calls) == 1
+        payload = audit_calls[0]["payload"]
+        assert payload["changed_fields"] == ["tls_insecure_skip_verify"]
+        # NFR-17: value must not appear as a key in the payload dict
+        assert "tls_insecure_skip_verify" not in payload, (
+            "NFR-17: audit payload must not echo the field VALUE, only its NAME in changed_fields"
+        )
+
+
+class TestDeleteEmailService:
+    """Tests for DELETE /v1/tenants/{tid}/email-services/{sid}."""
+
+    @pytest.mark.asyncio
+    async def test_delete_email_service_soft_deletes(self) -> None:
+        """test_delete_email_service_soft_deletes — UPDATE sets deleted_at."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session()
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await delete_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 204
+        update_calls = [sql for sql, _ in session.executed_sql if "UPDATE email_services" in sql]
+        assert len(update_calls) == 1
+        update_sql = update_calls[0]
+        assert "deleted_at" in update_sql
+        assert "deleted_at IS NULL" in update_sql
+
+    @pytest.mark.asyncio
+    async def test_delete_email_service_emits_audit(self) -> None:
+        """test_delete_email_service_emits_audit — emits email_service.deleted event."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session()
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit):
+            result = await delete_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 204
+        assert len(audit_calls) == 1
+        assert audit_calls[0]["event_type"] == "email_service.deleted"
+        assert audit_calls[0]["payload"]["service_id"] == service_id
+
+
+class TestNoCredentialInResponse:
+    """test_no_credential_or_password_in_any_response — GET list/single must not expose secrets."""
+
+    @pytest.mark.asyncio
+    async def test_no_credential_or_password_in_any_response(self) -> None:
+        """GET list and GET single must not contain password/username/client_secret keys."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+
+        # Test GET list
+        session_list = _make_session(**{
+            "SELECT COUNT(*)": _FakeCountResult(1),
+            "SELECT id, tenant_id": _FakeListResult([row]),
+        })
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            list_result = await list_email_services(
+                tenant_id=tenant_id,
+                limit=50,
+                offset=0,
+                session=session_list,  # type: ignore[arg-type]
+                _authz=None,
+            )
+        list_body_str = list_result.body.decode("utf-8")
+        for forbidden in ("password", "username", "client_secret"):
+            assert f'"{forbidden}"' not in list_body_str
+
+        # Test GET single
+        session_single = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            single_result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session_single,  # type: ignore[arg-type]
+                _authz=None,
+            )
+        single_body_str = single_result.body.decode("utf-8")
+        for forbidden in ("password", "username", "client_secret"):
+            assert f'"{forbidden}"' not in single_body_str

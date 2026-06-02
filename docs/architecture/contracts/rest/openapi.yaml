@@ -2795,6 +2795,60 @@ paths:
   ###########################################################################
 
   /v1/tenants/{tenant_id}/email-services:
+    get:
+      operationId: listEmailServices
+      tags: [EmailServices]
+      summary: List email services for a tenant.
+      description: |
+        Returns a paginated list of email services for the tenant.
+        Soft-deleted records (deleted_at IS NOT NULL) are excluded.
+        Default page size: 50; maximum: 100.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: List of email services.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email_services, pagination]
+                properties:
+                  email_services:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EmailService"
+                  pagination:
+                    type: object
+                    required: [limit, offset, total]
+                    properties:
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                      total:
+                        type: integer
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       operationId: registerEmailService
       tags: [EmailServices]
@@ -2829,6 +2883,114 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/tenants/{tenant_id}/email-services/{service_id}:
+    get:
+      operationId: getEmailService
+      tags: [EmailServices]
+      summary: Get a single email service.
+      description: |
+        Returns an email service by ID.
+        Returns 404 if the service does not exist, belongs to another tenant,
+        or has been soft-deleted.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Email service found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailService"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: patchEmailService
+      tags: [EmailServices]
+      summary: Update mutable fields of an email service.
+      description: |
+        Updates mutable fields: name, allowed_recipient_domains, pool_size_max,
+        tls_insecure_skip_verify.
+
+        Immutable fields (provider, imap_host, imap_port, smtp_host, smtp_port,
+        auth_scheme) cannot be changed — use delete + create instead.
+        Empty bodies (no fields provided) return 422.
+
+        Emits email_service.updated audit event with changed field names only
+        (no values — NFR-17).
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                allowed_recipient_domains:
+                  type: string
+                  nullable: true
+                pool_size_max:
+                  type: integer
+                tls_insecure_skip_verify:
+                  type: boolean
+      responses:
+        "200":
+          description: Email service updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailService"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+    delete:
+      operationId: deleteEmailService
+      tags: [EmailServices]
+      summary: Soft-delete an email service.
+      description: |
+        Soft-deletes the email service by setting deleted_at = now().
+        Idempotent: returns 204 even if already deleted.
+        email_permission_grants referencing this service are left in place.
+        Emits email_service.deleted audit event.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Email service deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/authorize:
     post:
