@@ -217,6 +217,18 @@ message GetCredentialResponse {
   // connection opened with InsecureSkipVerify: true so drift can be detected.
   // Populated from email_services.tls_insecure_skip_verify (ADR-0024).
   bool tls_insecure_skip_verify = 13;
+
+  // Email-only: SMTP and IMAP host/port routing metadata.
+  // Populated from email_services.smtp_host, smtp_port, imap_host, imap_port
+  // for email auth schemes (14, 15, 16). Empty/0 for non-email credentials.
+  //
+  // The email-proxy uses smtp_host + smtp_port to construct per-send SMTP
+  // connections, replacing the Phase-1 boot-time global client (ADR-0024).
+  // Port 465 → implicit TLS (SMTPS); 587 → STARTTLS; 25 → rejected.
+  string smtp_host = 14;
+  int32  smtp_port = 15;
+  string imap_host = 16;
+  int32  imap_port = 17;
 }
 
 // ----------------------------------------------------------------------

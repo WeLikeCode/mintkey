@@ -123,8 +123,10 @@ type VaultGetter interface {
 }
 
 // SMTPSender is the subset of smtp.Client used by handlers.
+// The DialTarget carries per-service SMTP routing resolved from the vault
+// credential response (host, port, TLS mode) — ADR-0024 Phase 2.
 type SMTPSender interface {
-	Send(ctx context.Context, cred smtp.Credential, req smtp.EmailSendRequest) (string, error)
+	Send(ctx context.Context, cred smtp.Credential, req smtp.EmailSendRequest, target smtp.DialTarget) (string, error)
 }
 
 // PermissionChecker checks whether an (agent_id, email_service_id) pair has a
@@ -441,6 +443,31 @@ func (h *EmailHandlers) HandleSendMessage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Build per-send SMTP DialTarget from vault credential metadata.
+	// Port 465 → implicit TLS (SMTPS); 587 or other → STARTTLS; 25 → rejected.
+	// smtpPort from vault is int32; convert to int for smtp.DialTarget.
+	smtpPort := int(smtpCfg.smtpPort)
+	if smtpPort == 0 {
+		// Fall back to STARTTLS on 587 if the service has no smtp_port configured.
+		// This preserves pre-existing behaviour for services that don't yet have
+		// smtp_port set in email_services.
+		smtpPort = 587
+		slog.Warn("send_message: smtp_port not configured for service; falling back to 587 (STARTTLS)",
+			"service_id", serviceID,
+		)
+	}
+	dialTarget := smtp.DialTarget{
+		Host:               smtpCfg.smtpHost,
+		Port:               smtpPort,
+		InsecureSkipVerify: smtpCfg.insecureSkipVerify,
+	}
+	if dialTarget.Host == "" {
+		slog.Warn("send_message: smtp_host not configured for service",
+			"service_id", serviceID,
+			"smtp_port", smtpPort,
+		)
+	}
+
 	req := smtp.EmailSendRequest{
 		From:             smtpCfg.fromAddr,
 		To:               body.To,
@@ -452,10 +479,12 @@ func (h *EmailHandlers) HandleSendMessage(w http.ResponseWriter, r *http.Request
 		ReplyToMessageID: body.ReplyToMessageID,
 	}
 
-	msgID, err := h.smtpClient.Send(r.Context(), smtpCred, req)
+	msgID, err := h.smtpClient.Send(r.Context(), smtpCred, req, dialTarget)
 	if err != nil {
 		slog.Warn("send_message: SMTP Send failed",
 			"error", err,
+			"host", dialTarget.Host,
+			"port", strconv.Itoa(smtpPort),
 			"body_summary", security.ScrubBodyForLog(body.Body),
 		)
 		writeError(w, http.StatusServiceUnavailable, "failed to send email")
@@ -1205,9 +1234,17 @@ func (h *EmailHandlers) leaseIMAPClient(ctx context.Context, claims *auth.Claims
 // smtpConnConfig holds resolved SMTP connection parameters.
 type smtpConnConfig struct {
 	fromAddr string
+	// Per-service SMTP routing metadata from the vault credential response.
+	// Populated from email_services.smtp_host / smtp_port (ADR-0024 Phase 2).
+	smtpHost string
+	smtpPort int32
+	// insecureSkipVerify mirrors tls_insecure_skip_verify from the vault response.
+	insecureSkipVerify bool
 }
 
 // getSMTPCredential resolves SMTP credentials for a send operation.
+// It populates smtpConnConfig with per-service SMTP host/port/TLS metadata
+// from the vault credential response (ADR-0024 Phase 2).
 func (h *EmailHandlers) getSMTPCredential(ctx context.Context, claims *auth.Claims, serviceID string) (smtp.Credential, smtpConnConfig, error) {
 	cred, err := h.vaultClient.GetCredential(ctx, claims.TenantID, serviceID, vault.AuthSchemeEmailOAuth2)
 	if err != nil {
@@ -1231,7 +1268,12 @@ func (h *EmailHandlers) getSMTPCredential(ctx context.Context, claims *auth.Clai
 			Username:           emailAddr,
 			AccessToken:        accessToken,
 			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, smtpConnConfig{fromAddr: emailAddr}, nil
+		}, smtpConnConfig{
+			fromAddr:           emailAddr,
+			smtpHost:           cred.SMTPHost,
+			smtpPort:           cred.SMTPPort,
+			insecureSkipVerify: cred.TlsInsecureSkipVerify,
+		}, nil
 
 	case vault.AuthSchemeEmailPassword, vault.AuthSchemeEmailAppPassword:
 		username, password, _ := parsePasswordPayload(cred.Value)
@@ -1240,7 +1282,12 @@ func (h *EmailHandlers) getSMTPCredential(ctx context.Context, claims *auth.Clai
 			Username:           username,
 			Password:           password,
 			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, smtpConnConfig{fromAddr: username}, nil
+		}, smtpConnConfig{
+			fromAddr:           username,
+			smtpHost:           cred.SMTPHost,
+			smtpPort:           cred.SMTPPort,
+			insecureSkipVerify: cred.TlsInsecureSkipVerify,
+		}, nil
 
 	default:
 		return smtp.Credential{}, smtpConnConfig{}, fmt.Errorf("unsupported auth scheme %d for SMTP", cred.AuthScheme)

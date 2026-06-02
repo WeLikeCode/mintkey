@@ -67,13 +67,10 @@ func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validato
 	// Build email handler dependencies.
 	imapPool := pool.New(nil) // nil → defaults (5 conns, 5-min idle)
 	oauth2Mgr := oauth2.NewManager(cfg.AdminAPIInternalURL, vaultClient, cfg.EmailProxyServiceToken)
-	smtpCfg := smtp.Config{
-		// SMTP transport config is resolved per-credential at send time.
-		// Default to STARTTLS on 587; per-service overrides land in a later chunk.
-		UseSTARTTLS: true,
-		Port:        587,
-	}
-	smtpClient := smtp.New(smtpCfg)
+	// smtp.Config holds only boot-time transport settings (dial/send timeouts,
+	// optional TLS root pool). Host, Port, and TLS mode are resolved per-send
+	// from the vault credential's smtp_host / smtp_port fields (ADR-0024 Phase 2).
+	smtpClient := smtp.New(smtp.Config{})
 	rateLimiter := security.NewRateLimiter()
 	permChecker := permissions.NewChecker(cfg.AdminAPIInternalURL, cfg.EmailProxyServiceToken)
 

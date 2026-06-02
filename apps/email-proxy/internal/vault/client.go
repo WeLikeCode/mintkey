@@ -63,6 +63,14 @@ type Credential struct {
 	// (ADR-0024). Default false. Email-proxy MUST emit a structured warning log
 	// on every connection opened with InsecureSkipVerify: true.
 	TlsInsecureSkipVerify bool
+
+	// Email-only: per-service SMTP/IMAP routing metadata — ADR-0024 (Phase 2).
+	// Populated from email_services.smtp_host, smtp_port, imap_host, imap_port.
+	// Empty/0 for non-email credentials.
+	SMTPHost string
+	SMTPPort int32
+	IMAPHost string
+	IMAPPort int32
 }
 
 // Client is the Vault Adapter gRPC client used by the Email Proxy.
@@ -210,5 +218,9 @@ func (c *Client) GetCredential(ctx context.Context, tenantID, serviceID string, 
 		BaseUrl:               resp.GetBaseUrl(),
 		AuthSchemeName:        resp.GetAuthSchemeName(),
 		TlsInsecureSkipVerify: resp.GetTlsInsecureSkipVerify(),
+		SMTPHost:              resp.GetSmtpHost(),
+		SMTPPort:              resp.GetSmtpPort(),
+		IMAPHost:              resp.GetImapHost(),
+		IMAPPort:              resp.GetImapPort(),
 	}, nil
 }

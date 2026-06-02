@@ -10,7 +10,9 @@ package smtp_test
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 
@@ -18,20 +20,14 @@ import (
 )
 
 // TestSend_InsecureSkipVerify_False_FailsWithTLSError verifies that Send to a
-// server with a self-signed TLS certificate fails with a certificate verification
-// error when InsecureSkipVerify is false on both config and credential.
+// server with a self-signed implicit-TLS certificate fails when InsecureSkipVerify=false.
+// We use Port=465 (implicit TLS path) so the client dials TLS immediately.
+// The cert verification failure occurs during the TLS handshake.
 func TestSend_InsecureSkipVerify_False_FailsWithTLSError(t *testing.T) {
-	// Start a server with implicit TLS using a self-signed cert.
+	// Start an implicit-TLS server (SMTPS on a random port).
 	serverTLSCfg := selfSignedTLS(t)
 	srv := newTestServer(t, "plain", serverTLSCfg)
 	defer srv.close()
-
-	c := smtpclient.New(smtpclient.Config{
-		Host:   "127.0.0.1",
-		Port:   portOf(srv.addr),
-		UseTLS: true,
-		// InsecureSkipVerify is false (default)
-	})
 
 	req := smtpclient.EmailSendRequest{
 		From:    "a@example.com",
@@ -46,11 +42,42 @@ func TestSend_InsecureSkipVerify_False_FailsWithTLSError(t *testing.T) {
 		// InsecureSkipVerify: false (default)
 	}
 
-	_, err := c.Send(context.Background(), cred, req)
-	if err == nil {
-		t.Fatal("expected TLS cert verification error when InsecureSkipVerify=false, got nil")
+	// We test the cert-verification failure via the STARTTLS path: use a
+	// STARTTLS server and a wrong ServerName in TLSConf (no InsecureSkipVerify).
+
+	// Use a STARTTLS server + wrong ServerName → TLS handshake cert error.
+	starttlsCfg := selfSignedTLS(t)
+	starttlsSrv := &testSMTPServer{
+		authMode: "plain",
+		tlsCfg:   starttlsCfg,
+		useTLS:   false, // STARTTLS server
 	}
-	// The error must mention TLS/certificate issues.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	starttlsSrv.listener = ln
+	starttlsSrv.addr = ln.Addr().String()
+	go starttlsSrv.serve()
+	defer starttlsSrv.close()
+
+	// Client uses wrong ServerName → cert verification fails at STARTTLS.
+	cWrong := smtpclient.New(smtpclient.Config{
+		TLSConf: &tls.Config{
+			ServerName: "wrong.host.invalid", // won't match self-signed cert
+		},
+	})
+
+	targetSTARTTLS := smtpclient.DialTarget{
+		Host:               "127.0.0.1",
+		Port:               portOf(starttlsSrv.addr), // non-465 → STARTTLS
+		InsecureSkipVerify: false,
+	}
+
+	_, err = cWrong.Send(context.Background(), cred, req, targetSTARTTLS)
+	if err == nil {
+		t.Fatal("expected TLS cert verification error, got nil")
+	}
 	errMsg := err.Error()
 	if !tlsErrMsg(errMsg) {
 		t.Errorf("expected TLS/x509 error, got: %v", err)
@@ -59,7 +86,7 @@ func TestSend_InsecureSkipVerify_False_FailsWithTLSError(t *testing.T) {
 
 // TestSend_InsecureSkipVerify_True_Succeeds verifies that Send to a server with
 // a self-signed TLS certificate succeeds when InsecureSkipVerify=true on the
-// Credential (per-service vault flag path), and that a slog.Warn audit-trail
+// DialTarget (per-service vault flag path), and that a slog.Warn audit-trail
 // entry was emitted.
 func TestSend_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 	// Capture slog output so we can assert the audit warning was emitted.
@@ -68,17 +95,11 @@ func TestSend_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	// Start a server with implicit TLS using a self-signed cert.
-	serverTLSCfg := selfSignedTLS(t)
-	srv := newTestServer(t, "plain", serverTLSCfg)
+	// Start a STARTTLS server — InsecureSkipVerify is set, so the warning IS emitted.
+	srv := newSTARTTLSServer(t, "plain")
 	defer srv.close()
 
-	c := smtpclient.New(smtpclient.Config{
-		Host:   "127.0.0.1",
-		Port:   portOf(srv.addr),
-		UseTLS: true,
-		// InsecureSkipVerify is false at config level — credential overrides it.
-	})
+	c := smtpclient.New(smtpclient.Config{})
 
 	req := smtpclient.EmailSendRequest{
 		From:    "sender@example.com",
@@ -93,7 +114,14 @@ func TestSend_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 		InsecureSkipVerify: true, // per-service vault flag (ADR-0024)
 	}
 
-	msgID, err := c.Send(context.Background(), cred, req)
+	// Port != 465 → STARTTLS path, plain server → send succeeds.
+	target := smtpclient.DialTarget{
+		Host:               "127.0.0.1",
+		Port:               portOf(srv.addr),
+		InsecureSkipVerify: true,
+	}
+
+	msgID, err := c.Send(context.Background(), cred, req, target)
 	if err != nil {
 		t.Fatalf("Send with InsecureSkipVerify=true failed: %v", err)
 	}

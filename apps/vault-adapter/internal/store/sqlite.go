@@ -50,6 +50,14 @@ type CredentialRecord struct {
 	// LEFT JOIN on public.email_services. SQLite store leaves this false.
 	// ADR-0024.
 	TlsInsecureSkipVerify bool
+
+	// Email-only SMTP/IMAP routing metadata. Populated only by PostgresStore.Get
+	// via LEFT JOIN on public.email_services. SQLite leaves these empty/zero.
+	// ADR-0024 (per-service SMTP routing, Phase 2).
+	SMTPHost string
+	SMTPPort int32
+	IMAPHost string
+	IMAPPort int32
 }
 
 // Store wraps an SQLite database connection.

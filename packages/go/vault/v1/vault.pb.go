@@ -340,8 +340,19 @@ type GetCredentialResponse struct {
 	// connection opened with InsecureSkipVerify: true so drift can be detected.
 	// Populated from email_services.tls_insecure_skip_verify (ADR-0024).
 	TlsInsecureSkipVerify bool `protobuf:"varint,13,opt,name=tls_insecure_skip_verify,json=tlsInsecureSkipVerify,proto3" json:"tls_insecure_skip_verify,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Email-only: SMTP and IMAP host/port routing metadata.
+	// Populated from email_services.smtp_host, smtp_port, imap_host, imap_port
+	// for email auth schemes (14, 15, 16). Empty/0 for non-email credentials.
+	//
+	// The email-proxy uses smtp_host + smtp_port to construct per-send SMTP
+	// connections, replacing the Phase-1 boot-time global client (ADR-0024).
+	// Port 465 → implicit TLS (SMTPS); 587 → STARTTLS; 25 → rejected.
+	SmtpHost      string `protobuf:"bytes,14,opt,name=smtp_host,json=smtpHost,proto3" json:"smtp_host,omitempty"`
+	SmtpPort      int32  `protobuf:"varint,15,opt,name=smtp_port,json=smtpPort,proto3" json:"smtp_port,omitempty"`
+	ImapHost      string `protobuf:"bytes,16,opt,name=imap_host,json=imapHost,proto3" json:"imap_host,omitempty"`
+	ImapPort      int32  `protobuf:"varint,17,opt,name=imap_port,json=imapPort,proto3" json:"imap_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetCredentialResponse) Reset() {
@@ -463,6 +474,34 @@ func (x *GetCredentialResponse) GetTlsInsecureSkipVerify() bool {
 		return x.TlsInsecureSkipVerify
 	}
 	return false
+}
+
+func (x *GetCredentialResponse) GetSmtpHost() string {
+	if x != nil {
+		return x.SmtpHost
+	}
+	return ""
+}
+
+func (x *GetCredentialResponse) GetSmtpPort() int32 {
+	if x != nil {
+		return x.SmtpPort
+	}
+	return 0
+}
+
+func (x *GetCredentialResponse) GetImapHost() string {
+	if x != nil {
+		return x.ImapHost
+	}
+	return ""
+}
+
+func (x *GetCredentialResponse) GetImapPort() int32 {
+	if x != nil {
+		return x.ImapPort
+	}
+	return 0
 }
 
 // PutCredentialRequest creates a new credential version. Always
@@ -1196,7 +1235,7 @@ const file_vault_proto_rawDesc = "" +
 	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
 	"\vkey_version\x18\x03 \x01(\rR\n" +
 	"keyVersion\x12&\n" +
-	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xaa\x04\n" +
+	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\x9e\x05\n" +
 	"\x15GetCredentialResponse\x12=\n" +
 	"\vauth_scheme\x18\x01 \x01(\x0e2\x1c.mintkey.vault.v1.AuthSchemeR\n" +
 	"authScheme\x12\x14\n" +
@@ -1216,7 +1255,11 @@ const file_vault_proto_rawDesc = "" +
 	" \x01(\tR\asshUser\x12\x19\n" +
 	"\bbase_url\x18\v \x01(\tR\abaseUrl\x12(\n" +
 	"\x10auth_scheme_name\x18\f \x01(\tR\x0eauthSchemeName\x127\n" +
-	"\x18tls_insecure_skip_verify\x18\r \x01(\bR\x15tlsInsecureSkipVerify\"\xad\x03\n" +
+	"\x18tls_insecure_skip_verify\x18\r \x01(\bR\x15tlsInsecureSkipVerify\x12\x1b\n" +
+	"\tsmtp_host\x18\x0e \x01(\tR\bsmtpHost\x12\x1b\n" +
+	"\tsmtp_port\x18\x0f \x01(\x05R\bsmtpPort\x12\x1b\n" +
+	"\timap_host\x18\x10 \x01(\tR\bimapHost\x12\x1b\n" +
+	"\timap_port\x18\x11 \x01(\x05R\bimapPort\"\xad\x03\n" +
 	"\x14PutCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +

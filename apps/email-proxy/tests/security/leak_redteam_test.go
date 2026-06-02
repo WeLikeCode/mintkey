@@ -145,7 +145,7 @@ type stubSMTP struct {
 	err   error
 }
 
-func (s *stubSMTP) Send(_ context.Context, _ smtp.Credential, _ smtp.EmailSendRequest) (string, error) {
+func (s *stubSMTP) Send(_ context.Context, _ smtp.Credential, _ smtp.EmailSendRequest, _ smtp.DialTarget) (string, error) {
 	return s.msgID, s.err
 }
 
