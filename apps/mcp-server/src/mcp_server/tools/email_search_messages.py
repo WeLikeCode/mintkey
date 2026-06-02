@@ -37,8 +37,9 @@ router = APIRouter(prefix="/v1/tools")
 @router.get("/email_search_messages")
 async def email_search_messages(
     request: Request,
-    email_service_id: str,
     query: str,
+    email_service_id: Optional[str] = None,
+    service_id: Optional[str] = None,
     mailbox: str = "INBOX",
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
@@ -50,6 +51,7 @@ async def email_search_messages(
     ----------
     email_service_id : str
         The email service ID — svc_ wire form or raw UUID.
+        Alias: ``service_id`` (matches the broker token-hint vocabulary).
     query : str
         RFC 3501 IMAP SEARCH query string (e.g. "FROM user@example.com UNSEEN").
     mailbox : str
@@ -57,6 +59,16 @@ async def email_search_messages(
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
+
+    email_service_id = email_service_id or service_id
+    if not email_service_id:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "mintkey:bad_request",
+                "title": "Missing required query parameter: email_service_id (or service_id)",
+            },
+        )
 
     agent_id: str = agent_ctx["agent_id"]
     tenant_id: str = agent_ctx["tenant_id"]

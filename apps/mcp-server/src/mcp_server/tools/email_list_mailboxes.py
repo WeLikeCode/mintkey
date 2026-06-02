@@ -2,6 +2,7 @@
 MCP email_list_mailboxes tool.
 
 GET /v1/tools/email_list_mailboxes?email_service_id=<id>
+  (alias accepted: ?service_id=<id> — matches the broker token-hint vocabulary)
 
 Lists IMAP mailboxes for the agent's granted email service.
 
@@ -36,7 +37,8 @@ router = APIRouter(prefix="/v1/tools")
 @router.get("/email_list_mailboxes")
 async def email_list_mailboxes(
     request: Request,
-    email_service_id: str,
+    email_service_id: Optional[str] = None,
+    service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
 ) -> JSONResponse:
@@ -47,9 +49,22 @@ async def email_list_mailboxes(
     ----------
     email_service_id : str
         The email service ID — accepts svc_ wire form or raw UUID.
+        Alias: ``service_id`` (matches the broker token-hint vocabulary).
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
+
+    # Accept ?service_id= as alias for ?email_service_id= so agents following the
+    # broker's token hint verbatim don't 422 here.
+    email_service_id = email_service_id or service_id
+    if not email_service_id:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "mintkey:bad_request",
+                "title": "Missing required query parameter: email_service_id (or service_id)",
+            },
+        )
 
     agent_id: str = agent_ctx["agent_id"]
     tenant_id: str = agent_ctx["tenant_id"]

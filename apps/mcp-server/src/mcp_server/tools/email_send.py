@@ -36,13 +36,20 @@ router = APIRouter(prefix="/v1/tools")
 
 
 class EmailSendRequest(BaseModel):
-    email_service_id: str
+    # Accept service_id as an alias for email_service_id so agents following
+    # the broker's token hint verbatim don't 422 here.
+    email_service_id: Optional[str] = None
+    service_id: Optional[str] = None
     to: List[str]
     subject: str
     body: str                      # plain-text body
     cc: Optional[List[str]] = None
     bcc: Optional[List[str]] = None
     html_body: Optional[str] = None
+
+    def resolved_service_id(self) -> Optional[str]:
+        """Return whichever of email_service_id / service_id was provided."""
+        return self.email_service_id or self.service_id
 
 
 @router.post("/email_send")
@@ -80,14 +87,24 @@ async def email_send(
 
     await set_tenant_context(session, tenant_id)
 
-    esvc_uuid = await resolve_email_service_id(body.email_service_id, tenant_id, session)
+    input_service_id = body.resolved_service_id()
+    if not input_service_id:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "mintkey:bad_request",
+                "title": "Missing required body field: email_service_id (or service_id)",
+            },
+        )
+
+    esvc_uuid = await resolve_email_service_id(input_service_id, tenant_id, session)
     if esvc_uuid is None:
         return JSONResponse(
             status_code=404,
             content={
                 "code": "mintkey:not_found",
                 "reason_code": "email_service_not_found",
-                "email_service_id_input": body.email_service_id,
+                "email_service_id_input": input_service_id,
             },
         )
     db_esvc_id = str(esvc_uuid)
@@ -121,9 +138,11 @@ async def email_send(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
 
-    # Build the payload for email-proxy POST /v1/email-proxy/messages.
+    # Build the JSON body for email-proxy POST /v1/email-proxy/messages.
+    # NOTE: email-proxy reads service_id from the URL query string (?service_id=)
+    # on *every* endpoint including this POST — see email-proxy email.go:397.
+    # We pass service_id via httpx `params=` (query string), NOT in the JSON body.
     payload: dict = {
-        "service_id": db_esvc_id,
         "to": body.to,
         "subject": body.subject,
         "body": body.body,
@@ -139,6 +158,7 @@ async def email_send(
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{email_proxy_url}/v1/email-proxy/messages",
+            params={"service_id": db_esvc_id},
             json=payload,
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=30.0,
