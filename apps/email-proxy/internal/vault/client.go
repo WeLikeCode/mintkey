@@ -10,6 +10,7 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -121,6 +122,52 @@ func (c *Client) ValidateServiceIdentity(ctx context.Context) error {
 		return fmt.Errorf("vault: ValidateServiceIdentity: %w", err)
 	}
 	return nil
+}
+
+// ErrNoRefreshToken is returned by GetRefreshToken when the stored credential
+// does not contain a refresh_token (e.g. it was revoked or never set).
+var ErrNoRefreshToken = errors.New("vault: no refresh_token found for service")
+
+// emailOAuth2Payload mirrors the JSON stored in vault for AUTH_SCHEME_EMAIL_OAUTH2.
+// Payload spec from vault.proto: {"provider":"gmail"|"outlook","refresh_token":"...","email_address":"..."}.
+type emailOAuth2Payload struct {
+	Provider     string `json:"provider"`
+	RefreshToken string `json:"refresh_token"`
+	EmailAddress string `json:"email_address"`
+}
+
+// GetRefreshToken fetches the OAuth2 refresh_token and provider for the given
+// (tenantID, serviceID) pair. It calls GetCredential with AUTH_SCHEME_EMAIL_OAUTH2
+// and parses the JSON payload.
+//
+// Returns ErrNoRefreshToken if the stored credential is not an OAuth2 credential
+// or if the refresh_token field is empty (i.e. revoked).
+func (c *Client) GetRefreshToken(ctx context.Context, tenantID, serviceID string) (provider, refreshToken string, err error) {
+	cred, err := c.GetCredential(ctx, tenantID, serviceID, AuthSchemeEmailOAuth2)
+	if err != nil {
+		return "", "", fmt.Errorf("vault: GetRefreshToken(%s/%s): %w", tenantID, serviceID, err)
+	}
+	defer func() {
+		// Zero the sensitive bytes after parsing.
+		for i := range cred.Value {
+			cred.Value[i] = 0
+		}
+	}()
+
+	if cred.AuthScheme != AuthSchemeEmailOAuth2 {
+		return "", "", fmt.Errorf("vault: credential for %s/%s has scheme %d, want EmailOAuth2 (%d)",
+			tenantID, serviceID, cred.AuthScheme, AuthSchemeEmailOAuth2)
+	}
+
+	var payload emailOAuth2Payload
+	if err := json.Unmarshal(cred.Value, &payload); err != nil {
+		return "", "", fmt.Errorf("vault: parse oauth2 payload for %s/%s: %w", tenantID, serviceID, err)
+	}
+
+	if payload.RefreshToken == "" {
+		return "", "", ErrNoRefreshToken
+	}
+	return payload.Provider, payload.RefreshToken, nil
 }
 
 // GetCredential fetches the plaintext credential for an (tenant_id, service_id) pair.
