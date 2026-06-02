@@ -513,7 +513,12 @@ services:
       SSH_PROXY_SSH_ADDR: ":2222"
       SSH_PROXY_HTTP_ADDR: ":8087"
       SSH_PROXY_HOST_KEY_PATH: /var/lib/mintkey/ssh_host_ed25519_key
-      SSH_PROXY_HOST_KEY_GENERATE: "false"  # secure default per C6; require pre-seeded key
+      # Default false (secure): operators must provision the host key via
+      # `make ssh-proxy-init` so the bastion's identity is stable across
+      # rebuilds. CI overrides to "true" via the runner env so the test
+      # stack can boot without an out-of-band volume-seed step. See ADR-0022
+      # §"Host key" and the CI step in .github/workflows/ci.yml.
+      SSH_PROXY_HOST_KEY_GENERATE: "${SSH_PROXY_HOST_KEY_GENERATE:-false}"
       SSH_PROXY_RECORDING_DIR: /var/lib/mintkey/ssh-recordings
       SSH_PROXY_RECORDING_ENABLED: "true"
       VAULT_ADAPTER_ADDR: vault-adapter:8084
