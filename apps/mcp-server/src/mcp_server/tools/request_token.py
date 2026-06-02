@@ -13,6 +13,11 @@ Constraint split:
 
 All denials emit a token.denied audit event (ADR-0014.7).
 
+Email services path (feat/agent-email-e2e):
+  If the service_id resolves to an email_services row (not a services row),
+  this handler checks email_permission_grants instead of permission_grants and
+  issues a JWT with service_kind=email so email-proxy can route correctly.
+
 Source: Req 6 AC5, AC10; ADR-0016.4; ADR-0014.7; ADR-0008.
 """
 from __future__ import annotations
@@ -34,7 +39,7 @@ from mcp_server.db.session import get_db_session
 from mcp_server.policy.constraints import RateLimiter, evaluate_rate_limit, evaluate_time_window
 from mcp_server.tools.discovery import get_agent_context
 from mcp_server.config.public_urls import resolve_ssh_proxy_public_host
-from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
+from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_email_service_id, resolve_service_id
 
 # Auth scheme IDs that indicate SSH transport (ssh-proxy handles these, not Kong).
 _SSH_AUTH_SCHEMES = {"ssh_private_key", "ssh_password", "ssh_ca"}
@@ -109,10 +114,20 @@ async def request_token(
     # Set tenant RLS context before any DB query (including slug lookup).
     await set_tenant_context(session, tenant_id)
 
-    # Resolve service_id from any of three accepted forms:
-    #   1. Raw UUID, 2. svc_ wire form, 3. slug — OPS-LL.
-    # We canonicalise to the svc_ wire form for audit events and the response
-    # body regardless of what the caller passed — ADR-0017.11; OPS-CC.
+    # Resolve service_id to a UUID. This may be a services UUID or an
+    # email_services UUID — we determine which after the permission_grants check.
+    #
+    # Slug inputs are resolved via DB lookup against services.slug. If not found,
+    # they return 404 (slugs are not supported for email_services).
+    #
+    # svc_ wire form and raw UUID inputs are decoded without a DB check here.
+    # We detect whether the UUID belongs to email_services AFTER a permission_grants
+    # miss (see the "email fallback" below) — this avoids adding a new DB round-trip
+    # to the hot path and preserves the call-sequence expected by existing tests.
+    #
+    # We canonicalise to the svc_ wire form for audit events / response body
+    # regardless of what the caller passed — ADR-0017.11; OPS-CC.
+
     try:
         db_service_uuid = await resolve_service_id(body.service_id, tenant_id, session)
     except ServiceNotFound as exc:
@@ -136,7 +151,19 @@ async def request_token(
     except Exception:
         wire_service_id = body.service_id  # fallback — should not happen
 
-    # 1. Look up permission grant
+    # Whether the input is a svc_ wire form or raw UUID — these forms can
+    # refer to either services or email_services (same UUID namespace, different
+    # tables). Slug inputs can only refer to services (email_services has no slug).
+    _is_wire_or_uuid = (
+        body.service_id.startswith("svc_")
+        or (len(body.service_id) == 36 and body.service_id.count("-") == 4)
+    )
+
+    # -----------------------------------------------------------------------
+    # HTTP / SSH services path.
+    # -----------------------------------------------------------------------
+
+    # 1. Look up permission grant in services / permission_grants.
     result = await session.execute(
         text(
             "SELECT agent_id, service_id, action, constraints"
@@ -149,6 +176,24 @@ async def request_token(
     grant = result.fetchone()
 
     if grant is None:
+        # -----------------------------------------------------------------------
+        # Email services fallback (feat/agent-email-e2e):
+        # If no permission_grant found AND input is wire/UUID form, check whether
+        # this UUID is actually an email_service and the agent has an
+        # email_permission_grant. If so, route to the email path.
+        # -----------------------------------------------------------------------
+        if _is_wire_or_uuid:
+            email_esvc_uuid = await resolve_email_service_id(body.service_id, tenant_id, session)
+            if email_esvc_uuid is not None:
+                return await _handle_email_service_token(
+                    session=session,
+                    agent_id=agent_id,
+                    tenant_id=tenant_id,
+                    db_service_id=str(email_esvc_uuid),
+                    wire_service_id=db_uuid_to_wire(str(email_esvc_uuid), "svc"),
+                    action=body.action,
+                )
+
         _reason = "permission_not_found"
         _hint = _denial_hint(_reason, agent_id, wire_service_id, body.action)
         await _emit_denial(
@@ -273,6 +318,105 @@ async def request_token(
     return JSONResponse(
         {"token": data["token"], "expires_at": data["expires_at"], "service_id": wire_service_id}
     )
+
+
+async def _handle_email_service_token(
+    *,
+    session,
+    agent_id: str,
+    tenant_id: str,
+    db_service_id: str,
+    wire_service_id: str,
+    action: str,
+) -> JSONResponse:
+    """
+    Issue a JWT for an email_service (feat/agent-email-e2e).
+
+    Checks email_permission_grants for (agent_id, email_service_id).
+    If a grant exists, calls broker /v1/issue with service_kind=email.
+    Returns the JWT response with service_kind=email in the body so email-proxy
+    and the caller both know this is an email-scoped token.
+    """
+    # Check email_permission_grants — no constraints (no rate_limit/time_window
+    # columns on email_permission_grants in the current schema).
+    grant_result = await session.execute(
+        text(
+            "SELECT id FROM email_permission_grants"
+            " WHERE agent_id = :aid AND email_service_id = :esid"
+            " LIMIT 1"
+        ),
+        {"aid": agent_id, "esid": db_service_id},
+    )
+    grant = grant_result.fetchone()
+
+    if grant is None:
+        _reason = "permission_not_found"
+        _hint = (
+            f"No email_permission_grant exists for this agent on email service "
+            f"'{wire_service_id}'. Ask the operator to add one in the admin UI under "
+            "Email Permission Grants > New."
+        )
+        await _emit_denial(
+            session, tenant_id, agent_id, wire_service_id, action,
+            _reason,
+            remediation_hint=_hint,
+        )
+        return JSONResponse(
+            status_code=403,
+            content={
+                "code": "mintkey:not_authorized",
+                "reason_code": _reason,
+                "agent_id": agent_id,
+                "service_id": wire_service_id,
+                "action": action,
+                "hint": _hint,
+            },
+        )
+
+    # Grant exists — call broker with service_kind=email.
+    broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
+    mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
+
+    # Map the action to an email scope that email-proxy understands.
+    # Agents pass "call" (the default action); email-proxy checks for
+    # "read:email" / "send:email". We always issue "read:email send:email"
+    # (full access) because the grant itself is the authorisation boundary —
+    # email_permission_grants has no per-action scoping.
+    email_scope = "read:email send:email"
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{broker_url}/v1/issue",
+            json={
+                "agent_id": agent_id,
+                "service_id": db_service_id,
+                "tenant_id": tenant_id,
+                "scope": email_scope,
+                "service_kind": "email",
+                "ttl_seconds": 600,
+            },
+            headers={"X-Mintkey-Service-Token": mcp_token},
+            timeout=5.0,
+        )
+    if resp.status_code != 200:
+        return JSONResponse(
+            status_code=502,
+            content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
+        )
+    data = resp.json()
+
+    email_proxy_url = os.getenv("EMAIL_PROXY_BASE_URL", "http://email-proxy:8088")
+    return JSONResponse({
+        "token": data["token"],
+        "expires_at": data["expires_at"],
+        "service_id": wire_service_id,
+        "service_kind": "email",
+        "email_proxy_url": email_proxy_url,
+        "hint": (
+            f"Use this token as 'Authorization: Bearer <token>' when calling "
+            f"{email_proxy_url}/v1/email-proxy/* with ?service_id={wire_service_id}"
+        ),
+    })
 
 
 async def _emit_denial(

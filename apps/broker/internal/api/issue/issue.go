@@ -35,11 +35,12 @@ type AuditEnqueuer interface {
 
 // issueRequest is the JSON body expected by the endpoint.
 type issueRequest struct {
-	AgentID    string `json:"agent_id"`
-	ServiceID  string `json:"service_id"`
-	TenantID   string `json:"tenant_id"`
-	Scope      string `json:"scope"`
-	TTLSeconds int    `json:"ttl_seconds"`
+	AgentID     string `json:"agent_id"`
+	ServiceID   string `json:"service_id"`
+	TenantID    string `json:"tenant_id"`
+	Scope       string `json:"scope"`
+	ServiceKind string `json:"service_kind,omitempty"` // e.g. "email" for email_services
+	TTLSeconds  int    `json:"ttl_seconds"`
 }
 
 // issueResponse is the 200 JSON body.
@@ -111,11 +112,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Issue the JWT.
 	token, err := h.iss.Issue(issuer.TokenRequest{
-		AgentID:    req.AgentID,
-		ServiceID:  req.ServiceID,
-		TenantID:   req.TenantID,
-		Scope:      req.Scope,
-		TTLSeconds: ttl,
+		AgentID:     req.AgentID,
+		ServiceID:   req.ServiceID,
+		TenantID:    req.TenantID,
+		Scope:       req.Scope,
+		ServiceKind: req.ServiceKind,
+		TTLSeconds:  ttl,
 	})
 	if err != nil {
 		slog.Error("issue: JWT signing error", "err", err)

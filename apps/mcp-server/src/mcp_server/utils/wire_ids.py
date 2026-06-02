@@ -218,3 +218,60 @@ async def resolve_service_id(
         raise ServiceNotFound(input_str, reason="ambiguous_slug")
 
     return _uuid_mod.UUID(str(rows[0].id))
+
+
+async def resolve_email_service_id(
+    input_str: str,
+    tenant_id: str,
+    session,
+) -> _uuid_mod.UUID | None:
+    """
+    Attempt to resolve input_str as an email_service UUID.
+
+    Accepts:
+      1. Raw UUID (36 chars with dashes) — direct lookup in email_services.
+      2. svc_ wire form (Crockford 26-char) — decoded to UUID, then looked up.
+
+    Returns the UUID if found in email_services for this tenant, else None.
+    Does NOT raise — returns None on any mismatch so callers can try fallbacks.
+
+    Source: feat/agent-email-e2e.
+    """
+    from sqlalchemy import text as _text  # local import to avoid circular deps
+
+    candidate: str | None = None
+
+    # Form 1 — raw UUID
+    if len(input_str) == 36 and input_str.count("-") == 4:
+        try:
+            candidate = str(_uuid_mod.UUID(input_str))
+        except ValueError:
+            return None
+
+    # Form 2 — svc_ wire form
+    elif input_str.startswith("svc_"):
+        try:
+            candidate = wire_to_db_uuid(input_str, "svc")
+            # Validate it's actually a UUID
+            _uuid_mod.UUID(candidate)
+        except (ValueError, AttributeError):
+            return None
+
+    else:
+        # No slug support for email services — they don't have slugs.
+        return None
+
+    result = await session.execute(
+        _text(
+            "SELECT id FROM email_services"
+            " WHERE id = :esid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"esid": candidate, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return None
+    try:
+        return _uuid_mod.UUID(str(row.id))
+    except (ValueError, AttributeError):
+        return None

@@ -14,6 +14,10 @@ from fastapi.responses import JSONResponse
 from mcp_server.auth.agent_key import validate_agent_key
 from mcp_server.tools.bootstrap import router as bootstrap_router
 from mcp_server.tools.discovery import router as discovery_router
+from mcp_server.tools.email_fetch_message import router as email_fetch_message_router
+from mcp_server.tools.email_list_mailboxes import router as email_list_mailboxes_router
+from mcp_server.tools.email_search_messages import router as email_search_messages_router
+from mcp_server.tools.email_send import router as email_send_router
 from mcp_server.tools.jsonrpc import router as jsonrpc_router
 from mcp_server.tools.landing import router as landing_router
 from mcp_server.tools.request_token import router as request_token_router
@@ -114,6 +118,11 @@ def create_app() -> FastAPI:
     app.include_router(bootstrap_router)
     app.include_router(discovery_router)
     app.include_router(request_token_router)
+    # Email tools (feat/agent-email-e2e)
+    app.include_router(email_list_mailboxes_router)
+    app.include_router(email_fetch_message_router)
+    app.include_router(email_search_messages_router)
+    app.include_router(email_send_router)
     return app
 
 

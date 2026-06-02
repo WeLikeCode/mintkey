@@ -118,6 +118,19 @@ func newWithHandlers(cfg *config.Config, vaultClient *vault.Client, validator *a
 	return s
 }
 
+// NewForTest creates a Server for integration testing with pre-built handlers.
+// vaultClient may be nil — it is only used by the /readyz probe.
+// This function is exported so integration test packages can build a full
+// request-handling stack including the withJWTAuth middleware (feat/agent-email-e2e).
+func NewForTest(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validator, emailHdlr *handlers.EmailHandlers) *Server {
+	return newWithHandlers(cfg, vaultClient, validator, emailHdlr)
+}
+
+// Handler returns the http.Handler for this server (useful in httptest.NewServer).
+func (s *Server) Handler() http.Handler {
+	return s.httpServer.Handler
+}
+
 // Start starts the HTTP server in a background goroutine.
 func (s *Server) Start() error {
 	slog.Info("email-proxy HTTP server starting", "addr", s.httpServer.Addr)

@@ -63,6 +63,27 @@ _REST_ENDPOINTS: dict = {
         "path": "/v1/tools/request_token",
         "auth": "bearer",
     },
+    # Email tools — feat/agent-email-e2e
+    "email_list_mailboxes": {
+        "method": "GET",
+        "path": "/v1/tools/email_list_mailboxes",
+        "auth": "bearer",
+    },
+    "email_fetch_message": {
+        "method": "GET",
+        "path": "/v1/tools/email_fetch_message",
+        "auth": "bearer",
+    },
+    "email_search_messages": {
+        "method": "GET",
+        "path": "/v1/tools/email_search_messages",
+        "auth": "bearer",
+    },
+    "email_send": {
+        "method": "POST",
+        "path": "/v1/tools/email_send",
+        "auth": "bearer",
+    },
 }
 
 _AUTH_DOC: dict = {
@@ -182,6 +203,31 @@ _TOOLS_INDEX: dict = {
             "path": "/v1/tools/request_token",
             "auth": "bearer",
             "description": "Exchange agent key for a short-lived brokered JWT",
+        },
+        # Email tools — feat/agent-email-e2e
+        "email_list_mailboxes": {
+            "method": "GET",
+            "path": "/v1/tools/email_list_mailboxes",
+            "auth": "bearer",
+            "description": "List IMAP mailboxes for a granted email service",
+        },
+        "email_fetch_message": {
+            "method": "GET",
+            "path": "/v1/tools/email_fetch_message",
+            "auth": "bearer",
+            "description": "Fetch a single email message by UID",
+        },
+        "email_search_messages": {
+            "method": "GET",
+            "path": "/v1/tools/email_search_messages",
+            "auth": "bearer",
+            "description": "Search messages in an IMAP mailbox",
+        },
+        "email_send": {
+            "method": "POST",
+            "path": "/v1/tools/email_send",
+            "auth": "bearer",
+            "description": "Send an email via a granted email service",
         },
     }
 }
