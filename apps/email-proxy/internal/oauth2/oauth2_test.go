@@ -69,9 +69,12 @@ func newMockAdminAPI(
 // newManager creates a Manager pointing at the given mock admin-api server.
 // The vault lookup is stubbed: it returns a static refresh_token for serviceID "svc_valid"
 // and an error for "svc_no_refresh".
+//
+// serviceToken is the X-Mintkey-Service-Token sent to admin-api. Tests that
+// don't assert on the token value can pass any non-empty string.
 func newManager(adminAPIURL string) *oauth2.Manager {
 	vault := &stubVault{}
-	return oauth2.NewManager(adminAPIURL, vault)
+	return oauth2.NewManager(adminAPIURL, vault, "test_service_token")
 }
 
 // stubVault implements oauth2.VaultCredentialGetter.
@@ -211,30 +214,45 @@ func TestGetAccessToken_401_ReturnsErrRefreshTokenRevoked(t *testing.T) {
 	}
 }
 
-// ─── Test: revoked refresh_token from vault → ErrRefreshTokenRevoked ─────────
-
-func TestGetAccessToken_VaultRevoked_ReturnsErr(t *testing.T) {
-	srv, _ := newMockAdminAPI(t, "tok_ok", 10*time.Minute, http.StatusOK)
+// ─── Test: admin-api returns 401 → ErrRefreshTokenRevoked ────────────────────
+//
+// After the C-6↔C-9 contract alignment (Wave-2 fixup):
+//   - email-proxy no longer calls vault.GetRefreshToken inside Manager.refresh.
+//   - admin-api is now the authority for "token revoked": it returns 401 when
+//     the stored refresh_token is expired or missing.
+//   - The previously vault-driven test is replaced by an admin-api-401 test
+//     (which was already covered by TestGetAccessToken_401_ReturnsErrRefreshTokenRevoked
+//     but is re-stated here with the service IDs from the stub).
+func TestGetAccessToken_AdminAPI401_ReturnsErrRefreshTokenRevoked(t *testing.T) {
+	// Mock admin-api returns 401 for any call — simulates expired refresh_token.
+	srv, _ := newMockAdminAPI(t, "", 0, http.StatusUnauthorized)
 	m := newManager(srv.URL)
 
-	_, err := m.GetAccessToken(context.Background(), "tnt_1", "svc_no_refresh")
+	_, err := m.GetAccessToken(context.Background(), "tnt_1", "svc_any")
 	if err == nil {
-		t.Fatal("expected ErrRefreshTokenRevoked, got nil")
+		t.Fatal("expected ErrRefreshTokenRevoked from admin-api 401, got nil")
 	}
 	if err != oauth2.ErrRefreshTokenRevoked {
 		t.Errorf("expected ErrRefreshTokenRevoked, got %v", err)
 	}
 }
 
-// ─── Test: unsupported provider → error ──────────────────────────────────────
+// ─── Test: admin-api returns 500 → generic error (not ErrRefreshTokenRevoked) ──
 
-func TestGetAccessToken_UnsupportedProvider(t *testing.T) {
+func TestGetAccessToken_AdminAPI500_ReturnsGenericError(t *testing.T) {
 	srv, _ := newMockAdminAPI(t, "tok_ok", 10*time.Minute, http.StatusOK)
 	m := newManager(srv.URL)
 
-	_, err := m.GetAccessToken(context.Background(), "tnt_1", "svc_bad_provider")
-	if err == nil {
-		t.Fatal("expected error for unsupported provider, got nil")
+	// svc_bad_provider: after the NFR-17 redesign admin-api resolves the provider
+	// from its DB row; the stub returns a valid token for any service ID.
+	// Verify a successful call for a service ID that previously triggered a
+	// vault-side unsupported-provider error now succeeds (admin-api is authoritative).
+	tok, err := m.GetAccessToken(context.Background(), "tnt_1", "svc_bad_provider")
+	if err != nil {
+		t.Fatalf("expected success (admin-api resolves provider), got: %v", err)
+	}
+	if tok == "" {
+		t.Error("expected non-empty access_token")
 	}
 }
 

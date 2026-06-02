@@ -9,6 +9,7 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_test")
 
 	cfg, err := Load()
 	if err != nil {
@@ -38,6 +39,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.VaultToken != "tok_test" {
 		t.Errorf("VaultToken = %q, want tok_test", cfg.VaultToken)
+	}
+	if cfg.EmailProxyServiceToken != "svc_tok_test" {
+		t.Errorf("EmailProxyServiceToken = %q, want svc_tok_test", cfg.EmailProxyServiceToken)
 	}
 }
 
@@ -74,6 +78,7 @@ func TestLoad_Overrides(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_prod")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_prod")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_prod")
 	os.Setenv("MINTKEY_BROKER_JWKS_URL", "http://my-broker:9999/.well-known/jwks.json")
 	os.Setenv("MINTKEY_VAULT_GRPC_ADDR", "my-vault:1234")
 	os.Setenv("MINTKEY_EMAIL_PROXY_HTTP_PORT", "9088")
@@ -108,12 +113,45 @@ func TestLoad_Overrides(t *testing.T) {
 	if cfg.OTelEndpoint != "otel:4317" {
 		t.Errorf("OTelEndpoint = %q", cfg.OTelEndpoint)
 	}
+	if cfg.EmailProxyServiceToken != "svc_tok_prod" {
+		t.Errorf("EmailProxyServiceToken = %q, want svc_tok_prod", cfg.EmailProxyServiceToken)
+	}
+}
+
+// TestLoad_MissingServiceToken verifies MINTKEY_EMAIL_PROXY_SERVICE_TOKEN is required.
+func TestLoad_MissingServiceToken(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
+	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	// MINTKEY_EMAIL_PROXY_SERVICE_TOKEN intentionally not set.
+
+	_, err := Load()
+	if err == nil {
+		t.Error("Load() should fail when MINTKEY_EMAIL_PROXY_SERVICE_TOKEN is missing")
+	}
+}
+
+// TestLoad_ServiceTokenPresent verifies MINTKEY_EMAIL_PROXY_SERVICE_TOKEN is loaded.
+func TestLoad_ServiceTokenPresent(t *testing.T) {
+	os.Clearenv()
+	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
+	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "my_shared_secret_token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.EmailProxyServiceToken != "my_shared_secret_token" {
+		t.Errorf("EmailProxyServiceToken = %q, want my_shared_secret_token", cfg.EmailProxyServiceToken)
+	}
 }
 
 func TestLoad_BadHTTPPort(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_test")
 	os.Setenv("MINTKEY_EMAIL_PROXY_HTTP_PORT", "not-a-number")
 
 	_, err := Load()
@@ -126,6 +164,7 @@ func TestLoad_BadMetricsPort(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_test")
 	os.Setenv("MINTKEY_EMAIL_PROXY_METRICS_PORT", "not-a-number")
 
 	_, err := Load()
@@ -138,6 +177,7 @@ func TestLoad_OutOfRangePort(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_test")
 	os.Setenv("MINTKEY_EMAIL_PROXY_HTTP_PORT", "99999")
 
 	_, err := Load()
@@ -152,6 +192,7 @@ func TestMetricsPortDoesNotCollideWithSSHProxy(t *testing.T) {
 	os.Clearenv()
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "id_test")
 	os.Setenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN", "tok_test")
+	os.Setenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN", "svc_tok_test")
 
 	cfg, err := Load()
 	if err != nil {

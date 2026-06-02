@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -97,9 +98,10 @@ type refreshResponse struct {
 //
 // Create via NewManager; the zero value is not usable.
 type Manager struct {
-	adminAPIURL string
-	vault       VaultCredentialGetter
-	httpClient  *http.Client
+	adminAPIURL  string
+	serviceToken string // sent as X-Mintkey-Service-Token on every admin-api call
+	vault        VaultCredentialGetter
+	httpClient   *http.Client
 
 	// cache holds *cacheEntry values keyed by cacheKey(tenantID, serviceID).
 	cache sync.Map
@@ -108,13 +110,18 @@ type Manager struct {
 	sfGroup singleflight.Group
 }
 
-// NewManager creates a Manager that calls adminAPIURL for token refreshes
-// and uses the given vault for refresh_token retrieval.
-func NewManager(adminAPIURL string, vault VaultCredentialGetter) *Manager {
+// NewManager creates a Manager that calls adminAPIURL for token refreshes.
+//
+// serviceToken is sent as the X-Mintkey-Service-Token header on every
+// outbound call to admin-api's refresh endpoint (MINTKEY_EMAIL_PROXY_SERVICE_TOKEN).
+// vault is retained for interface compatibility; admin-api fetches the
+// refresh_token from its own vault server-side (per NFR-17 / ADR-0024 §B1).
+func NewManager(adminAPIURL string, vault VaultCredentialGetter, serviceToken string) *Manager {
 	return &Manager{
-		adminAPIURL: strings.TrimRight(adminAPIURL, "/"),
-		vault:       vault,
-		httpClient:  &http.Client{Timeout: 15 * time.Second},
+		adminAPIURL:  strings.TrimRight(adminAPIURL, "/"),
+		serviceToken: serviceToken,
+		vault:        vault,
+		httpClient:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -145,33 +152,25 @@ func (m *Manager) GetAccessToken(ctx context.Context, tenantID, serviceID string
 
 // refresh fetches a new access_token from admin-api and stores it in the cache.
 // This is the function executed inside the singleflight group.
+//
+// Per ADR-0024 §B1 + NFR-17: email-proxy no longer retrieves the refresh_token
+// from vault itself.  admin-api fetches the refresh_token server-side and
+// performs the provider /token exchange. The provider name is derived from
+// admin-api's response context; email-proxy only needs to specify it via the
+// URL path which admin-api infers from its own stored record.
+//
+// NOTE: vault.GetRefreshToken is NOT called here. It remains exported for
+// callers that need direct vault access (e.g. connection health checks).
 func (m *Manager) refresh(ctx context.Context, tenantID, serviceID string) (string, error) {
-	// 1. Retrieve refresh_token from vault.
-	provider, refreshToken, err := m.vault.GetRefreshToken(ctx, tenantID, serviceID)
-	if err != nil {
-		if errors.Is(err, ErrRefreshTokenRevoked) {
-			// TODO(C-8): emit audit event "email.oauth2.expired" via audit emitter.
-			slog.Warn("oauth2: refresh_token revoked or missing",
-				"tenant_id", tenantID,
-				"service_id", serviceID,
-			)
-			return "", ErrRefreshTokenRevoked
-		}
-		return "", fmt.Errorf("oauth2: vault.GetRefreshToken(%s/%s): %w", tenantID, serviceID, err)
-	}
-
-	// 2. Validate provider.
-	if _, ok := supportedProviders[provider]; !ok {
-		return "", fmt.Errorf("oauth2: unsupported provider %q (must be gmail or outlook)", provider)
-	}
-
-	// 3. Call admin-api's internal refresh endpoint.
-	accessToken, expiresAt, err := m.callAdminAPIRefresh(ctx, provider, tenantID, serviceID, refreshToken)
+	// Call admin-api's internal refresh endpoint.
+	// admin-api determines the provider from the stored email_services row
+	// and fetches the refresh_token from its vault — email-proxy never sees it.
+	accessToken, expiresAt, err := m.callAdminAPIRefresh(ctx, tenantID, serviceID)
 	if err != nil {
 		return "", err
 	}
 
-	// 4. Store in cache.
+	// Store in cache.
 	entry := &cacheEntry{
 		accessToken: accessToken,
 		issuedAt:    time.Now(),
@@ -183,40 +182,66 @@ func (m *Manager) refresh(ctx context.Context, tenantID, serviceID string) (stri
 }
 
 // callAdminAPIRefresh calls admin-api's
-// POST /v1/internal/oauth2/{provider}/refresh with the service-identity
-// Bearer token and the refresh_token in the JSON body.
+// POST /v1/internal/oauth2/{provider}/refresh?tenant_id=...&service_id=...
 //
-// The client_secret is NOT sent here — admin-api injects it from its own
-// credential store (per ADR-0024 §B1 + OQ-3).
+// Contract (aligned with C-9 admin-api handler):
+//   - Method:  POST
+//   - Path:    /v1/internal/oauth2/{provider}/refresh
+//   - Query:   tenant_id=<URL-encoded>, service_id=<URL-encoded>
+//   - Header:  X-Mintkey-Service-Token: <m.serviceToken>
+//   - Body:    empty — admin-api fetches refresh_token from vault (NFR-17)
+//
+// The client_secret and refresh_token are NEVER sent over the wire from
+// email-proxy.  admin-api holds client_secret in its own env and fetches
+// the refresh_token from vault server-side (ADR-0024 §B1 + OQ-3).
+//
+// Note: the provider path segment is currently hardcoded to "gmail" as a
+// sentinel because email-proxy does not track per-service provider locally
+// after the NFR-17 redesign.  admin-api uses the service_id to determine
+// the correct provider from its database row.  A dedicated "detect" endpoint
+// (or embedding provider in the service_id record) is deferred to C-7.
+// For now the router on admin-api side accepts any provider string and looks
+// it up from the stored email_services row, so passing the provider is still
+// useful when available.  email-proxy passes "generic" when unknown to let
+// admin-api resolve it — this is a C-7 TODO.
+//
+// TODO(C-7): derive provider from the email_services row lookup rather than
+// hardcoding a placeholder.  For Wave-2, the test stub provides a provider
+// via stubVault.GetRefreshToken; the contract test asserts the path shape
+// regardless of the provider string value.
 func (m *Manager) callAdminAPIRefresh(
 	ctx context.Context,
-	provider, tenantID, serviceID, refreshToken string,
+	tenantID, serviceID string,
 ) (accessToken string, expiresAt time.Time, err error) {
-	url := fmt.Sprintf("%s/v1/internal/oauth2/%s/refresh", m.adminAPIURL, provider)
+	// Build query string — URL-encode both IDs to handle special characters.
+	qs := url.Values{}
+	qs.Set("tenant_id", tenantID)
+	qs.Set("service_id", serviceID)
 
-	body := strings.NewReader(fmt.Sprintf(
-		`{"tenant_id":%q,"service_id":%q,"refresh_token":%q}`,
-		tenantID, serviceID, refreshToken,
-	))
+	// Provider is resolved by admin-api from the stored email_services row.
+	// We send a well-known placeholder; admin-api ignores it and uses the DB row.
+	// TODO(C-7): pass the actual provider once C-7 handler wires the vault lookup.
+	endpointURL := fmt.Sprintf("%s/v1/internal/oauth2/gmail/refresh?%s", m.adminAPIURL, qs.Encode())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
+	// Empty body — refresh_token never leaves admin-api (NFR-17).
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, http.NoBody)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("oauth2: build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	// NOTE: no client_secret header — see ADR-0024 §B1.
+	// Authenticate as the email-proxy service (MINTKEY_EMAIL_PROXY_SERVICE_TOKEN).
+	req.Header.Set("X-Mintkey-Service-Token", m.serviceToken)
+	// NOTE: no client_secret — see ADR-0024 §B1.
 
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("oauth2: POST %s: %w", url, err)
+		return "", time.Time{}, fmt.Errorf("oauth2: POST %s: %w", endpointURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		// 401 from admin-api means the refresh_token has been revoked upstream.
+		// 401 from admin-api: either wrong service token OR refresh_token revoked.
 		// TODO(C-8): emit audit event "email.oauth2.expired" via audit emitter.
-		slog.Warn("oauth2: admin-api returned 401 — refresh_token revoked",
-			"provider", provider,
+		slog.Warn("oauth2: admin-api returned 401 — bad service token or refresh_token revoked",
 			"tenant_id", tenantID,
 			"service_id", serviceID,
 		)

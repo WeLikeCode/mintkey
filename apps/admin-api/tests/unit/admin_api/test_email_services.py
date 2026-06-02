@@ -799,3 +799,378 @@ class TestHelpers:
         assert _is_valid_uuid(str(uuid.uuid4())) is True
         assert _is_valid_uuid("not-a-uuid") is False
         assert _is_valid_uuid("") is False
+
+
+# ---------------------------------------------------------------------------
+# T-HTTP: HTTP-transport-level test via TestClient (contract boundary parity)
+#
+# The existing T-11/T-12/T-13 tests call the handler as a Python function with
+# kwargs — they never exercise FastAPI's HTTP transport binding (query-vs-body
+# resolution, header injection, etc.).
+#
+# This class adds a TestClient-based test that POSTs to the ACTUAL route URL
+# with the correct query params and X-Mintkey-Service-Token header and verifies
+# that FastAPI binds the parameters correctly.
+#
+# Wave-2 batch audit finding: C-6's pre-fix code sent {tenant_id, service_id,
+# refresh_token} as a JSON body with no service-token header.  admin-api's
+# handler binds tenant_id and service_id from query params (not body) and
+# requires X-Mintkey-Service-Token.  Neither side's tests exercised the HTTP
+# transport layer.
+# ---------------------------------------------------------------------------
+
+
+class TestInternalRefreshHTTPBinding:
+    """
+    T-HTTP-1 through T-HTTP-3: HTTP-level tests via TestClient that verify the
+    FastAPI route binds query params and headers correctly for the internal
+    OAuth2 refresh endpoint.
+
+    These tests complement T-11/T-12/T-13 (which call the handler as a Python
+    function) by exercising the ACTUAL HTTP transport layer.
+    """
+
+    def _make_app_with_mocks(
+        self,
+        mock_vault: Any,
+        env_override: dict[str, str],
+        session_override: Any = None,
+    ):
+        """
+        Build a minimal FastAPI app with just the internal_oauth2_router,
+        override the DB + vault dependencies, and return a TestClient.
+        """
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from admin_api.api.email_services import internal_oauth2_router
+        from admin_api.db.deps import get_db_session
+        from admin_api.services.vault_client import get_vault_client
+
+        test_app = FastAPI()
+        test_app.include_router(internal_oauth2_router)
+
+        if session_override is None:
+            session_override = _make_session()
+
+        async def _override_session():
+            yield session_override
+
+        async def _override_vault():
+            return mock_vault
+
+        test_app.dependency_overrides[get_db_session] = _override_session
+        test_app.dependency_overrides[get_vault_client] = _override_vault
+
+        import patch as _patch  # noqa: F401 — imported for side-effect
+        return TestClient(test_app), env_override
+
+    def test_http1_refresh_correct_query_params_and_header(self) -> None:
+        """
+        T-HTTP-1: POST to /v1/internal/oauth2/gmail/refresh with:
+          - query params: tenant_id=<uuid>, service_id=<uuid>
+          - header: X-Mintkey-Service-Token: correct_token
+          - empty body
+
+        Verifies FastAPI route binding correctly resolves query params
+        (not body) and header authentication passes.  Returns 200.
+        """
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from unittest.mock import AsyncMock, patch
+
+        from admin_api.api.email_services import internal_oauth2_router
+        from admin_api.db.deps import get_db_session
+        from admin_api.services.vault_client import get_vault_client
+
+        tenant_id = str(uuid.uuid4())
+        service_id = str(uuid.uuid4())
+
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": "stored_refresh_tok",
+            "auth_scheme": "email_oauth2",
+        })
+
+        session = _make_session()
+
+        test_app = FastAPI()
+        test_app.include_router(internal_oauth2_router)
+
+        async def _override_session():
+            yield session
+
+        async def _override_vault():
+            return mock_vault
+
+        test_app.dependency_overrides[get_db_session] = _override_session
+        test_app.dependency_overrides[get_vault_client] = _override_vault
+
+        provider_resp = MagicMock()
+        provider_resp.status_code = 200
+        provider_resp.json.return_value = {
+            "access_token": "new_at_http1",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        env_override = {
+            "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            with TestClient(test_app, raise_server_exceptions=True) as client:
+                resp = client.post(
+                    f"/v1/internal/oauth2/gmail/refresh"
+                    f"?tenant_id={tenant_id}&service_id={service_id}",
+                    headers={"X-Mintkey-Service-Token": "correct_token"},
+                    content=b"",  # empty body — NFR-17
+                )
+
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        body = resp.json()
+        assert "access_token" in body, f"access_token missing from response: {body}"
+        assert "expires_at" in body, f"expires_at missing from response: {body}"
+
+    def test_http2_missing_service_token_returns_401(self) -> None:
+        """
+        T-HTTP-2: POST with wrong X-Mintkey-Service-Token → 401.
+
+        Verifies the header authentication fires at the HTTP transport layer,
+        not just when the handler is called as a Python function.
+        """
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from unittest.mock import AsyncMock, patch
+
+        from admin_api.api.email_services import internal_oauth2_router
+        from admin_api.db.deps import get_db_session
+        from admin_api.services.vault_client import get_vault_client
+
+        test_app = FastAPI()
+        test_app.include_router(internal_oauth2_router)
+
+        async def _override_session():
+            yield _make_session()
+
+        async def _override_vault():
+            return AsyncMock()
+
+        test_app.dependency_overrides[get_db_session] = _override_session
+        test_app.dependency_overrides[get_vault_client] = _override_vault
+
+        env_override = {"MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token"}
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            with TestClient(test_app, raise_server_exceptions=True) as client:
+                resp = client.post(
+                    f"/v1/internal/oauth2/gmail/refresh"
+                    f"?tenant_id={uuid.uuid4()}&service_id={uuid.uuid4()}",
+                    headers={"X-Mintkey-Service-Token": "WRONG_TOKEN"},
+                    content=b"",
+                )
+
+        assert resp.status_code == 401
+        assert resp.json().get("mintkey:code") == "unauthenticated"
+
+    def test_http3_body_params_ignored_query_required(self) -> None:
+        """
+        T-HTTP-3: POST with tenant_id/service_id in JSON body but NOT in query →
+        FastAPI returns 422 (unprocessable entity) because query params are required.
+
+        This is the exact pre-fix C-6 bug: email-proxy sent params in the body
+        and admin-api's route binding never saw them as query params.
+        """
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from unittest.mock import AsyncMock, patch
+
+        from admin_api.api.email_services import internal_oauth2_router
+        from admin_api.db.deps import get_db_session
+        from admin_api.services.vault_client import get_vault_client
+
+        test_app = FastAPI()
+        test_app.include_router(internal_oauth2_router)
+
+        async def _override_session():
+            yield _make_session()
+
+        async def _override_vault():
+            return AsyncMock()
+
+        test_app.dependency_overrides[get_db_session] = _override_session
+        test_app.dependency_overrides[get_vault_client] = _override_vault
+
+        env_override = {"MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token"}
+
+        with patch.dict(os.environ, env_override):
+            with TestClient(test_app, raise_server_exceptions=False) as client:
+                # Send params in body (the pre-fix C-6 bug) — NOT in query string.
+                resp = client.post(
+                    "/v1/internal/oauth2/gmail/refresh",
+                    headers={
+                        "X-Mintkey-Service-Token": "correct_token",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "tenant_id": str(uuid.uuid4()),
+                        "service_id": str(uuid.uuid4()),
+                        "refresh_token": "leaked_token_in_body",  # NFR-17 violation
+                    },
+                )
+
+        # FastAPI should return 422: query params tenant_id and service_id
+        # are required but absent (the body is ignored for query-param binding).
+        assert resp.status_code == 422, (
+            f"Expected 422 when query params absent (body-only is the pre-fix bug), "
+            f"got {resp.status_code}: {resp.text}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T-RLS-2: Real cross-tenant SELECT verification (promoted from string-presence)
+# ---------------------------------------------------------------------------
+
+
+class TestRLSTenantIsolationStrengthened:
+    """
+    T-RLS-2: Stronger RLS isolation test.
+
+    The existing TestRLSTenantIsolation.test_rls_simulation checks only that
+    the string "set_tenant_context" and "tenant_id" appear in the source file.
+    This class exercises the actual SQL construction path to verify that
+    set_tenant_context is invoked BEFORE any SQL execution in the endpoints
+    that use tenant-scoped tables.
+
+    DB-backed integration test (needs Postgres):
+    SKIP — needs DB fixture.  See TestRLSTenantIsolationDB in
+    tests/integration/email_proxy/ for the full Postgres-backed version.
+
+    In-process verification (this file): assert set_tenant_context is awaited
+    with the correct tenant_uuid before any session.execute call.
+    """
+
+    @pytest.mark.asyncio
+    async def test_rls2_set_tenant_context_called_before_sql_in_refresh(self) -> None:
+        """
+        T-RLS-2a: oauth2_refresh calls set_tenant_context(session, tenant_uuid)
+        before any session.execute.  A wrong tenant_id that bypasses this call
+        would execute SQL under a different tenant's RLS context.
+        """
+        from unittest.mock import AsyncMock, call, patch
+
+        tenant_id = str(uuid.uuid4())
+        service_id = str(uuid.uuid4())
+
+        # Track call order: set_tenant_context then vault.get_credential.
+        call_order: list[str] = []
+
+        async def _fake_set_tenant_ctx(session: Any, tid: Any) -> None:
+            call_order.append("set_tenant_context")
+
+        mock_vault = AsyncMock()
+
+        async def _fake_vault_get_credential(**kwargs: Any) -> dict[str, Any]:
+            call_order.append("vault.get_credential")
+            return {"plaintext": "rt_for_rls_test", "auth_scheme": "email_oauth2"}
+
+        mock_vault.get_credential = AsyncMock(side_effect=_fake_vault_get_credential)
+
+        session = _make_session()
+
+        provider_resp = MagicMock()
+        provider_resp.status_code = 200
+        provider_resp.json.return_value = {
+            "access_token": "at_rls_test",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        env_override = {
+            "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        fake_req = MagicMock()
+        fake_req.headers = {"X-Mintkey-Service-Token": "correct_token"}
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", side_effect=_fake_set_tenant_ctx), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_refresh(
+                provider="gmail",
+                service_id=service_id,
+                tenant_id=tenant_id,
+                request=fake_req,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+
+        # set_tenant_context MUST be called before vault.get_credential
+        # (which represents the first DB-touching operation in the handler).
+        assert "set_tenant_context" in call_order, (
+            "set_tenant_context was never called — RLS context not set"
+        )
+        assert "vault.get_credential" in call_order, (
+            "vault.get_credential was never called"
+        )
+        ctx_idx = call_order.index("set_tenant_context")
+        vault_idx = call_order.index("vault.get_credential")
+        assert ctx_idx < vault_idx, (
+            f"set_tenant_context (index {ctx_idx}) must be called before "
+            f"vault.get_credential (index {vault_idx}) to ensure RLS context is set"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rls2_wrong_tenant_uuid_returns_422(self) -> None:
+        """
+        T-RLS-2b: oauth2_refresh with a non-UUID tenant_id returns 422 before
+        any DB access, preventing malformed tenant IDs from bypassing RLS.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        fake_req = MagicMock()
+        fake_req.headers = {"X-Mintkey-Service-Token": "correct_token"}
+        session = _make_session()
+
+        env_override = {
+            "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await oauth2_refresh(
+                provider="gmail",
+                service_id=str(uuid.uuid4()),
+                tenant_id="not-a-valid-uuid",  # malformed — must be rejected
+                request=fake_req,
+                session=session,  # type: ignore[arg-type]
+                vault=AsyncMock(),
+            )
+
+        assert result.status_code == 422
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "invalid_tenant_id"

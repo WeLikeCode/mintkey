@@ -47,6 +47,13 @@ type Config struct {
 	// Default: http://admin-api:8080
 	AdminAPIInternalURL string
 
+	// EmailProxyServiceToken is the shared secret used to authenticate
+	// email-proxy's calls to admin-api's internal OAuth2 refresh endpoint.
+	// Sent as the X-Mintkey-Service-Token request header.
+	// Must match MINTKEY_EMAIL_PROXY_SERVICE_TOKEN on the admin-api side.
+	// Required: MINTKEY_EMAIL_PROXY_SERVICE_TOKEN
+	EmailProxyServiceToken string
+
 	// OTelEndpoint is the OTLP gRPC endpoint, e.g. "otel-collector:4317".
 	OTelEndpoint string
 }
@@ -74,6 +81,12 @@ func Load() (*Config, error) {
 		cfg.VaultToken = v
 	} else {
 		return nil, fmt.Errorf("MINTKEY_VAULT_EMAIL_PROXY_TOKEN is required but not set")
+	}
+
+	if v := os.Getenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN"); v != "" {
+		cfg.EmailProxyServiceToken = v
+	} else {
+		return nil, fmt.Errorf("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN is required but not set")
 	}
 
 	// Optional overrides.
