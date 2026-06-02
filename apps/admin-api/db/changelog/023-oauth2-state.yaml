@@ -1,0 +1,124 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 023-oauth2-state.yaml
+  #
+  # Creates the public.oauth2_state table for the email-proxy OAuth2
+  # authorization code flow (ADR-0024 §B2, C-9).
+  #
+  # oauth2_state is a short-lived CSRF nonce store.  One row per in-flight
+  # OAuth2 authorize flow; deleted (single-use) on callback.  Opportunistic
+  # GC: DELETE WHERE expires_at < now() fires on each INSERT.
+  #
+  # provider CHECK constraint enforces gmail|outlook only (generic services
+  # use email_password / email_app_password, not OAuth2).
+  #
+  # RLS policy: same pattern as email_services (022) — tenant_id::text =
+  # current_setting('app.current_tenant', true).
+  #
+  # Idempotent: preConditions (MARK_RAN) guard each changeset.
+  #
+  # Source: ADR-0024 §B2; .kiro/specs/email-proxy/design.md §"oauth2_state";
+  #         OQ-4; chunk C-9.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create oauth2_state table --------------------------------------
+  - changeSet:
+      id: "023-oauth2-state-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: oauth2_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE public.oauth2_state (
+                state_value   TEXT        PRIMARY KEY,
+                session_id    UUID        NOT NULL,
+                operator_id   UUID        NOT NULL,
+                tenant_id     UUID        NOT NULL,
+                provider      TEXT        NOT NULL,
+                redirect_uri  TEXT        NOT NULL,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at    TIMESTAMPTZ NOT NULL,
+                service_id    UUID
+              );
+              COMMENT ON TABLE public.oauth2_state IS
+                'Short-lived CSRF nonce store for OAuth2 authorize flow (ADR-0024 §B2). Single-use: deleted on callback.';
+              ALTER TABLE public.oauth2_state
+                ADD CONSTRAINT oauth2_state_provider_chk
+                CHECK (provider IN ('gmail','outlook'));
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS public.oauth2_state;
+
+  # --- 2. Index on expires_at for opportunistic GC -----------------------
+  - changeSet:
+      id: "023-oauth2-state-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: oauth2_state
+              indexName: idx_oauth2_state_expires
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_oauth2_state_expires
+                ON public.oauth2_state (expires_at);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_oauth2_state_expires;
+
+  # --- 3. Row Level Security on oauth2_state -----------------------------
+  - changeSet:
+      id: "023-oauth2-state-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oauth2_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.oauth2_state ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY oauth2_state_tenant_iso ON public.oauth2_state
+                USING (
+                  (tenant_id::text = current_setting('app.current_tenant', true))
+                  OR (current_setting('app.platform_admin_view', true) = 'on')
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS oauth2_state_tenant_iso ON public.oauth2_state;
+              ALTER TABLE public.oauth2_state DISABLE ROW LEVEL SECURITY;
+
+  # --- 4. Grants for mintkey_app role ------------------------------------
+  - changeSet:
+      id: "023-oauth2-state-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oauth2_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.oauth2_state TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.oauth2_state FROM mintkey_app;
