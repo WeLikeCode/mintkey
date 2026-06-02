@@ -2552,6 +2552,47 @@
         }
       },
       "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_credential_set": {
+      "title": "email.credential.set",
+      "description": "A username+password credential was stored for an email_password or email_app_password email service. Payload NEVER contains the username or password (NFR-17). Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.credential.set"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"type": "string", "description": "Email service UUID (string form). NOT a svc_ prefixed ULID — email services use UUID4."},
+            "auth_scheme": {
+              "type": "string",
+              "enum": ["email_password", "email_app_password"],
+              "description": "The auth scheme of the email service. email_oauth2 is never set via this path."
+            }
+          },
+          "required": ["service_id", "auth_scheme"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_credential_deleted": {
+      "title": "email.credential.deleted",
+      "description": "The stored credential for an email service was revoked/deleted. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.credential.deleted"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"type": "string", "description": "Email service UUID (string form)."}
+          },
+          "required": ["service_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -2710,6 +2751,12 @@
     },
     {
       "$ref": "#/$defs/ev_email_message_sent"
+    },
+    {
+      "$ref": "#/$defs/ev_email_credential_set"
+    },
+    {
+      "$ref": "#/$defs/ev_email_credential_deleted"
     }
   ],
   "discriminator": {
@@ -2769,7 +2816,9 @@
       "email.message.flags_updated": "#/$defs/ev_email_message_flags_updated",
       "email.message.deleted": "#/$defs/ev_email_message_deleted",
       "email.message.moved": "#/$defs/ev_email_message_moved",
-      "email.message.sent": "#/$defs/ev_email_message_sent"
+      "email.message.sent": "#/$defs/ev_email_message_sent",
+      "email.credential.set": "#/$defs/ev_email_credential_set",
+      "email.credential.deleted": "#/$defs/ev_email_credential_deleted"
     }
   },
   "examples": [

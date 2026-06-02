@@ -52,6 +52,9 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "ssh_private_key": 11,  # ADR-0021: SSH private key for SSH proxy auth
     "ssh_ca": 12,           # ADR-0021: SSH CA key for certificate signing (Phase 2)
     "ssh_password": 13,     # ADR-0021: SSH username+password for SSH proxy auth
+    "email_password": 14,   # ADR-0024: Email IMAP/SMTP username+password
+    "email_oauth2": 15,     # ADR-0024: Email OAuth2 refresh token (gmail/outlook)
+    "email_app_password": 16,  # ADR-0024: Email app-password credential
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
