@@ -150,7 +150,7 @@ sequenceDiagram
     participant UI as Admin UI
     participant API as admin-api
     participant PG as Postgres
-    participant EP as email-proxy
+    participant VA as Vault Adapter
     participant Gmail as Gmail OAuth2
     
     H->>UI: Configure Gmail service
@@ -165,12 +165,10 @@ sequenceDiagram
     H->>UI: Callback with code + state
     UI->>API: POST /v1/email/services/callback<br/>{code, state}
     API->>PG: Validate state matches session
-    API->>EP: Exchange code for tokens
-    EP->>Gmail: POST /token (code)
-    Gmail-->>EP: {access_token, refresh_token}
-    EP->>VA: Store refresh token in Vault
-    EP->>PG: Insert into services + email_services<br/>(single transaction)
-    EP-->>API: Service configured
+    API->>Gmail: POST /token (code, client_secret)<br/>(admin-api holds client_secret)
+    Gmail-->>API: {access_token, refresh_token}
+    API->>VA: Store refresh token in Vault
+    API->>PG: Insert into services + email_services<br/>(single transaction)
     API-->>UI: Success
     UI-->>H: Gmail service ready
 ```
