@@ -99,7 +99,12 @@ for f in \
   014-operators-keycloak.yaml \
   015-app-role-passwords.yaml \
   016-sessions-auth-method.yaml \
-  017-services-template-id.yaml; do
+  017-services-template-id.yaml \
+  018-vault-schema.yaml \
+  019-grants-defensive.yaml \
+  020-vault-ssh-cols.yaml \
+  021-ssh-pubkey-and-hostkeys.yaml; do
+  # kept in sync with apps/admin-api/db/changelog/db.changelog-master.yaml
   fetch \
     "${RAW_BASE}/apps/admin-api/db/changelog/${f}" \
     "${CONFIG_DIR}/apps/admin-api/db/changelog/${f}"
@@ -200,6 +205,34 @@ _write_env_var "MINTKEY_JAEGER_PUBLIC_URL"     "http://localhost:16686"
 _write_env_var "MINTKEY_KEYCLOAK_PUBLIC_URL"   "http://localhost:8443"
 _write_env_var "MINTKEY_KEYCLOAK_INTERNAL_URL" "http://keycloak:8443"
 
+# SSH proxy vars (GAP-14)
+_write_env_var "MINTKEY_SSH_PROXY_PORT"           "2222"
+_write_env_var "MINTKEY_SSH_PROXY_HTTP_PORT"      "8089"
+_write_env_var "MINTKEY_SSH_PROXY_PUBLIC_URL"     "ssh://localhost:2222"
+MINTKEY_VAULT_SSH_PROXY_TOKEN="$(openssl rand -hex 32)"
+_write_env_var "MINTKEY_VAULT_SSH_PROXY_TOKEN"    "${MINTKEY_VAULT_SSH_PROXY_TOKEN}"
+
+# Admin-api audit HMAC key — required at startup (GAP-11)
+MINTKEY_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
+_write_env_var "MINTKEY_AUDIT_HMAC_KEY"           "${MINTKEY_AUDIT_HMAC_KEY}"
+
+# ---------------------------------------------------------------------------
+# 5a. Seed SSH proxy host key into named volume (GAP-12)
+# ---------------------------------------------------------------------------
+info "Seeding SSH proxy host key (idempotent) ..."
+docker volume create mintkey_ssh_proxy_hostkey >/dev/null 2>&1 || true
+docker run --rm \
+  -v mintkey_ssh_proxy_hostkey:/data \
+  alpine:latest sh -c '
+    if [ -f /data/ssh_host_ed25519_key ]; then
+      echo "ssh_host_ed25519_key already exists; skipping"
+    else
+      apk add --no-cache openssh-keygen >/dev/null 2>&1 || apk add --no-cache openssh-client-default >/dev/null
+      ssh-keygen -t ed25519 -N "" -f /data/ssh_host_ed25519_key -C "mintkey-ssh-proxy"
+      chmod 600 /data/ssh_host_ed25519_key
+    fi
+  '
+
 # ---------------------------------------------------------------------------
 # 5. Pull images + start stack
 # ---------------------------------------------------------------------------
@@ -232,6 +265,8 @@ cat <<EOF
   Grafana:    http://localhost:3003
   Jaeger:     http://localhost:16686
   Keycloak:   http://localhost:8443
+  SSH bastion: ssh -p 2222 <agent_id>@localhost
+               (JWT from MCP request_token as password — see docs/HOW-TO.md §5)
 
 To retrieve the bootstrap admin password once the seed-job
 completes (watch with: docker compose logs -f seed-job):

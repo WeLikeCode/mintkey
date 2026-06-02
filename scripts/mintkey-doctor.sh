@@ -186,6 +186,24 @@ else
   fi
 fi
 
+# ── [f] MINTKEY_AUDIT_HMAC_KEY present and long enough in admin-api ───────────
+echo ""
+echo "[f] MINTKEY_AUDIT_HMAC_KEY"
+
+ADMIN_API_CONTAINER="mintkey-admin-api-1"
+if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${ADMIN_API_CONTAINER}"; then
+  fail "admin-api container (${ADMIN_API_CONTAINER}) is not running"
+else
+  HMAC_VAL="$(docker exec "${ADMIN_API_CONTAINER}" printenv MINTKEY_AUDIT_HMAC_KEY 2>/dev/null || true)"
+  if [ -z "${HMAC_VAL}" ]; then
+    fail "admin-api: MINTKEY_AUDIT_HMAC_KEY is not set — admin-api will refuse to start; add it to .env"
+  elif [ "${#HMAC_VAL}" -lt 64 ]; then
+    fail "admin-api: MINTKEY_AUDIT_HMAC_KEY is set but too short (${#HMAC_VAL} chars, need >= 64 hex chars = 32 bytes)"
+  else
+    pass "admin-api: MINTKEY_AUDIT_HMAC_KEY: ok (${#HMAC_VAL} chars)"
+  fi
+fi
+
 # ── Summary ────────────────────────────────────────────────────────────────────
 echo ""
 if [ "$ERRORS" -gt 0 ]; then

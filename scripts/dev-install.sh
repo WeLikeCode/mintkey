@@ -762,6 +762,11 @@ generate_env_file() {
         printf "# ---------------------------------------------------------------------------\n"
         printf "MINTKEY_ADMIN_EMAIL=%s\n" "${CONFIGURED_EMAIL}"
         printf "MINTKEY_TENANT_NAME=%s\n" "${CONFIGURED_TENANT}"
+        printf "\n"
+        printf "# ---------------------------------------------------------------------------\n"
+        printf "# Generated secrets (not in .env.example — required at startup)\n"
+        printf "# ---------------------------------------------------------------------------\n"
+        printf "MINTKEY_AUDIT_HMAC_KEY=%s\n" "$(openssl rand -hex 32)"
     } >> "${env_file}"
 
     log INFO ".env file generated successfully."
