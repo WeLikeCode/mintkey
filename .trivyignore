@@ -407,6 +407,14 @@ CVE-2026-39826
 
 # ── admin-ui build-time npm bundled dep (PR #139, 2026-06-02) — review by 2026-08-01 ──
 
+# CVE-2026-47429  vitest (admin-ui dev-bundle test runner) CRITICAL
+#   Exploit requires `vitest --ui` server port exposure to a network
+#   attacker. No mintkey workflow runs vitest --ui; operator-only dev
+#   tool. Fix is vitest 2→4 major version bump; tracked for a focused
+#   migration PR. Dismissed in Dependabot as tolerable_risk on 2026-06-02
+#   (alerts #16, #17). Review by 2026-09-01 (quarterly major-bump pass).
+CVE-2026-47429
+
 # CVE-2026-33671  picomatch (npm CLI bundled dep) HIGH
 #   Affected file: /usr/local/lib/node_modules/npm/node_modules/picomatch/package.json
 #   This is npm's OWN bundled dependency, not our app's. Our pnpm install uses

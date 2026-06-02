@@ -68,6 +68,16 @@ jobs:
           #     google.golang.org/grpc): MIT / Apache-2.0 / BSD-3-Clause; scanner reports
           #     "unknown" for some due to LicenseRef compound expressions. All are
           #     well-known permissive open-source libraries.
+          #   - react-router-dom, tinyglobby, tldts, tldts-core, tsx: MIT (scanner reports
+          #     "could not detect" after pnpm lockfile regen in PR #140); all confirmed via
+          #     `pnpm view <pkg> license` from apps/admin-ui/.
+          #   - tinymce: GPL-2.0-or-later (dual-licensed; pnpm view tinymce@7.9.3 license).
+          #     Transitive dep pulled by @adminjs/design-system (MIT). The GPL applies to the
+          #     TinyMCE editor library itself; it does not propagate copyleft obligations to
+          #     Mintkey's server-side Apache-2.0 code. Admin-UI is an operator-internal
+          #     frontend panel only. Scanner reports "could not detect" because the package.json
+          #     contains "SEE LICENSE IN license.md" instead of a plain SPDX identifier.
+          #     Confirmed via `pnpm view tinymce@7.9.3 license` = GPL-2.0-or-later.
           allow-dependencies-licenses: >-
             pkg:golang/pgregory.net/rapid,
             pkg:pypi/hypothesis,
@@ -101,7 +111,13 @@ jobs:
             pkg:golang/go.opentelemetry.io/otel/sdk,
             pkg:golang/go.opentelemetry.io/otel/trace,
             pkg:golang/google.golang.org/genproto/googleapis/rpc,
-            pkg:golang/google.golang.org/grpc
+            pkg:golang/google.golang.org/grpc,
+            pkg:npm/react-router-dom,
+            pkg:npm/tinyglobby,
+            pkg:npm/tinymce,
+            pkg:npm/tldts,
+            pkg:npm/tldts-core,
+            pkg:npm/tsx
 
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
