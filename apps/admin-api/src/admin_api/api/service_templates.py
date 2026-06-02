@@ -102,4 +102,4 @@ async def get_template(template_id: str) -> JSONResponse:
         )
     else:
         detail["credential_hint"] = None
-    return JSONResponse(detail)  # type: ignore[return-value]
+    return JSONResponse(detail)

@@ -333,9 +333,9 @@ class TestServiceTemplateModel:
         assert tmpl.version == "1.0.0+build.42"
 
     def test_missing_required_field_raises(self):
-        """Omitting a required field (e.g. description) raises ValidationError."""
+        """Omitting a required field (e.g. template_id) raises ValidationError."""
         d = _make_template_dict()
-        del d["description"]
+        del d["template_id"]
         with pytest.raises(ValidationError):
             ServiceTemplate.model_validate(d)
 
