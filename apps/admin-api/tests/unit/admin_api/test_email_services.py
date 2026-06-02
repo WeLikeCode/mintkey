@@ -99,7 +99,7 @@ def _make_session(**results: Any) -> _FakeSession:
 
 from admin_api.api.email_services import (
     EmailServiceCreate,
-    EmailServicePatch,
+    EmailServiceCredentialBody,
     _oauth2_config,
     _valid_host_port,
     _is_valid_uuid,
@@ -107,9 +107,6 @@ from admin_api.api.email_services import (
     _VALID_AUTH_SCHEMES,
     _PROVIDER_AUTH_SCHEMES,
     create_email_service,
-    patch_email_service,
-    get_email_service,
-    list_email_services,
     oauth2_authorize,
     oauth2_callback,
     oauth2_refresh,
@@ -230,164 +227,6 @@ class TestRegisterEmailService:
         # Verify INSERT was called
         insert_calls = [sql for sql, _ in session.executed_sql if "INSERT INTO email_services" in sql]
         assert len(insert_calls) == 1
-
-
-# ---------------------------------------------------------------------------
-# T-TLS: tls_insecure_skip_verify field tests (feat/email-tls-skip-verify)
-# ---------------------------------------------------------------------------
-
-class TestTlsInsecureSkipVerify:
-    """Tests for the per-service tls_insecure_skip_verify field."""
-
-    def test_tls_flag_defaults_false_on_create(self) -> None:
-        """T-TLS-01: tls_insecure_skip_verify defaults to false on EmailServiceCreate."""
-        body = EmailServiceCreate(
-            provider="generic",
-            name="Internal Mail",
-            imap_host="im.softuraj.solutions",
-            imap_port=993,
-            smtp_host="im.softuraj.solutions",
-            smtp_port=465,
-            auth_scheme="email_password",
-        )
-        assert body.tls_insecure_skip_verify is False
-
-    def test_tls_flag_settable_true_on_create(self) -> None:
-        """T-TLS-02: tls_insecure_skip_verify can be set to True on create."""
-        body = EmailServiceCreate(
-            provider="generic",
-            name="Internal Mail TLS Skip",
-            imap_host="im.softuraj.solutions",
-            imap_port=993,
-            smtp_host="im.softuraj.solutions",
-            smtp_port=465,
-            auth_scheme="email_password",
-            tls_insecure_skip_verify=True,
-        )
-        assert body.tls_insecure_skip_verify is True
-
-    @pytest.mark.asyncio
-    async def test_tls_flag_included_in_insert(self) -> None:
-        """T-TLS-03: tls_insecure_skip_verify is passed to the DB INSERT."""
-        import json as _json
-        tenant_id = uuid.uuid4()
-        body = EmailServiceCreate(
-            provider="generic",
-            name="Internal Mail",
-            imap_host="im.softuraj.solutions",
-            imap_port=993,
-            smtp_host="im.softuraj.solutions",
-            smtp_port=465,
-            auth_scheme="email_password",
-            tls_insecure_skip_verify=True,
-        )
-        session = _make_session()
-
-        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
-             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
-            result = await create_email_service(
-                tenant_id=tenant_id,
-                body=body,
-                session=session,  # type: ignore[arg-type]
-            )
-
-        assert result.status_code == 201
-        resp_body = _json.loads(result.body)
-        assert resp_body.get("tls_insecure_skip_verify") is True
-
-        # Verify INSERT SQL includes tls_insecure_skip_verify
-        insert_calls = [sql for sql, params in session.executed_sql if "INSERT INTO email_services" in sql]
-        assert len(insert_calls) == 1
-        assert "tls_insecure_skip_verify" in insert_calls[0]
-
-    def test_tls_flag_default_false_in_patch_model(self) -> None:
-        """T-TLS-04: EmailServicePatch with tls_insecure_skip_verify=None does not update field."""
-        patch_body = EmailServicePatch()
-        assert patch_body.tls_insecure_skip_verify is None  # not provided = don't update
-
-    @pytest.mark.asyncio
-    async def test_tls_flag_updatable_via_patch(self) -> None:
-        """T-TLS-05: tls_insecure_skip_verify is updateable via PATCH."""
-        import json as _json
-        tenant_id = uuid.uuid4()
-        service_id = str(uuid.uuid4())
-
-        # Simulate existing row returned from UPDATE RETURNING
-        class _FakeResultWithRow:
-            def fetchone(self) -> Any:
-                return _FakeRow(id=service_id)
-
-        session = _make_session()
-        # Override to return the UPDATE RETURNING row
-        orig_execute = session.execute
-        async def _patched_execute(stmt: Any, params: Any = None) -> Any:
-            sql: str = str(stmt) if not hasattr(stmt, "text") else stmt.text
-            session.executed_sql.append((sql, params or {}))
-            if "UPDATE email_services" in sql:
-                return _FakeResultWithRow()
-            return _FakeResult(None)
-        session.execute = _patched_execute  # type: ignore[method-assign]
-
-        patch_body = EmailServicePatch(tls_insecure_skip_verify=True)
-
-        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
-             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
-            result = await patch_email_service(
-                tenant_id=tenant_id,
-                service_id=service_id,
-                body=patch_body,
-                session=session,  # type: ignore[arg-type]
-            )
-
-        assert result.status_code == 200
-        resp_body = _json.loads(result.body)
-        assert resp_body.get("id") == service_id
-
-        # Verify UPDATE SQL references tls_insecure_skip_verify
-        update_calls = [sql for sql, _ in session.executed_sql if "UPDATE email_services" in sql]
-        assert len(update_calls) == 1
-        assert "tls_insecure_skip_verify" in update_calls[0]
-
-    @pytest.mark.asyncio
-    async def test_tls_flag_returned_in_get(self) -> None:
-        """T-TLS-06: tls_insecure_skip_verify is returned in GET response."""
-        import json as _json
-        from datetime import datetime, timezone
-        tenant_id = uuid.uuid4()
-        service_id = str(uuid.uuid4())
-
-        now = datetime.now(timezone.utc)
-        fake_row = _FakeRow(
-            id=service_id,
-            tenant_id=str(tenant_id),
-            provider="generic",
-            name="Internal Mail",
-            imap_host="im.softuraj.solutions",
-            imap_port=993,
-            smtp_host="im.softuraj.solutions",
-            smtp_port=465,
-            auth_scheme="email_password",
-            allowed_recipient_domains=None,
-            pool_size_max=5,
-            tls_insecure_skip_verify=True,
-            created_at=now,
-            updated_at=now,
-        )
-
-        session = _make_session(**{
-            "SELECT id, tenant_id": _FakeResult(fake_row),
-        })
-
-        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
-            result = await get_email_service(
-                tenant_id=tenant_id,
-                service_id=service_id,
-                session=session,  # type: ignore[arg-type]
-            )
-
-        assert result.status_code == 200
-        resp_body = _json.loads(result.body)
-        assert resp_body.get("tls_insecure_skip_verify") is True
 
 
 # ---------------------------------------------------------------------------
@@ -1425,6 +1264,7 @@ class TestRLSTenantIsolationStrengthened:
 # Credential-set / credential-delete endpoint tests (feat/email-credentials-and-ui-fixes)
 # ---------------------------------------------------------------------------
 
+
 class TestEmailServiceCredentialSet:
     """
     Tests for:
@@ -1450,8 +1290,6 @@ class TestEmailServiceCredentialSet:
         Assert vault.put_credential called with correct shape, 201 returned,
         audit row emitted, no username/password in audit.
         """
-        from admin_api.api.email_services import EmailServiceCredentialBody
-
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
@@ -1517,8 +1355,6 @@ class TestEmailServiceCredentialSet:
         test_set_credential_rejects_oauth2_scheme — body with email_oauth2 → 422.
         Must redirect to the OAuth2 authorize flow.
         """
-        from admin_api.api.email_services import EmailServiceCredentialBody
-
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
@@ -1550,8 +1386,6 @@ class TestEmailServiceCredentialSet:
         test_set_credential_scheme_mismatch_with_row — row has email_password,
         body has email_app_password → 422 with auth_scheme_mismatch code.
         """
-        from admin_api.api.email_services import EmailServiceCredentialBody
-
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
@@ -1588,8 +1422,6 @@ class TestEmailServiceCredentialSet:
         """
         test_set_credential_nonexistent_service — service not found → 422 not_found.
         """
-        from admin_api.api.email_services import EmailServiceCredentialBody
-
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
@@ -1628,8 +1460,6 @@ class TestEmailServiceCredentialSet:
         the literal username or password values. Uses distinctive canary strings
         so any accidental inclusion is immediately obvious.
         """
-        from admin_api.api.email_services import EmailServiceCredentialBody
-
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
@@ -1670,8 +1500,7 @@ class TestEmailServiceCredentialSet:
         # Must have exactly 1 audit call
         assert len(audit_calls) == 1, f"Expected 1 audit call, got {len(audit_calls)}"
 
-        # Stringify the serializable parts of the audit call — event_type, actor_type, payload
-        # (the 'session' field contains a non-serializable mock object so exclude it)
+        # Stringify the serializable parts of the audit call
         audit_call = audit_calls[0]
         serializable_audit = {
             k: v for k, v in audit_call.items()
@@ -1705,9 +1534,9 @@ class TestEmailServiceCredentialSet:
         tenant_id = uuid.uuid4()
         service_id = str(uuid.uuid4())
 
-        svc_row = _FakeRow(id=service_id)
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_password")
         session = _make_session(**{
-            "SELECT id FROM email_services": _FakeResult(svc_row),
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
         })
 
         audit_calls: list[dict[str, Any]] = []
@@ -1737,3 +1566,52 @@ class TestEmailServiceCredentialSet:
         payload_str = json.dumps(payload)
         assert "password" not in payload_str
         assert "username" not in payload_str
+
+    @pytest.mark.asyncio
+    async def test_delete_credential_uses_row_auth_scheme(self) -> None:
+        """
+        test_delete_credential_uses_row_auth_scheme — regression for reviewer finding #2.
+
+        DELETE /credentials was hardcoding auth_scheme="email_password" on the vault
+        revocation call, silently mis-routing services with auth_scheme="email_app_password"
+        (proto enum 16 vs 14).
+
+        This test sets up a row with auth_scheme="email_app_password", calls DELETE,
+        and asserts that vault.put_credential received auth_scheme="email_app_password"
+        — NOT "email_password".
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # Row uses email_app_password (proto enum 16 — NOT email_password=14)
+        svc_row = _FakeRow(id=service_id, auth_scheme="email_app_password")
+        session = _make_session(**{
+            "SELECT id, auth_scheme FROM email_services": _FakeResult(svc_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"credential_id": "cred_app_pass"})
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": '{"username":"u","password":"p"}',
+            "auth_scheme": "email_app_password",
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await delete_email_service_credential(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 204
+
+        # The vault.put_credential revocation call MUST use the row's auth_scheme
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs["auth_scheme"] == "email_app_password", (
+            f"Expected auth_scheme='email_app_password' (proto enum 16) on vault revocation, "
+            f"got auth_scheme='{call_kwargs['auth_scheme']}'. "
+            "Hardcoding 'email_password' silently mis-routes app-password services."
+        )

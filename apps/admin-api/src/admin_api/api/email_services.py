@@ -165,7 +165,6 @@ class EmailServiceCreate(BaseModel):
     auth_scheme: str
     allowed_recipient_domains: Optional[str] = None
     pool_size_max: int = 5
-    tls_insecure_skip_verify: bool = False
 
     @field_validator("provider")
     @classmethod
@@ -185,25 +184,6 @@ class EmailServiceCreate(BaseModel):
     @classmethod
     def validate_port(cls, v: int) -> int:
         if not 1 <= v <= 65535:
-            raise ValueError("port must be between 1 and 65535")
-        return v
-
-
-class EmailServicePatch(BaseModel):
-    """Body for PATCH /v1/tenants/{tid}/email-services/{service_id}."""
-    name: Optional[str] = None
-    imap_host: Optional[str] = None
-    imap_port: Optional[int] = None
-    smtp_host: Optional[str] = None
-    smtp_port: Optional[int] = None
-    allowed_recipient_domains: Optional[str] = None
-    pool_size_max: Optional[int] = None
-    tls_insecure_skip_verify: Optional[bool] = None
-
-    @field_validator("imap_port", "smtp_port")
-    @classmethod
-    def validate_port(cls, v: Optional[int]) -> Optional[int]:
-        if v is not None and not 1 <= v <= 65535:
             raise ValueError("port must be between 1 and 65535")
         return v
 
@@ -301,11 +281,11 @@ async def create_email_service(
             "INSERT INTO email_services"
             " (id, tenant_id, provider, name, imap_host, imap_port,"
             "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at)"
+            "  pool_size_max, created_at, updated_at)"
             " VALUES"
             " (:id, :tenant_id, :provider, :name, :imap_host, :imap_port,"
             "  :smtp_host, :smtp_port, :auth_scheme, :allowed_domains,"
-            "  :pool_size, :tls_insecure, :now, :now)"
+            "  :pool_size, :now, :now)"
         ),
         {
             "id": str(svc_id),
@@ -319,7 +299,6 @@ async def create_email_service(
             "auth_scheme": body.auth_scheme,
             "allowed_domains": body.allowed_recipient_domains,
             "pool_size": body.pool_size_max,
-            "tls_insecure": body.tls_insecure_skip_verify,
             "now": now,
         },
     )
@@ -342,7 +321,6 @@ async def create_email_service(
             "imap_port": body.imap_port,
             "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
-            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
         },
     )
 
@@ -358,7 +336,6 @@ async def create_email_service(
             "imap_port": body.imap_port,
             "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
-            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "created_at": now.isoformat(),
         },
     )
@@ -442,11 +419,11 @@ async def create_email_service_from_template(
             "INSERT INTO email_services"
             " (id, tenant_id, provider, name, imap_host, imap_port,"
             "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at)"
+            "  pool_size_max, created_at, updated_at)"
             " VALUES"
             " (:id, :tenant_id, :provider, :name, :imap_host, :imap_port,"
             "  :smtp_host, :smtp_port, :auth_scheme, NULL,"
-            "  5, false, :now, :now)"
+            "  5, :now, :now)"
         ),
         {
             "id": str(svc_id),
@@ -500,275 +477,6 @@ async def create_email_service_from_template(
             "created_at": now.isoformat(),
         },
     )
-
-
-# ---------------------------------------------------------------------------
-# GET /v1/tenants/{tenant_id}/email-services  — list
-# ---------------------------------------------------------------------------
-
-
-@router.get("", status_code=200)
-async def list_email_services(
-    tenant_id: UUID,
-    q: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    """
-    List email services for a tenant.
-
-    Optional query param `q` filters by name (case-insensitive substring).
-
-    Source: ADR-0024; feat/email-tls-skip-verify.
-    """
-    await set_tenant_context(session, tenant_id)
-
-    if q:
-        rows = await session.execute(
-            text(
-                "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
-                "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-                "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
-                " FROM email_services"
-                " WHERE tenant_id = :tid AND deleted_at IS NULL"
-                "   AND LOWER(name) LIKE :q"
-                " ORDER BY created_at DESC"
-            ),
-            {"tid": str(tenant_id), "q": f"%{q.lower()}%"},
-        )
-    else:
-        rows = await session.execute(
-            text(
-                "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
-                "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-                "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
-                " FROM email_services"
-                " WHERE tenant_id = :tid AND deleted_at IS NULL"
-                " ORDER BY created_at DESC"
-            ),
-            {"tid": str(tenant_id)},
-        )
-
-    services = []
-    for row in rows.fetchall():
-        services.append({
-            "id": str(row.id),
-            "tenant_id": str(row.tenant_id),
-            "provider": row.provider,
-            "name": row.name,
-            "imap_host": row.imap_host,
-            "imap_port": row.imap_port,
-            "smtp_host": row.smtp_host,
-            "smtp_port": row.smtp_port,
-            "auth_scheme": row.auth_scheme,
-            "allowed_recipient_domains": row.allowed_recipient_domains,
-            "pool_size_max": row.pool_size_max,
-            "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        })
-
-    return JSONResponse(status_code=200, content={"email_services": services, "total": len(services)})
-
-
-# ---------------------------------------------------------------------------
-# GET /v1/tenants/{tenant_id}/email-services/{service_id}  — get single
-# ---------------------------------------------------------------------------
-
-
-@router.get("/{service_id}", status_code=200)
-async def get_email_service(
-    tenant_id: UUID,
-    service_id: str,
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    """
-    Get a single email service by ID.
-
-    Source: ADR-0024; feat/email-tls-skip-verify.
-    """
-    await set_tenant_context(session, tenant_id)
-
-    row_result = await session.execute(
-        text(
-            "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
-            "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
-            " FROM email_services"
-            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
-        ),
-        {"sid": service_id, "tid": str(tenant_id)},
-    )
-    row = row_result.fetchone()
-    if row is None:
-        return JSONResponse(
-            status_code=404,
-            content={"mintkey:code": "not_found", "title": "Email service not found"},
-        )
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "id": str(row.id),
-            "tenant_id": str(row.tenant_id),
-            "provider": row.provider,
-            "name": row.name,
-            "imap_host": row.imap_host,
-            "imap_port": row.imap_port,
-            "smtp_host": row.smtp_host,
-            "smtp_port": row.smtp_port,
-            "auth_scheme": row.auth_scheme,
-            "allowed_recipient_domains": row.allowed_recipient_domains,
-            "pool_size_max": row.pool_size_max,
-            "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        },
-    )
-
-
-# ---------------------------------------------------------------------------
-# PATCH /v1/tenants/{tenant_id}/email-services/{service_id}
-# ---------------------------------------------------------------------------
-
-
-@router.patch("/{service_id}", status_code=200)
-async def patch_email_service(
-    tenant_id: UUID,
-    service_id: str,
-    body: EmailServicePatch,
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    """
-    Update selected fields of an email service.
-
-    All fields are optional — only supplied fields are updated.
-    Emits email.service.updated audit event (no secrets — NFR-17).
-
-    Source: ADR-0024; feat/email-tls-skip-verify.
-    """
-    await set_tenant_context(session, tenant_id)
-
-    # Build dynamic SET clause from non-None fields.
-    updates: dict[str, Any] = {}
-    if body.name is not None:
-        updates["name"] = body.name
-    if body.imap_host is not None:
-        updates["imap_host"] = body.imap_host
-    if body.imap_port is not None:
-        if not 1 <= body.imap_port <= 65535:
-            return JSONResponse(
-                status_code=422,
-                content={"mintkey:code": "invalid_imap", "title": "imap_port out of range"},
-            )
-        updates["imap_port"] = body.imap_port
-    if body.smtp_host is not None:
-        updates["smtp_host"] = body.smtp_host
-    if body.smtp_port is not None:
-        if not 1 <= body.smtp_port <= 65535:
-            return JSONResponse(
-                status_code=422,
-                content={"mintkey:code": "invalid_smtp", "title": "smtp_port out of range"},
-            )
-        updates["smtp_port"] = body.smtp_port
-    if body.allowed_recipient_domains is not None:
-        updates["allowed_recipient_domains"] = body.allowed_recipient_domains
-    if body.pool_size_max is not None:
-        updates["pool_size_max"] = body.pool_size_max
-    if body.tls_insecure_skip_verify is not None:
-        updates["tls_insecure_skip_verify"] = body.tls_insecure_skip_verify
-
-    if not updates:
-        return JSONResponse(
-            status_code=422,
-            content={"mintkey:code": "no_fields", "title": "No fields to update"},
-        )
-
-    now = datetime.now(timezone.utc)
-    updates["updated_at"] = now
-
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    params: dict[str, Any] = {**updates, "sid": service_id, "tid": str(tenant_id)}
-
-    result = await session.execute(
-        text(
-            f"UPDATE email_services SET {set_clause}"
-            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
-            " RETURNING id"
-        ),
-        params,
-    )
-    if result.fetchone() is None:
-        return JSONResponse(
-            status_code=404,
-            content={"mintkey:code": "not_found", "title": "Email service not found"},
-        )
-
-    # Emit audit event (NFR-17: no secrets)
-    await audit_emit(
-        session=session,
-        tenant_id=tenant_id,
-        event_type="email.service.updated",
-        actor_id=None,
-        actor_type="operator",
-        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
-        target_type="email_service",
-        payload={
-            "service_id": service_id,
-            "updated_fields": [k for k in updates if k != "updated_at"],
-            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
-        },
-    )
-
-    return JSONResponse(status_code=200, content={"id": service_id, "updated_at": now.isoformat()})
-
-
-# ---------------------------------------------------------------------------
-# DELETE /v1/tenants/{tenant_id}/email-services/{service_id}
-# ---------------------------------------------------------------------------
-
-
-@router.delete("/{service_id}", status_code=204)
-async def delete_email_service(
-    tenant_id: UUID,
-    service_id: str,
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    """
-    Soft-delete an email service (sets deleted_at).
-
-    Emits email.service.deleted audit event.
-
-    Source: ADR-0024; feat/email-tls-skip-verify.
-    """
-    await set_tenant_context(session, tenant_id)
-
-    now = datetime.now(timezone.utc)
-    result = await session.execute(
-        text(
-            "UPDATE email_services SET deleted_at = :now"
-            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
-            " RETURNING id"
-        ),
-        {"now": now, "sid": service_id, "tid": str(tenant_id)},
-    )
-    if result.fetchone() is None:
-        return JSONResponse(
-            status_code=404,
-            content={"mintkey:code": "not_found", "title": "Email service not found"},
-        )
-
-    await audit_emit(
-        session=session,
-        tenant_id=tenant_id,
-        event_type="email.service.deleted",
-        actor_id=None,
-        actor_type="operator",
-        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
-        target_type="email_service",
-        payload={"service_id": service_id},
-    )
-
-    return JSONResponse(status_code=204, content=None)
 
 
 # ---------------------------------------------------------------------------
@@ -1451,23 +1159,24 @@ async def delete_email_service_credential(
     """
     Revoke the stored credential for an email service.
 
-    Calls vault.delete_credential (via put_credential with empty bytes as a
-    signal — vault adapter handles the revocation). Emits email.credential.deleted
-    audit event. Returns 204.
+    Looks up the row's auth_scheme so the vault revocation uses the correct
+    proto enum value (email_password=14 vs email_app_password=16 — ADR-0024).
+    Emits email.credential.deleted audit event. Returns 204.
 
     Source: ADR-0024; NFR-17.
     """
     await set_tenant_context(session, tenant_id)
 
-    # Verify the email service exists under this tenant
+    # Verify the email service exists under this tenant; fetch auth_scheme for vault call
     svc_row_result = await session.execute(
         text(
-            "SELECT id FROM email_services"
+            "SELECT id, auth_scheme FROM email_services"
             " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
         ),
         {"sid": service_id, "tid": str(tenant_id)},
     )
-    if svc_row_result.fetchone() is None:
+    svc_row = svc_row_result.fetchone()
+    if svc_row is None:
         return JSONResponse(
             status_code=422,
             content={
@@ -1475,6 +1184,10 @@ async def delete_email_service_credential(
                 "title": "Email service not found or does not belong to this tenant.",
             },
         )
+
+    # Use the row's actual auth_scheme — not a hardcoded value — so the vault
+    # proto enum is correct for both email_password (14) and email_app_password (16).
+    row_auth_scheme = svc_row.auth_scheme
 
     # Revoke via vault — get_credential first to confirm existence, then overwrite with empty
     try:
@@ -1484,7 +1197,7 @@ async def delete_email_service_credential(
             await vault.put_credential(
                 tenant_id=str(tenant_id),
                 service_id=service_id,
-                auth_scheme="email_password",  # dummy scheme for the revoke call
+                auth_scheme=row_auth_scheme,
                 plaintext="",
             )
     except Exception as exc:
