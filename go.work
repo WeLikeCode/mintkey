@@ -3,6 +3,7 @@ go 1.26.2
 use (
 	.
 	./apps/broker
+	./apps/email-proxy
 	./apps/kong-syncer
 	./apps/proxy-plugin
 	./apps/ssh-proxy

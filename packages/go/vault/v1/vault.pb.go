@@ -71,6 +71,15 @@ const (
 	// The password is stored as raw bytes in the encrypted payload; target_address and
 	// ssh_user are stored in the dedicated metadata columns (ADR-0021).
 	AuthScheme_AUTH_SCHEME_SSH_PASSWORD AuthScheme = 13
+	// EMAIL_PASSWORD: Vault stores an email credential for IMAP/SMTP password auth (ADR-0024).
+	// Payload JSON: {"username","password","imap_host","imap_port","smtp_host","smtp_port"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_PASSWORD AuthScheme = 14
+	// EMAIL_OAUTH2: Vault stores an OAuth2 refresh token for Gmail or Outlook (ADR-0024).
+	// Payload JSON: {"provider":"gmail"|"outlook","refresh_token","email_address"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_OAUTH2 AuthScheme = 15
+	// EMAIL_APP_PASSWORD: Vault stores an app-password credential (e.g. Google App Password) (ADR-0024).
+	// Payload JSON: {"username","app_password","imap_host","imap_port","smtp_host","smtp_port"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_APP_PASSWORD AuthScheme = 16
 )
 
 // Enum value maps for AuthScheme.
@@ -90,6 +99,9 @@ var (
 		11: "AUTH_SCHEME_SSH_PRIVATE_KEY",
 		12: "AUTH_SCHEME_SSH_CA",
 		13: "AUTH_SCHEME_SSH_PASSWORD",
+		14: "AUTH_SCHEME_EMAIL_PASSWORD",
+		15: "AUTH_SCHEME_EMAIL_OAUTH2",
+		16: "AUTH_SCHEME_EMAIL_APP_PASSWORD",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -106,6 +118,9 @@ var (
 		"AUTH_SCHEME_SSH_PRIVATE_KEY":           11,
 		"AUTH_SCHEME_SSH_CA":                    12,
 		"AUTH_SCHEME_SSH_PASSWORD":              13,
+		"AUTH_SCHEME_EMAIL_PASSWORD":            14,
+		"AUTH_SCHEME_EMAIL_OAUTH2":              15,
+		"AUTH_SCHEME_EMAIL_APP_PASSWORD":        16,
 	}
 )
 

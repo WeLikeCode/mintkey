@@ -91,7 +91,7 @@ See §5 below.
 | # | AC | Status |
 |---|---|---|
 | AC-1 | **Contracts**: vault.proto adds `AUTH_SCHEME_EMAIL_PASSWORD=14`, `AUTH_SCHEME_EMAIL_OAUTH2=15`, `AUTH_SCHEME_EMAIL_APP_PASSWORD=16`. openapi.yaml + mcp/tools.yaml + audit-event.schema.json + change-event.schema.json + span-attributes.md all reflect email surface. `make contracts-test` green. | green (pending C-FINAL) — all deliverables landed in C-1 rounds 1+2; `make contracts-test` Makefile target wiring deferred to C-2 |
-| AC-2 | **Backend skeleton**: `apps/email-proxy/` builds (`go build ./...`), unit tests `go test ./... -short` green, Dockerfile produces a runnable image. Module path `github.com/mintkey/mintkey/services/email-proxy`. `go.work` updated. | red |
+| AC-2 | **Backend skeleton**: `apps/email-proxy/` builds (`go build ./...`), unit tests `go test ./... -short` green, Dockerfile produces a runnable image. Module path `github.com/mintkey/mintkey/services/email-proxy`. `go.work` updated. | green (pending C-FINAL) — C-2 landed: 30 tests pass, Dockerfile 20.7 MB distroless image, go vet clean, ssh-proxy + vault-adapter compile unbroken, vault.pb.go enum values 14/15/16 added |
 | AC-3 | **Auth + security primitives**: JWT validation via broker JWKS (Ed25519, force-refresh on unknown kid per ADR-0016.2), RFC 5322 address parser rejects `\r\n` injection, domain allowlist enforced, rate limiting via Postgres advisory locks. Red-team tests pass (`tests/security/test_email_proxy_redteam.py`). | red |
 | AC-4 | **REST API + 9 endpoints**: all endpoints in design.md §"REST API Design" implemented and reachable on :8088 with brokered-JWT auth. Permission checks enforce `read:email` / `send:email` / `write:email` / `delete:email`. Handler unit tests cover success + 4xx paths. | red |
 | AC-5 | **IMAP/SMTP clients + connection pool**: per-service IMAP pool (default 5 conns, 5-min idle), UIDVALIDITY tracking, SMTP per-op connect. OAuth2 (Gmail + Outlook) with singleflight refresh. Mock-provider integration tests green. | red |
@@ -210,6 +210,7 @@ Round 1, C-1 PASS (2026-06-02). All contract-level additions for email-proxy lan
 
 - 2026-06-02 — planner session produced this `00-plan.md`. tasks.md banner added. No code touched.
 - 2026-06-02 — C-1 IMPLEMENTER: all contract-level additions landed. 19 Go tests + 19 pytest assertions green. Single commit on feat/email-proxy.
+- 2026-06-02 — C-2 IMPLEMENTER: Go skeleton landed. apps/email-proxy/ created with cmd/email-proxy + cmd/email-proxy-health + internal/{config,auth,vault,server}. 30 unit tests pass (go test ./... -short). vault.pb.go updated with AUTH_SCHEME_EMAIL_PASSWORD=14/EMAIL_OAUTH2=15/EMAIL_APP_PASSWORD=16. go.work updated. Dockerfile builds 20.7 MB distroless image. ssh-proxy + vault-adapter + admin-api regressions: 0. Smoke: binary starts, warns on unreachable vault, shuts down gracefully on SIGTERM.
 
 ## 9. Notes
 
