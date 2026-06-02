@@ -42,7 +42,7 @@ func (n *noopVault) GetCredential(_ context.Context, _, _ string, _ vault.AuthSc
 // noopSMTP is a minimal SMTPSender for routing tests.
 type noopSMTP struct{}
 
-func (n *noopSMTP) Send(_ context.Context, _ smtppkg.Credential, _ smtppkg.EmailSendRequest) (string, error) {
+func (n *noopSMTP) Send(_ context.Context, _ smtppkg.Credential, _ smtppkg.EmailSendRequest, _ smtppkg.DialTarget) (string, error) {
 	return "", nil
 }
 

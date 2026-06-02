@@ -48,6 +48,11 @@ type cacheEntry struct {
 	sshUser               string // SSH-only: username — ADR-0021
 	serviceBaseUrl        string // canonical upstream address from services.base_url — ADR-0023
 	tlsInsecureSkipVerify bool   // email-only: skip TLS cert verification — ADR-0024
+	// Email-only: per-service SMTP/IMAP routing metadata — ADR-0024 (Phase 2).
+	smtpHost string
+	smtpPort int32
+	imapHost string
+	imapPort int32
 	expiresAt             time.Time
 }
 
@@ -89,12 +94,17 @@ type Entry struct {
 	SSHUser               string // SSH-only: username — ADR-0021
 	ServiceBaseUrl        string // canonical upstream address from services.base_url — ADR-0023
 	TlsInsecureSkipVerify bool   // email-only: skip TLS cert verification — ADR-0024
+	// Email-only: per-service SMTP/IMAP routing metadata — ADR-0024 (Phase 2).
+	SMTPHost string
+	SMTPPort int32
+	IMAPHost string
+	IMAPPort int32
 }
 
 // Put stores a cache entry for the given key with the configured TTL.
 // wrappedDEK and encPayload must be ENCRYPTED blobs — callers must never pass
 // plaintext.
-func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam, targetAddress, sshUser, serviceBaseUrl string, tlsInsecureSkipVerify bool) {
+func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam, targetAddress, sshUser, serviceBaseUrl string, tlsInsecureSkipVerify bool, smtpHost string, smtpPort int32, imapHost string, imapPort int32) {
 	k := cacheKey{tenantID: tenantID, serviceID: serviceID, keyVersion: keyVersion}
 	// Copy slices so the caller's buffer changes don't corrupt the cache.
 	wCopy := make([]byte, len(wrappedDEK))
@@ -115,6 +125,10 @@ func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK
 		sshUser:               sshUser,
 		serviceBaseUrl:        serviceBaseUrl,
 		tlsInsecureSkipVerify: tlsInsecureSkipVerify,
+		smtpHost:              smtpHost,
+		smtpPort:              smtpPort,
+		imapHost:              imapHost,
+		imapPort:              imapPort,
 		expiresAt:             time.Now().Add(c.ttl),
 	}
 	c.mu.Unlock()
@@ -157,6 +171,10 @@ func (c *DEKCache) Get(tenantID, serviceID string, keyVersion uint32) (Entry, bo
 		SSHUser:               entry.sshUser,
 		ServiceBaseUrl:        entry.serviceBaseUrl,
 		TlsInsecureSkipVerify: entry.tlsInsecureSkipVerify,
+		SMTPHost:              entry.smtpHost,
+		SMTPPort:              entry.smtpPort,
+		IMAPHost:              entry.imapHost,
+		IMAPPort:              entry.imapPort,
 	}, true
 }
 

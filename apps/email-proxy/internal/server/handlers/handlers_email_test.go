@@ -66,11 +66,13 @@ func (s *stubVault) GetCredential(_ context.Context, _, _ string, _ vault.AuthSc
 
 // stubSMTP is a fake SMTPSender.
 type stubSMTP struct {
-	msgID string
-	err   error
+	msgID         string
+	err           error
+	capturedTarget smtp.DialTarget // records the DialTarget from the last Send call
 }
 
-func (s *stubSMTP) Send(_ context.Context, _ smtp.Credential, _ smtp.EmailSendRequest) (string, error) {
+func (s *stubSMTP) Send(_ context.Context, _ smtp.Credential, _ smtp.EmailSendRequest, target smtp.DialTarget) (string, error) {
+	s.capturedTarget = target
 	return s.msgID, s.err
 }
 
@@ -707,6 +709,65 @@ func TestNoopAuditEmitter_DoesNotPanic(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("NoopAuditEmitter.Emit returned error: %v", err)
+	}
+}
+
+// ============================================================================
+// Per-service SMTP routing — DialTarget threading test (ADR-0024 Phase 2)
+// ============================================================================
+
+// oauth2VaultCredWithSMTP returns an OAuth2 vault credential that includes
+// per-service SMTP routing metadata (smtp_host, smtp_port).
+func oauth2VaultCredWithSMTP(smtpHost string, smtpPort int32) *vault.Credential {
+	payload := `{"provider":"email_password","refresh_token":"rt_secret","email_address":"cici@softuraj.solutions"}`
+	return &vault.Credential{
+		Value:                 []byte(payload),
+		AuthScheme:            vault.AuthSchemeEmailOAuth2,
+		BaseUrl:               "imap.softuraj.solutions:993",
+		SMTPHost:              smtpHost,
+		SMTPPort:              smtpPort,
+		TlsInsecureSkipVerify: true,
+	}
+}
+
+// TestHandleSendMessage_PerServiceSMTP_DialTargetThreaded verifies that the
+// smtp_host and smtp_port from the vault credential response are correctly
+// forwarded to SMTPSender.Send as a DialTarget (ADR-0024 Phase 2).
+// This is the key regression guard for the cici-softuraj 503 fix.
+func TestHandleSendMessage_PerServiceSMTP_DialTargetThreaded(t *testing.T) {
+	const wantHost = "im.softuraj.solutions"
+	const wantPort = int32(465)
+
+	stubS := &stubSMTP{msgID: "msg-perservice@mintkey.email-proxy"}
+	ae := &capturingAuditEmitter{}
+	h := makeHandlers(
+		&stubPool{},
+		&stubOAuth2{token: "access_tok"},
+		&stubVault{cred: oauth2VaultCredWithSMTP(wantHost, wantPort)},
+		stubS,
+		ae,
+	)
+
+	body := `{"to":["rcpt@example.com"],"subject":"per-service test","body":"It works."}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/email-proxy/messages?service_id=svc_01TEST", strings.NewReader(body))
+	req = injectClaims(req, defaultClaims())
+	rr := httptest.NewRecorder()
+
+	h.HandleSendMessage(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Assert the DialTarget received by SMTPSender contains per-service config.
+	if stubS.capturedTarget.Host != wantHost {
+		t.Errorf("DialTarget.Host = %q, want %q", stubS.capturedTarget.Host, wantHost)
+	}
+	if stubS.capturedTarget.Port != int(wantPort) {
+		t.Errorf("DialTarget.Port = %d, want %d", stubS.capturedTarget.Port, wantPort)
+	}
+	if !stubS.capturedTarget.InsecureSkipVerify {
+		t.Error("DialTarget.InsecureSkipVerify = false, want true (credential has tls_insecure_skip_verify=true)")
 	}
 }
 

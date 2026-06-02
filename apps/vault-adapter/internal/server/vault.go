@@ -76,6 +76,11 @@ type GetCredentialResult struct {
 	SSHUser               string // SSH-only: SSH username to authenticate as — ADR-0021
 	BaseUrl               string // Canonical upstream address from services.base_url — ADR-0023 Phase 3
 	TlsInsecureSkipVerify bool   // email-only: skip TLS cert verification — ADR-0024
+	// Email-only: per-service SMTP/IMAP routing metadata — ADR-0024 (Phase 2).
+	SMTPHost string
+	SMTPPort int32
+	IMAPHost string
+	IMAPPort int32
 }
 
 // RevokeCredentialArgs holds the input for RevokeCredential.
@@ -293,6 +298,10 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				SSHUser:               e.SSHUser,
 				BaseUrl:               e.ServiceBaseUrl,
 				TlsInsecureSkipVerify: e.TlsInsecureSkipVerify,
+				SMTPHost:              e.SMTPHost,
+				SMTPPort:              e.SMTPPort,
+				IMAPHost:              e.IMAPHost,
+				IMAPPort:              e.IMAPPort,
 			}, nil
 		}
 	}
@@ -315,7 +324,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl, rec.TlsInsecureSkipVerify)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl, rec.TlsInsecureSkipVerify, rec.SMTPHost, rec.SMTPPort, rec.IMAPHost, rec.IMAPPort)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -338,6 +347,10 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 		SSHUser:               rec.SSHUser,
 		BaseUrl:               rec.ServiceBaseUrl,
 		TlsInsecureSkipVerify: rec.TlsInsecureSkipVerify,
+		SMTPHost:              rec.SMTPHost,
+		SMTPPort:              rec.SMTPPort,
+		IMAPHost:              rec.IMAPHost,
+		IMAPPort:              rec.IMAPPort,
 	}, nil
 }
 

@@ -99,29 +99,38 @@ type EmailSendRequest struct {
 	Attachments []Attachment
 }
 
-// Config carries transport-level configuration for the Client.
+// Config carries boot-time transport configuration for the Client.
+// Host, Port, UseTLS, UseSTARTTLS are intentionally omitted here; they are
+// resolved per-send via DialTarget so each send uses the correct per-service
+// SMTP routing from the credential response (ADR-0024 Phase 2).
 type Config struct {
-	// Host is the SMTP server hostname or IP. Required.
-	Host string
-	// Port is the SMTP server port. Required.
-	Port int
-	// UseTLS enables implicit TLS (SMTPS, typically port 465).
-	// Mutually exclusive with UseSTARTTLS.
-	UseTLS bool
-	// UseSTARTTLS enables opportunistic STARTTLS upgrade after EHLO.
-	// Mutually exclusive with UseTLS.
-	UseSTARTTLS bool
 	// TLSConf overrides the TLS configuration used for dial/STARTTLS.
 	// If nil, uses the system default with cert verification enabled.
+	// Per-send InsecureSkipVerify is applied on top of this via DialTarget.
 	TLSConf *tls.Config
-	// InsecureSkipVerify disables TLS certificate verification for this service.
-	// MUST only be set for trusted internal servers (ADR-0024). A structured
-	// warning is emitted via slog on every connection opened with this flag set.
-	InsecureSkipVerify bool
 	// DialTimeout is the per-connection dial timeout. Defaults to 30s.
 	DialTimeout time.Duration
 	// SendTimeout is the per-message send timeout. Defaults to 60s.
 	SendTimeout time.Duration
+}
+
+// DialTarget carries per-send SMTP connection parameters resolved from the
+// per-service email_services row. Constructed fresh on every HandleSendMessage
+// call from the vault credential response (ADR-0024 Phase 2).
+//
+// Port semantics:
+//   - 465 → implicit TLS (SMTPS, UseTLS=true, UseSTARTTLS=false)
+//   - 587 → STARTTLS upgrade (UseTLS=false, UseSTARTTLS=true)
+//   - 25  → rejected (cleartext SMTP; no opt-in flag exists)
+//   - other → STARTTLS heuristic (same as 587)
+type DialTarget struct {
+	// Host is the SMTP server hostname. Required.
+	Host string
+	// Port is the SMTP server port. Required (must not be 0 or 25).
+	Port int
+	// InsecureSkipVerify disables TLS certificate verification for this send.
+	// Mirrors the per-service tls_insecure_skip_verify vault field (ADR-0024).
+	InsecureSkipVerify bool
 }
 
 // Client is the SMTP send client. All state is in Config; Clients are safe
@@ -141,20 +150,34 @@ func New(cfg Config) *Client {
 	return &Client{cfg: cfg}
 }
 
-// Send constructs a MIME message and delivers it via SMTP.
+// Send constructs a MIME message and delivers it via SMTP using the
+// per-send DialTarget (host, port, TLS mode) resolved from the per-service
+// email_services credential row (ADR-0024 Phase 2).
+//
+// Port semantics applied internally (see DialTarget):
+//   - 465 → implicit TLS (SMTPS)
+//   - 587 or other → STARTTLS
+//   - 25  → rejected (cleartext; no opt-in flag)
 //
 // It performs:
 //  1. Input validation (CRLF injection checks via security.SanitizeHeader).
 //  2. MIME message construction (multipart if HTML or attachments present).
-//  3. Per-operation TCP/TLS dial.
+//  3. Per-operation TCP/TLS dial using target.Host:target.Port.
 //  4. SMTP AUTH (PLAIN or XOAUTH2 depending on cred.AuthMode).
 //  5. MAIL FROM / RCPT TO / DATA exchange.
 //  6. Returns the Message-ID assigned to the message (generated locally,
 //     not parsed from server response since not all servers echo it).
 //
 // Returns an error for any security boundary violation (CRLF injection,
-// TLS failure, auth failure, protocol error).
-func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest) (string, error) {
+// TLS failure, auth failure, protocol error, cleartext port 25).
+func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest, target DialTarget) (string, error) {
+	// -----------------------------------------------------------------------
+	// 0. Reject port 25 (cleartext SMTP). No opt-in flag exists.
+	// -----------------------------------------------------------------------
+	if target.Port == 25 {
+		return "", fmt.Errorf("smtp: port 25 (cleartext SMTP) is not permitted; configure smtp_port to 465 (implicit TLS) or 587 (STARTTLS)")
+	}
+
 	// -----------------------------------------------------------------------
 	// 1. Build and validate the MIME message.
 	// -----------------------------------------------------------------------
@@ -176,30 +199,42 @@ func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest
 
 	// -----------------------------------------------------------------------
 	// 3. Dial.
+	// Discriminate TLS mode by port:
+	//   465 → implicit TLS (SMTPS, UseTLS=true)
+	//   587 or other → STARTTLS (UseSTARTTLS=true)
 	// -----------------------------------------------------------------------
-	addr := fmt.Sprintf("%s:%d", c.cfg.Host, c.cfg.Port)
+	addr := fmt.Sprintf("%s:%d", target.Host, target.Port)
+	useTLS := target.Port == 465
+	useSTARTTLS := !useTLS
 
-	// Per-credential InsecureSkipVerify overrides the static config value.
+	// Per-credential InsecureSkipVerify merges with per-send DialTarget value.
 	// This allows per-service TLS bypass from the vault response (ADR-0024).
-	effectiveInsecureSkipVerify := c.cfg.InsecureSkipVerify || cred.InsecureSkipVerify
+	effectiveInsecureSkipVerify := target.InsecureSkipVerify || cred.InsecureSkipVerify
 
 	if effectiveInsecureSkipVerify {
 		slog.Warn("smtp: TLS certificate verification DISABLED for connection",
-			"host", c.cfg.Host,
-			"port", strconv.Itoa(c.cfg.Port),
+			"host", target.Host,
+			"port", strconv.Itoa(target.Port),
 			"tls_insecure_skip_verify", true,
 		)
 	}
+
+	slog.Debug("smtp: dialing",
+		"host", target.Host,
+		"port", strconv.Itoa(target.Port),
+		"use_tls", useTLS,
+		"use_starttls", useSTARTTLS,
+	)
 
 	dialCtx, dialCancel := context.WithTimeout(ctx, c.cfg.DialTimeout)
 	defer dialCancel()
 
 	var conn net.Conn
-	if c.cfg.UseTLS {
+	if useTLS {
 		tlsCfg := c.cfg.TLSConf
 		if tlsCfg == nil {
 			tlsCfg = &tls.Config{
-				ServerName:         c.cfg.Host,
+				ServerName:         target.Host,
 				MinVersion:         tls.VersionTLS12,
 				InsecureSkipVerify: effectiveInsecureSkipVerify, //nolint:gosec // per-service opt-in, operator-controlled (ADR-0024)
 			}
@@ -225,17 +260,17 @@ func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest
 		return "", fmt.Errorf("smtp: set deadline: %w", err)
 	}
 
-	sc, err := smtp.NewClient(conn, c.cfg.Host)
+	sc, err := smtp.NewClient(conn, target.Host)
 	if err != nil {
 		return "", fmt.Errorf("smtp: new client: %w", err)
 	}
 	defer sc.Close()
 
-	if c.cfg.UseSTARTTLS {
+	if useSTARTTLS {
 		tlsCfg := c.cfg.TLSConf
 		if tlsCfg == nil {
 			tlsCfg = &tls.Config{
-				ServerName:         c.cfg.Host,
+				ServerName:         target.Host,
 				MinVersion:         tls.VersionTLS12,
 				InsecureSkipVerify: effectiveInsecureSkipVerify, //nolint:gosec // per-service opt-in, operator-controlled (ADR-0024)
 			}

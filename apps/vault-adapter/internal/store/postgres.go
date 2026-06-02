@@ -176,17 +176,23 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 	// LEFT JOIN public.services so that services.base_url (the canonical SSH dial
 	// target per ADR-0023 Phase 3) is returned alongside the credential row.
 	// LEFT JOIN public.email_services so that email_services.tls_insecure_skip_verify
-	// (ADR-0024) is returned for email service credentials.
+	// and per-service SMTP/IMAP routing metadata (ADR-0024) are returned for email
+	// service credentials.
 	// COALESCE(s.base_url, '') ensures a NULL base_url scans cleanly into a string.
 	// COALESCE(es.tls_insecure_skip_verify, false) ensures a NULL (non-email service)
-	// scans cleanly to false.
+	// scans cleanly to false. COALESCE(es.*_host, '') / COALESCE(es.*_port, 0) do
+	// the same for SMTP/IMAP routing fields.
 	// The JOINs are tenant-scoped via the WHERE clause; RLS on vault.credentials is
 	// already enforced by the set_config GUC above.
 	const cols = `vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 	              vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 	              vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
 	              COALESCE(s.base_url, '') AS service_base_url,
-	              COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify`
+	              COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify,
+	              COALESCE(es.smtp_host, '') AS smtp_host,
+	              COALESCE(es.smtp_port, 0) AS smtp_port,
+	              COALESCE(es.imap_host, '') AS imap_host,
+	              COALESCE(es.imap_port, 0) AS imap_port`
 
 	var row pgx.Row
 	if keyVersion == 0 {
@@ -346,13 +352,17 @@ func (s *PostgresStore) ListVersions(ctx context.Context, tenantID, serviceID st
 }
 
 // scanPgRecord scans a pgx.Row into a CredentialRecord (full columns).
-// The query must SELECT the 17-column set produced by the Get() LEFT JOIN:
+// The query must SELECT the 21-column set produced by the Get() LEFT JOIN:
 //
 //	vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 //	vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 //	vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
 //	COALESCE(s.base_url, '') AS service_base_url,
-//	COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify
+//	COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify,
+//	COALESCE(es.smtp_host, '') AS smtp_host,
+//	COALESCE(es.smtp_port, 0) AS smtp_port,
+//	COALESCE(es.imap_host, '') AS imap_host,
+//	COALESCE(es.imap_port, 0) AS imap_port
 func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 	var r CredentialRecord
 	if err := row.Scan(
@@ -364,6 +374,8 @@ func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 		&r.TargetAddress, &r.SSHUser,
 		&r.ServiceBaseUrl,
 		&r.TlsInsecureSkipVerify,
+		&r.SMTPHost, &r.SMTPPort,
+		&r.IMAPHost, &r.IMAPPort,
 	); err != nil {
 		return nil, err
 	}
