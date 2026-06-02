@@ -413,8 +413,12 @@ async def _handle_email_service_token(
         "service_kind": "email",
         "email_proxy_url": email_proxy_url,
         "hint": (
-            f"Use this token as 'Authorization: Bearer <token>' when calling "
-            f"{email_proxy_url}/v1/email-proxy/* with ?service_id={wire_service_id}"
+            "Recommended path — call the MCP email tools (email_list_mailboxes, "
+            "email_search_messages, email_fetch_message, email_send) on this "
+            f"MCP server; they take ?email_service_id={wire_service_id} (alias: "
+            "?service_id=...). Direct path — set 'Authorization: Bearer <token>' "
+            f"and call {email_proxy_url}/v1/email-proxy/* with "
+            f"?service_id={wire_service_id}."
         ),
     })
 
