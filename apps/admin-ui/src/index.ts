@@ -34,6 +34,7 @@ import { ApiKeysResource } from "./resources/api_keys.js";
 import { PermissionsResource } from "./resources/permissions.js";
 import { AuditResource } from "./resources/audit.js";
 import { TenantsResource } from "./resources/tenants.js";
+import { EmailServicesResource } from "./resources/email-services.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
@@ -149,6 +150,7 @@ async function main() {
       { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
       { resource: AuditResource.adminResource, options: AuditResource.options },
       { resource: TenantsResource.adminResource, options: TenantsResource.options },
+      { resource: EmailServicesResource.adminResource, options: EmailServicesResource.options },
     ],
     rootPath: "/admin",
     branding: {

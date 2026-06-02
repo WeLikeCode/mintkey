@@ -61,6 +61,8 @@ export const Components = {
   AgentExpiryDisplay: componentLoader.add("AgentExpiryDisplay", "./properties/AgentExpiryDisplay"),
   // Agent key rotated notice — hard-cutover rotation form + show-once result screen (UX-FB-AK-2)
   AgentKeyRotatedNotice: componentLoader.add("AgentKeyRotatedNotice", "./actions/AgentKeyRotatedNotice"),
+  // Email service OAuth2 setup — authorize/re-authorize widget on show page (C-10)
+  EmailServiceOAuth2Setup: componentLoader.add("EmailServiceOAuth2Setup", "./actions/EmailServiceOAuth2Setup"),
 };
 
 // Global override: show-page renderer that inlines property.description below
