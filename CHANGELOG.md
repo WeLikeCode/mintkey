@@ -11,6 +11,63 @@ pre-release (`0.1.0-preview.N`) during pre-alpha.
 
 ---
 
+## [0.3.0-preview.1] — 2026-06-02
+
+### Added
+
+- **Email proxy service** (ADR-0024) — new `apps/email-proxy/` Go binary listening on `:8088`
+  with 9 REST endpoints (`/v1/email/mailboxes`, `/v1/email/messages`, `/v1/email/send`, etc.),
+  JWT authentication (Ed25519 JWKS, force-refresh on unknown kid per ADR-0016.2), IMAP
+  connection pool (5 conns per service, 5-min idle, UIDVALIDITY tracking), and per-op SMTP.
+- **9 new MCP tools** surfaced via `apps/mcp-server/`: `mintkey_list_mailboxes`,
+  `mintkey_list_emails`, `mintkey_read_email`, `mintkey_send_email`, `mintkey_search_emails`,
+  `mintkey_delete_email`, `mintkey_move_email`, `mintkey_download_attachment`, `mintkey_mark_email`.
+- **3 new auth schemes**: `email_password` (AUTH_SCHEME_EMAIL_PASSWORD=14),
+  `email_oauth2` (AUTH_SCHEME_EMAIL_OAUTH2=15), `email_app_password`
+  (AUTH_SCHEME_EMAIL_APP_PASSWORD=16) added to `vault.proto` and all dependent contracts.
+- **4 email permission actions**: `read:email`, `send:email`, `write:email`, `delete:email`.
+- **Admin-API endpoints** for email service registration, credential management, OAuth2
+  `authorize` + `callback` + `refresh` flows. admin-api holds the OAuth2 `client_secret` and
+  performs token exchange (never email-proxy, per ADR-0024 §D7 + corrigendum OQ-3/B1).
+- **Admin-UI** email-services resource (`apps/admin-ui/`) with list/detail/create/edit/delete
+  views and OAuth2 setup component with cryptographic `state` CSRF protection
+  (`oauth2_state` PG table, migration 023, 10-min TTL + opportunistic GC).
+- **`email_services` PG table** (Liquibase migration 022) with FK to `services`, per-service
+  `imap_host`, `imap_port`, `smtp_host`, `smtp_port`, `provider`, and `allowed_domains`.
+  `services.base_url` remains `NULL` for email services (see ADR-0024 corrigendum
+  `services.base_url divergence`).
+- **`oauth2_state` PG table** (Liquibase migration 023) for OAuth2 CSRF state storage.
+- **13 audit event types** (superset of ADR-0024 §D13): `email.sent`, `email.received`,
+  `email.deleted`, `email.moved`, `email.searched`, `email.attachment.downloaded`,
+  `email.service.registered`, `email.service.auth_expired`, `email.rate_limit.exceeded`,
+  `email.domain.blocked`, `email.oauth2.refreshed`, `email.oauth2.expired`,
+  `email.flags.updated`. All events participate in the per-tenant audit hash chain.
+- **Grafana dashboard** `grafana/dashboards/email-proxy.json` — 6 panels: request rate by
+  endpoint, request latency p50/p95/p99, OAuth2 refresh outcomes, rate-limit throttle count,
+  active IMAP connections per provider, audit event emit rate by event_type.
+- **`docs/HOW-TO.md` §6** — full operator playbook for adding email services (password /
+  OAuth2 / app-password recipes), OAuth2 setup workflow, granting agent permissions,
+  MCP tool invocation guide, and operational notes.
+- **`apps/mcp-server/skills/agent-bootstrap.md` `<email_services>` block** — 9 MCP tools,
+  scope table, behavioral notes, message-ID format, attachment-ID format, worked examples.
+- **ADR-0024 corrigendum** — documents OQ-1/2/3/4 + B1/B2 + S1 resolutions; explains
+  `services.base_url` divergence for email services.
+- **ADR README index** updated with ADR-0024 entry.
+- **`docs/architecture/01-architecture/02-container-view.md`** updated — email-proxy shown
+  as a sibling data-plane component (D2) with JWKS, gRPC, OAuth2-refresh, and IMAP/SMTP edges.
+
+### Changed
+
+- **Contract surface**:
+  - `vault.proto` — `AuthScheme` enum +3 values (14/15/16).
+  - `openapi.yaml` — +13 paths + 8 schemas (email service CRUD, OAuth2 flows, attachment
+    download, email operations).
+  - `mcp/tools.yaml` — +9 tool definitions.
+  - `audit-event.schema.json` — +13 event types + 3 target types (`email_service`,
+    `email_message`, `email_attachment`).
+
+---
+
 ## [0.1.0-preview.1] — 2026-05-19
 
 First versioned public release of Mintkey. See [`docs/RELEASE.md`](docs/RELEASE.md)

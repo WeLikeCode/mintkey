@@ -36,6 +36,7 @@ flowchart LR
     %% Data plane
     subgraph DP["🟧 Data plane"]
         proxy["Egress Proxy<br/>(credential injection)"]
+        emailproxy["Email Proxy<br/>(:8088 REST)<br/>(IMAP/SMTP broker)"]
     end
 
     %% Observability stack
@@ -70,6 +71,13 @@ flowchart LR
     proxy --> audit
     proxy -- "forwarded request<br/>+ real credential" --> backend
 
+    agent -- "HTTP :8088 + JWT" --> emailproxy
+    emailproxy -- "verify JWT (JWKS)" --> broker
+    emailproxy -- "fetch credential (gRPC)" --> vaultad
+    emailproxy --> audit
+    emailproxy -- "OAuth2 refresh" --> api
+    emailproxy -- "IMAP/SMTP + real credential" --> backend
+
     vaultad -- "encrypt/decrypt DEK" --> kms
 
     %% OTel fan-in
@@ -89,7 +97,7 @@ flowchart LR
     classDef obs fill:#f5f0ff,stroke:#759;
     classDef ext fill:#f0f0f0,stroke:#777,stroke-dasharray: 4 3;
     class ui,api,idp,mcp,broker,vaultad,audit,db cp;
-    class proxy dp;
+    class proxy,emailproxy dp;
     class otelc,jaeger,prom,graf obs;
     class kms,backend ext;
 ```
@@ -151,6 +159,15 @@ flowchart LR
 - **Statelessness**: holds no per‑agent state; can be horizontally scaled.
 - **Quality drivers**: low p99 latency overhead; resilient to backend faults; fail‑closed on JWT validation; never logs the injected credential.
 - **Implementation**: per [ADR‑0004](adr/0004-egress-proxy-kong.md) the proxy is realized as **Kong Gateway (DB‑less)** + a custom **Go plugin via go‑pdk** for credential injection, plus a small **Kong‑syncer** (Go) in the control plane that pushes declarative YAML to Kong's `/config` endpoint on operator events. Envoy + ext_authz is the documented upgrade path.
+
+#### D2. Email Proxy
+- **Responsibility**: accept agent REST requests on `:8088`, validate brokered JWTs (Ed25519 JWKS from broker), check permission scopes (`read:email` / `send:email` / `write:email` / `delete:email`), fetch the email credential from the Vault Adapter via gRPC, and perform IMAP reads or SMTP sends on behalf of the agent. The agent never holds the upstream password or OAuth2 token.
+- **REST endpoints** (Phase 1): 9 endpoints at `:8088/v1/email/…` covering mailbox list, message list/read/search/delete/move/flags, send, and attachment download.
+- **IMAP pool**: per-`(tenant_id, service_id)` pool (default 5 conns, 5-min idle, UIDVALIDITY tracking). SMTP connections are per-operation (no pool).
+- **OAuth2 refresh**: expired access tokens trigger a call to the admin-api internal refresh endpoint (`POST /v1/internal/oauth2/{provider}/refresh`). email-proxy NEVER holds the `client_secret` or calls the provider directly for token exchange.
+- **Talks to**: Broker (JWKS), Vault Adapter (credential fetch via gRPC), Admin REST API (OAuth2 refresh), Audit (hash-chain events), upstream IMAP/SMTP servers.
+- **Quality drivers**: credential isolation (agent never sees plaintext); 13 audit event types; rate limiting per `(agent_id, service_id, hour)` via Postgres advisory locks; IMAP/SMTP injection prevention (RFC 5322 validation, `\r\n` rejection, parameterized SEARCH).
+- **Decision record**: [ADR-0024](adr/0024-email-proxy-support.md).
 
 ### Observability stack (commodity, but in scope)
 

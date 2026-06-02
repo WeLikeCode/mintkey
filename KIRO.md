@@ -15,6 +15,7 @@ The agent never holds a usable credential. See [README.md](README.md) for the fu
 | [.kiro/steering/](.kiro/steering/) | Governance rules, architecture principles, and spec conventions |
 | [docs/architecture/](docs/architecture/) | Architect-owned source of truth: 20 ADRs, contracts, flows, threat model |
 | [docs/patterns/](docs/patterns/) | Builder-owned step-by-step recipes for common operations |
+| [.kiro/specs/email-proxy/](.kiro/specs/email-proxy/) | Email-proxy Kiro spec (requirements, design, tasks) — ADR-0024 implementation |
 
 ---
 

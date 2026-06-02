@@ -275,7 +275,283 @@ audit event.
 
 ---
 
-## 6. Vault migration: SQLite → Postgres
+## 6. Email services
+
+Mintkey can broker email credentials so agents send and receive email without holding passwords
+or OAuth2 tokens. A separate `email-proxy` container handles IMAP reads and SMTP sends on port
+**`:8088`**. The architecture decision is [ADR-0024](architecture/01-architecture/adr/0024-email-proxy-support.md).
+
+**Architecture overview:**
+
+```
+agent (JWT)
+       │
+       │  HTTP :8088  Authorization: Bearer <JWS>
+       ▼
+ email-proxy :8088
+ ├── validates JWT (JWKS from broker :8083)
+ ├── checks permission scope (read:email / send:email / write:email / delete:email)
+ ├── fetches credential (gRPC vault-adapter :8084)
+ │     └── auth_scheme: email_password | email_oauth2 | email_app_password
+ ├── IMAP connection pool (per service, max 5 idle, 5-min TTL)
+ └── SMTP per-operation connect
+             │
+             ▼
+     upstream IMAP / SMTP server (imap_host / smtp_host from email_services row)
+```
+
+> **No host key required.** Unlike the SSH proxy, the email-proxy does not have a persistent
+> host key. TLS to the upstream mail server uses the system trust store.
+
+> **OAuth2 refresh path.** email-proxy NEVER holds the OAuth2 `client_secret`. When an
+> access token is expired, it calls `POST /v1/internal/oauth2/{provider}/refresh` on the
+> admin-api (service-token authenticated, `X-Mintkey-Service-Token` header). The admin-api
+> performs the exchange and returns a new short-lived access token. The refresh token itself
+> never travels over that path (NFR-17). See §6.5 below.
+
+### 6.1 Adding an email service
+
+Three auth schemes are supported:
+
+| Scheme | When to use |
+|---|---|
+| `email_password` | Standard IMAP/SMTP with username + password |
+| `email_oauth2` | Gmail or Outlook via OAuth2 (refresh token stored in vault) |
+| `email_app_password` | Gmail 2-step verification app password |
+
+**Via Admin UI:**
+
+1. Services → New Email Service → choose provider template (`gmail-oauth2`, `outlook-oauth2`,
+   or `imap-password`).
+2. Fill **IMAP host** and **SMTP host** (e.g. `imap.gmail.com`, `smtp.gmail.com`).
+   > Unlike HTTP services, email services have TWO endpoints (`imap_host` + `smtp_host`)
+   > stored on the `email_services` row directly. `services.base_url` remains `NULL`
+   > for email services (per ADR-0024 corrigendum §services.base_url divergence).
+3. For `email_password` or `email_app_password`: Set Credential → paste username + password.
+4. For `email_oauth2`: continue to §6.2 (OAuth2 flow).
+
+**Via curl (email_password):**
+
+```bash
+# Step 1 — create the service
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "Corp IMAP",
+    "slug":        "corp-imap",
+    "display_name":"Corp Mail",
+    "auth_scheme": "email_password",
+    "email_service": {
+      "provider":   "generic_imap",
+      "imap_host":  "mail.corp.example.com",
+      "imap_port":  993,
+      "smtp_host":  "smtp.corp.example.com",
+      "smtp_port":  587
+    }
+  }')
+SID=$(echo "$SVC" | jq -r '.id')
+
+# Step 2 — store the credential
+curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services/$SID/credentials" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{"auth_scheme":"email_password","value":{"username":"ops@corp.example.com","password":"PASS_HERE"}}' \
+  | jq .
+```
+
+### 6.2 Registering Gmail/Outlook via OAuth2
+
+The OAuth2 flow runs entirely in the Admin UI. The operator clicks **Authorize** and the
+admin-api handles the token exchange server-side (the `client_secret` never leaves the
+admin-api process, consistent with ADR-0020 / ADR-0024 §D7).
+
+**Operator workflow:**
+
+1. In Admin UI → Email Services → select the service → **Setup OAuth2** tab.
+2. Click **Authorize with Google** (or **Authorize with Microsoft**).
+   - admin-api generates a cryptographic `state` parameter (stored in `oauth2_state` table
+     with a 10-minute TTL; opportunistic GC on expiry — migration 023).
+   - Browser redirects to the provider's OAuth2 consent screen.
+3. Complete consent in the provider's popup. Provider redirects back to
+   `http://localhost:8080/v1/tenants/{tid}/email-services/{sid}/oauth2/callback?code=...&state=...`.
+4. admin-api validates `state`, performs the token exchange, stores the refresh token in the
+   Vault Adapter via gRPC. The `email.service.registered` audit event is emitted.
+5. The Admin UI displays **Connected** status.
+
+**Required env vars on admin-api** (set in `.env` before `make dev`):
+
+```bash
+MINTKEY_OAUTH2_GOOGLE_CLIENT_ID=<your-google-client-id>
+MINTKEY_OAUTH2_GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+MINTKEY_OAUTH2_MICROSOFT_CLIENT_ID=<your-ms-client-id>
+MINTKEY_OAUTH2_MICROSOFT_CLIENT_SECRET=<your-ms-client-secret>
+```
+
+**Required env vars on email-proxy** (for the internal refresh call):
+
+```bash
+MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID=<service-identity-id>
+MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_TOKEN=<boot-secret>
+```
+
+These two env vars constitute the email-proxy's service identity for the internal
+OAuth2 refresh endpoint (OQ-2 resolution, ADR-0024 corrigendum).
+
+### 6.3 Granting agent permission
+
+Email services use action-based scopes rather than a single `call` action. Grant the
+appropriate scope(s) based on what the agent needs:
+
+| Action / scope | Allows |
+|---|---|
+| `read:email` | `list_mailboxes`, `list_emails`, `read_email`, `search_emails`, `download_attachment` |
+| `send:email` | `send_email` |
+| `write:email` | `move_email`, `mark_email` |
+| `delete:email` | `delete_email` |
+
+**Via Admin UI:** Permission Grants → New → select Agent, Service, and one of the four actions.
+
+**Via curl:**
+
+```bash
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"read:email\"}" | jq .
+
+# Grant send too (separate call — each action is a separate grant)
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"send:email\"}" | jq .
+```
+
+### 6.4 Agent calling the email service (MCP tools)
+
+Agents call email services through the nine MCP tools (see `agent-bootstrap.md`
+`<email_services>` block for the full reference). A typical flow:
+
+**Step 1 — request a token with the required scope:**
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"send:email\"}" | jq -r '.token')
+```
+
+**Step 2 — call the MCP tool** (the MCP server routes to email-proxy internally):
+
+```json
+{
+  "tool": "mintkey_send_email",
+  "arguments": {
+    "service_id": "svc_01...",
+    "to": ["alice@example.com"],
+    "subject": "Hello from agent",
+    "body": "This message was sent by an agent without holding any credentials."
+  }
+}
+```
+
+Expected response: `{"message_id": "uid:12345", "status": "sent"}`.
+
+**Available tools and required scopes:**
+
+| Tool | Scope | Description |
+|---|---|---|
+| `mintkey_list_mailboxes` | `read:email` | List IMAP mailboxes for the service |
+| `mintkey_list_emails` | `read:email` | Fetch envelopes from a mailbox |
+| `mintkey_read_email` | `read:email` | Fetch full message body |
+| `mintkey_send_email` | `send:email` | Send via SMTP |
+| `mintkey_search_emails` | `read:email` | Search by subject / from / date |
+| `mintkey_delete_email` | `delete:email` | Delete a message by UID |
+| `mintkey_move_email` | `write:email` | Move message to another mailbox |
+| `mintkey_download_attachment` | `read:email` | Download attachment bytes |
+| `mintkey_mark_email` | `write:email` | Set/unset flags (e.g. `\Seen`, `\Flagged`) |
+
+> **Email body content is never stored by Mintkey.** The broker fetches the body from
+> email-proxy on each `read_email` call. Mintkey only stores the credential (password or
+> OAuth2 refresh token) and the service configuration.
+
+### 6.5 Operational notes
+
+**OAuth2 token refresh.** email-proxy calls the admin-api internal refresh endpoint when an
+access token is expired:
+
+```
+POST /v1/internal/oauth2/{provider}/refresh
+X-Mintkey-Service-Token: <boot-secret>
+Query: service_id=<sid>&tenant_id=<tid>
+Body: (empty)
+```
+
+The refresh token itself is fetched by the admin-api directly from vault-adapter via gRPC;
+it never appears on the wire between email-proxy and admin-api (NFR-17). On failure
+(`token_revoked` or persistent HTTP 400), the `email.service.auth_expired` audit event is
+emitted and the service status transitions to `error`. Re-authorize via Admin UI to restore.
+
+Concurrent refresh storms are prevented by a `singleflight` group keyed on
+`(tenant_id, service_id)`.
+
+**IMAP connection pool sizing.** Default pool size is 5 connections per `(tenant_id, service_id)`.
+Idle timeout is 5 minutes. UIDVALIDITY is tracked per pool; a mismatch invalidates the pool
+and forces a reconnect. Adjust pool sizing via:
+
+```bash
+MINTKEY_EMAIL_IMAP_POOL_SIZE=10       # max per service (default: 5)
+MINTKEY_EMAIL_IMAP_IDLE_TIMEOUT=600   # seconds (default: 300)
+```
+
+**Rate limiting.** Rate limits are enforced per `(agent_id, service_id, hour)` via Postgres
+advisory locks (shared across email-proxy instances). On `email.rate_limit.exceeded` the
+proxy returns `429 Too Many Requests`. The limit is configured per permission grant
+`constraints.rate_limit`.
+
+**Domain filtering.** The `allowed_domains` list on an email service restricts outbound SMTP
+recipients. Any `To`, `Cc`, or `Bcc` address not matching the allowlist is rejected with
+`403 domain_not_allowed` and the `email.domain.blocked` audit event. Configure in Admin UI →
+Email Services → Edit → Allowed Domains. An empty list means no domain filtering.
+
+**TLS verification.** email-proxy verifies upstream TLS certificates using the system trust
+store. Self-signed or expired certs on the upstream IMAP/SMTP server will cause connection
+failure. To accept a custom CA, mount a PEM bundle and set:
+
+```bash
+MINTKEY_EMAIL_TLS_CA_BUNDLE=/etc/ssl/custom-ca.pem
+```
+
+**Audit trail.** All email operations emit audit events into the per-tenant hash chain
+(same `auditq.Queue` as the HTTP proxy and SSH proxy). Query recent events:
+
+```sql
+SELECT event_type, payload->>'agent_id', payload->>'subject_truncated'
+FROM audit_events
+WHERE event_type LIKE 'email.%'
+ORDER BY at DESC LIMIT 20;
+```
+
+13 event types are defined: `email.sent`, `email.received`, `email.deleted`, `email.moved`,
+`email.searched`, `email.attachment.downloaded`, `email.service.registered`,
+`email.service.auth_expired`, `email.rate_limit.exceeded`, `email.domain.blocked`,
+`email.oauth2.refreshed`, `email.oauth2.expired`, `email.flags.updated`.
+
+**Common confusions (FAQ):**
+
+| Question | Answer |
+|---|---|
+| "Does the agent see the password / OAuth2 token?" | No. Only the vault holds it. The agent presents a JWT; email-proxy fetches the credential internally. |
+| "Why does my OAuth2 service show `error` status?" | The refresh token was revoked by the provider. Re-authorize via Admin UI → Email Services → Setup OAuth2 → Re-authorize. |
+| "Can I use the HTTP proxy (`:8000`) to call IMAP?" | No. IMAP is a stateful TCP protocol. Use the email-proxy REST endpoints on `:8088` via MCP tools. |
+| "Does email-proxy need a host key like ssh-proxy?" | No. There is no persistent host key for email. TLS verification uses the system trust store. |
+| "Where does attachment data go?" | Attachments are streamed through email-proxy on demand. They are not stored in Mintkey. |
+
+---
+
+## 7. Vault migration: SQLite → Postgres
 
 > **When to run:** only when upgrading from a pre-2026-05-31 deployment where `MINTKEY_VAULT_BACKEND=sqlite` (or the env var was unset and the stack was running the SQLite-default build). New deployments use Postgres by default and can skip this section entirely.
 
