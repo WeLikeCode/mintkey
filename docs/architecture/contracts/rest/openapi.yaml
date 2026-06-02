@@ -3245,6 +3245,8 @@ components:
         - basic_auth
         - oauth2_client_credentials
         - oidc_client_secret
+        - mtls
+        - oauth2_password_grant
         - apple_jwt
         - google_service_account
         - ssh_private_key
@@ -3258,11 +3260,13 @@ components:
         - `basic_auth`: `Authorization: Basic base64(user:pass)`.
         - `oauth2_client_credentials`: token-exchange flow.
         - `oidc_client_secret`: used for the operator IdP integration only.
+        - `mtls`: mutual TLS client certificate injection.
+        - `oauth2_password_grant`: OAuth 2.0 resource owner password credentials grant.
         - `apple_jwt`: Apple Sign In with Apple JWT (p8 key, key_id, issuer_id).
         - `google_service_account`: Google IAM service account JSON key; Mintkey exchanges it for a short-lived access token.
-        - `ssh_private_key`: SSH private key (PEM/OpenSSH format) for SSH proxy (ADR-0021).
-        - `ssh_ca`: SSH Certificate Authority signing key for direct-connect mode (ADR-0021, Phase 2).
-        - `ssh_password`: SSH username+password for SSH proxy (ADR-0021). Prefer key-based when possible.
+        - `ssh_private_key`: SSH private key (PEM/OpenSSH format) for SSH proxy (ADR-0022).
+        - `ssh_ca`: SSH Certificate Authority signing key for direct-connect mode (ADR-0022, Phase 2).
+        - `ssh_password`: SSH username+password for SSH proxy (ADR-0022). Prefer key-based when possible.
 
     Service:
       type: object
@@ -3661,7 +3665,7 @@ components:
     CredSSHPrivateKey:
       type: object
       description: |
-        SSH private key credential for the SSH proxy (ADR-0021). The proxy
+        SSH private key credential for the SSH proxy (ADR-0022). The proxy
         parses the PEM and uses it for public-key authentication to the
         backend SSH server. The key is held in session scope and zeroed on
         disconnect.
@@ -3686,7 +3690,7 @@ components:
     CredSSHPassword:
       type: object
       description: |
-        SSH username+password credential for the SSH proxy (ADR-0021). Prefer
+        SSH username+password credential for the SSH proxy (ADR-0022). Prefer
         key-based authentication when possible. The password is stored
         envelope-encrypted by the Vault Adapter and never logged.
       properties:
@@ -4402,7 +4406,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, apple_jwt, google_service_account]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password]
 
     TransientCredentialCandidate:
       type: object
