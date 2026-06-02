@@ -43,6 +43,8 @@ export const Components = {
   // Typeahead combobox property components — agent_id + service_id pickers (UX-A)
   AgentCombobox: componentLoader.add("AgentCombobox", "./properties/AgentCombobox"),
   ServiceCombobox: componentLoader.add("ServiceCombobox", "./properties/ServiceCombobox"),
+  // Typeahead combobox for email_service_id — fetches from email_services resource (feat/email-perm-grants-pickers)
+  EmailServiceCombobox: componentLoader.add("EmailServiceCombobox", "./properties/EmailServiceCombobox"),
   // Template picker — browse + pick a service template before creating (OPS-S)
   ServiceTemplatePicker: componentLoader.add("ServiceTemplatePicker", "./actions/ServiceTemplatePicker"),
   // Copyable value — monospace code block + copy-to-clipboard button (OPS-X)

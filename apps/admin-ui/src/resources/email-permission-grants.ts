@@ -15,6 +15,7 @@ import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
+import { Components } from "../components/index.js";
 
 const _emailPermissionGrantsResource = new RestResource({
   id: "email_permission_grants",
@@ -57,15 +58,25 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
     editProperties: ["agent_id", "email_service_id"],
     filterProperties: ["agent_id", "email_service_id"],
     properties: {
+      // UX pickers: replace raw UUID text inputs with typeahead comboboxes
+      // matching the HTTP Permission Grants flow (permissions.ts lines 83-90).
       agent_id: {
         label: "Agent",
         isVisible: { list: true, show: true, edit: true, filter: true },
         description: "The agent being granted access to the email service.",
+        components: {
+          edit: Components.AgentCombobox,
+          filter: Components.AgentCombobox,
+        },
       },
       email_service_id: {
         label: "Email Service",
         isVisible: { list: true, show: true, edit: true, filter: true },
         description: "The email service the agent is being granted access to.",
+        components: {
+          edit: Components.EmailServiceCombobox,
+          filter: Components.EmailServiceCombobox,
+        },
       },
     },
     actions: {
