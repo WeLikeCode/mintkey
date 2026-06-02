@@ -34,8 +34,21 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.db.deps import get_db_session
+from admin_api.utils.wire_ids import wire_to_db_uuid
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+
+def _decode_id(value: str, prefix: str) -> str:
+    """Accept either bare UUID or wire-form ``<prefix>_<crockford>``; return UUID string.
+
+    The admin-ui AgentCombobox / EmailServiceCombobox pass the wire form when a
+    record is selected from the picker; raw curl callers may pass the UUID
+    directly. Both must work — ADR-0017.11.
+    """
+    if value.startswith(prefix + "_"):
+        return wire_to_db_uuid(value, prefix)
+    return value
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/email-permission-grants")
 
@@ -72,10 +85,25 @@ async def create_email_permission_grant(
     """
     await set_tenant_context(session, tenant_id)
 
+    # Decode wire-form prefixes (agent_<crockford>, esvc_<crockford>) → UUID.
+    # AdminJS pickers (AgentCombobox, EmailServiceCombobox) pass the wire form;
+    # raw curl callers may pass UUIDs directly. Accept both.
+    try:
+        agent_uuid = _decode_id(body.agent_id, "agent")
+        email_service_uuid = _decode_id(body.email_service_id, "esvc")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_id",
+                "title": "agent_id or email_service_id is not a valid wire-form or UUID",
+            },
+        )
+
     # Validate agent exists in this tenant
     agent_result = await session.execute(
         text("SELECT id FROM agents WHERE id = :aid AND tenant_id = :tid"),
-        {"aid": str(body.agent_id), "tid": str(tenant_id)},
+        {"aid": agent_uuid, "tid": str(tenant_id)},
     )
     if agent_result.fetchone() is None:
         return JSONResponse(
@@ -92,7 +120,7 @@ async def create_email_permission_grant(
             "SELECT id FROM email_services"
             " WHERE id = :esid AND tenant_id = :tid AND deleted_at IS NULL"
         ),
-        {"esid": str(body.email_service_id), "tid": str(tenant_id)},
+        {"esid": email_service_uuid, "tid": str(tenant_id)},
     )
     if esvc_result.fetchone() is None:
         return JSONResponse(
@@ -117,8 +145,8 @@ async def create_email_permission_grant(
             {
                 "id": str(grant_id),
                 "tenant_id": str(tenant_id),
-                "agent_id": str(body.agent_id),
-                "email_service_id": str(body.email_service_id),
+                "agent_id": agent_uuid,
+                "email_service_id": email_service_uuid,
                 "now": now,
             },
         )
@@ -134,7 +162,7 @@ async def create_email_permission_grant(
             )
         raise
 
-    # Emit audit event
+    # Emit audit event (record the canonical UUIDs we wrote to the DB)
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
@@ -144,8 +172,8 @@ async def create_email_permission_grant(
         target_id=grant_id,
         target_type="email_permission_grant",
         payload={
-            "agent_id": str(body.agent_id),
-            "email_service_id": str(body.email_service_id),
+            "agent_id": agent_uuid,
+            "email_service_id": email_service_uuid,
         },
     )
 
@@ -154,8 +182,8 @@ async def create_email_permission_grant(
         content={
             "id": str(grant_id),
             "tenant_id": str(tenant_id),
-            "agent_id": str(body.agent_id),
-            "email_service_id": str(body.email_service_id),
+            "agent_id": agent_uuid,
+            "email_service_id": email_service_uuid,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
         },
