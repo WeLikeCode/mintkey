@@ -33,6 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     timeout-minutes: 30
+    env:
+      # admin-api boots audit_fingerprint at import time and refuses startup
+      # if MINTKEY_AUDIT_HMAC_KEY is unset / invalid hex / <32 bytes
+      # (apps/admin-api/src/admin_api/services/audit_fingerprint.py:_load_hmac_key).
+      # .env.example carries a REPLACE_WITH_… placeholder, so compose
+      # interpolation alone yields an invalid key in CI; thread the value
+      # via shell env so compose substitution picks it up. Matches the
+      # pattern used by `test-integration` in ci.yml.
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -118,6 +127,9 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
+    env:
+      # See playwright-chromium env note above — same admin-api boot requirement.
+      MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
