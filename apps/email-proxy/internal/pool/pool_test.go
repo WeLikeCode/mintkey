@@ -57,7 +57,7 @@ func startServer(t *testing.T) (addr string, closeFn func()) {
 
 // testDialFn returns a dialFunc that connects to addr via raw net.Conn (no TLS).
 func testDialFn(addr string) dialFunc {
-	return func(ctx context.Context, _ string, _ imapwrap.DialMode, creds imapwrap.Credentials) (*imapwrap.Client, error) {
+	return func(ctx context.Context, _ string, _ imapwrap.DialMode, creds imapwrap.Credentials, _ bool) (*imapwrap.Client, error) {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			return nil, err

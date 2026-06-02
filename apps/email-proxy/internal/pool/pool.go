@@ -39,27 +39,29 @@ type pooledConn struct {
 
 // PerServicePool is the per-(tenant, service) connection pool.
 type PerServicePool struct {
-	mu          sync.Mutex
-	key         poolKey
-	creds       imapwrap.Credentials
-	dialMode    imapwrap.DialMode
-	addr        string
-	maxConns    int
-	idleTimeout time.Duration
+	mu                    sync.Mutex
+	key                   poolKey
+	creds                 imapwrap.Credentials
+	dialMode              imapwrap.DialMode
+	addr                  string
+	maxConns              int
+	idleTimeout           time.Duration
+	tlsInsecureSkipVerify bool // per-service TLS cert bypass (ADR-0024)
 
 	idle   []*pooledConn // available connections
 	active int           // count of leased connections
 }
 
 // newPerServicePool creates an empty PerServicePool.
-func newPerServicePool(key poolKey, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials, maxConns int, idleTimeout time.Duration) *PerServicePool {
+func newPerServicePool(key poolKey, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials, maxConns int, idleTimeout time.Duration, tlsInsecureSkipVerify bool) *PerServicePool {
 	return &PerServicePool{
-		key:         key,
-		addr:        addr,
-		creds:       creds,
-		dialMode:    mode,
-		maxConns:    maxConns,
-		idleTimeout: idleTimeout,
+		key:                   key,
+		addr:                  addr,
+		creds:                 creds,
+		dialMode:              mode,
+		maxConns:              maxConns,
+		idleTimeout:           idleTimeout,
+		tlsInsecureSkipVerify: tlsInsecureSkipVerify,
 	}
 }
 
@@ -88,7 +90,7 @@ func (p *PerServicePool) get(ctx context.Context, dialFn dialFunc) (*imapwrap.Cl
 	}
 
 	// Open a new connection.
-	c, err := dialFn(ctx, p.addr, p.dialMode, p.creds)
+	c, err := dialFn(ctx, p.addr, p.dialMode, p.creds, p.tlsInsecureSkipVerify)
 	if err != nil {
 		return nil, fmt.Errorf("pool: dial %s: %w", p.addr, err)
 	}
@@ -153,8 +155,9 @@ func (p *PerServicePool) activeCount() int {
 var ErrPoolExhausted = errors.New("pool: connection pool exhausted")
 
 // dialFunc is the function signature for opening a new IMAP connection.
+// insecureSkipVerify disables TLS certificate verification (ADR-0024).
 // Abstracted so tests can inject a fake dialer.
-type dialFunc func(ctx context.Context, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials) (*imapwrap.Client, error)
+type dialFunc func(ctx context.Context, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials, insecureSkipVerify bool) (*imapwrap.Client, error)
 
 // Options configures the Pool.
 type Options struct {
@@ -207,11 +210,12 @@ func newWithDialer(opts *Options, fn dialFunc) *Pool {
 
 // ServiceConfig holds connection parameters for a single email service.
 type ServiceConfig struct {
-	TenantID  string
-	ServiceID string
-	Addr      string
-	DialMode  imapwrap.DialMode
-	Creds     imapwrap.Credentials
+	TenantID              string
+	ServiceID             string
+	Addr                  string
+	DialMode              imapwrap.DialMode
+	Creds                 imapwrap.Credentials
+	TlsInsecureSkipVerify bool // per-service TLS cert bypass (ADR-0024)
 }
 
 // Get returns a leased IMAP client for the given (tenant, service).
@@ -270,12 +274,12 @@ func (p *Pool) getOrCreateServicePool(cfg ServiceConfig) *PerServicePool {
 		return sp
 	}
 
-	sp := newPerServicePool(key, cfg.Addr, cfg.DialMode, cfg.Creds, p.opts.maxConns(), p.opts.idleTimeout())
+	sp := newPerServicePool(key, cfg.Addr, cfg.DialMode, cfg.Creds, p.opts.maxConns(), p.opts.idleTimeout(), cfg.TlsInsecureSkipVerify)
 	p.pools[key] = sp
 	return sp
 }
 
 // realDial is the production dial implementation.
-func realDial(ctx context.Context, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials) (*imapwrap.Client, error) {
-	return imapwrap.Dial(ctx, addr, mode, creds)
+func realDial(ctx context.Context, addr string, mode imapwrap.DialMode, creds imapwrap.Credentials, insecureSkipVerify bool) (*imapwrap.Client, error) {
+	return imapwrap.Dial(ctx, addr, mode, creds, insecureSkipVerify)
 }

@@ -341,6 +341,23 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 		}, nil
 	}
 
+	// AUTH_SCHEME_EMAIL_PASSWORD / AUTH_SCHEME_EMAIL_OAUTH2 / AUTH_SCHEME_EMAIL_APP_PASSWORD:
+	// Return the raw stored bytes plus the tls_insecure_skip_verify flag from email_services.
+	// The email-proxy uses this flag to conditionally disable TLS cert verification (ADR-0024).
+	if result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_EMAIL_PASSWORD) ||
+		result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_EMAIL_OAUTH2) ||
+		result.AuthScheme == int32(vaultv1.AuthScheme_AUTH_SCHEME_EMAIL_APP_PASSWORD) {
+		return &vaultv1.GetCredentialResponse{
+			AuthScheme:            vaultv1.AuthScheme(result.AuthScheme),
+			Value:                 result.Plaintext,
+			ReturnedKeyVersion:    result.ReturnedKeyVersion,
+			CurrentKeyVersion:     result.CurrentKeyVersion,
+			TargetUrl:             result.TargetURL,
+			BaseUrl:               result.BaseUrl,
+			TlsInsecureSkipVerify: result.TlsInsecureSkipVerify,
+		}, nil
+	}
+
 	return &vaultv1.GetCredentialResponse{
 		AuthScheme:         vaultv1.AuthScheme(result.AuthScheme),
 		Value:              result.Plaintext,

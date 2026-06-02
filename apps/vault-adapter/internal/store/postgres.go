@@ -175,17 +175,18 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 
 	// LEFT JOIN public.services so that services.base_url (the canonical SSH dial
 	// target per ADR-0023 Phase 3) is returned alongside the credential row.
-	// COALESCE(s.base_url, '') ensures a NULL base_url (orphaned credential or
-	// service without a base_url configured) still scans cleanly into a string.
-	// The JOIN is tenant-scoped via the WHERE clause; RLS on vault.credentials is
-	// already enforced by the set_config GUC above. public.services has RLS but
-	// the connection role (mintkey_migrate) bypasses it; if vault-adapter ever
-	// migrates to a non-bypass role, set_config('app.current_tenant',…) is
-	// required for the JOIN to be tenant-safe.
+	// LEFT JOIN public.email_services so that email_services.tls_insecure_skip_verify
+	// (ADR-0024) is returned for email service credentials.
+	// COALESCE(s.base_url, '') ensures a NULL base_url scans cleanly into a string.
+	// COALESCE(es.tls_insecure_skip_verify, false) ensures a NULL (non-email service)
+	// scans cleanly to false.
+	// The JOINs are tenant-scoped via the WHERE clause; RLS on vault.credentials is
+	// already enforced by the set_config GUC above.
 	const cols = `vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 	              vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 	              vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
-	              COALESCE(s.base_url, '') AS service_base_url`
+	              COALESCE(s.base_url, '') AS service_base_url,
+	              COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify`
 
 	var row pgx.Row
 	if keyVersion == 0 {
@@ -195,6 +196,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 			`SELECT `+cols+`
 			   FROM vault.credentials vc
 			   LEFT JOIN public.services s ON s.id = vc.service_id
+			   LEFT JOIN public.email_services es ON es.id = vc.service_id AND es.deleted_at IS NULL
 			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
 			    AND vc.is_current = true
 			  LIMIT 1`,
@@ -210,6 +212,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 			`SELECT `+cols+`
 			   FROM vault.credentials vc
 			   LEFT JOIN public.services s ON s.id = vc.service_id
+			   LEFT JOIN public.email_services es ON es.id = vc.service_id AND es.deleted_at IS NULL
 			  WHERE vc.tenant_id = $1 AND vc.service_id = $2
 			    AND vc.key_version = $3
 			  LIMIT 1`,
@@ -343,12 +346,13 @@ func (s *PostgresStore) ListVersions(ctx context.Context, tenantID, serviceID st
 }
 
 // scanPgRecord scans a pgx.Row into a CredentialRecord (full columns).
-// The query must SELECT the 16-column set produced by the Get() LEFT JOIN:
+// The query must SELECT the 17-column set produced by the Get() LEFT JOIN:
 //
 //	vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 //	vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 //	vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
-//	COALESCE(s.base_url, '') AS service_base_url
+//	COALESCE(s.base_url, '') AS service_base_url,
+//	COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify
 func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 	var r CredentialRecord
 	if err := row.Scan(
@@ -359,6 +363,7 @@ func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 		&r.TargetURL, &r.HeaderName, &r.QueryParam,
 		&r.TargetAddress, &r.SSHUser,
 		&r.ServiceBaseUrl,
+		&r.TlsInsecureSkipVerify,
 	); err != nil {
 		return nil, err
 	}

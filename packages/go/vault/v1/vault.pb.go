@@ -332,8 +332,16 @@ type GetCredentialResponse struct {
 	// Derived from services.auth_scheme. Allows ssh-proxy to branch on scheme
 	// without re-interpreting the int32 auth_scheme field.
 	AuthSchemeName string `protobuf:"bytes,12,opt,name=auth_scheme_name,json=authSchemeName,proto3" json:"auth_scheme_name,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Email-only: when true, the email-proxy MUST disable TLS certificate
+	// verification for IMAP/SMTP connections to this service.  Only set for
+	// email auth schemes (14, 15, 16).  False by default.
+	//
+	// Security: the email-proxy MUST emit a structured warning log on every
+	// connection opened with InsecureSkipVerify: true so drift can be detected.
+	// Populated from email_services.tls_insecure_skip_verify (ADR-0024).
+	TlsInsecureSkipVerify bool `protobuf:"varint,13,opt,name=tls_insecure_skip_verify,json=tlsInsecureSkipVerify,proto3" json:"tls_insecure_skip_verify,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *GetCredentialResponse) Reset() {
@@ -448,6 +456,13 @@ func (x *GetCredentialResponse) GetAuthSchemeName() string {
 		return x.AuthSchemeName
 	}
 	return ""
+}
+
+func (x *GetCredentialResponse) GetTlsInsecureSkipVerify() bool {
+	if x != nil {
+		return x.TlsInsecureSkipVerify
+	}
+	return false
 }
 
 // PutCredentialRequest creates a new credential version. Always
@@ -1181,7 +1196,7 @@ const file_vault_proto_rawDesc = "" +
 	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
 	"\vkey_version\x18\x03 \x01(\rR\n" +
 	"keyVersion\x12&\n" +
-	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xf1\x03\n" +
+	"\x0fcaller_actor_id\x18\x04 \x01(\tR\rcallerActorId\"\xaa\x04\n" +
 	"\x15GetCredentialResponse\x12=\n" +
 	"\vauth_scheme\x18\x01 \x01(\x0e2\x1c.mintkey.vault.v1.AuthSchemeR\n" +
 	"authScheme\x12\x14\n" +
@@ -1200,7 +1215,8 @@ const file_vault_proto_rawDesc = "" +
 	"\bssh_user\x18\n" +
 	" \x01(\tR\asshUser\x12\x19\n" +
 	"\bbase_url\x18\v \x01(\tR\abaseUrl\x12(\n" +
-	"\x10auth_scheme_name\x18\f \x01(\tR\x0eauthSchemeName\"\xad\x03\n" +
+	"\x10auth_scheme_name\x18\f \x01(\tR\x0eauthSchemeName\x127\n" +
+	"\x18tls_insecure_skip_verify\x18\r \x01(\bR\x15tlsInsecureSkipVerify\"\xad\x03\n" +
 	"\x14PutCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1d\n" +
 	"\n" +

@@ -1,0 +1,42 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 024-email-service-tls-insecure-skip-verify.yaml
+  #
+  # Adds tls_insecure_skip_verify to public.email_services (ADR-0024).
+  #
+  # Operators may disable TLS certificate verification for individual email
+  # services that use self-signed or private-CA certificates (e.g. internal
+  # mail servers).  The flag is per-service and defaults to false.
+  #
+  # Security: clear warning copy is shown in the admin UI. The email-proxy
+  # emits a structured audit-trail warning log on every connection opened
+  # with InsecureSkipVerify: true.
+  #
+  # Idempotent: preConditions (MARK_RAN) guard each changeset.
+  # -----------------------------------------------------------------------
+
+  - changeSet:
+      id: "024-email-service-tls-insecure-skip-verify-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            columnExists:
+              schemaName: public
+              tableName: email_services
+              columnName: tls_insecure_skip_verify
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.email_services
+                ADD COLUMN tls_insecure_skip_verify BOOLEAN NOT NULL DEFAULT false;
+              COMMENT ON COLUMN public.email_services.tls_insecure_skip_verify IS
+                'When true, TLS certificate verification is disabled for IMAP/SMTP '
+                'connections to this service. Only for trusted internal servers with '
+                'self-signed or private-CA certificates (ADR-0024).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE public.email_services
+                DROP COLUMN IF EXISTS tls_insecure_skip_verify;

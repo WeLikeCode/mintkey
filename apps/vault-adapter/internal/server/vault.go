@@ -65,16 +65,17 @@ type GetCredentialArgs struct {
 
 // GetCredentialResult is returned by GetCredential.
 type GetCredentialResult struct {
-	AuthScheme         int32
-	Plaintext          []byte
-	ReturnedKeyVersion uint32
-	CurrentKeyVersion  uint32
-	TargetURL          string
-	HeaderName         string // injection hint for api_key_header scheme — UX-C6
-	QueryParam         string // injection hint for api_key_query scheme — UX-C6
-	TargetAddress      string // SSH-only: "host:port" of the backend SSH server — ADR-0021
-	SSHUser            string // SSH-only: SSH username to authenticate as — ADR-0021
-	BaseUrl            string // Canonical upstream address from services.base_url — ADR-0023 Phase 3
+	AuthScheme            int32
+	Plaintext             []byte
+	ReturnedKeyVersion    uint32
+	CurrentKeyVersion     uint32
+	TargetURL             string
+	HeaderName            string // injection hint for api_key_header scheme — UX-C6
+	QueryParam            string // injection hint for api_key_query scheme — UX-C6
+	TargetAddress         string // SSH-only: "host:port" of the backend SSH server — ADR-0021
+	SSHUser               string // SSH-only: SSH username to authenticate as — ADR-0021
+	BaseUrl               string // Canonical upstream address from services.base_url — ADR-0023 Phase 3
+	TlsInsecureSkipVerify bool   // email-only: skip TLS cert verification — ADR-0024
 }
 
 // RevokeCredentialArgs holds the input for RevokeCredential.
@@ -281,16 +282,17 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				currentKeyVer = curr.KeyVersion
 			}
 			return &GetCredentialResult{
-				AuthScheme:         e.AuthScheme,
-				Plaintext:          plaintext,
-				ReturnedKeyVersion: args.KeyVersion,
-				CurrentKeyVersion:  currentKeyVer,
-				TargetURL:          e.TargetURL,
-				HeaderName:         e.HeaderName,
-				QueryParam:         e.QueryParam,
-				TargetAddress:      e.TargetAddress,
-				SSHUser:            e.SSHUser,
-				BaseUrl:            e.ServiceBaseUrl,
+				AuthScheme:            e.AuthScheme,
+				Plaintext:             plaintext,
+				ReturnedKeyVersion:    args.KeyVersion,
+				CurrentKeyVersion:     currentKeyVer,
+				TargetURL:             e.TargetURL,
+				HeaderName:            e.HeaderName,
+				QueryParam:            e.QueryParam,
+				TargetAddress:         e.TargetAddress,
+				SSHUser:               e.SSHUser,
+				BaseUrl:               e.ServiceBaseUrl,
+				TlsInsecureSkipVerify: e.TlsInsecureSkipVerify,
 			}, nil
 		}
 	}
@@ -313,7 +315,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl, rec.TlsInsecureSkipVerify)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -325,16 +327,17 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	return &GetCredentialResult{
-		AuthScheme:         rec.AuthScheme,
-		Plaintext:          plaintext,
-		ReturnedKeyVersion: rec.KeyVersion,
-		CurrentKeyVersion:  currentKeyVer,
-		TargetURL:          rec.TargetURL,
-		HeaderName:         rec.HeaderName,
-		QueryParam:         rec.QueryParam,
-		TargetAddress:      rec.TargetAddress,
-		SSHUser:            rec.SSHUser,
-		BaseUrl:            rec.ServiceBaseUrl,
+		AuthScheme:            rec.AuthScheme,
+		Plaintext:             plaintext,
+		ReturnedKeyVersion:    rec.KeyVersion,
+		CurrentKeyVersion:     currentKeyVer,
+		TargetURL:             rec.TargetURL,
+		HeaderName:            rec.HeaderName,
+		QueryParam:            rec.QueryParam,
+		TargetAddress:         rec.TargetAddress,
+		SSHUser:               rec.SSHUser,
+		BaseUrl:               rec.ServiceBaseUrl,
+		TlsInsecureSkipVerify: rec.TlsInsecureSkipVerify,
 	}, nil
 }
 

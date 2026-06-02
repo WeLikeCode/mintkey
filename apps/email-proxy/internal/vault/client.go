@@ -57,6 +57,12 @@ type Credential struct {
 
 	// AuthSchemeName is the string form of the auth scheme.
 	AuthSchemeName string
+
+	// TlsInsecureSkipVerify disables TLS certificate verification for IMAP/SMTP
+	// connections when true. Set from email_services.tls_insecure_skip_verify
+	// (ADR-0024). Default false. Email-proxy MUST emit a structured warning log
+	// on every connection opened with InsecureSkipVerify: true.
+	TlsInsecureSkipVerify bool
 }
 
 // Client is the Vault Adapter gRPC client used by the Email Proxy.
@@ -198,10 +204,11 @@ func (c *Client) GetCredential(ctx context.Context, tenantID, serviceID string, 
 	_ = authScheme
 
 	return &Credential{
-		Value:          resp.GetValue(),
-		AuthScheme:     AuthScheme(resp.GetAuthScheme()),
-		KeyVersion:     resp.GetReturnedKeyVersion(),
-		BaseUrl:        resp.GetBaseUrl(),
-		AuthSchemeName: resp.GetAuthSchemeName(),
+		Value:                 resp.GetValue(),
+		AuthScheme:            AuthScheme(resp.GetAuthScheme()),
+		KeyVersion:            resp.GetReturnedKeyVersion(),
+		BaseUrl:               resp.GetBaseUrl(),
+		AuthSchemeName:        resp.GetAuthSchemeName(),
+		TlsInsecureSkipVerify: resp.GetTlsInsecureSkipVerify(),
 	}, nil
 }

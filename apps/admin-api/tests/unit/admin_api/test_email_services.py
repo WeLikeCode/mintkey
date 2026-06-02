@@ -1569,6 +1569,7 @@ class TestEmailServiceCredentialSet:
 
     @pytest.mark.asyncio
     async def test_delete_credential_uses_row_auth_scheme(self) -> None:
+
         """
         test_delete_credential_uses_row_auth_scheme — regression for reviewer finding #2.
 
@@ -1614,4 +1615,180 @@ class TestEmailServiceCredentialSet:
             f"Expected auth_scheme='email_app_password' (proto enum 16) on vault revocation, "
             f"got auth_scheme='{call_kwargs['auth_scheme']}'. "
             "Hardcoding 'email_password' silently mis-routes app-password services."
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestTlsInsecureSkipVerify — tls_insecure_skip_verify field (ADR-0024)
+# ---------------------------------------------------------------------------
+
+
+class TestTlsInsecureSkipVerify:
+    """
+    Tests for the per-service tls_insecure_skip_verify field added in ADR-0024.
+
+    Covers:
+    - T-TLS-1: EmailServiceCreate defaults to False.
+    - T-TLS-2: EmailServiceCreate can be set to True.
+    - T-TLS-3: create_email_service persists tls_insecure_skip_verify in INSERT.
+    - T-TLS-4: create_email_service returns tls_insecure_skip_verify in response.
+    """
+
+    def test_tls1_default_is_false(self) -> None:
+        """T-TLS-1: EmailServiceCreate defaults tls_insecure_skip_verify to False."""
+        body = EmailServiceCreate(
+            provider="generic",
+            name="Internal Mail Server",
+            imap_host="im.softuraj.solutions",
+            imap_port=993,
+            smtp_host="im.softuraj.solutions",
+            smtp_port=465,
+            auth_scheme="email_password",
+        )
+        assert body.tls_insecure_skip_verify is False, (
+            "tls_insecure_skip_verify must default to False — "
+            "stock email templates must be secure by default."
+        )
+
+    def test_tls2_can_be_set_to_true(self) -> None:
+        """T-TLS-2: EmailServiceCreate accepts tls_insecure_skip_verify=True."""
+        body = EmailServiceCreate(
+            provider="generic",
+            name="Internal Mail Server",
+            imap_host="im.softuraj.solutions",
+            imap_port=993,
+            smtp_host="im.softuraj.solutions",
+            smtp_port=465,
+            auth_scheme="email_password",
+            tls_insecure_skip_verify=True,
+        )
+        assert body.tls_insecure_skip_verify is True, (
+            "tls_insecure_skip_verify=True must be accepted for internal servers."
+        )
+
+    @pytest.mark.asyncio
+    async def test_tls3_false_persisted_in_insert(self) -> None:
+        """
+        T-TLS-3a: create_email_service INSERT includes tls_insecure_skip_verify=False.
+
+        Verifies that when the flag is False (default), the INSERT SQL includes the
+        parameter so the column gets the correct value (not a DB default bypass).
+        """
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="generic",
+            name="Internal Mail",
+            imap_host="mail.internal",
+            imap_port=993,
+            smtp_host="mail.internal",
+            smtp_port=465,
+            auth_scheme="email_password",
+            tls_insecure_skip_verify=False,
+        )
+
+        session = _make_session()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+
+        # The INSERT must include tls_insecure_skip_verify
+        insert_calls = [(sql, params) for sql, params in session.executed_sql
+                        if "INSERT INTO email_services" in sql]
+        assert len(insert_calls) == 1, "Expected exactly one INSERT INTO email_services"
+        insert_sql, insert_params = insert_calls[0]
+
+        assert "tls_insecure_skip_verify" in insert_sql, (
+            "INSERT SQL must include tls_insecure_skip_verify column"
+        )
+        assert insert_params.get("tls_insecure_skip_verify") is False, (
+            f"Expected tls_insecure_skip_verify=False in INSERT params, "
+            f"got: {insert_params.get('tls_insecure_skip_verify')!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_tls3b_true_persisted_in_insert(self) -> None:
+        """
+        T-TLS-3b: create_email_service INSERT includes tls_insecure_skip_verify=True
+        when the flag is explicitly set by the operator.
+        """
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="generic",
+            name="Internal Mail with Self-Signed Cert",
+            imap_host="im.softuraj.solutions",
+            imap_port=993,
+            smtp_host="im.softuraj.solutions",
+            smtp_port=465,
+            auth_scheme="email_password",
+            tls_insecure_skip_verify=True,
+        )
+
+        session = _make_session()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+
+        insert_calls = [(sql, params) for sql, params in session.executed_sql
+                        if "INSERT INTO email_services" in sql]
+        assert len(insert_calls) == 1
+        insert_sql, insert_params = insert_calls[0]
+
+        assert "tls_insecure_skip_verify" in insert_sql, (
+            "INSERT SQL must include tls_insecure_skip_verify column"
+        )
+        assert insert_params.get("tls_insecure_skip_verify") is True, (
+            f"Expected tls_insecure_skip_verify=True in INSERT params, "
+            f"got: {insert_params.get('tls_insecure_skip_verify')!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_tls4_response_includes_flag(self) -> None:
+        """
+        T-TLS-4: create_email_service 201 response includes tls_insecure_skip_verify.
+        Verifies the field appears in the response body.
+        """
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="generic",
+            name="Internal Mail",
+            imap_host="mail.internal",
+            imap_port=993,
+            smtp_host="mail.internal",
+            smtp_port=465,
+            auth_scheme="email_password",
+            tls_insecure_skip_verify=True,
+        )
+
+        session = _make_session()
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        response_body = json.loads(result.body)
+        assert "tls_insecure_skip_verify" in response_body, (
+            "Response body must include tls_insecure_skip_verify field"
+        )
+        assert response_body["tls_insecure_skip_verify"] is True, (
+            f"Expected tls_insecure_skip_verify=True in response, "
+            f"got: {response_body.get('tls_insecure_skip_verify')!r}"
         )

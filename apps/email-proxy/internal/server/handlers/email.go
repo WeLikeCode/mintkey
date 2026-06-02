@@ -1105,11 +1105,12 @@ func (h *EmailHandlers) leaseIMAPClient(ctx context.Context, claims *auth.Claims
 	}
 
 	cfg := pool.ServiceConfig{
-		TenantID:  claims.TenantID,
-		ServiceID: serviceID,
-		Addr:      addr,
-		DialMode:  imapwrap.DialModeTLS,
-		Creds:     imapCreds,
+		TenantID:              claims.TenantID,
+		ServiceID:             serviceID,
+		Addr:                  addr,
+		DialMode:              imapwrap.DialModeTLS,
+		Creds:                 imapCreds,
+		TlsInsecureSkipVerify: cred.TlsInsecureSkipVerify,
 	}
 
 	client, err := h.pool.Get(ctx, cfg)
@@ -1144,17 +1145,19 @@ func (h *EmailHandlers) getSMTPCredential(ctx context.Context, claims *auth.Clai
 		}
 		emailAddr := parseEmailAddressFromPayload(cred.Value)
 		return smtp.Credential{
-			AuthMode:    smtp.AuthModeXOAUTH2,
-			Username:    emailAddr,
-			AccessToken: accessToken,
+			AuthMode:           smtp.AuthModeXOAUTH2,
+			Username:           emailAddr,
+			AccessToken:        accessToken,
+			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
 		}, smtpConnConfig{fromAddr: emailAddr}, nil
 
 	case vault.AuthSchemeEmailPassword, vault.AuthSchemeEmailAppPassword:
 		username, password, _ := parsePasswordPayload(cred.Value)
 		return smtp.Credential{
-			AuthMode: smtp.AuthModePLAIN,
-			Username: username,
-			Password: password,
+			AuthMode:           smtp.AuthModePLAIN,
+			Username:           username,
+			Password:           password,
+			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
 		}, smtpConnConfig{fromAddr: username}, nil
 
 	default:

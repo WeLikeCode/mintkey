@@ -19,12 +19,14 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +58,12 @@ type Credential struct {
 
 	// AccessToken is the OAuth2 access token (XOAUTH2 auth).
 	AccessToken string
+
+	// InsecureSkipVerify disables TLS certificate verification for this send
+	// operation. Overrides the client-level Config.InsecureSkipVerify when set
+	// on the Credential. Used when the per-service flag from vault is true (ADR-0024).
+	// A structured warning log is emitted per connection.
+	InsecureSkipVerify bool
 }
 
 // Attachment is a single file attachment to include in the outgoing message.
@@ -106,6 +114,10 @@ type Config struct {
 	// TLSConf overrides the TLS configuration used for dial/STARTTLS.
 	// If nil, uses the system default with cert verification enabled.
 	TLSConf *tls.Config
+	// InsecureSkipVerify disables TLS certificate verification for this service.
+	// MUST only be set for trusted internal servers (ADR-0024). A structured
+	// warning is emitted via slog on every connection opened with this flag set.
+	InsecureSkipVerify bool
 	// DialTimeout is the per-connection dial timeout. Defaults to 30s.
 	DialTimeout time.Duration
 	// SendTimeout is the per-message send timeout. Defaults to 60s.
@@ -167,6 +179,18 @@ func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest
 	// -----------------------------------------------------------------------
 	addr := fmt.Sprintf("%s:%d", c.cfg.Host, c.cfg.Port)
 
+	// Per-credential InsecureSkipVerify overrides the static config value.
+	// This allows per-service TLS bypass from the vault response (ADR-0024).
+	effectiveInsecureSkipVerify := c.cfg.InsecureSkipVerify || cred.InsecureSkipVerify
+
+	if effectiveInsecureSkipVerify {
+		slog.Warn("smtp: TLS certificate verification DISABLED for connection",
+			"host", c.cfg.Host,
+			"port", strconv.Itoa(c.cfg.Port),
+			"tls_insecure_skip_verify", true,
+		)
+	}
+
 	dialCtx, dialCancel := context.WithTimeout(ctx, c.cfg.DialTimeout)
 	defer dialCancel()
 
@@ -174,7 +198,11 @@ func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest
 	if c.cfg.UseTLS {
 		tlsCfg := c.cfg.TLSConf
 		if tlsCfg == nil {
-			tlsCfg = &tls.Config{ServerName: c.cfg.Host, MinVersion: tls.VersionTLS12}
+			tlsCfg = &tls.Config{
+				ServerName:         c.cfg.Host,
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: effectiveInsecureSkipVerify, //nolint:gosec // per-service opt-in, operator-controlled (ADR-0024)
+			}
 		}
 		conn, err = tls.DialWithDialer(
 			&net.Dialer{},
@@ -206,7 +234,11 @@ func (c *Client) Send(ctx context.Context, cred Credential, req EmailSendRequest
 	if c.cfg.UseSTARTTLS {
 		tlsCfg := c.cfg.TLSConf
 		if tlsCfg == nil {
-			tlsCfg = &tls.Config{ServerName: c.cfg.Host, MinVersion: tls.VersionTLS12}
+			tlsCfg = &tls.Config{
+				ServerName:         c.cfg.Host,
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: effectiveInsecureSkipVerify, //nolint:gosec // per-service opt-in, operator-controlled (ADR-0024)
+			}
 		}
 		if err := sc.StartTLS(tlsCfg); err != nil {
 			return "", fmt.Errorf("smtp: STARTTLS: %w", err)
