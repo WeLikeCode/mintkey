@@ -20,6 +20,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
         lint lint-python lint-go lint-ts lint-contracts \
+        proto-gen \
         deps bootstrap doctor stack-doctor audit-steering vibe-check spec-trace contract-lint \
         template-diff template-pull \
         demo demo-mock \
@@ -77,6 +78,7 @@ help:
 	@echo "  vibe-check             Pre-PR spec-reference scan on staged files"
 	@echo "  spec-trace             Generate ADR/contract traceability matrix"
 	@echo "  contract-lint          Lint OpenAPI / AsyncAPI / JSON Schema contracts"
+	@echo "  proto-gen              Regenerate Go bindings from vault.proto (idempotent)"
 	@echo "  template-diff          Show uncommitted changes to template-owned paths"
 	@echo "  template-pull VERSION= 3-way merge a new template version"
 	@echo ""
@@ -363,6 +365,22 @@ spec-trace:
 
 contract-lint:
 	@bash $(TOOLS)/contract-lint.sh
+
+## proto-gen: Regenerate Go bindings from the canonical vault.proto.
+## Idempotent — running twice produces no diff.
+## Requires protoc (brew install protobuf) and protoc-gen-go / protoc-gen-go-grpc
+## (go install google.golang.org/protobuf/cmd/protoc-gen-go@latest &&
+##  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest).
+proto-gen:
+	@echo "── proto-gen: regenerating packages/go/vault/v1 ──"
+	PATH="$(HOME)/go/bin:$$PATH" protoc \
+		--go_out=. \
+		--go_opt=module=github.com/mintkey/mintkey \
+		--go-grpc_out=. \
+		--go-grpc_opt=module=github.com/mintkey/mintkey \
+		-I docs/architecture/contracts/vault-adapter \
+		docs/architecture/contracts/vault-adapter/vault.proto
+	@echo "  OK — packages/go/vault/v1/vault.pb.go + vault_grpc.pb.go updated"
 
 template-diff:
 	@bash $(TOOLS)/template-diff.sh diff

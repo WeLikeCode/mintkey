@@ -148,6 +148,10 @@ services:
       MINTKEY_VAULT_PROXY_TOKEN: "mk_vault_proxy_dev_shared_secret!"
       MINTKEY_VAULT_ADMIN_IDENTITY_ID: "svcid_admin_api"
       MINTKEY_VAULT_ADMIN_TOKEN: "mk_vault_admin_dev_shared_secret!"
+      MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID: ${MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID:-svcid_ssh_proxy}
+      MINTKEY_VAULT_SSH_PROXY_TOKEN: ${MINTKEY_VAULT_SSH_PROXY_TOKEN}
+      MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID: ${MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID:-svcid_email_proxy}
+      MINTKEY_VAULT_EMAIL_PROXY_TOKEN: ${MINTKEY_VAULT_EMAIL_PROXY_TOKEN:-mk_vault_email_proxy_dev_shared_secret!}
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
@@ -182,6 +186,7 @@ services:
       MINTKEY_BROKER_SERVICE_TOKEN: "mk_svctoken_dev_broker_1a9915207f79a78a"
       MINTKEY_PROXY_SERVICE_TOKEN: "mk_svctoken_dev_proxy_6eff05779828be47"
       MINTKEY_MCP_SERVICE_TOKEN: dev-mcp-service-token
+      MINTKEY_EMAIL_PROXY_SERVICE_TOKEN: ${MINTKEY_EMAIL_PROXY_SERVICE_TOKEN:-mk_email_proxy_to_admin_api_dev!}
       OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
       MINTKEY_MCP_PUBLIC_URL: "${MINTKEY_MCP_PUBLIC_URL:-http://localhost:8082}"
       MINTKEY_KEYCLOAK_PUBLIC_URL: "${MINTKEY_KEYCLOAK_PUBLIC_URL:-http://localhost:8443}"
@@ -427,6 +432,41 @@ services:
       broker:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+    networks:
+      - mintkey
+
+  # ─── 10c. Email Proxy (IMAP/SMTP bastion) ────────────────────────────────
+  email-proxy:
+    image: ghcr.io/welikecode/mintkey-email-proxy:${MINTKEY_TAG:-latest}
+    restart: unless-stopped
+    mem_limit: 128m
+    ports:
+      - "${MINTKEY_EMAIL_PROXY_HTTP_PORT:-8091}:8088"      # REST API + healthz
+      - "${MINTKEY_EMAIL_PROXY_METRICS_PORT:-8092}:8090"   # Prometheus metrics
+    environment:
+      MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID: ${MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID:-svcid_email_proxy}
+      MINTKEY_VAULT_EMAIL_PROXY_TOKEN: ${MINTKEY_VAULT_EMAIL_PROXY_TOKEN:-mk_vault_email_proxy_dev_shared_secret!}
+      MINTKEY_EMAIL_PROXY_SERVICE_TOKEN: ${MINTKEY_EMAIL_PROXY_SERVICE_TOKEN:-mk_email_proxy_to_admin_api_dev!}
+      MINTKEY_BROKER_JWKS_URL: http://broker:8083/.well-known/jwks.json
+      MINTKEY_VAULT_GRPC_ADDR: vault-adapter:8084
+      MINTKEY_ADMIN_API_INTERNAL_URL: http://admin-api:8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "/email-proxy-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      vault-adapter:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      admin-api:
         condition: service_healthy
     networks:
       - mintkey

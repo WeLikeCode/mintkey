@@ -1,0 +1,133 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 022-email-services.yaml
+  #
+  # Creates the public.email_services table for the email-proxy feature
+  # (ADR-0024, C-9).
+  #
+  # email_services holds per-tenant IMAP/SMTP configuration that the
+  # email-proxy reads at connection time.  One row per registered email
+  # service; a service may have auth_scheme ∈ {email_password,
+  # email_oauth2, email_app_password}.
+  #
+  # RLS policy mirrors 005-credentials.yaml:
+  #   tenant_id::text = current_setting('app.current_tenant', true)
+  # mintkey_app (application role) gets SELECT/INSERT/UPDATE/DELETE.
+  #
+  # Idempotent: preConditions (MARK_RAN) guard each changeset so re-running
+  # on an already-migrated database is a safe no-op.
+  #
+  # Source: ADR-0024; .kiro/specs/email-proxy/design.md §"Data Models";
+  #         chunk C-9.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create email_services table ------------------------------------
+  - changeSet:
+      id: "022-email-services-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: email_services
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE public.email_services (
+                id                      UUID        PRIMARY KEY,
+                tenant_id               UUID        NOT NULL,
+                provider                TEXT        NOT NULL,
+                imap_host               TEXT        NOT NULL,
+                imap_port               INT         NOT NULL,
+                smtp_host               TEXT        NOT NULL,
+                smtp_port               INT         NOT NULL,
+                auth_scheme             TEXT        NOT NULL,
+                name                    TEXT        NOT NULL,
+                allowed_recipient_domains TEXT,
+                pool_size_max           INT         NOT NULL DEFAULT 5,
+                created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+                deleted_at              TIMESTAMPTZ,
+                CONSTRAINT email_services_provider_chk
+                  CHECK (provider IN ('gmail','outlook','generic')),
+                CONSTRAINT email_services_auth_scheme_chk
+                  CHECK (auth_scheme IN ('email_password','email_oauth2','email_app_password'))
+              );
+              COMMENT ON TABLE public.email_services IS
+                'Per-tenant IMAP/SMTP email service configurations (ADR-0024).';
+              COMMENT ON COLUMN public.email_services.allowed_recipient_domains IS
+                'Optional comma-separated list of allowed recipient domains (e.g. "@example.com"). NULL = unrestricted.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS public.email_services;
+
+  # --- 2. Index on email_services.tenant_id ------------------------------
+  - changeSet:
+      id: "022-email-services-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: email_services
+              indexName: idx_email_services_tenant
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_email_services_tenant
+                ON public.email_services (tenant_id)
+                WHERE deleted_at IS NULL;
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_email_services_tenant;
+
+  # --- 3. Row Level Security on email_services ---------------------------
+  - changeSet:
+      id: "022-email-services-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: email_services
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.email_services ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY email_services_tenant_iso ON public.email_services
+                USING (
+                  (tenant_id::text = current_setting('app.current_tenant', true))
+                  OR (current_setting('app.platform_admin_view', true) = 'on')
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS email_services_tenant_iso ON public.email_services;
+              ALTER TABLE public.email_services DISABLE ROW LEVEL SECURITY;
+
+  # --- 4. Grants for mintkey_app role (mirrors 019-grants-defensive) -----
+  - changeSet:
+      id: "022-email-services-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: email_services
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.email_services TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.email_services FROM mintkey_app;

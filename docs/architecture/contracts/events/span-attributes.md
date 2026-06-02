@@ -1,3 +1,5 @@
+> **MOVED** — canonical location is [`../otel/span-attributes.md`](../otel/span-attributes.md). Update that file, not this one.
+
 # OpenTelemetry span attribute conventions
 
 **Stability tier**: experimental. **Version**: `0.1.0-preview.1`.

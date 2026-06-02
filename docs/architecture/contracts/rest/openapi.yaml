@@ -144,6 +144,16 @@ tags:
       Credential-injecting reverse proxy. Fetches the current credential from
       the Vault Adapter, injects it per the service `auth_scheme`, and
       forwards the request to the backend service.
+  - name: EmailProxy
+    description: |
+      Email data-plane endpoints served by the email-proxy container on :8088
+      (ADR-0024, Phase 1 REST-only). Authenticated via brokered JWT with
+      per-operation scopes: read:email, send:email, write:email, delete:email.
+  - name: EmailServices
+    description: |
+      Admin-API endpoints for registering and managing email services
+      (IMAP/SMTP or OAuth2-backed) within a tenant. OAuth2 authorize/callback
+      endpoints initiate and complete the provider consent flow.
 
 security:
   - OperatorSession: []
@@ -2775,6 +2785,618 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  ###########################################################################
+  # Email Services (admin-api — operator-facing)
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/email-services:
+    post:
+      operationId: registerEmailService
+      tags: [EmailServices]
+      summary: Register a new email service.
+      description: |
+        Creates a new `email_services` record linked to a parent `services`
+        row. Both records are inserted in a single transaction.
+        `auth_scheme` must be one of `email_password`, `email_oauth2`, or
+        `email_app_password`.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterEmailServiceRequest"
+      responses:
+        "201":
+          description: Email service registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailService"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/authorize:
+    post:
+      operationId: emailServiceOAuth2Authorize
+      tags: [EmailServices]
+      summary: Start the OAuth2 consent flow for an email service.
+      description: |
+        Generates a CSRF `state` (stored in `oauth2_state` with 10-min TTL),
+        builds the provider's authorization URL, and returns it. The operator
+        redirects their browser to this URL to initiate the consent flow.
+        `provider` must be `gmail` or `outlook`.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uri]
+              properties:
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: URI the provider will redirect to after consent.
+      responses:
+        "200":
+          description: Authorization URL generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorization_url, state]
+                properties:
+                  authorization_url:
+                    type: string
+                    format: uri
+                  state:
+                    type: string
+                    description: Opaque CSRF state value (included in redirect_uri for verification).
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback:
+    post:
+      operationId: emailServiceOAuth2Callback
+      tags: [EmailServices]
+      summary: Complete the OAuth2 consent flow.
+      description: |
+        Exchanges the authorization `code` for a refresh token using the
+        admin-api's provider `client_secret`, validates the `state` against
+        `oauth2_state` (single-use, 10-min TTL), and stores the refresh token
+        in the vault-adapter. On success emits `email.oauth2.authorized`.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code:
+                  type: string
+                  description: Authorization code from the provider redirect.
+                state:
+                  type: string
+                  description: CSRF state value from the authorize step.
+      responses:
+        "200":
+          description: OAuth2 flow completed; refresh token stored in vault.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailService"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  ###########################################################################
+  # Internal OAuth2 refresh (admin-api internal — called by email-proxy)
+  ###########################################################################
+
+  /v1/internal/oauth2/{provider}/refresh:
+    post:
+      operationId: internalOAuth2Refresh
+      tags: [Internal]
+      summary: Proxy an OAuth2 token refresh for a registered email service.
+      description: |
+        Called by the email-proxy (authenticated with its identity token via
+        `x-mintkey-service-token`). Admin-api looks up the service's
+        refresh_token from the vault-adapter, performs the OAuth2 token
+        endpoint POST using `MINTKEY_OAUTH2_{GMAIL,OUTLOOK}_CLIENT_ID/SECRET`
+        env-vars, and returns a fresh `access_token`. The email-proxy never
+        sees the client_secret (ADR-0024 §B1).
+        `provider` must be `gmail` or `outlook`.
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: |
+            Service ID whose refresh_token should be used. Resolved to the
+            correct tenant via the caller's service-identity context.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Empty body — all parameters are in path/query.
+      security:
+        - ServiceIdentity: []
+      responses:
+        "200":
+          description: Fresh access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuth2RefreshResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  ###########################################################################
+  # Email Proxy — data-plane (served on :8088 by email-proxy container)
+  ###########################################################################
+
+  /v1/email-proxy/mailboxes:
+    get:
+      operationId: emailProxyListMailboxes
+      tags: [EmailProxy]
+      summary: List mailboxes for an email service.
+      description: |
+        Returns all mailboxes (IMAP folders) visible to the configured account.
+        Requires `read:email` scope on the brokered JWT.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: List of mailboxes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mailboxes]
+                properties:
+                  mailboxes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Mailbox"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages:
+    get:
+      operationId: emailProxyListMessages
+      tags: [EmailProxy]
+      summary: List email messages in a mailbox.
+      description: |
+        Returns a page of message envelopes (headers only; no body).
+        Requires `read:email` scope on the brokered JWT.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: query
+          name: mailbox
+          required: false
+          schema:
+            type: string
+            default: INBOX
+          description: Mailbox name (IMAP folder path).
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: since
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Return only messages received at or after this UTC timestamp.
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Page of message envelopes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages, next_cursor]
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EmailMessage"
+                  next_cursor:
+                    type: [string, "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: emailProxySendMessage
+      tags: [EmailProxy]
+      summary: Send an email message.
+      description: |
+        Sends a new email via SMTP. Validates all recipient addresses per
+        RFC 5322, checks the domain allowlist, and rejects `\r\n` injection.
+        Requires `send:email` scope on the brokered JWT.
+        Emits `email.message.sent` audit event on success.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailSendRequest"
+      security:
+        - BrokeredJWT: []
+      responses:
+        "202":
+          description: Message accepted for sending.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message_id]
+                properties:
+                  message_id:
+                    type: string
+                    description: Provider-assigned Message-ID header value.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413":
+          description: Payload too large (attachment or total message exceeds limits).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages/search:
+    get:
+      operationId: emailProxySearchMessages
+      tags: [EmailProxy]
+      summary: Search email messages.
+      description: |
+        Executes a parameterised IMAP SEARCH (protected against injection).
+        Returns matching message envelopes. Requires `read:email` scope.
+        Audit event logs query length only, not query content.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: query
+          name: query
+          required: true
+          schema:
+            type: string
+            maxLength: 500
+          description: |
+            Search query string. Mapped to parameterised IMAP SEARCH criteria
+            server-side; raw IMAP command injection is prevented.
+        - in: query
+          name: mailbox
+          required: false
+          schema:
+            type: string
+            default: INBOX
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Matching message envelopes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages]
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EmailMessage"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages/{message_id}:
+    get:
+      operationId: emailProxyReadMessage
+      tags: [EmailProxy]
+      summary: Fetch the full content of an email message.
+      description: |
+        Returns the full message including headers, body, and attachment
+        metadata (but NOT attachment bytes — use the attachment endpoint).
+        Requires `read:email` scope. Emits `email.message.read` audit event.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: message_id
+          required: true
+          schema:
+            type: string
+          description: Provider UID or Message-ID.
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Full message content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailMessage"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    delete:
+      operationId: emailProxyDeleteMessage
+      tags: [EmailProxy]
+      summary: Delete (expunge) an email message.
+      description: |
+        Marks the message as deleted and expunges it from the mailbox.
+        Requires `delete:email` scope. Emits `email.message.deleted` audit event.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: message_id
+          required: true
+          schema:
+            type: string
+      security:
+        - BrokeredJWT: []
+      responses:
+        "204":
+          description: Message deleted.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages/{message_id}/flags:
+    patch:
+      operationId: emailProxyUpdateMessageFlags
+      tags: [EmailProxy]
+      summary: Update message flags (read/unread/starred).
+      description: |
+        Sets or clears IMAP flags on a message. Requires `write:email` scope.
+        Emits `email.message.flags_updated` audit event.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: message_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailMessageFlags"
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Flags updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailMessageFlags"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages/{message_id}/move:
+    post:
+      operationId: emailProxyMoveMessage
+      tags: [EmailProxy]
+      summary: Move an email message to a different mailbox.
+      description: |
+        Copies the message to the destination mailbox then deletes the original
+        (IMAP MOVE if available, else COPY+DELETE). Requires `write:email` scope.
+        Emits `email.message.moved` audit event.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: message_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination_mailbox]
+              properties:
+                destination_mailbox:
+                  type: string
+                  description: Target IMAP mailbox path (e.g. "Archive", "Sent").
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Message moved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message_id, mailbox]
+                properties:
+                  message_id:
+                    type: string
+                  mailbox:
+                    type: string
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /v1/email-proxy/messages/{message_id}/attachments/{attachment_id}:
+    get:
+      operationId: emailProxyDownloadAttachment
+      tags: [EmailProxy]
+      summary: Download a message attachment.
+      description: |
+        Fetches the raw attachment bytes from the IMAP server and streams them
+        back. Requires `read:email` scope. Content-Type is the attachment's
+        MIME type.
+      parameters:
+        - in: query
+          name: service_id
+          required: true
+          schema:
+            type: string
+            pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        - in: path
+          name: message_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: attachment_id
+          required: true
+          schema:
+            type: string
+          description: Attachment part ID (IMAP BODYSTRUCTURE part number).
+      security:
+        - BrokeredJWT: []
+      responses:
+        "200":
+          description: Attachment bytes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
 components:
 
   ###########################################################################
@@ -2840,6 +3462,16 @@ components:
         (ADR-0017.3). Issued on session creation; required on every POST/
         PATCH/DELETE/PUT. Not required for service-to-service calls (those
         use AdminUiSignedRequest or ServiceIdentity).
+    BrokeredJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Mintkey-broker-issued JWS-Ed25519 token. Issued by the broker via
+        POST /v1/tools/request_token after an agent's api-key auth. Carries
+        scope claims (read:email, send:email, write:email, delete:email).
+        Validated by email-proxy via broker JWKS (Ed25519, kid-pinned per
+        ADR-0016.2). Bearer header: `Authorization: Bearer <JWS-EdDSA>`.
 
   ###########################################################################
   # Reusable parameters
@@ -3252,6 +3884,9 @@ components:
         - ssh_private_key
         - ssh_ca
         - ssh_password
+        - email_password
+        - email_oauth2
+        - email_app_password
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -3267,6 +3902,9 @@ components:
         - `ssh_private_key`: SSH private key (PEM/OpenSSH format) for SSH proxy (ADR-0022).
         - `ssh_ca`: SSH Certificate Authority signing key for direct-connect mode (ADR-0022, Phase 2).
         - `ssh_password`: SSH username+password for SSH proxy (ADR-0022). Prefer key-based when possible.
+        - `email_password`: IMAP/SMTP password credential for the email proxy (ADR-0024).
+        - `email_oauth2`: OAuth2 refresh token (Gmail or Outlook) for the email proxy (ADR-0024).
+        - `email_app_password`: App-password credential (e.g. Google App Password) for the email proxy (ADR-0024).
 
     Service:
       type: object
@@ -4406,7 +5044,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password, email_password, email_oauth2, email_app_password]
 
     TransientCredentialCandidate:
       type: object
@@ -4597,6 +5235,315 @@ components:
         icon:
           type: string
           nullable: true
+
+    # ----- Email Proxy -----
+
+    EmailService:
+      type: object
+      description: |
+        An email service registration. Links a generic `services` row to
+        email-specific metadata (provider, IMAP/SMTP endpoints, OAuth2 state).
+        Per ADR-0024.
+      properties:
+        id:
+          type: string
+          pattern: "^svc_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        name:
+          type: string
+        display_name:
+          type: string
+        auth_scheme:
+          type: string
+          enum: [email_password, email_oauth2, email_app_password]
+        provider:
+          type: [string, "null"]
+          enum: [gmail, outlook, null]
+          description: OAuth2 provider. Null for password-based schemes.
+        email_address:
+          type: string
+          format: email
+          description: The mailbox email address.
+        imap_host:
+          type: [string, "null"]
+          description: IMAP server hostname. Null for OAuth2 providers (inferred from provider).
+        imap_port:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 65535
+        smtp_host:
+          type: [string, "null"]
+          description: SMTP server hostname. Null for OAuth2 providers.
+        smtp_port:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 65535
+        oauth2_authorized:
+          type: boolean
+          description: True if the OAuth2 consent flow has been completed and a refresh token is stored.
+        oauth2_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the stored OAuth2 credential expires (if known).
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        updated_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - name
+        - display_name
+        - auth_scheme
+        - email_address
+        - oauth2_authorized
+        - status
+        - created_at
+        - updated_at
+
+    RegisterEmailServiceRequest:
+      type: object
+      description: |
+        Request body for POST /v1/tenants/{tenant_id}/email-services.
+        Creates both a `services` row and an `email_services` row in a single
+        transaction.
+      required: [name, display_name, auth_scheme, email_address]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,62}$"
+        display_name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+        auth_scheme:
+          type: string
+          enum: [email_password, email_oauth2, email_app_password]
+        provider:
+          type: string
+          enum: [gmail, outlook]
+          description: Required for `email_oauth2`.
+        email_address:
+          type: string
+          format: email
+        imap_host:
+          type: string
+          description: Required for `email_password` and `email_app_password`.
+        imap_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        smtp_host:
+          type: string
+          description: Required for `email_password` and `email_app_password`.
+        smtp_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+
+    Mailbox:
+      type: object
+      description: An IMAP mailbox (folder).
+      required: [name, delimiter]
+      properties:
+        name:
+          type: string
+          description: Full mailbox path (e.g. INBOX, Sent, Archive/2026).
+        delimiter:
+          type: string
+          description: Hierarchy delimiter character (e.g. "/").
+        flags:
+          type: array
+          items:
+            type: string
+          description: IMAP mailbox flags (e.g. "\\Noselect", "\\HasChildren").
+        message_count:
+          type: [integer, "null"]
+          minimum: 0
+        unseen_count:
+          type: [integer, "null"]
+          minimum: 0
+
+    EmailMessage:
+      type: object
+      description: |
+        An email message. On list/search endpoints only envelope fields are
+        populated (body and attachment bytes are omitted). On read (`GET
+        /messages/{id}`) body text and attachment metadata are included.
+      required: [message_id, subject, from, to, date, mailbox]
+      properties:
+        message_id:
+          type: string
+          description: Provider UID or RFC 5322 Message-ID value.
+        subject:
+          type: string
+          description: Subject line (truncated to 500 chars in audit events).
+        from:
+          type: array
+          items:
+            type: string
+            format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        date:
+          type: string
+          format: date-time
+          description: Message date (RFC 5322 Date header, normalised to UTC).
+        mailbox:
+          type: string
+          description: Mailbox the message resides in.
+        flags:
+          $ref: "#/components/schemas/EmailMessageFlags"
+        body_text:
+          type: [string, "null"]
+          description: Plain-text body part. Null on list/search responses.
+        body_html:
+          type: [string, "null"]
+          description: HTML body part. Null on list/search responses.
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailAttachment"
+          description: Attachment metadata. Bytes not included; use download endpoint.
+
+    EmailAttachment:
+      type: object
+      description: Metadata for a single message attachment part.
+      required: [attachment_id, filename, content_type, size_bytes]
+      properties:
+        attachment_id:
+          type: string
+          description: IMAP BODYSTRUCTURE part number (e.g. "2", "2.1").
+        filename:
+          type: string
+          description: Attachment filename from Content-Disposition.
+        content_type:
+          type: string
+          description: MIME content-type (e.g. "application/pdf").
+        size_bytes:
+          type: integer
+          minimum: 0
+          description: Decoded attachment size in bytes.
+        content_id:
+          type: [string, "null"]
+          description: Content-ID for inline attachments.
+
+    EmailMessageFlags:
+      type: object
+      description: IMAP flags for a message.
+      properties:
+        read:
+          type: boolean
+          description: True if the \\Seen flag is set.
+        starred:
+          type: boolean
+          description: True if the \\Flagged flag is set.
+        answered:
+          type: boolean
+          description: True if the \\Answered flag is set.
+        draft:
+          type: boolean
+          description: True if the \\Draft flag is set.
+
+    EmailSendRequest:
+      type: object
+      description: Request body for POST /v1/email-proxy/messages (send email).
+      required: [to, subject, body]
+      properties:
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+          minItems: 1
+          description: Primary recipients. Each address is RFC 5322 validated.
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+          description: CC recipients.
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+          description: BCC recipients (not visible to other recipients).
+        subject:
+          type: string
+          maxLength: 998
+          description: |
+            Subject line. Header injection characters (`\r`, `\n`) are rejected.
+        body:
+          type: string
+          description: Plain-text message body.
+        body_html:
+          type: [string, "null"]
+          description: Optional HTML body part (produces multipart/alternative).
+        reply_to_message_id:
+          type: [string, "null"]
+          description: |
+            Message-ID of the message being replied to. Sets In-Reply-To and
+            References headers.
+        attachments:
+          type: array
+          items:
+            type: object
+            required: [filename, content_type, content_base64]
+            properties:
+              filename:
+                type: string
+                description: Attachment filename (header-injection characters rejected).
+              content_type:
+                type: string
+                description: MIME content-type.
+              content_base64:
+                type: string
+                format: byte
+                description: |
+                  Base64-encoded attachment bytes. Max 25 MiB per attachment;
+                  50 MiB total message size.
+                x-mintkey-sensitive: false
+          description: Optional inline attachments.
+
+    OAuth2RefreshResponse:
+      type: object
+      description: Response from POST /v1/internal/oauth2/{provider}/refresh.
+      required: [access_token, expires_at, refreshed_at]
+      properties:
+        access_token:
+          type: string
+          x-mintkey-sensitive: true
+          description: |
+            Fresh OAuth2 access token. Sensitive — email-proxy must not log or
+            persist this value; use it in-memory for the current request only.
+        expires_at:
+          type: string
+          format: date-time
+          description: UTC expiry of the returned access token.
+        refreshed_at:
+          type: string
+          format: date-time
+          description: UTC timestamp when the refresh was performed.
 
 x-mintkey-error-codes:
   description: |

@@ -20,6 +20,20 @@ EXACT_REDACT = frozenset({
     "mintkey.token",
 })
 
+# Email-proxy span attributes (ADR-0024) that are explicitly safe to export.
+# These bypass the suffix-based redaction filter even if their name would
+# otherwise match. Maintained in lockstep with:
+#   docs/architecture/contracts/otel/span-attributes.md
+#   packages/go/otelinit/allowlist.go
+EMAIL_SPAN_ATTRS = frozenset({
+    "email.service_id",
+    "email.message_id",
+    "email.mailbox",
+    "email.provider",
+    "email.attachment_count",
+    "email.body_size_bytes",
+})
+
 # Attribute name suffixes that trigger redaction
 SUFFIX_REDACT = (
     "_token", "_secret", "_password", "_passphrase", "_key", "_hash",
@@ -36,6 +50,9 @@ _CREDENTIAL_PATTERNS = [
 
 
 def _is_redacted_name(name: str) -> bool:
+    # Email-proxy allowlisted attributes bypass all redaction rules.
+    if name in EMAIL_SPAN_ATTRS:
+        return False
     if name in EXACT_REDACT:
         return True
     return any(name.endswith(suffix) for suffix in SUFFIX_REDACT)

@@ -60,17 +60,26 @@ const (
 	AuthScheme_AUTH_SCHEME_APPLE_JWT                 AuthScheme = 9
 	AuthScheme_AUTH_SCHEME_GOOGLE_SERVICE_ACCOUNT    AuthScheme = 10
 	// SSH_PRIVATE_KEY: Vault stores an SSH private key (PEM or OpenSSH format).
-	// Used by the SSH proxy (ADR-0021) to authenticate to backend SSH servers.
+	// Used by the SSH proxy (ADR-0022) to authenticate to backend SSH servers.
 	// The proxy holds the key in session scope and zeros it on disconnect.
 	AuthScheme_AUTH_SCHEME_SSH_PRIVATE_KEY AuthScheme = 11
 	// SSH_CA: Vault stores an SSH Certificate Authority signing key.
-	// Used by the SSH proxy (ADR-0021, Phase 2) to sign short-lived SSH certificates
+	// Used by the SSH proxy (ADR-0022, Phase 2) to sign short-lived SSH certificates
 	// for direct-connect mode (agent connects directly to backend, no bastion in data path).
 	AuthScheme_AUTH_SCHEME_SSH_CA AuthScheme = 12
 	// SSH_PASSWORD: Vault stores a plaintext SSH password for username+password bastion auth.
 	// The password is stored as raw bytes in the encrypted payload; target_address and
-	// ssh_user are stored in the dedicated metadata columns (ADR-0021).
+	// ssh_user are stored in the dedicated metadata columns (ADR-0022).
 	AuthScheme_AUTH_SCHEME_SSH_PASSWORD AuthScheme = 13
+	// EMAIL_PASSWORD: Vault stores an email credential for IMAP/SMTP password auth (ADR-0024).
+	// Payload JSON: {"username","password","imap_host","imap_port","smtp_host","smtp_port"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_PASSWORD AuthScheme = 14
+	// EMAIL_OAUTH2: Vault stores an OAuth2 refresh token for Gmail or Outlook (ADR-0024).
+	// Payload JSON: {"provider":"gmail"|"outlook","refresh_token","email_address"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_OAUTH2 AuthScheme = 15
+	// EMAIL_APP_PASSWORD: Vault stores an app-password credential (e.g. Google App Password) (ADR-0024).
+	// Payload JSON: {"username","app_password","imap_host","imap_port","smtp_host","smtp_port"}.
+	AuthScheme_AUTH_SCHEME_EMAIL_APP_PASSWORD AuthScheme = 16
 )
 
 // Enum value maps for AuthScheme.
@@ -90,6 +99,9 @@ var (
 		11: "AUTH_SCHEME_SSH_PRIVATE_KEY",
 		12: "AUTH_SCHEME_SSH_CA",
 		13: "AUTH_SCHEME_SSH_PASSWORD",
+		14: "AUTH_SCHEME_EMAIL_PASSWORD",
+		15: "AUTH_SCHEME_EMAIL_OAUTH2",
+		16: "AUTH_SCHEME_EMAIL_APP_PASSWORD",
 	}
 	AuthScheme_value = map[string]int32{
 		"AUTH_SCHEME_UNSPECIFIED":               0,
@@ -106,6 +118,9 @@ var (
 		"AUTH_SCHEME_SSH_PRIVATE_KEY":           11,
 		"AUTH_SCHEME_SSH_CA":                    12,
 		"AUTH_SCHEME_SSH_PASSWORD":              13,
+		"AUTH_SCHEME_EMAIL_PASSWORD":            14,
+		"AUTH_SCHEME_EMAIL_OAUTH2":              15,
+		"AUTH_SCHEME_EMAIL_APP_PASSWORD":        16,
 	}
 )
 
@@ -281,7 +296,7 @@ type GetCredentialResponse struct {
 	//	      JSON-encoded structured payload (see Cred*ClientSecret
 	//	      schemas in docs/contracts/rest/openapi.yaml).
 	//	SSH_PRIVATE_KEY -> PEM or OpenSSH format private key bytes.
-	//	      The SSH proxy (ADR-0021) holds this in session scope and
+	//	      The SSH proxy (ADR-0022) holds this in session scope and
 	//	      zeros it on disconnect. Never injected into HTTP headers.
 	//	SSH_CA -> SSH Certificate Authority signing key bytes (Phase 2).
 	//	      Used by the SSH proxy to sign short-lived SSH certificates.
@@ -1257,7 +1272,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12;\n" +
 	"\vvalid_until\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"validUntil*\xc8\x03\n" +
+	"validUntil*\xaa\x04\n" +
 	"\n" +
 	"AuthScheme\x12\x1b\n" +
 	"\x17AUTH_SCHEME_UNSPECIFIED\x10\x00\x12\x1e\n" +
@@ -1274,7 +1289,10 @@ const file_vault_proto_rawDesc = "" +
 	"\x12\x1f\n" +
 	"\x1bAUTH_SCHEME_SSH_PRIVATE_KEY\x10\v\x12\x16\n" +
 	"\x12AUTH_SCHEME_SSH_CA\x10\f\x12\x1c\n" +
-	"\x18AUTH_SCHEME_SSH_PASSWORD\x10\r*r\n" +
+	"\x18AUTH_SCHEME_SSH_PASSWORD\x10\r\x12\x1e\n" +
+	"\x1aAUTH_SCHEME_EMAIL_PASSWORD\x10\x0e\x12\x1c\n" +
+	"\x18AUTH_SCHEME_EMAIL_OAUTH2\x10\x0f\x12\"\n" +
+	"\x1eAUTH_SCHEME_EMAIL_APP_PASSWORD\x10\x10*r\n" +
 	"\x10CredentialStatus\x12!\n" +
 	"\x1dCREDENTIAL_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18CREDENTIAL_STATUS_ACTIVE\x10\x01\x12\x1d\n" +
@@ -1284,8 +1302,8 @@ const file_vault_proto_rawDesc = "" +
 	"\rPutCredential\x12&.mintkey.vault.v1.PutCredentialRequest\x1a'.mintkey.vault.v1.PutCredentialResponse\x12i\n" +
 	"\x10RevokeCredential\x12).mintkey.vault.v1.RevokeCredentialRequest\x1a*.mintkey.vault.v1.RevokeCredentialResponse\x12]\n" +
 	"\fListVersions\x12%.mintkey.vault.v1.ListVersionsRequest\x1a&.mintkey.vault.v1.ListVersionsResponse\x12~\n" +
-	"\x17ValidateServiceIdentity\x120.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a1.mintkey.vault.v1.ValidateServiceIdentityResponseBM\n" +
-	"\x13io.mintkey.vault.v1P\x01Z4github.com/mintkey/mintkey/internal/vault/v1;vaultv1b\x06proto3"
+	"\x17ValidateServiceIdentity\x120.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a1.mintkey.vault.v1.ValidateServiceIdentityResponseBP\n" +
+	"\x13io.mintkey.vault.v1P\x01Z7github.com/mintkey/mintkey/packages/go/vault/v1;vaultv1b\x06proto3"
 
 var (
 	file_vault_proto_rawDescOnce sync.Once

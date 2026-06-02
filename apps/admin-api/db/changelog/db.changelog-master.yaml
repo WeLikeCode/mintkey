@@ -62,3 +62,9 @@ databaseChangeLog:
   - include:
       file: 021-ssh-pubkey-and-hostkeys.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 022-email-services.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 023-oauth2-state.yaml
+      relativeToChangelogFile: true

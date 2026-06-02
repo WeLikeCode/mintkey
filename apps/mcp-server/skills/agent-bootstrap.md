@@ -283,6 +283,88 @@ sshpass -p "$JWT" ssh -p 2222 \
 **JWT lifetime is ~10 minutes.** If your operation takes longer, call `request_token` again and reconnect before expiry.
 </ssh_services>
 
+<email_services>
+**Email services** use the `email-proxy` data-plane component (port `:8088`) instead of the
+HTTP egress proxy. You can detect them by `auth_scheme` in `{email_password, email_oauth2,
+email_app_password}` in `list_services` / `describe_service` output.
+
+**Permission scopes (4 actions):**
+
+| Action | Grants access to |
+|---|---|
+| `read:email` | `mintkey_list_mailboxes`, `mintkey_list_emails`, `mintkey_read_email`, `mintkey_search_emails`, `mintkey_download_attachment` |
+| `send:email` | `mintkey_send_email` |
+| `write:email` | `mintkey_move_email`, `mintkey_mark_email` |
+| `delete:email` | `mintkey_delete_email` |
+
+Request a token for the specific action you need (one token per action scope):
+
+```json
+{ "tool": "request_token", "arguments": { "service_id": "svc_01...", "action": "send:email" } }
+```
+
+**The 9 MCP email tools:**
+
+| Tool | Required scope | Description |
+|---|---|---|
+| `mintkey_list_mailboxes` | `read:email` | List IMAP mailboxes (INBOX, Sent, Drafts, …) |
+| `mintkey_list_emails` | `read:email` | Fetch message envelopes: `{mailbox, limit, after}` |
+| `mintkey_read_email` | `read:email` | Fetch full message body by UID: `{id}` |
+| `mintkey_send_email` | `send:email` | Send via SMTP: `{to, subject, body, cc?, bcc?, attachments?}` |
+| `mintkey_search_emails` | `read:email` | Search: `{query, mailbox?, limit?}` |
+| `mintkey_delete_email` | `delete:email` | Delete message by UID: `{id}` |
+| `mintkey_move_email` | `write:email` | Move to another mailbox: `{id, mailbox}` |
+| `mintkey_download_attachment` | `read:email` | Download attachment bytes: `{id}` (returns base64) |
+| `mintkey_mark_email` | `write:email` | Set/unset IMAP flags: `{id, flags}` (e.g. `["\Seen"]`) |
+
+**Important behavioural notes:**
+
+- **Email body content is never stored by Mintkey.** The MCP server fetches body content
+  from email-proxy on each `mintkey_read_email` call; no email body persists in Postgres.
+- **You NEVER see the upstream password or OAuth2 token.** email-proxy holds the credential
+  internally for the duration of the IMAP/SMTP operation, then discards it — same invariant
+  as the HTTP proxy.
+- **OAuth2 services (Gmail, Outlook) handle token refresh automatically.** If an access token
+  is expired, email-proxy refreshes it via the admin-api without any action from you. If the
+  refresh token itself is revoked by the provider, the tool call returns
+  `503 email_service_auth_expired` — the operator must re-authorize in the Admin UI.
+- **Message IDs are opaque UID handles** shaped `uid:<imap_uid>`. Do not construct them
+  yourself; always use IDs returned by `mintkey_list_emails` or `mintkey_search_emails`.
+- **Attachment IDs** are shaped `att:<message_uid>:<part_number>`. Use IDs from the
+  `mintkey_read_email` response `attachments[]` array.
+- **Do NOT route email tool calls through the HTTP proxy (`:8000`).** Email is handled
+  exclusively by the email-proxy on `:8088` via these 9 MCP tools.
+
+**Example — list mailboxes then read newest message:**
+
+```json
+{ "tool": "mintkey_list_mailboxes", "arguments": { "service_id": "svc_01..." } }
+// → { "mailboxes": ["INBOX", "Sent", "Drafts", "[Gmail]/Spam"] }
+
+{ "tool": "mintkey_list_emails",
+  "arguments": { "service_id": "svc_01...", "mailbox": "INBOX", "limit": 5 } }
+// → { "messages": [{"id":"uid:42","subject":"Hello","from":"alice@…","date":"…"}, …] }
+
+{ "tool": "mintkey_read_email", "arguments": { "service_id": "svc_01...", "id": "uid:42" } }
+// → { "id": "uid:42", "subject": "Hello", "from": "alice@…", "body": "…", "attachments": [] }
+```
+
+**Example — send email:**
+
+```json
+{ "tool": "mintkey_send_email",
+  "arguments": {
+    "service_id": "svc_01...",
+    "to": ["bob@example.com"],
+    "subject": "Report",
+    "body": "See attached.",
+    "cc": ["carol@example.com"]
+  }
+}
+// → { "message_id": "uid:43", "status": "sent" }
+```
+</email_services>
+
 <errors_and_revocation>
 The proxy and MCP tools return errors with a structured `mintkey:code` field in the response body (for HTTP errors) or in the error frame (for streaming MCP). Handle these distinct cases:
 

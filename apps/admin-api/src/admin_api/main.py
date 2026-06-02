@@ -30,6 +30,8 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agents import router as agents_router
+from admin_api.api.email_services import router as email_services_router
+from admin_api.api.email_services import internal_oauth2_router as email_oauth2_internal_router
 from admin_api.api.api_keys import router as api_keys_router
 from admin_api.api.api_keys_shortcut import api_keys_shortcut_router
 from admin_api.api.audit import router as audit_router
@@ -76,6 +78,8 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(services_router)
+    app.include_router(email_services_router)
+    app.include_router(email_oauth2_internal_router)
     app.include_router(agents_router)
     app.include_router(api_keys_router)
     app.include_router(api_keys_shortcut_router)
@@ -104,6 +108,8 @@ def create_app() -> FastAPI:
     # They never originate from a browser, so CSRF is not applicable.
     # validate-agent-key and proxy-hit are called by Go/Python services.
     csrf_exempt("/v1/internal")
+    # email-proxy → admin-api OAuth2 refresh (machine-to-machine, Bearer token auth)
+    csrf_exempt("/v1/internal/oauth2")
 
     # Proxy endpoint uses Bearer token auth — CSRF not applicable.
     # The dynamic path /v1/proxy/call/{service_id}/{path_suffix} requires the

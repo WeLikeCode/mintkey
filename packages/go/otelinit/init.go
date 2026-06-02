@@ -37,7 +37,13 @@ var forbiddenSuffixes = []string{
 }
 
 // isSensitive reports whether the attribute key should be redacted.
+// Attributes on the email allowlist (emailAllowedAttrs) are never redacted
+// even if they would otherwise match a suffix rule.
 func isSensitive(key string) bool {
+	// Allowlisted attributes bypass all redaction rules.
+	if IsEmailAllowed(key) {
+		return false
+	}
 	if _, ok := exactForbidden[key]; ok {
 		return true
 	}

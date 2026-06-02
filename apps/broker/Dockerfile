@@ -11,6 +11,7 @@ COPY packages/go/ packages/go/
 
 # Copy all service go.mod/go.sum so the workspace can resolve every listed module.
 COPY apps/broker/go.mod apps/broker/go.sum apps/broker/
+COPY apps/email-proxy/go.mod apps/email-proxy/go.sum apps/email-proxy/
 COPY apps/kong-syncer/go.mod apps/kong-syncer/go.sum apps/kong-syncer/
 COPY apps/proxy-plugin/go.mod apps/proxy-plugin/go.sum apps/proxy-plugin/
 COPY apps/ssh-proxy/go.mod apps/ssh-proxy/go.sum apps/ssh-proxy/

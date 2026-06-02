@@ -6,7 +6,7 @@ Checks:
      with host port = primary host port + 100.
   2. .env.test contains all 7 required MINTKEY_*_PUBLIC_URL variables with
      correct offset values.
-  3. All 11 locally-built services have image: pins in the override.
+  3. All 12 locally-built services have image: pins in the override.
 
 Exits non-zero with descriptive errors on any drift.
 """
@@ -45,6 +45,7 @@ LOCALLY_BUILT_SERVICES = frozenset(
         "mock-backend",
         "jaeger-auth",
         "ssh-proxy",
+        "email-proxy",
     ]
 )
 
@@ -228,7 +229,7 @@ def validate_env_vars() -> list[str]:
 
 
 def validate_image_pins(test_services: dict) -> list[str]:
-    """Check all 10 locally-built services have image: directives in the override."""
+    """Check all 12 locally-built services have image: directives in the override."""
     errors: list[str] = []
 
     for svc_name in sorted(LOCALLY_BUILT_SERVICES):
