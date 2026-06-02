@@ -622,6 +622,123 @@
         "payload"
       ]
     },
+    "ev_service_api_keys_cascade_deleted": {
+      "type": "object",
+      "description": "All service_api_keys rows for a service were deleted as part of a transactional cascade delete.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.api_keys.cascade_deleted"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "service_id",
+            "count"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_service_permission_grants_cascade_deleted": {
+      "type": "object",
+      "description": "All permission_grants rows for a service were deleted as part of a transactional cascade delete.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.permission_grants.cascade_deleted"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "service_id",
+            "count"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_service_credentials_cascade_deleted": {
+      "type": "object",
+      "description": "All credentials rows for a service were deleted as part of a transactional cascade delete.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.credentials.cascade_deleted"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "service_id",
+            "count"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
     "ev_credential_registered": {
       "type": "object",
       "description": "First credential registration on a brand-new service (no prior version).",
@@ -2607,6 +2724,9 @@
       "service.registered": "#/$defs/ev_service_registered",
       "service.updated": "#/$defs/ev_service_updated",
       "service.removed": "#/$defs/ev_service_removed",
+      "service.api_keys.cascade_deleted": "#/$defs/ev_service_api_keys_cascade_deleted",
+      "service.permission_grants.cascade_deleted": "#/$defs/ev_service_permission_grants_cascade_deleted",
+      "service.credentials.cascade_deleted": "#/$defs/ev_service_credentials_cascade_deleted",
       "credential.registered": "#/$defs/ev_credential_registered",
       "credential.rotated": "#/$defs/ev_credential_rotated",
       "credential.revoked": "#/$defs/ev_credential_revoked",

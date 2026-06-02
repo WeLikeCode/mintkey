@@ -1538,16 +1538,98 @@ async def delete_service(
     _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
-    Delete (hard-delete) a service.
+    Delete (hard-delete) a service with in-app transactional cascade.
 
-    Source: Req 3; ADR-0008; ADR-0014.7.
+    Deletes dependent rows first (child-first order) within the same
+    AsyncSession transaction, then deletes the service row.  Emits a
+    per-class cascade audit event for each child table before emitting
+    the top-level service.deleted event.
+
+    Cascade order (FK leaf-first):
+      1. service_api_keys  — fk_service_api_keys_service
+      2. permission_grants — fk_permission_grants_service
+      3. credentials       — fk_credentials_service
+
+    Every child DELETE is tenant-pinned (tenant_id = :tid) for
+    defence-in-depth alongside the RLS policy — ADR-0008.
+
+    Source: Req 3; ADR-0008; ADR-0014.7; Option-A cascade decision.
     """
     await set_tenant_context(session, tenant_id)
 
     db_uuid = _wire_id_to_db_uuid(service_id)
+    params = {"sid": db_uuid, "tid": str(tenant_id)}
+
+    # 1. DELETE service_api_keys (most leaf-ward)
+    sak_result = await session.execute(
+        text(
+            "DELETE FROM service_api_keys"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            " RETURNING id"
+        ),
+        params,
+    )
+    sak_count = len(sak_result.fetchall())
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="service.api_keys.cascade_deleted",
+        actor_id=None,
+        actor_type="operator",
+        target_id=None,
+        target_type="service",
+        payload={"service_id": service_id, "count": sak_count},
+    )
+
+    # 2. DELETE permission_grants
+    pg_result = await session.execute(
+        text(
+            "DELETE FROM permission_grants"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            " RETURNING id"
+        ),
+        params,
+    )
+    pg_count = len(pg_result.fetchall())
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="service.permission_grants.cascade_deleted",
+        actor_id=None,
+        actor_type="operator",
+        target_id=None,
+        target_type="service",
+        payload={"service_id": service_id, "count": pg_count},
+    )
+
+    # 3. DELETE credentials
+    cred_result = await session.execute(
+        text(
+            "DELETE FROM credentials"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            " RETURNING id"
+        ),
+        params,
+    )
+    cred_count = len(cred_result.fetchall())
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="service.credentials.cascade_deleted",
+        actor_id=None,
+        actor_type="operator",
+        target_id=None,
+        target_type="service",
+        payload={"service_id": service_id, "count": cred_count},
+    )
+
+    # 4. DELETE the service row (FK constraints satisfied above)
     await session.execute(
         text("DELETE FROM services WHERE id = :sid AND tenant_id = :tid"),
-        {"sid": db_uuid, "tid": str(tenant_id)},
+        params,
     )
 
     await audit_emit(
