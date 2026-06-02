@@ -15,6 +15,7 @@ import (
 	"github.com/mintkey/mintkey/services/email-proxy/internal/auth"
 	imapwrap "github.com/mintkey/mintkey/services/email-proxy/internal/imap"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/oauth2"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/permissions"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/server/handlers"
@@ -83,6 +84,20 @@ func (c *capturingAuditEmitter) Emit(_ context.Context, event handlers.AuditEven
 	return nil
 }
 
+// allowAllPermissionChecker is a test double that always grants permission.
+type allowAllPermissionChecker struct{}
+
+func (a *allowAllPermissionChecker) CheckGrant(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
+// denyPermissionChecker is a test double that always denies permission.
+type denyPermissionChecker struct{}
+
+func (d *denyPermissionChecker) CheckGrant(_ context.Context, _, _, _ string) error {
+	return permissions.ErrPermissionDenied
+}
+
 // ============================================================================
 // Helper builders
 // ============================================================================
@@ -132,10 +147,10 @@ func passwordVaultCred() *vault.Credential {
 }
 
 // makeHandlers creates an EmailHandlers with injected fakes, using a real
-// rate limiter so rate-limit tests work.
+// rate limiter so rate-limit tests work. Uses allowAllPermissionChecker by default.
 func makeHandlers(p handlers.PoolGetter, o handlers.OAuth2Manager, v handlers.VaultGetter, s handlers.SMTPSender, ae handlers.AuditEmitter) *handlers.EmailHandlers {
 	rl := security.NewRateLimiter()
-	return handlers.New(p, o, v, s, rl, ae)
+	return handlers.New(p, o, v, s, rl, ae, &allowAllPermissionChecker{})
 }
 
 // ============================================================================
@@ -188,7 +203,7 @@ func TestHandleListMailboxes_RateLimited_429(t *testing.T) {
 	ae := &capturingAuditEmitter{}
 	fastClock := time.Now()
 	rl := security.NewRateLimiterWithClock(func() time.Time { return fastClock })
-	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae)
+	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae, &allowAllPermissionChecker{})
 
 	claims := defaultClaims()
 
@@ -238,7 +253,7 @@ func TestHandleListMessages_RateLimited_429(t *testing.T) {
 	ae := &capturingAuditEmitter{}
 	fastClock := time.Now()
 	rl := security.NewRateLimiterWithClock(func() time.Time { return fastClock })
-	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae)
+	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae, &allowAllPermissionChecker{})
 	claims := defaultClaims()
 
 	for i := 0; i < 60; i++ {
@@ -328,7 +343,7 @@ func TestHandleSendMessage_RateLimited_429(t *testing.T) {
 	ae := &capturingAuditEmitter{}
 	fastClock := time.Now()
 	rl := security.NewRateLimiterWithClock(func() time.Time { return fastClock })
-	h := handlers.New(&stubPool{}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{msgID: "x"}, rl, ae)
+	h := handlers.New(&stubPool{}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{msgID: "x"}, rl, ae, &allowAllPermissionChecker{})
 	claims := defaultClaims()
 
 	for i := 0; i < 60; i++ {
@@ -404,7 +419,7 @@ func TestHandleUpdateFlags_RateLimited_429(t *testing.T) {
 	ae := &capturingAuditEmitter{}
 	fastClock := time.Now()
 	rl := security.NewRateLimiterWithClock(func() time.Time { return fastClock })
-	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae)
+	h := handlers.New(&stubPool{err: fmt.Errorf("x")}, &stubOAuth2{token: "t"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae, &allowAllPermissionChecker{})
 	claims := defaultClaims()
 
 	for i := 0; i < 60; i++ {
@@ -706,3 +721,55 @@ var _ handlers.SMTPSender = (*stubSMTP)(nil)
 
 // Suppress unused imports.
 var _ = goiMAP.FlagSeen
+
+// ============================================================================
+// email permission grant enforcement tests
+// ============================================================================
+
+// TestEmailPermissionGrant_WithGrant verifies that a request succeeds when
+// the permission checker allows it (grant exists).
+func TestEmailPermissionGrant_WithGrant(t *testing.T) {
+	ae := &capturingAuditEmitter{}
+	stubP := &stubPool{err: fmt.Errorf("dial failed")} // IMAP dial fails → 503
+	rl := security.NewRateLimiter()
+	h := handlers.New(stubP, &stubOAuth2{token: "tok"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae, &allowAllPermissionChecker{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/email-proxy/mailboxes?service_id=svc_01TEST", nil)
+	req = injectClaims(req, defaultClaims())
+	rr := httptest.NewRecorder()
+	h.HandleListMailboxes(rr, req)
+	// With a grant, the request proceeds past the permission check.
+	// IMAP dial fails → 503, not 403.
+	if rr.Code == http.StatusForbidden {
+		t.Errorf("expected non-403 when grant exists, got 403")
+	}
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (IMAP unavailable), got %d", rr.Code)
+	}
+}
+
+// TestEmailPermissionGrant_WithoutGrant verifies that a request is rejected with 403
+// when the permission checker denies it (no grant).
+func TestEmailPermissionGrant_WithoutGrant(t *testing.T) {
+	ae := &capturingAuditEmitter{}
+	stubP := &stubPool{err: fmt.Errorf("dial failed")}
+	rl := security.NewRateLimiter()
+	h := handlers.New(stubP, &stubOAuth2{token: "tok"}, &stubVault{cred: oauth2VaultCred()}, &stubSMTP{}, rl, ae, &denyPermissionChecker{})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/email-proxy/mailboxes?service_id=svc_01TEST", nil)
+	req = injectClaims(req, defaultClaims())
+	rr := httptest.NewRecorder()
+	h.HandleListMailboxes(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when no grant, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "permission_denied") {
+		t.Errorf("expected permission_denied in body, got: %s", body)
+	}
+	if !strings.Contains(body, "email_permission_grant") {
+		t.Errorf("expected email_permission_grant in body, got: %s", body)
+	}
+}

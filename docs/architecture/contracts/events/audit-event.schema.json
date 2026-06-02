@@ -94,7 +94,8 @@
         "ssh_session",
         "email_service",
         "email_message",
-        "email_mailbox"
+        "email_mailbox",
+        "email_permission_grant"
       ]
     },
     "auth_scheme": {
@@ -2593,6 +2594,45 @@
         }
       },
       "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_permission_grant_created": {
+      "title": "email_permission_grant.created",
+      "description": "An agent was granted access to an email service. Per feat/email-permission-grants.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email_permission_grant.created"},
+        "target_type": {"const": "email_permission_grant"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {"type": "string", "description": "Agent UUID (string form)."},
+            "email_service_id": {"type": "string", "description": "Email service UUID (string form)."}
+          },
+          "required": ["agent_id", "email_service_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_permission_grant_revoked": {
+      "title": "email_permission_grant.revoked",
+      "description": "An agent's access to an email service was revoked. Per feat/email-permission-grants.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email_permission_grant.revoked"},
+        "target_type": {"const": "email_permission_grant"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "grant_id": {"type": "string", "description": "Email permission grant UUID (string form)."},
+            "agent_id": {"type": "string", "description": "Agent UUID (string form)."},
+            "email_service_id": {"type": "string", "description": "Email service UUID (string form)."}
+          },
+          "required": ["grant_id", "agent_id", "email_service_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -2757,6 +2797,12 @@
     },
     {
       "$ref": "#/$defs/ev_email_credential_deleted"
+    },
+    {
+      "$ref": "#/$defs/ev_email_permission_grant_created"
+    },
+    {
+      "$ref": "#/$defs/ev_email_permission_grant_revoked"
     }
   ],
   "discriminator": {
@@ -2818,7 +2864,9 @@
       "email.message.moved": "#/$defs/ev_email_message_moved",
       "email.message.sent": "#/$defs/ev_email_message_sent",
       "email.credential.set": "#/$defs/ev_email_credential_set",
-      "email.credential.deleted": "#/$defs/ev_email_credential_deleted"
+      "email.credential.deleted": "#/$defs/ev_email_credential_deleted",
+      "email_permission_grant.created": "#/$defs/ev_email_permission_grant_created",
+      "email_permission_grant.revoked": "#/$defs/ev_email_permission_grant_revoked"
     }
   },
   "examples": [

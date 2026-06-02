@@ -34,6 +34,7 @@ import (
 	"github.com/mintkey/mintkey/services/email-proxy/internal/auth"
 	imapwrap "github.com/mintkey/mintkey/services/email-proxy/internal/imap"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/oauth2"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/permissions"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/smtp"
@@ -126,6 +127,12 @@ type SMTPSender interface {
 	Send(ctx context.Context, cred smtp.Credential, req smtp.EmailSendRequest) (string, error)
 }
 
+// PermissionChecker checks whether an (agent_id, email_service_id) pair has a
+// row in email_permission_grants for the given tenant.
+type PermissionChecker interface {
+	CheckGrant(ctx context.Context, tenantID, agentID, emailServiceID string) error
+}
+
 // EmailHandlers groups all email endpoint handler functions and their
 // shared dependencies.
 type EmailHandlers struct {
@@ -135,6 +142,7 @@ type EmailHandlers struct {
 	smtpClient  SMTPSender
 	rateLimiter *security.RateLimiter
 	audit       AuditEmitter
+	permChecker PermissionChecker
 }
 
 // New creates an EmailHandlers instance.
@@ -146,6 +154,8 @@ type EmailHandlers struct {
 //   - s: SMTP client (from smtp.New)
 //   - rl: rate limiter (from security.NewRateLimiter)
 //   - ae: audit emitter (C-8 injects the real queue; pass NoopAuditEmitter() for now)
+//   - pc: email permission checker (from permissions.NewChecker); if nil, a deny-all
+//         noop is used so callers that don't inject one fail safely.
 func New(
 	p PoolGetter,
 	o OAuth2Manager,
@@ -153,9 +163,13 @@ func New(
 	s SMTPSender,
 	rl *security.RateLimiter,
 	ae AuditEmitter,
+	pc PermissionChecker,
 ) *EmailHandlers {
 	if ae == nil {
 		ae = NoopAuditEmitter()
+	}
+	if pc == nil {
+		pc = &denyAllPermissionChecker{}
 	}
 	return &EmailHandlers{
 		pool:        p,
@@ -164,7 +178,39 @@ func New(
 		smtpClient:  s,
 		rateLimiter: rl,
 		audit:       ae,
+		permChecker: pc,
 	}
+}
+
+// denyAllPermissionChecker is a safe default that denies all grants when
+// no real checker is injected (fail-closed).
+type denyAllPermissionChecker struct{}
+
+func (d *denyAllPermissionChecker) CheckGrant(_ context.Context, _, _, _ string) error {
+	return permissions.ErrPermissionDenied
+}
+
+// checkEmailPermission verifies that the agent in claims has an email_permission_grant
+// for the given service_id (which is the email_service_id in email_permission_grants).
+// Returns true on success; writes a 403 response and returns false on denial.
+func (h *EmailHandlers) checkEmailPermission(w http.ResponseWriter, r *http.Request, claims *auth.Claims, serviceID string) bool {
+	if err := h.permChecker.CheckGrant(r.Context(), claims.TenantID, claims.Subject, serviceID); err != nil {
+		if errors.Is(err, permissions.ErrPermissionDenied) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"mintkey:code":"permission_denied","title":"agent has no email_permission_grant for this email_service"}`))
+			return false
+		}
+		slog.Warn("checkEmailPermission: transient error checking grant",
+			"tenant_id", claims.TenantID,
+			"agent_id", claims.Subject,
+			"service_id", serviceID,
+			"error", err,
+		)
+		writeError(w, http.StatusServiceUnavailable, "failed to verify email permission grant")
+		return false
+	}
+	return true
 }
 
 // ============================================================================
@@ -187,6 +233,10 @@ func (h *EmailHandlers) HandleListMailboxes(w http.ResponseWriter, r *http.Reque
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -256,6 +306,10 @@ func (h *EmailHandlers) HandleListMessages(w http.ResponseWriter, r *http.Reques
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -343,6 +397,10 @@ func (h *EmailHandlers) HandleSendMessage(w http.ResponseWriter, r *http.Request
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -445,6 +503,10 @@ func (h *EmailHandlers) HandleSearchMessages(w http.ResponseWriter, r *http.Requ
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -564,6 +626,10 @@ func (h *EmailHandlers) HandleReadMessage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
+		return
+	}
+
 	messageID := pathSegment(r.URL.Path, "messages", 0)
 	if messageID == "" {
 		writeError(w, http.StatusBadRequest, "message_id path parameter is required")
@@ -660,6 +726,10 @@ func (h *EmailHandlers) HandleDeleteMessage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
+		return
+	}
+
 	messageID := pathSegment(r.URL.Path, "messages", 0)
 	if messageID == "" {
 		writeError(w, http.StatusBadRequest, "message_id path parameter is required")
@@ -750,6 +820,10 @@ func (h *EmailHandlers) HandleUpdateFlags(w http.ResponseWriter, r *http.Request
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -848,6 +922,10 @@ func (h *EmailHandlers) HandleMoveMessage(w http.ResponseWriter, r *http.Request
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 
@@ -962,6 +1040,10 @@ func (h *EmailHandlers) HandleDownloadAttachment(w http.ResponseWriter, r *http.
 	serviceID := r.URL.Query().Get("service_id")
 	if serviceID == "" {
 		writeError(w, http.StatusBadRequest, "service_id query parameter is required")
+		return
+	}
+
+	if !h.checkEmailPermission(w, r, claims, serviceID) {
 		return
 	}
 

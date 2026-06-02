@@ -28,6 +28,7 @@ import { dashboardHandler } from "./dashboard.js";
 import { componentLoader, Components } from "./components/index.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
 import { ServicesResource } from "./resources/services.js";
+import { EmailPermissionGrantsResource } from "./resources/email-permission-grants.js";
 import { EmailServicesResource } from "./resources/email-services.js";
 import { CredentialsResource } from "./resources/credentials.js";
 import { AgentsResource } from "./resources/agents.js";
@@ -145,6 +146,7 @@ async function main() {
     resources: [
       { resource: ServicesResource.adminResource, options: ServicesResource.options },
       { resource: EmailServicesResource.adminResource, options: EmailServicesResource.options },
+      { resource: EmailPermissionGrantsResource.adminResource, options: EmailPermissionGrantsResource.options },
       { resource: AgentsResource.adminResource, options: AgentsResource.options },
       { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
       { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },

@@ -289,7 +289,7 @@ func newItEnv(t *testing.T) *itEnv {
 	imapPool := newDirectIMAPPool(t, imapAddr)
 
 	rl := security.NewRateLimiter()
-	hdlr := handlers.New(imapPool, oauth2Mgr, vaultStub, smtpStub, rl, ae)
+	hdlr := handlers.New(imapPool, oauth2Mgr, vaultStub, smtpStub, rl, ae, &itAllowAllPermissions{})
 
 	claims := &authpkg.Claims{
 		Subject:   itAgentID,
@@ -548,7 +548,7 @@ func TestInteg_OAuth2Revoked_Returns401(t *testing.T) {
 	imapPool := newDirectIMAPPool(t, imapAddr)
 	rl := security.NewRateLimiter()
 	smtpStub := &itSMTPStub{msgID: "x"}
-	hdlr := handlers.New(imapPool, oauth2Mgr, vaultStub, smtpStub, rl, ae)
+	hdlr := handlers.New(imapPool, oauth2Mgr, vaultStub, smtpStub, rl, ae, &itAllowAllPermissions{})
 
 	claims := &authpkg.Claims{
 		Subject:   itAgentID,
@@ -663,12 +663,20 @@ func TestInteg_MultipleHandlers_AuditEventsEmitted(t *testing.T) {
 // Compile-time stub interface checks
 // ============================================================================
 
+// itAllowAllPermissions is a test double that always grants permission.
+type itAllowAllPermissions struct{}
+
+func (a *itAllowAllPermissions) CheckGrant(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 var (
-	_ handlers.PoolGetter   = (*directIMAPPool)(nil)
-	_ handlers.VaultGetter  = (*itVaultStub)(nil)
-	_ handlers.VaultGetter  = (*itOAuth2VaultStub)(nil)
-	_ handlers.SMTPSender   = (*itSMTPStub)(nil)
-	_ handlers.AuditEmitter = (*itAuditEmitter)(nil)
+	_ handlers.PoolGetter        = (*directIMAPPool)(nil)
+	_ handlers.VaultGetter       = (*itVaultStub)(nil)
+	_ handlers.VaultGetter       = (*itOAuth2VaultStub)(nil)
+	_ handlers.SMTPSender        = (*itSMTPStub)(nil)
+	_ handlers.AuditEmitter      = (*itAuditEmitter)(nil)
+	_ handlers.PermissionChecker = (*itAllowAllPermissions)(nil)
 
 	// Suppress unused import
 	_ = bytes.NewBuffer

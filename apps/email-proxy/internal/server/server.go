@@ -35,6 +35,7 @@ import (
 	"github.com/mintkey/mintkey/services/email-proxy/internal/config"
 	emailmetrics "github.com/mintkey/mintkey/services/email-proxy/internal/metrics"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/oauth2"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/permissions"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/server/handlers"
@@ -74,6 +75,7 @@ func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validato
 	}
 	smtpClient := smtp.New(smtpCfg)
 	rateLimiter := security.NewRateLimiter()
+	permChecker := permissions.NewChecker(cfg.AdminAPIInternalURL, cfg.EmailProxyServiceToken)
 
 	emailHdlr := handlers.New(
 		imapPool,
@@ -82,6 +84,7 @@ func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validato
 		smtpClient,
 		rateLimiter,
 		ae,
+		permChecker,
 	)
 
 	s := &Server{
