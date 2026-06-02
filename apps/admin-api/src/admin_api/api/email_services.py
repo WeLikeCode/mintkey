@@ -46,12 +46,13 @@ from uuid import UUID
 import hashlib
 
 import httpx
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.db.deps import get_db_session
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 from mintkey_models.audit import audit_emit
@@ -1227,6 +1228,394 @@ async def delete_email_service_credential(
         payload={
             "service_id": service_id,
         },
+    )
+
+    return JSONResponse(status_code=204, content=None)
+
+
+# ---------------------------------------------------------------------------
+# PATCH request model
+# ---------------------------------------------------------------------------
+
+# Fields that are immutable after creation — reject changes to these in PATCH.
+_IMMUTABLE_EMAIL_FIELDS = frozenset(
+    {"provider", "imap_host", "imap_port", "smtp_host", "smtp_port", "auth_scheme"}
+)
+
+
+class EmailServicePatch(BaseModel):
+    """Mutable fields for PATCH /v1/tenants/{tid}/email-services/{sid}.
+
+    Immutable fields (provider, imap_host/port, smtp_host/port, auth_scheme) are
+    explicitly excluded — the endpoint returns 422 if the caller includes them.
+    Only the fields declared here are accepted by Pydantic.
+    """
+
+    name: Optional[str] = None
+    allowed_recipient_domains: Optional[str] = None
+    pool_size_max: Optional[int] = None
+    tls_insecure_skip_verify: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants/{tenant_id}/email-services  (list)
+# ---------------------------------------------------------------------------
+
+
+@router.get("", status_code=200)
+async def list_email_services(
+    tenant_id: UUID,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
+) -> JSONResponse:
+    """
+    List email services for a tenant (paginated).
+
+    Returns {"email_services": [...], "pagination": {"limit", "offset", "total"}}.
+    Soft-deleted rows (deleted_at IS NOT NULL) are excluded.
+    Default page size: 50; maximum: 100.
+
+    Auth dep: require_tenant_session (operator session required).
+    Tenant-scoped: WHERE tenant_id = :tid AND deleted_at IS NULL.
+    Bound parameters only — no f-strings in text().
+
+    Source: ADR-0024; fix/email-services-crud-readonly.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    count_result = await session.execute(
+        text(
+            "SELECT COUNT(*) AS total"
+            " FROM email_services"
+            " WHERE tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"tid": str(tenant_id)},
+    )
+    count_row = count_result.fetchone()
+    total = int(count_row.total) if count_row else 0
+
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
+            "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
+            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
+            " FROM email_services"
+            " WHERE tenant_id = :tid AND deleted_at IS NULL"
+            " ORDER BY created_at"
+            " LIMIT :lim OFFSET :off"
+        ),
+        {"tid": str(tenant_id), "lim": limit, "off": offset},
+    )
+    rows = result.fetchall()
+
+    email_services = [
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "provider": row.provider,
+            "name": row.name,
+            "imap_host": row.imap_host,
+            "imap_port": row.imap_port,
+            "smtp_host": row.smtp_host,
+            "smtp_port": row.smtp_port,
+            "auth_scheme": row.auth_scheme,
+            "allowed_recipient_domains": row.allowed_recipient_domains,
+            "pool_size_max": row.pool_size_max,
+            "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in rows
+    ]
+
+    return JSONResponse(
+        {
+            "email_services": email_services,
+            "pagination": {"limit": limit, "offset": offset, "total": total},
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants/{tenant_id}/email-services/{service_id}  (single)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{service_id}", status_code=200)
+async def get_email_service(
+    tenant_id: UUID,
+    service_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
+) -> JSONResponse:
+    """
+    Return a single email service.
+
+    Returns 404 if the service does not exist, belongs to a different tenant,
+    or has been soft-deleted.
+
+    Auth dep: require_tenant_session.
+    Tenant-scoped: WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL.
+    Bound parameters only.
+
+    Source: ADR-0024; fix/email-services-crud-readonly.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
+            "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
+            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
+            " FROM email_services"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"sid": service_id, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Email service not found"},
+        )
+
+    return JSONResponse(
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "provider": row.provider,
+            "name": row.name,
+            "imap_host": row.imap_host,
+            "imap_port": row.imap_port,
+            "smtp_host": row.smtp_host,
+            "smtp_port": row.smtp_port,
+            "auth_scheme": row.auth_scheme,
+            "allowed_recipient_domains": row.allowed_recipient_domains,
+            "pool_size_max": row.pool_size_max,
+            "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/tenants/{tenant_id}/email-services/{service_id}
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/{service_id}", status_code=200)
+async def patch_email_service(
+    tenant_id: UUID,
+    service_id: str,
+    body: EmailServicePatch,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
+) -> JSONResponse:
+    """
+    Update mutable fields of an email service.
+
+    Mutable: name, allowed_recipient_domains, pool_size_max, tls_insecure_skip_verify.
+    Immutable (provider, imap_host, imap_port, smtp_host, smtp_port, auth_scheme) are
+    rejected with 422 if the caller tries to change them — use delete+create instead.
+
+    Empty bodies (no fields set) are rejected with 422.
+
+    Emits email_service.updated audit with payload {service_id, changed_fields: [names]}.
+    Field VALUES are NOT included in the audit payload (NFR-17 belt-and-suspenders).
+
+    Auth dep: require_tenant_session.
+    Tenant-scoped: WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL.
+    Bound parameters only.
+
+    Source: ADR-0024; NFR-17; fix/email-services-crud-readonly.
+    """
+    # Reject any immutable fields the caller might have tried to send.
+    raw_json: dict[str, Any] = {}
+    try:
+        raw_json = await request.json()
+    except Exception:  # noqa: BLE001
+        pass
+
+    immutable_in_body = _IMMUTABLE_EMAIL_FIELDS & set(raw_json.keys())
+    if immutable_in_body:
+        bad_fields = sorted(immutable_in_body)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "immutable_fields",
+                "title": (
+                    "Fields "
+                    + str(bad_fields)
+                    + " cannot be changed after creation."
+                    " To change provider, hosts, ports, or auth_scheme: remove and re-create."
+                ),
+            },
+        )
+
+    # Reject empty bodies — at least one mutable field must be set.
+    provided_fields = list(body.model_fields_set)
+    if not provided_fields:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "no_fields_to_update",
+                "title": "Request body contains no fields to update.",
+            },
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    # Verify service exists and belongs to this tenant (explicit guard — RLS also enforces)
+    check_result = await session.execute(
+        text(
+            "SELECT id FROM email_services"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"sid": service_id, "tid": str(tenant_id)},
+    )
+    if check_result.fetchone() is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Email service not found"},
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Build fixed-template UPDATE (COALESCE keeps current value when new value is NULL).
+    # SQL is a string literal — no f-strings; all values are bound parameters. ADR-0008.
+    await session.execute(
+        text(
+            "UPDATE email_services"
+            "   SET name = COALESCE(:name, name),"
+            "       allowed_recipient_domains = COALESCE(:allowed_recipient_domains,"
+            "                                            allowed_recipient_domains),"
+            "       pool_size_max = COALESCE(:pool_size_max, pool_size_max),"
+            "       tls_insecure_skip_verify = COALESCE(:tls_insecure_skip_verify,"
+            "                                           tls_insecure_skip_verify),"
+            "       updated_at = :updated_at"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {
+            "name": body.name,
+            "allowed_recipient_domains": body.allowed_recipient_domains,
+            "pool_size_max": body.pool_size_max,
+            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
+            "updated_at": now,
+            "sid": service_id,
+            "tid": str(tenant_id),
+        },
+    )
+
+    # Emit audit event — field NAMES only, no values (NFR-17 belt-and-suspenders).
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.service.updated",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": service_id,
+            "changed_fields": sorted(provided_fields),
+        },
+    )
+
+    # Re-fetch and return the updated row
+    refetch = await session.execute(
+        text(
+            "SELECT id, tenant_id, provider, name, imap_host, imap_port,"
+            "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
+            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at"
+            " FROM email_services"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"sid": service_id, "tid": str(tenant_id)},
+    )
+    row = refetch.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Email service not found"},
+        )
+
+    return JSONResponse(
+        {
+            "id": str(row.id),
+            "tenant_id": str(row.tenant_id),
+            "provider": row.provider,
+            "name": row.name,
+            "imap_host": row.imap_host,
+            "imap_port": row.imap_port,
+            "smtp_host": row.smtp_host,
+            "smtp_port": row.smtp_port,
+            "auth_scheme": row.auth_scheme,
+            "allowed_recipient_domains": row.allowed_recipient_domains,
+            "pool_size_max": row.pool_size_max,
+            "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/tenants/{tenant_id}/email-services/{service_id}
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{service_id}", status_code=204)
+async def delete_email_service(
+    tenant_id: UUID,
+    service_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
+) -> JSONResponse:
+    """
+    Soft-delete an email service (sets deleted_at = now()).
+
+    Idempotent: returns 204 even if the row was already soft-deleted.
+
+    email_permission_grants that reference this service via FK are LEFT IN PLACE.
+    The FK constraint references the row (not just live rows), so the FK remains
+    valid after a soft-delete. Cleanup of orphaned grants is the operator's call.
+
+    Emits email_service.deleted audit event with payload {service_id}.
+
+    Auth dep: require_tenant_session.
+    Tenant-scoped WHERE clause on UPDATE. Bound parameters only.
+
+    Source: ADR-0024; fix/email-services-crud-readonly.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    now = datetime.now(timezone.utc)
+
+    # Soft-delete: set deleted_at = now() where not already deleted.
+    # Idempotent: if already deleted, this UPDATE matches 0 rows — that is fine.
+    await session.execute(
+        text(
+            "UPDATE email_services"
+            "   SET deleted_at = :now, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
+        ),
+        {"now": now, "sid": service_id, "tid": str(tenant_id)},
+    )
+
+    # Emit audit event regardless (idempotent pattern — always confirm intent)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.service.deleted",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={"service_id": service_id},
     )
 
     return JSONResponse(status_code=204, content=None)

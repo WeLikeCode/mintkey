@@ -2300,13 +2300,13 @@
           "additionalProperties": false,
           "properties": {
             "service_id": {"$ref": "#/$defs/service_id"},
-            "fields_changed": {
+            "changed_fields": {
               "type": "array",
               "items": {"type": "string"},
               "minItems": 1
             }
           },
-          "required": ["service_id", "fields_changed"]
+          "required": ["service_id", "changed_fields"]
         }
       },
       "required": ["event_type", "target_type", "payload"]
