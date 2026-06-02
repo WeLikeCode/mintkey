@@ -68,3 +68,6 @@ databaseChangeLog:
   - include:
       file: 023-oauth2-state.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 024-email-service-tls-insecure-skip-verify.yaml
+      relativeToChangelogFile: true

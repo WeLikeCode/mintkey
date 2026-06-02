@@ -208,6 +208,15 @@ message GetCredentialResponse {
   // Derived from services.auth_scheme. Allows ssh-proxy to branch on scheme
   // without re-interpreting the int32 auth_scheme field.
   string auth_scheme_name = 12;
+
+  // Email-only: when true, the email-proxy MUST disable TLS certificate
+  // verification for IMAP/SMTP connections to this service.  Only set for
+  // email auth schemes (14, 15, 16).  False by default.
+  //
+  // Security: the email-proxy MUST emit a structured warning log on every
+  // connection opened with InsecureSkipVerify: true so drift can be detected.
+  // Populated from email_services.tls_insecure_skip_verify (ADR-0024).
+  bool tls_insecure_skip_verify = 13;
 }
 
 // ----------------------------------------------------------------------

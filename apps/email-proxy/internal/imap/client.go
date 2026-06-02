@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -106,10 +107,15 @@ type Client struct {
 	selectedMailbox string
 }
 
-// Dial opens a new authenticated IMAP connection with full TLS enforcement.
+// Dial opens a new authenticated IMAP connection with TLS enforcement.
+//
+// If insecureSkipVerify is true, TLS certificate verification is disabled.
+// This MUST only be used for trusted internal servers with self-signed or
+// private-CA certificates (ADR-0024). A structured warning is emitted via
+// slog on every such connection for audit-trail purposes.
 //
 // Caller is responsible for calling Close when done.
-func Dial(ctx context.Context, addr string, mode DialMode, creds Credentials) (*Client, error) {
+func Dial(ctx context.Context, addr string, mode DialMode, creds Credentials, insecureSkipVerify bool) (*Client, error) {
 	if addr == "" {
 		return nil, errors.New("imap: Dial: addr is empty")
 	}
@@ -117,10 +123,20 @@ func Dial(ctx context.Context, addr string, mode DialMode, creds Credentials) (*
 		return nil, errors.New("imap: Dial: credentials username is empty")
 	}
 
+	if insecureSkipVerify {
+		h, p, _ := net.SplitHostPort(addr)
+		slog.Warn("imap: TLS certificate verification DISABLED for connection",
+			"host", h,
+			"port", p,
+			"tls_insecure_skip_verify", true,
+		)
+	}
+
 	opts := &imapclient.Options{
 		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			ServerName: host(addr),
+			MinVersion:         tls.VersionTLS12,
+			ServerName:         host(addr),
+			InsecureSkipVerify: insecureSkipVerify, //nolint:gosec // per-service opt-in, operator-controlled (ADR-0024)
 		},
 	}
 

@@ -44,6 +44,12 @@ type CredentialRecord struct {
 	// (e.g. "ssh://host:22"). Populated only by PostgresStore.Get via a LEFT JOIN on
 	// public.services. SQLite store leaves this empty. ADR-0023 / Phase 3.
 	ServiceBaseUrl string
+
+	// TlsInsecureSkipVerify disables TLS certificate verification for email-proxy
+	// IMAP/SMTP connections when true. Populated only by PostgresStore.Get via a
+	// LEFT JOIN on public.email_services. SQLite store leaves this false.
+	// ADR-0024.
+	TlsInsecureSkipVerify bool
 }
 
 // Store wraps an SQLite database connection.

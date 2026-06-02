@@ -165,6 +165,7 @@ class EmailServiceCreate(BaseModel):
     auth_scheme: str
     allowed_recipient_domains: Optional[str] = None
     pool_size_max: int = 5
+    tls_insecure_skip_verify: bool = False
 
     @field_validator("provider")
     @classmethod
@@ -281,11 +282,11 @@ async def create_email_service(
             "INSERT INTO email_services"
             " (id, tenant_id, provider, name, imap_host, imap_port,"
             "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-            "  pool_size_max, created_at, updated_at)"
+            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at)"
             " VALUES"
             " (:id, :tenant_id, :provider, :name, :imap_host, :imap_port,"
             "  :smtp_host, :smtp_port, :auth_scheme, :allowed_domains,"
-            "  :pool_size, :now, :now)"
+            "  :pool_size, :tls_insecure_skip_verify, :now, :now)"
         ),
         {
             "id": str(svc_id),
@@ -299,6 +300,7 @@ async def create_email_service(
             "auth_scheme": body.auth_scheme,
             "allowed_domains": body.allowed_recipient_domains,
             "pool_size": body.pool_size_max,
+            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "now": now,
         },
     )
@@ -321,6 +323,7 @@ async def create_email_service(
             "imap_port": body.imap_port,
             "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
+            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
         },
     )
 
@@ -336,6 +339,7 @@ async def create_email_service(
             "imap_port": body.imap_port,
             "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
+            "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "created_at": now.isoformat(),
         },
     )
@@ -419,11 +423,11 @@ async def create_email_service_from_template(
             "INSERT INTO email_services"
             " (id, tenant_id, provider, name, imap_host, imap_port,"
             "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
-            "  pool_size_max, created_at, updated_at)"
+            "  pool_size_max, tls_insecure_skip_verify, created_at, updated_at)"
             " VALUES"
             " (:id, :tenant_id, :provider, :name, :imap_host, :imap_port,"
             "  :smtp_host, :smtp_port, :auth_scheme, NULL,"
-            "  5, :now, :now)"
+            "  5, false, :now, :now)"
         ),
         {
             "id": str(svc_id),
