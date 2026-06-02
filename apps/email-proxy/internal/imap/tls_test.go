@@ -7,6 +7,7 @@
 package imap_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -16,8 +17,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"log/slog"
 	"math/big"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,10 +136,16 @@ func TestDial_TLS_InsecureSkipVerify_False_FailsWithX509Error(t *testing.T) {
 
 // TestDial_TLS_InsecureSkipVerify_True_Succeeds verifies that dialing a TLS server
 // with a self-signed cert and insecureSkipVerify=true connects and authenticates
-// successfully.
+// successfully, and that a slog.Warn audit-trail entry was emitted.
 func TestDial_TLS_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 	addr, cleanup := startTLSIMAPServer(t)
 	defer cleanup()
+
+	// Capture slog output so we can assert the audit warning was emitted.
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	creds := imapwrap.Credentials{
 		Username: testUser,
@@ -154,6 +163,12 @@ func TestDial_TLS_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 	// Verify the connection works.
 	if err := client.Ping(); err != nil {
 		t.Errorf("Ping failed after InsecureSkipVerify dial: %v", err)
+	}
+
+	// Assert the audit warning was emitted with the expected structured field.
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, `"tls_insecure_skip_verify":true`) {
+		t.Fatalf("expected slog.Warn with tls_insecure_skip_verify=true, got: %s", logOutput)
 	}
 }
 

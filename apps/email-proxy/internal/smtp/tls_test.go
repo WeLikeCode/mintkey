@@ -8,7 +8,9 @@
 package smtp_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -57,8 +59,15 @@ func TestSend_InsecureSkipVerify_False_FailsWithTLSError(t *testing.T) {
 
 // TestSend_InsecureSkipVerify_True_Succeeds verifies that Send to a server with
 // a self-signed TLS certificate succeeds when InsecureSkipVerify=true on the
-// Credential (per-service vault flag path).
+// Credential (per-service vault flag path), and that a slog.Warn audit-trail
+// entry was emitted.
 func TestSend_InsecureSkipVerify_True_Succeeds(t *testing.T) {
+	// Capture slog output so we can assert the audit warning was emitted.
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
 	// Start a server with implicit TLS using a self-signed cert.
 	serverTLSCfg := selfSignedTLS(t)
 	srv := newTestServer(t, "plain", serverTLSCfg)
@@ -90,6 +99,12 @@ func TestSend_InsecureSkipVerify_True_Succeeds(t *testing.T) {
 	}
 	if msgID == "" {
 		t.Error("expected non-empty message ID on success")
+	}
+
+	// Assert the audit warning was emitted with the expected structured field.
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, `"tls_insecure_skip_verify":true`) {
+		t.Fatalf("expected slog.Warn with tls_insecure_skip_verify=true, got: %s", logOutput)
 	}
 }
 
