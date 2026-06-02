@@ -62,7 +62,7 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("vault.NewClient: %v", err)
 	}
 	rl := security.NewRateLimiter()
-	emailHdlr := handlers.New(&noopPool{}, &noopOAuth2{}, &noopVault{}, &noopSMTP{}, rl, handlers.NoopAuditEmitter())
+	emailHdlr := handlers.New(&noopPool{}, &noopOAuth2{}, &noopVault{}, &noopSMTP{}, rl, handlers.NoopAuditEmitter(), nil)
 	// Use a nil validator — withJWTAuth tests below create their own.
 	return newWithHandlers(cfg, vc, nil, emailHdlr)
 }

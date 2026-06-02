@@ -154,6 +154,11 @@ tags:
       Admin-API endpoints for registering and managing email services
       (IMAP/SMTP or OAuth2-backed) within a tenant. OAuth2 authorize/callback
       endpoints initiate and complete the provider consent flow.
+  - name: EmailPermissionGrants
+    description: |
+      Admin-API endpoints for granting/revoking agent access to email services.
+      A row in email_permission_grants is required before the email-proxy will
+      process any request from that agent to that email service.
 
 security:
   - OperatorSession: []
@@ -2997,6 +3002,114 @@ paths:
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
   ###########################################################################
+  # Email Permission Grants (admin-api — operator-facing)
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/email-permission-grants:
+    post:
+      operationId: createEmailPermissionGrant
+      tags: [EmailPermissionGrants]
+      summary: Grant an agent access to an email service.
+      description: |
+        Creates an `email_permission_grants` row linking an agent to an
+        email service. The email-proxy enforces that this grant exists before
+        processing any request for that (agent_id, email_service_id) pair.
+        Returns 409 if the grant already exists. Returns 422 if the agent
+        or email service does not belong to this tenant.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmailPermissionGrantRequest"
+      responses:
+        "201":
+          description: Email permission grant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailPermissionGrant"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+    get:
+      operationId: listEmailPermissionGrants
+      tags: [EmailPermissionGrants]
+      summary: List email permission grants for a tenant.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of email permission grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EmailPermissionGrant"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/tenants/{tenant_id}/email-permission-grants/{grant_id}:
+    get:
+      operationId: getEmailPermissionGrant
+      tags: [EmailPermissionGrants]
+      summary: Get a single email permission grant.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: grant_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Email permission grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailPermissionGrant"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteEmailPermissionGrant
+      tags: [EmailPermissionGrants]
+      summary: Revoke an email permission grant.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: grant_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Email permission grant revoked.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  ###########################################################################
   # Email Proxy — data-plane (served on :8088 by email-proxy container)
   ###########################################################################
 
@@ -5235,6 +5348,49 @@ components:
         icon:
           type: string
           nullable: true
+
+    # ----- Email Permission Grants -----
+
+    EmailPermissionGrant:
+      type: object
+      description: |
+        A grant allowing an agent to access an email service via the email-proxy.
+        Created by an operator; enforced by the email-proxy on every request.
+        Per feat/email-permission-grants.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        email_service_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, tenant_id, agent_id, email_service_id, created_at, updated_at]
+
+    CreateEmailPermissionGrantRequest:
+      type: object
+      description: Request body for POST /v1/tenants/{tid}/email-permission-grants.
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          description: Agent UUID to grant access to.
+        email_service_id:
+          type: string
+          format: uuid
+          description: Email service UUID to grant access to.
+      required: [agent_id, email_service_id]
 
     # ----- Email Proxy -----
 

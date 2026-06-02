@@ -183,9 +183,17 @@ func injectClaims(r *http.Request, c *auth.Claims) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), handlers.ClaimsContextKey, c))
 }
 
+// allowAllPermissions is a test double that always grants permission (security tests
+// focus on credential leak, not permission enforcement).
+type allowAllPermissions struct{}
+
+func (a *allowAllPermissions) CheckGrant(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 func makeHandlers(p handlers.PoolGetter, o handlers.OAuth2Manager, v handlers.VaultGetter, s handlers.SMTPSender, ae handlers.AuditEmitter) *handlers.EmailHandlers {
 	rl := security.NewRateLimiter()
-	return handlers.New(p, o, v, s, rl, ae)
+	return handlers.New(p, o, v, s, rl, ae, &allowAllPermissions{})
 }
 
 // ============================================================================

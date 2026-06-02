@@ -30,6 +30,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agents import router as agents_router
+from admin_api.api.email_permission_grants import router as email_permission_grants_router
 from admin_api.api.email_services import router as email_services_router
 from admin_api.api.email_services import internal_oauth2_router as email_oauth2_internal_router
 from admin_api.api.api_keys import router as api_keys_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(email_permission_grants_router)
     app.include_router(email_services_router)
     app.include_router(email_oauth2_internal_router)
     app.include_router(services_router)

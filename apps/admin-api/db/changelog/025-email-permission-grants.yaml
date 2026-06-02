@@ -1,0 +1,117 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 025-email-permission-grants.yaml
+  #
+  # Creates the public.email_permission_grants table (feat/email-permission-grants).
+  #
+  # Parallel to permission_grants (006-permission-grants.yaml) but FK'd to
+  # email_services(id) instead of services(id).  User explicitly chose the
+  # separate-table approach over a polymorphic kind column — the FK on
+  # permission_grants.service_id rejects email_services rows.
+  #
+  # RLS policy mirrors 006-permission-grants-rls.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create email_permission_grants table ---------------------------
+  - changeSet:
+      id: "025-email-permission-grants-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: email_permission_grants
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE public.email_permission_grants (
+                id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id        UUID        NOT NULL,
+                agent_id         UUID        NOT NULL,
+                email_service_id UUID        NOT NULL,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT fk_email_permission_grants_tenant
+                  FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
+                CONSTRAINT fk_email_permission_grants_agent
+                  FOREIGN KEY (agent_id) REFERENCES public.agents(id),
+                CONSTRAINT fk_email_permission_grants_email_service
+                  FOREIGN KEY (email_service_id) REFERENCES public.email_services(id),
+                CONSTRAINT uq_email_permission_grants
+                  UNIQUE (tenant_id, agent_id, email_service_id)
+              );
+              COMMENT ON TABLE public.email_permission_grants IS
+                'Per-tenant grants allowing an agent access to an email service (feat/email-permission-grants).';
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS public.email_permission_grants;
+
+  # --- 2. Index on email_permission_grants.tenant_id --------------------
+  - changeSet:
+      id: "025-email-permission-grants-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: email_permission_grants
+              indexName: idx_email_permission_grants_tenant
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_email_permission_grants_tenant
+                ON public.email_permission_grants (tenant_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_email_permission_grants_tenant;
+
+  # --- 3. Row Level Security on email_permission_grants -----------------
+  - changeSet:
+      id: "025-email-permission-grants-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: email_permission_grants
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.email_permission_grants ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON public.email_permission_grants
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON public.email_permission_grants;
+              ALTER TABLE public.email_permission_grants DISABLE ROW LEVEL SECURITY;
+
+  # --- 4. Grants for mintkey_app role ------------------------------------
+  - changeSet:
+      id: "025-email-permission-grants-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: email_permission_grants
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.email_permission_grants TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.email_permission_grants FROM mintkey_app;
