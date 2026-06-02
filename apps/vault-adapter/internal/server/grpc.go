@@ -417,9 +417,53 @@ func (g *grpcVaultServer) ListVersions(ctx context.Context, req *vaultv1.ListVer
 	}, nil
 }
 
-// ValidateServiceIdentity is not yet implemented.
-func (g *grpcVaultServer) ValidateServiceIdentity(_ context.Context, _ *vaultv1.ValidateServiceIdentityRequest) (*vaultv1.ValidateServiceIdentityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "not implemented")
+// ValidateServiceIdentity validates the caller's service-identity token.
+//
+// The caller sends its identity via gRPC metadata headers:
+//   - x-mintkey-service-identity: the identity ID (e.g. "svcid_email_proxy")
+//   - x-mintkey-service-token:    the raw boot secret
+//
+// The proto request fields (service_identity_id, token) are accepted as a
+// secondary source but metadata takes precedence, matching the pattern used by
+// the scopeInterceptor for GetCredential/PutCredential.
+//
+// On success returns {ok:true, scopes:[...]}. On missing token returns
+// codes.Unauthenticated; on wrong token returns codes.PermissionDenied.
+func (g *grpcVaultServer) ValidateServiceIdentity(ctx context.Context, req *vaultv1.ValidateServiceIdentityRequest) (*vaultv1.ValidateServiceIdentityResponse, error) {
+	// Prefer metadata headers; fall back to proto fields for callers that send them.
+	identityID := ""
+	var token []byte
+
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if ids := md.Get("x-mintkey-service-identity"); len(ids) > 0 && ids[0] != "" {
+			identityID = ids[0]
+		}
+		if toks := md.Get("x-mintkey-service-token"); len(toks) > 0 && toks[0] != "" {
+			token = []byte(toks[0])
+		}
+	}
+
+	// Fall back to proto fields if metadata is absent or incomplete.
+	if identityID == "" {
+		identityID = req.GetServiceIdentityId()
+	}
+	if len(token) == 0 {
+		token = req.GetToken()
+	}
+
+	if identityID == "" || len(token) == 0 {
+		return nil, status.Errorf(codes.Unauthenticated, "missing service identity or token")
+	}
+
+	scopes, ok := g.svc.ValidateServiceIdentity(ctx, identityID, token)
+	if !ok {
+		return nil, status.Errorf(codes.PermissionDenied, "invalid service identity token")
+	}
+
+	return &vaultv1.ValidateServiceIdentityResponse{
+		Ok:     true,
+		Scopes: scopes,
+	}, nil
 }
 
 // ListenAndServe starts the gRPC server on the given port, registering the VaultAdapter RPC.

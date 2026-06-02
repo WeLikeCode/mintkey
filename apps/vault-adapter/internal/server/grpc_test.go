@@ -1079,6 +1079,91 @@ func TestGRPCAppleJWT_EmptyP8KeyPEM(t *testing.T) {
 	}
 }
 
+// -----------------------------------------------------------------------
+// ValidateServiceIdentity handler tests
+// -----------------------------------------------------------------------
+
+// TestGRPCValidateServiceIdentity_HappyPath verifies that a registered identity
+// with valid token in gRPC metadata returns ok=true and the correct scopes.
+func TestGRPCValidateServiceIdentity_HappyPath(t *testing.T) {
+	ctx := context.Background()
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	token := []byte("email-proxy-token-32bytes-xxxxxx")
+	if err := svc.RegisterServiceIdentity("svcid_email_proxy", token, []string{"vault.read"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity: %v", err)
+	}
+
+	md := metadata.Pairs(
+		"x-mintkey-service-identity", "svcid_email_proxy",
+		"x-mintkey-service-token", string(token),
+	)
+	authCtx := metadata.NewOutgoingContext(ctx, md)
+
+	resp, err := client.ValidateServiceIdentity(authCtx, &vaultv1.ValidateServiceIdentityRequest{})
+	if err != nil {
+		t.Fatalf("ValidateServiceIdentity: %v", err)
+	}
+	if !resp.Ok {
+		t.Errorf("expected ok=true, got false")
+	}
+	if len(resp.Scopes) != 1 || resp.Scopes[0] != "vault.read" {
+		t.Errorf("expected scopes=[vault.read], got %v", resp.Scopes)
+	}
+}
+
+// TestGRPCValidateServiceIdentity_MissingToken verifies that a call without any
+// service-identity metadata returns codes.Unauthenticated.
+func TestGRPCValidateServiceIdentity_MissingToken(t *testing.T) {
+	ctx := context.Background()
+	client, _, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	_, err := client.ValidateServiceIdentity(ctx, &vaultv1.ValidateServiceIdentityRequest{})
+	if err == nil {
+		t.Fatal("expected error for missing token, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %T: %v", err, err)
+	}
+	if st.Code() != codes.Unauthenticated {
+		t.Errorf("expected codes.Unauthenticated, got %v", st.Code())
+	}
+}
+
+// TestGRPCValidateServiceIdentity_WrongToken verifies that a registered identity
+// with the wrong token in metadata returns codes.PermissionDenied.
+func TestGRPCValidateServiceIdentity_WrongToken(t *testing.T) {
+	ctx := context.Background()
+	client, svc, cleanup := newTestGRPCServerWithAuth(t)
+	defer cleanup()
+
+	goodToken := []byte("email-proxy-token-32bytes-xxxxxx")
+	if err := svc.RegisterServiceIdentity("svcid_email_proxy", goodToken, []string{"vault.read"}); err != nil {
+		t.Fatalf("RegisterServiceIdentity: %v", err)
+	}
+
+	md := metadata.Pairs(
+		"x-mintkey-service-identity", "svcid_email_proxy",
+		"x-mintkey-service-token", "wrong-token-that-does-not-match!",
+	)
+	authCtx := metadata.NewOutgoingContext(ctx, md)
+
+	_, err := client.ValidateServiceIdentity(authCtx, &vaultv1.ValidateServiceIdentityRequest{})
+	if err == nil {
+		t.Fatal("expected error for wrong token, got nil")
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %T: %v", err, err)
+	}
+	if st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", st.Code())
+	}
+}
+
 // TestGRPCAppleJWT_WrongSchemeField verifies that an envelope with scheme != "apple_jwt"
 // returns codes.InvalidArgument.
 func TestGRPCAppleJWT_WrongSchemeField(t *testing.T) {
