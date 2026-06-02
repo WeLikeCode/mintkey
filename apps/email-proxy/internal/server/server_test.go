@@ -138,7 +138,7 @@ func TestWithJWTAuth_InvalidToken(t *testing.T) {
 
 	cfg := &config.Config{HTTPPort: 8088, VaultGRPCAddr: "localhost:9999"}
 	vc, _ := vault.NewClient("localhost:9999", "id", "tok")
-	s := New(cfg, vc, validator)
+	s := New(cfg, vc, validator, nil)
 
 	handler := s.withJWTAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK) // should not be reached

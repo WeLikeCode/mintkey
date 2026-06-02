@@ -56,6 +56,10 @@ type Config struct {
 
 	// OTelEndpoint is the OTLP gRPC endpoint, e.g. "otel-collector:4317".
 	OTelEndpoint string
+
+	// AuditWALPath is the path for the auditq write-ahead log file.
+	// Default: /tmp/email-proxy-audit.wal
+	AuditWALPath string
 }
 
 // Load loads configuration from environment variables.
@@ -68,6 +72,7 @@ func Load() (*Config, error) {
 		MetricsPort:         8090,
 		LogLevel:            "info",
 		AdminAPIInternalURL: "http://admin-api:8080",
+		AuditWALPath:        "/tmp/email-proxy-audit.wal",
 	}
 
 	// Required vars — fail fast.
@@ -130,6 +135,10 @@ func Load() (*Config, error) {
 
 	if v := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); v != "" {
 		cfg.OTelEndpoint = v
+	}
+
+	if v := os.Getenv("MINTKEY_EMAIL_PROXY_AUDIT_WAL_PATH"); v != "" {
+		cfg.AuditWALPath = v
 	}
 
 	return cfg, nil

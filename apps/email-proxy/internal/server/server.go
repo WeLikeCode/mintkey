@@ -26,12 +26,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/auth"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/config"
+	emailmetrics "github.com/mintkey/mintkey/services/email-proxy/internal/metrics"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/oauth2"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
@@ -53,8 +55,14 @@ type Server struct {
 //
 // The oauth2Manager is built from cfg.AdminAPIInternalURL and
 // cfg.EmailProxyServiceToken; all IMAP/SMTP/security dependencies are
-// wired here so that main.go only needs to pass the core trio (cfg, vault, validator).
-func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validator) *Server {
+// wired here so that main.go only needs to pass the core trio (cfg, vault,
+// validator) plus the audit emitter (C-8 injects the real auditq.Queue).
+//
+// If ae is nil, a no-op emitter is used (useful for tests).
+func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validator, ae handlers.AuditEmitter) *Server {
+	if ae == nil {
+		ae = handlers.NoopAuditEmitter()
+	}
 	// Build email handler dependencies.
 	imapPool := pool.New(nil) // nil → defaults (5 conns, 5-min idle)
 	oauth2Mgr := oauth2.NewManager(cfg.AdminAPIInternalURL, vaultClient, cfg.EmailProxyServiceToken)
@@ -73,7 +81,7 @@ func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validato
 		vaultClient,
 		smtpClient,
 		rateLimiter,
-		handlers.NoopAuditEmitter(), // TODO(C-8): replace with real auditq.Queue
+		ae,
 	)
 
 	s := &Server{
@@ -289,12 +297,18 @@ func (s *Server) withJWTAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// loggingMiddleware logs each request at INFO level.
+// loggingMiddleware logs each request at INFO level and records Prometheus
+// request metrics (mintkey_email_proxy_requests_total,
+// mintkey_email_proxy_request_duration_seconds).
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(rw, r)
+		dur := time.Since(start).Seconds()
+		endpoint := endpointLabel(r.URL.Path, r.Method)
+		scope := scopeLabel(r.URL.Path, r.Method)
+		emailmetrics.RecordRequest(endpoint, scope, strconv.Itoa(rw.statusCode), dur)
 		slog.Info("http.request",
 			"method", r.Method,
 			"path", r.URL.Path,
@@ -302,6 +316,76 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	})
+}
+
+// endpointLabel derives a stable endpoint label from the request path and method.
+func endpointLabel(path, method string) string {
+	switch {
+	case path == "/v1/email-proxy/mailboxes":
+		return "list_mailboxes"
+	case path == "/v1/email-proxy/messages/search":
+		return "search_messages"
+	case path == "/v1/email-proxy/messages":
+		if method == http.MethodPost {
+			return "send_message"
+		}
+		return "list_messages"
+	case strings.HasPrefix(path, "/v1/email-proxy/messages/"):
+		tail := strings.TrimPrefix(path, "/v1/email-proxy/messages/")
+		parts := strings.SplitN(tail, "/", 3)
+		switch {
+		case len(parts) == 2 && parts[1] == "flags":
+			return "update_flags"
+		case len(parts) == 2 && parts[1] == "move":
+			return "move_message"
+		case len(parts) >= 3 && parts[1] == "attachments":
+			return "download_attachment"
+		default:
+			if method == http.MethodDelete {
+				return "delete_message"
+			}
+			return "read_message"
+		}
+	case path == "/healthz":
+		return "healthz"
+	case path == "/readyz":
+		return "readyz"
+	case path == "/metrics":
+		return "metrics"
+	default:
+		return "unknown"
+	}
+}
+
+// scopeLabel returns the required OAuth2 scope for an endpoint (used as a metric label).
+func scopeLabel(path, method string) string {
+	switch {
+	case path == "/v1/email-proxy/mailboxes":
+		return "read:email"
+	case path == "/v1/email-proxy/messages/search":
+		return "read:email"
+	case path == "/v1/email-proxy/messages":
+		if method == http.MethodPost {
+			return "send:email"
+		}
+		return "read:email"
+	case strings.HasPrefix(path, "/v1/email-proxy/messages/"):
+		tail := strings.TrimPrefix(path, "/v1/email-proxy/messages/")
+		parts := strings.SplitN(tail, "/", 3)
+		switch {
+		case len(parts) == 2 && parts[1] == "flags":
+			return "write:email"
+		case len(parts) == 2 && parts[1] == "move":
+			return "write:email"
+		default:
+			if method == http.MethodDelete {
+				return "delete:email"
+			}
+			return "read:email"
+		}
+	default:
+		return ""
+	}
 }
 
 // responseWriter captures the status code for logging.
