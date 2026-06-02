@@ -1514,7 +1514,7 @@ async def patch_email_service(
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
-        event_type="email_service.updated",
+        event_type="email.service.updated",
         actor_id=None,
         actor_type="operator",
         target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),
@@ -1610,7 +1610,7 @@ async def delete_email_service(
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
-        event_type="email_service.deleted",
+        event_type="email.service.deleted",
         actor_id=None,
         actor_type="operator",
         target_id=UUID(service_id) if _is_valid_uuid(service_id) else uuid.uuid4(),

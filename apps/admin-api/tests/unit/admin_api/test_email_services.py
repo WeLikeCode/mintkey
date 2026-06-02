@@ -2069,7 +2069,7 @@ class TestPatchEmailService:
         assert body["name"] == "new-name"
 
         assert len(audit_calls) == 1
-        assert audit_calls[0]["event_type"] == "email_service.updated"
+        assert audit_calls[0]["event_type"] == "email.service.updated"
         payload = audit_calls[0]["payload"]
         assert "changed_fields" in payload
         for field in ["name", "tls_insecure_skip_verify"]:
@@ -2232,7 +2232,7 @@ class TestDeleteEmailService:
 
         assert result.status_code == 204
         assert len(audit_calls) == 1
-        assert audit_calls[0]["event_type"] == "email_service.deleted"
+        assert audit_calls[0]["event_type"] == "email.service.deleted"
         assert audit_calls[0]["payload"]["service_id"] == service_id
 
 
