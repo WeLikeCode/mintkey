@@ -133,7 +133,7 @@ Agents interact with email via REST API endpoints:
 - `GET /v1/email/attachments/{id}` — Download attachment
 - `POST /v1/email/messages/{id}/flags` — Mark as read/unread
 
-### D5: MCP Tools
+### D6: MCP Tools
 Expose email operations as MCP tools:
 - `list_mailboxes()` — List available mailboxes (requires `read:email`)
 - `list_emails(mailbox, limit, after)` — List recent emails (requires `read:email`)
@@ -147,7 +147,7 @@ Expose email operations as MCP tools:
 
 MCP server routes email tool calls to email proxy via `email_proxy_url` config.
 
-### D6: OAuth2 Support
+### D7: OAuth2 Support
 Support OAuth2 for major email providers:
 - **Gmail**: Google OAuth2 flow with `mail.google.com` scope
 - **Outlook**: Microsoft Graph OAuth2 flow with `Mail.ReadWrite` scope
@@ -172,14 +172,14 @@ Support email attachments in Phase 1:
 - Download attachments via dedicated endpoint
 - Size limit: 25MB per attachment, 50MB total message (configurable)
 
-### D8: TLS Termination
+### D9: TLS Termination
 Email proxy port 8088 requires TLS termination:
 - **Production**: Kong TCP route with TLS termination (preferred)
 - **Alternative**: mTLS between MCP server and email proxy
 - **Development**: Plain HTTP acceptable with documented trust boundary
 - All agent JWTs and email content encrypted in transit
 
-### D9: Connection Pooling
+### D10: Connection Pooling
 IMAP connections are expensive (TCP + TLS + LOGIN + SELECT):
 - **Per-service connection pool** with configurable size (default: 5 connections)
 - **Idle timeout**: 5 minutes (configurable)
@@ -187,7 +187,7 @@ IMAP connections are expensive (TCP + TLS + LOGIN + SELECT):
 - **UIDVALIDITY tracking**: detect mailbox recreation, invalidate cached UIDs
 - Compatible with ADR-0014.4 (no persistent credential cache beyond connection lifetime)
 
-### D10: Security Measures
+### D11: Security Measures
 
 **IMAP/SMTP Injection Prevention**:
 - Use parameterized IMAP SEARCH via `go-imap`'s `imap.NewSearchCriteria()` with proper escaping
@@ -216,14 +216,14 @@ IMAP connections are expensive (TCP + TLS + LOGIN + SELECT):
 - Config includes `ServiceIdentityID` and `ServiceIdentitySecret`
 - Boot secret provisioned via same mechanism as other data-plane components
 
-### D11: Audit Integration
+### D12: Audit Integration
 Email proxy participates in audit hash chain:
 - Write audit events via `auditq.Queue` → admin-api → Postgres (same as SSH proxy)
 - Include `prev_hash` + `hash` per event, per-tenant chain (ADR-0014.7)
 - **New target_type enum values**: `email_service`, `email_message`, `email_attachment`
 - **New event types**: `email.sent`, `email.received`, `email.deleted`, `email.moved`, `email.searched`, `email.attachment.downloaded`, `email.service.registered`, `email.service.auth_expired`, `email.rate_limit.exceeded`, `email.domain.blocked`
 
-### D12: Service Discovery
+### D13: Service Discovery
 Email services appear in MCP `list_services`:
 - Email service registered in `services` table with `auth_scheme: email_*`
 - Email-specific config stored in `email_services` table (IMAP/SMTP hosts, ports, etc.)
