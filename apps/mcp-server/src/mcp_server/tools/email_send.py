@@ -138,9 +138,11 @@ async def email_send(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
 
-    # Build the payload for email-proxy POST /v1/email-proxy/messages.
+    # Build the JSON body for email-proxy POST /v1/email-proxy/messages.
+    # NOTE: email-proxy reads service_id from the URL query string (?service_id=)
+    # on *every* endpoint including this POST — see email-proxy email.go:397.
+    # We pass service_id via httpx `params=` (query string), NOT in the JSON body.
     payload: dict = {
-        "service_id": db_esvc_id,
         "to": body.to,
         "subject": body.subject,
         "body": body.body,
@@ -156,6 +158,7 @@ async def email_send(
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{email_proxy_url}/v1/email-proxy/messages",
+            params={"service_id": db_esvc_id},
             json=payload,
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=30.0,
