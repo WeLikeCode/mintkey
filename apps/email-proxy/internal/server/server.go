@@ -1,17 +1,24 @@
 // Package server implements the Email Proxy HTTP server.
 //
-// Phase C-2 exposes:
-//   - /healthz  — always 200 OK (liveness).
-//   - /readyz   — 200 if vault-adapter is reachable; 503 otherwise.
-//   - /metrics  — Prometheus metrics via promhttp.
+// C-7 replaces the stub-501 routes with real handler functions from the
+// internal/server/handlers package. The 9 endpoints are:
 //
-// Stub handlers for /v1/email-proxy/... return 501 Not Implemented.
-// Real implementations land in C-7.
+//	GET    /v1/email-proxy/mailboxes                            — list_mailboxes
+//	GET    /v1/email-proxy/messages                            — list_emails
+//	POST   /v1/email-proxy/messages                            — send_email
+//	GET    /v1/email-proxy/messages/search                     — search_emails
+//	GET    /v1/email-proxy/messages/{id}                       — read_email
+//	DELETE /v1/email-proxy/messages/{id}                       — delete_email
+//	PATCH  /v1/email-proxy/messages/{id}/flags                 — mark_email
+//	POST   /v1/email-proxy/messages/{id}/move                  — move_email
+//	GET    /v1/email-proxy/messages/{id}/attachments/{att_id}  — download_attachment
 //
-// Middleware stack (applied to all non-health routes):
-//   - JWT auth via internal/auth.Validator.
-//   - Structured logging (slog).
-//   - OTel trace instrumentation (basic span per request).
+// Middleware stack (in order):
+//  1. loggingMiddleware — structured request/response log at INFO.
+//  2. withJWTAuth — Bearer JWT validation + claims injection into context.
+//  3. Per-handler scope check, rate limit, and business logic.
+//
+// Health endpoints (/healthz, /readyz, /metrics) are not wrapped in JWT auth.
 package server
 
 import (
@@ -19,11 +26,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/auth"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/oauth2"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/server/handlers"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/smtp"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/vault"
 )
 
@@ -32,15 +45,42 @@ type Server struct {
 	cfg         *config.Config
 	vaultClient *vault.Client
 	validator   *auth.Validator
+	emailHdlr   *handlers.EmailHandlers
 	httpServer  *http.Server
 }
 
 // New creates a new Server.
+//
+// The oauth2Manager is built from cfg.AdminAPIInternalURL and
+// cfg.EmailProxyServiceToken; all IMAP/SMTP/security dependencies are
+// wired here so that main.go only needs to pass the core trio (cfg, vault, validator).
 func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validator) *Server {
+	// Build email handler dependencies.
+	imapPool := pool.New(nil) // nil → defaults (5 conns, 5-min idle)
+	oauth2Mgr := oauth2.NewManager(cfg.AdminAPIInternalURL, vaultClient, cfg.EmailProxyServiceToken)
+	smtpCfg := smtp.Config{
+		// SMTP transport config is resolved per-credential at send time.
+		// Default to STARTTLS on 587; per-service overrides land in a later chunk.
+		UseSTARTTLS: true,
+		Port:        587,
+	}
+	smtpClient := smtp.New(smtpCfg)
+	rateLimiter := security.NewRateLimiter()
+
+	emailHdlr := handlers.New(
+		imapPool,
+		oauth2Mgr,
+		vaultClient,
+		smtpClient,
+		rateLimiter,
+		handlers.NoopAuditEmitter(), // TODO(C-8): replace with real auditq.Queue
+	)
+
 	s := &Server{
 		cfg:         cfg,
 		vaultClient: vaultClient,
 		validator:   validator,
+		emailHdlr:   emailHdlr,
 	}
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
@@ -48,6 +88,21 @@ func New(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validato
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
+	}
+	return s
+}
+
+// newWithHandlers creates a Server using pre-built EmailHandlers (for tests).
+func newWithHandlers(cfg *config.Config, vaultClient *vault.Client, validator *auth.Validator, emailHdlr *handlers.EmailHandlers) *Server {
+	s := &Server{
+		cfg:         cfg,
+		vaultClient: vaultClient,
+		validator:   validator,
+		emailHdlr:   emailHdlr,
+	}
+	s.httpServer = &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler: s.routes(),
 	}
 	return s
 }
@@ -77,11 +132,114 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
 
-	// Stub REST endpoints — require JWT auth (implemented in C-7).
-	mux.HandleFunc("/v1/email-proxy/", s.withJWTAuth(s.handleStub))
+	// Email REST endpoints — all protected by JWT auth + claims injection.
+	//
+	// Route dispatch strategy:
+	// The stdlib mux does not support path parameters or method routing natively.
+	// We register specific prefixes and dispatch by method + path suffix inside
+	// a single dispatcher. This keeps the routing explicit and auditable.
+	mux.HandleFunc("/v1/email-proxy/mailboxes", s.withJWTAuth(s.handleMailboxes))
+	mux.HandleFunc("/v1/email-proxy/messages/search", s.withJWTAuth(s.handleMessagesSearch))
+	mux.HandleFunc("/v1/email-proxy/messages/", s.withJWTAuth(s.handleMessagesSubpath))
+	mux.HandleFunc("/v1/email-proxy/messages", s.withJWTAuth(s.handleMessages))
 
 	return s.loggingMiddleware(mux)
 }
+
+// ============================================================================
+// Route dispatcher functions
+// ============================================================================
+
+// handleMailboxes dispatches GET /v1/email-proxy/mailboxes.
+func (s *Server) handleMailboxes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.emailHdlr.HandleListMailboxes(w, r)
+}
+
+// handleMessages dispatches GET/POST /v1/email-proxy/messages.
+func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.emailHdlr.HandleListMessages(w, r)
+	case http.MethodPost:
+		s.emailHdlr.HandleSendMessage(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleMessagesSearch dispatches GET /v1/email-proxy/messages/search.
+func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.emailHdlr.HandleSearchMessages(w, r)
+}
+
+// handleMessagesSubpath dispatches all /v1/email-proxy/messages/{id}/... routes.
+//
+// URL shapes handled:
+//   - GET    /v1/email-proxy/messages/{id}
+//   - DELETE /v1/email-proxy/messages/{id}
+//   - PATCH  /v1/email-proxy/messages/{id}/flags
+//   - POST   /v1/email-proxy/messages/{id}/move
+//   - GET    /v1/email-proxy/messages/{id}/attachments/{att_id}
+func (s *Server) handleMessagesSubpath(w http.ResponseWriter, r *http.Request) {
+	// Strip the /v1/email-proxy/messages/ prefix.
+	const prefix = "/v1/email-proxy/messages/"
+	tail := strings.TrimPrefix(r.URL.Path, prefix)
+	// tail examples: "42", "42/flags", "42/move", "42/attachments/1"
+
+	parts := strings.SplitN(tail, "/", 3)
+
+	switch {
+	case len(parts) == 1:
+		// /messages/{id}
+		switch r.Method {
+		case http.MethodGet:
+			s.emailHdlr.HandleReadMessage(w, r)
+		case http.MethodDelete:
+			s.emailHdlr.HandleDeleteMessage(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+
+	case len(parts) == 2 && parts[1] == "flags":
+		// /messages/{id}/flags
+		if r.Method != http.MethodPatch {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.emailHdlr.HandleUpdateFlags(w, r)
+
+	case len(parts) == 2 && parts[1] == "move":
+		// /messages/{id}/move
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.emailHdlr.HandleMoveMessage(w, r)
+
+	case len(parts) == 3 && parts[1] == "attachments":
+		// /messages/{id}/attachments/{att_id}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.emailHdlr.HandleDownloadAttachment(w, r)
+
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
+}
+
+// ============================================================================
+// Health + probe handlers
+// ============================================================================
 
 // handleHealthz is the liveness probe — always 200.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -103,15 +261,13 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok")) //nolint:errcheck
 }
 
-// handleStub is a placeholder for all /v1/email-proxy/* endpoints.
-// Real handlers are implemented in C-7.
-func (s *Server) handleStub(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented — email-proxy REST handlers land in C-7", http.StatusNotImplemented)
-}
+// ============================================================================
+// Middleware
+// ============================================================================
 
-// withJWTAuth wraps a handler with Bearer JWT validation.
+// withJWTAuth wraps a handler with Bearer JWT validation AND claims injection.
 // Returns 401 if the Authorization header is missing or the token is invalid.
-// Returns 403 if the token lacks the required scope (checked per-endpoint in C-7).
+// Claims are attached to the request context via handlers.ClaimsContextKey.
 func (s *Server) withJWTAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := bearerToken(r)
@@ -120,15 +276,16 @@ func (s *Server) withJWTAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		_, err := s.validator.ValidateBrokeredJWT(tokenStr)
+		claims, err := s.validator.ValidateBrokeredJWT(tokenStr)
 		if err != nil {
 			slog.Debug("JWT validation failed", "error", err, "path", r.URL.Path)
 			http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		// C-7: attach claims to request context for handler use.
-		next(w, r)
+		// Inject validated claims into request context for handler use.
+		ctx := context.WithValue(r.Context(), handlers.ClaimsContextKey, claims)
+		next(w, r.WithContext(ctx))
 	}
 }
 

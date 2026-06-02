@@ -1,14 +1,50 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/mintkey/mintkey/services/email-proxy/internal/auth"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/pool"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/security"
+	"github.com/mintkey/mintkey/services/email-proxy/internal/server/handlers"
 	"github.com/mintkey/mintkey/services/email-proxy/internal/vault"
+
+	imapwrap "github.com/mintkey/mintkey/services/email-proxy/internal/imap"
+	smtppkg "github.com/mintkey/mintkey/services/email-proxy/internal/smtp"
 )
+
+// noopPool is a minimal PoolGetter that always errors (sufficient for routing tests).
+type noopPool struct{}
+
+func (n *noopPool) Get(_ context.Context, _ pool.ServiceConfig) (*imapwrap.Client, error) {
+	return nil, nil
+}
+func (n *noopPool) Release(_ pool.ServiceConfig, _ *imapwrap.Client) {}
+
+// noopOAuth2 is a minimal OAuth2Manager for routing tests.
+type noopOAuth2 struct{}
+
+func (n *noopOAuth2) GetAccessToken(_ context.Context, _, _ string) (string, error) {
+	return "", nil
+}
+
+// noopVault is a minimal VaultGetter for routing tests.
+type noopVault struct{}
+
+func (n *noopVault) GetCredential(_ context.Context, _, _ string, _ vault.AuthScheme) (*vault.Credential, error) {
+	return &vault.Credential{Value: []byte(`{}`)}, nil
+}
+
+// noopSMTP is a minimal SMTPSender for routing tests.
+type noopSMTP struct{}
+
+func (n *noopSMTP) Send(_ context.Context, _ smtppkg.Credential, _ smtppkg.EmailSendRequest) (string, error) {
+	return "", nil
+}
 
 // newTestServer creates a Server with a no-op vault client and a nil validator
 // (sufficient for testing healthz and the middleware directly).
@@ -25,8 +61,10 @@ func newTestServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatalf("vault.NewClient: %v", err)
 	}
+	rl := security.NewRateLimiter()
+	emailHdlr := handlers.New(&noopPool{}, &noopOAuth2{}, &noopVault{}, &noopSMTP{}, rl, handlers.NoopAuditEmitter())
 	// Use a nil validator — withJWTAuth tests below create their own.
-	return New(cfg, vc, nil)
+	return newWithHandlers(cfg, vc, nil, emailHdlr)
 }
 
 func TestHandleHealthz_Always200(t *testing.T) {
@@ -115,12 +153,34 @@ func TestWithJWTAuth_InvalidToken(t *testing.T) {
 	}
 }
 
-func TestHandleStub_Returns501(t *testing.T) {
+// TestEmailRoutes_RequireAuth verifies that all /v1/email-proxy/* routes require JWT auth.
+// Without a bearer token, each should return 401.
+func TestEmailRoutes_RequireAuth(t *testing.T) {
 	s := newTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/v1/email-proxy/anything", nil)
-	rr := httptest.NewRecorder()
-	s.handleStub(rr, req)
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("stub status = %d, want 501", rr.Code)
+	// Attach a real (but unreachable) validator so withJWTAuth can reject the request.
+	cache, _ := auth.NewJWKSCache("http://localhost:9999/.well-known/jwks.json")
+	validator := auth.NewValidator(cache)
+	s.validator = validator
+
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/v1/email-proxy/mailboxes?service_id=svc_01"},
+		{http.MethodGet, "/v1/email-proxy/messages?service_id=svc_01"},
+		{http.MethodPost, "/v1/email-proxy/messages?service_id=svc_01"},
+		{http.MethodGet, "/v1/email-proxy/messages/search?service_id=svc_01&query=test"},
+	}
+
+	for _, tc := range routes {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			// No Authorization header.
+			rr := httptest.NewRecorder()
+			s.routes().ServeHTTP(rr, req)
+			if rr.Code != http.StatusUnauthorized {
+				t.Errorf("expected 401 (no auth), got %d for %s %s", rr.Code, tc.method, tc.path)
+			}
+		})
 	}
 }
