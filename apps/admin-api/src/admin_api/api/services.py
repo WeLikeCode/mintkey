@@ -619,6 +619,17 @@ async def create_service_from_template(
         if body.overrides and body.overrides.base_url
         else template.base_url
     )
+    if base_url is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "base_url_required",
+                "title": (
+                    "Template has no base_url — email_service templates must be "
+                    "instantiated via POST /v1/tenants/{tid}/email-services/from-template"
+                ),
+            },
+        )
 
     # SSRF check on merged base_url — S-SEC-1
     if _is_forbidden_destination(base_url):

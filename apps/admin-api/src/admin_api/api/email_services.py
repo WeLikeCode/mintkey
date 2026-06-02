@@ -5,6 +5,11 @@ Operator-facing:
   POST /v1/tenants/{tenant_id}/email-services
       Register an email service (email_password / email_app_password / email_oauth2).
 
+  POST /v1/tenants/{tenant_id}/email-services/from-template
+      Create an email service from a catalog template (new in feat/email-service-templates).
+      Takes {template_id, name?} and pre-fills imap/smtp/auth_scheme/provider from YAML.
+      Emits email.service.registered audit event.
+
   POST /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/authorize
       Start the OAuth2 authorization code flow for gmail|outlook.
       Returns {authorize_url}.
@@ -26,6 +31,7 @@ OAuth2 client credentials (OQ-3):
   Missing any of these logs a WARNING and makes OAuth2 endpoints return 503.
 
 Source: ADR-0024; .kiro/specs/email-proxy/design.md; chunk C-9.
+from-template endpoint: feat/email-service-templates.
 """
 from __future__ import annotations
 
@@ -182,6 +188,20 @@ class EmailServiceCreate(BaseModel):
         return v
 
 
+class EmailServiceFromTemplate(BaseModel):
+    """Body for POST /v1/tenants/{tid}/email-services/from-template.
+
+    Takes template_id from the email template catalog plus an optional
+    operator-supplied name override.  imap_host/port, smtp_host/port,
+    auth_scheme, and provider are pre-filled from the YAML template.
+
+    Source: feat/email-service-templates.
+    """
+
+    template_id: str
+    name: Optional[str] = None
+
+
 class OAuth2CallbackBody(BaseModel):
     code: str
     state: str
@@ -305,6 +325,144 @@ async def create_email_service(
 
 
 # ---------------------------------------------------------------------------
+# POST /v1/tenants/{tenant_id}/email-services/from-template
+# ---------------------------------------------------------------------------
+
+
+@router.post("/from-template", status_code=201)
+async def create_email_service_from_template(
+    tenant_id: UUID,
+    body: EmailServiceFromTemplate,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Create an email service from a catalog template (feat/email-service-templates).
+
+    Looks up the template_id in the YAML registry — must be a kind=email_service
+    template.  Pre-fills imap_host/port, smtp_host/port, auth_scheme, and provider
+    from the template; operator may supply an optional name override.
+
+    For email_oauth2 templates the row is created with no credential — operator
+    must complete the OAuth2 flow via the authorize/callback endpoints afterward.
+
+    Emits email.service.registered audit event (no secrets in payload — NFR-17).
+
+    Returns 404 if template_id is not found.
+    Returns 422 if the template is not an email_service kind.
+
+    Source: feat/email-service-templates.
+    """
+    from admin_api.templates.registry import registry  # noqa: PLC0415
+
+    # Look up template — 404 if not found
+    template = registry.get(body.template_id)
+    if template is None:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "mintkey:code": "template_not_found",
+                "title": f"Template '{body.template_id}' not found",
+            },
+        )
+
+    # Must be an email_service template
+    if template.kind != "email_service":
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "wrong_template_kind",
+                "title": (
+                    f"Template '{body.template_id}' has kind='{template.kind}'; "
+                    "expected kind='email_service'"
+                ),
+            },
+        )
+
+    # Resolve name from override or template
+    name = body.name if body.name else template.name
+
+    # Template fields are pre-filled from YAML
+    provider = template.provider or "generic"
+    imap_host = template.imap_host or ""
+    imap_port = template.imap_port or 993
+    smtp_host = template.smtp_host or ""
+    smtp_port = template.smtp_port or 587
+    auth_scheme = template.auth_scheme or "email_password"
+
+    # Generic IMAP+SMTP template has empty hosts — valid for creation (operator fills later)
+    # For named providers (gmail, outlook, icloud), hosts are pre-filled from template.
+
+    await set_tenant_context(session, tenant_id)
+
+    svc_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    await session.execute(
+        text(
+            "INSERT INTO email_services"
+            " (id, tenant_id, provider, name, imap_host, imap_port,"
+            "  smtp_host, smtp_port, auth_scheme, allowed_recipient_domains,"
+            "  pool_size_max, created_at, updated_at)"
+            " VALUES"
+            " (:id, :tenant_id, :provider, :name, :imap_host, :imap_port,"
+            "  :smtp_host, :smtp_port, :auth_scheme, NULL,"
+            "  5, :now, :now)"
+        ),
+        {
+            "id": str(svc_id),
+            "tenant_id": str(tenant_id),
+            "provider": provider,
+            "name": name,
+            "imap_host": imap_host,
+            "imap_port": imap_port,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "auth_scheme": auth_scheme,
+            "now": now,
+        },
+    )
+
+    # Emit audit event — payload contains NO credentials (NFR-17)
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.service.registered",
+        actor_id=None,
+        actor_type="operator",
+        target_id=svc_id,
+        target_type="email_service",
+        payload={
+            "service_id": str(svc_id),
+            "provider": provider,
+            "name": name,
+            "auth_scheme": auth_scheme,
+            "imap_host": imap_host,
+            "imap_port": imap_port,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "template_id": template.template_id,
+        },
+    )
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": str(svc_id),
+            "tenant_id": str(tenant_id),
+            "provider": provider,
+            "name": name,
+            "auth_scheme": auth_scheme,
+            "imap_host": imap_host,
+            "imap_port": imap_port,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "template_id": template.template_id,
+            "created_at": now.isoformat(),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # POST /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/authorize
 # ---------------------------------------------------------------------------
 
@@ -391,7 +549,10 @@ async def oauth2_authorize(
             except ValueError:
                 pass  # keep generated session_id
 
-    redirect_uri = str(request.base_url).rstrip("/") + f"/v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback"
+    redirect_uri = (
+        str(request.base_url).rstrip("/")
+        + f"/v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback"
+    )
 
     await session.execute(
         text(
@@ -454,6 +615,7 @@ async def oauth2_authorize(
             "state_token_hash": state_token_hash,
         },
     )
+
 
     return JSONResponse(
         status_code=200,

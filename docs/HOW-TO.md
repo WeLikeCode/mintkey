@@ -281,6 +281,24 @@ Mintkey can broker email credentials so agents send and receive email without ho
 or OAuth2 tokens. A separate `email-proxy` container handles IMAP reads and SMTP sends on port
 **`:8088`**. The architecture decision is [ADR-0024](architecture/01-architecture/adr/0024-email-proxy-support.md).
 
+### 6.0 Quick start: Services → New → From Template → Gmail / Outlook / iCloud
+
+1. Open the Admin UI and navigate to **Email Services → Create from Template** (or use the
+   **Services** sidebar and select **From Template** — email templates appear in the **Email**
+   category).
+2. Click the template that matches your provider:
+   - **Gmail (OAuth2)** — `imap.gmail.com:993` + `smtp.gmail.com:465`
+   - **Outlook / Office 365 (OAuth2)** — `outlook.office365.com:993` + `smtp.office365.com:587`
+   - **iCloud Mail (App Password)** — `imap.mail.me.com:993` + `smtp.mail.me.com:587`
+   - **Generic IMAP + SMTP (Password)** — fill `imap_host` and `smtp_host` manually
+3. Optionally override the **Name** field; all IMAP/SMTP/port/auth fields are pre-filled.
+4. Click **Create Email Service from Template**.
+5. For OAuth2-flavoured services (Gmail / Outlook), the service row is created first; complete
+   the OAuth2 authorization by clicking **Authorize Gmail** (or **Authorize Outlook**) on the
+   service's show page. This opens the provider's consent screen; the resulting `refresh_token`
+   is stored encrypted in the vault. See ADR-0024 for the full OAuth2 flow.
+6. For password / app-password services, add the credential directly via **Set Credential**.
+
 **Architecture overview:**
 
 ```

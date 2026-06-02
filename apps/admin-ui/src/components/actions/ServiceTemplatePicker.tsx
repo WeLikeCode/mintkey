@@ -29,20 +29,30 @@ import { useNavigate } from "react-router-dom";
 
 interface ServiceTemplate {
   template_id: string;
+  /** Discriminator: 'http_service' (default) or 'email_service' */
+  kind?: string;
   slug?: string;
   name: string;
   display_name: string;
   description?: string;
+  // HTTP service fields
   base_url?: string;
   auth_type?: string;
-  auth_scheme?: string;
   openapi_spec_url?: string;
   openapi_url?: string;
+  // Common
+  auth_scheme?: string;
   category?: string;
   version?: string;
   config_notes?: string | null;
   credential_hint?: Record<string, unknown> | null;
   test_path?: string;
+  // Email service fields
+  provider?: string;
+  imap_host?: string;
+  imap_port?: number;
+  smtp_host?: string;
+  smtp_port?: number;
 }
 
 // Props injected by AdminJS for resource-type actions
@@ -54,6 +64,7 @@ type Props = Record<string, any>;
 const CATEGORY_LABELS: Record<string, string> = {
   ci_cd: "CI/CD",
   app_store: "App Stores",
+  email: "Email",
   platform: "Platform",
   search: "Search",
   communications: "Communications",
@@ -116,10 +127,13 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
   };
   const [overrides, setOverrides] = useState<OverrideFields>({ name: "", display_name: "", description: "", base_url: "" });
 
+  // Whether the selected template is an email_service kind
+  const isEmailTemplate = selectedTemplate?.kind === "email_service";
+
   // Submission state
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<{ serviceId: string } | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState<{ serviceId: string; isEmail?: boolean } | null>(null);
 
   // ── Fetch templates on mount ───────────────────────────────────────────────
   useEffect(() => {
@@ -208,7 +222,11 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
     setSubmitSuccess(null);
   };
 
-  // ── Submit: call POST /v1/tenants/{tid}/services/from-template ─────────────
+  // ── Submit: dispatch to email-services or services from-template ──────────
+  //
+  // For kind=email_service: calls the email-services resource's from-template
+  // action (POST /v1/tenants/{tid}/email-services/from-template).
+  // For kind=http_service (default): calls services from-template as before.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTemplate) return;
@@ -217,33 +235,46 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
     setSubmitError(null);
 
     const templateId = selectedTemplate.template_id ?? selectedTemplate.slug ?? selectedTemplate.name;
+    const isEmail = selectedTemplate.kind === "email_service";
 
-    // Build overrides — only include fields that differ from template defaults
-    const overridePayload: Record<string, string> = {};
-    if (overrides.name && overrides.name !== selectedTemplate.name) {
-      overridePayload.name = overrides.name;
-    }
-    if (overrides.display_name && overrides.display_name !== selectedTemplate.display_name) {
-      overridePayload.display_name = overrides.display_name;
-    }
-    if (overrides.description && overrides.description !== (selectedTemplate.description ?? "")) {
-      overridePayload.description = overrides.description;
-    }
-    if (overrides.base_url && overrides.base_url !== (selectedTemplate.base_url ?? "")) {
-      overridePayload.base_url = overrides.base_url;
-    }
+    // Build body — email services only need template_id + optional name
+    // HTTP services may pass full overrides
+    let body: Record<string, unknown>;
 
-    const body: { template_id: string; overrides?: Record<string, string> } = {
-      template_id: templateId,
-    };
-    if (Object.keys(overridePayload).length > 0) {
-      body.overrides = overridePayload;
+    if (isEmail) {
+      body = { template_id: templateId };
+      if (overrides.name && overrides.name !== selectedTemplate.name) {
+        body.name = overrides.name;
+      }
+    } else {
+      // Build overrides — only include fields that differ from template defaults
+      const overridePayload: Record<string, string> = {};
+      if (overrides.name && overrides.name !== selectedTemplate.name) {
+        overridePayload.name = overrides.name;
+      }
+      if (overrides.display_name && overrides.display_name !== selectedTemplate.display_name) {
+        overridePayload.display_name = overrides.display_name;
+      }
+      if (overrides.description && overrides.description !== (selectedTemplate.description ?? "")) {
+        overridePayload.description = overrides.description;
+      }
+      if (overrides.base_url && overrides.base_url !== (selectedTemplate.base_url ?? "")) {
+        overridePayload.base_url = overrides.base_url;
+      }
+      body = { template_id: templateId };
+      if (Object.keys(overridePayload).length > 0) {
+        body.overrides = overridePayload;
+      }
     }
 
     const api = new ApiClient();
     try {
+      // email_service templates route to the email-services AdminJS resource;
+      // http_service templates route to the services resource (unchanged).
+      const resourceId = isEmail ? "email_services" : "services";
+
       const resp = await api.resourceAction({
-        resourceId: "services",
+        resourceId,
         actionName: "from-template",
         method: "post",
         data: body,
@@ -251,6 +282,7 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
 
       const data = resp.data as {
         service?: { id?: string };
+        email_service?: { id?: string };
         record?: { params?: { service_id?: string } };
         notice?: { message: string; type: string };
         redirectUrl?: string;
@@ -263,11 +295,12 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
 
       const serviceId =
         data?.service?.id ??
+        data?.email_service?.id ??
         data?.record?.params?.service_id ??
         "";
 
       if (serviceId) {
-        setSubmitSuccess({ serviceId });
+        setSubmitSuccess({ serviceId, isEmail });
       } else if (data?.redirectUrl) {
         navigate(data.redirectUrl);
       } else {
@@ -294,9 +327,10 @@ const ServiceTemplatePicker = (_props: Props): React.ReactElement => {
 
   // ── Success state ──────────────────────────────────────────────────────────
   if (submitSuccess) {
+    const resourceName = submitSuccess.isEmail ? "email_services" : "services";
     const showUrl = submitSuccess.serviceId
-      ? `/admin/resources/services/records/${submitSuccess.serviceId}/show`
-      : "/admin/resources/services";
+      ? `/admin/resources/${resourceName}/records/${submitSuccess.serviceId}/show`
+      : `/admin/resources/${resourceName}`;
 
     return (
       <Box variant="white" p="xxl" data-testid="template-submit-success">

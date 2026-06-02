@@ -77,9 +77,9 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
-    app.include_router(services_router)
     app.include_router(email_services_router)
     app.include_router(email_oauth2_internal_router)
+    app.include_router(services_router)
     app.include_router(agents_router)
     app.include_router(api_keys_router)
     app.include_router(api_keys_shortcut_router)

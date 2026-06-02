@@ -282,6 +282,82 @@ export const EmailServicesResource: ResourceWithOptions & {
           };
         },
       },
+
+      // ── BFF passthrough: POST /v1/tenants/{tid}/email-services/from-template
+      // Called by ServiceTemplatePicker when kind=email_service is selected.
+      // Takes {template_id, name?} and creates the email_services row.
+      "from-template": {
+        actionType: "resource",
+        isVisible: false,
+        handler: async (request, _response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context, {}) };
+          }
+
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const operatorOpts = operatorOptsFromAdmin(
+            currentAdmin as Record<string, unknown>
+          );
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/email-services/from-template`,
+            "POST",
+            request.payload,
+            operatorOpts
+          );
+
+          let body: {
+            id?: string;
+            title?: string;
+            detail?: string;
+          } = {};
+          try {
+            body = (await resp.json()) as typeof body;
+          } catch {
+            // unparseable body — treat as empty
+          }
+
+          if (!resp.ok) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: baseRecord,
+              notice: {
+                message:
+                  body.title ??
+                  body.detail ??
+                  "Failed to create email service from template",
+                type: "error",
+              },
+            };
+          }
+
+          if (!body.id) {
+            const baseRecord = await recordJSON(context, {});
+            return {
+              record: baseRecord,
+              notice: {
+                message:
+                  "Email service creation returned an unexpected response (no service id). Please retry.",
+                type: "error",
+              },
+            };
+          }
+
+          const baseRecord = await recordJSON(context, {});
+          return {
+            record: {
+              ...baseRecord,
+              params: {
+                ...baseRecord.params,
+                service_id: body.id,
+              },
+            },
+            email_service: body,
+            redirectUrl: `/admin/resources/email_services/records/${body.id}/show`,
+          };
+        },
+      },
     },
   },
 };
