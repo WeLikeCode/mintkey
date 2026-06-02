@@ -257,6 +257,48 @@ func TestValidateBrokeredJWT_TntAlias(t *testing.T) {
 	}
 }
 
+// TestForceRefreshThrottle verifies that 100 concurrent unknown-kid validation
+// attempts result in at most 2 outbound JWKS fetches (initial + one force-refresh),
+// not 100. Without the lastForceRefresh throttle, each unknown-kid would zero
+// lastFetch and trigger a fresh HTTP GET — a JWKS-endpoint amplification DoS.
+func TestForceRefreshThrottle(t *testing.T) {
+	fetchCount := 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetchCount++
+		// Serve an empty JWKS — no known kids, so every validation will attempt
+		// a force-refresh (unknown kid path in ValidateBrokeredJWT).
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
+	}))
+	defer srv.Close()
+
+	cache, err := NewJWKSCache(srv.URL)
+	if err != nil {
+		t.Fatalf("NewJWKSCache: %v", err)
+	}
+	validator := NewValidator(cache)
+
+	// Generate a valid-looking token signed with an unknown key (will fail validation,
+	// but we only care about how many JWKS fetches happen).
+	_, priv := generateTestKey(t)
+	tokenStr := signToken(t, priv, "unknown-kid-spray", validClaims())
+
+	// Fire 100 validations with the unknown-kid token.
+	for i := 0; i < 100; i++ {
+		validator.ValidateBrokeredJWT(tokenStr) //nolint:errcheck // expected to fail — key not in JWKS
+	}
+
+	// The JWKS server should have been hit at most 2 times:
+	//   1. The initial Refresh() triggered by the first GetKey miss.
+	//   2. At most one ForceRefresh() (throttled to 5s; all 100 iterations happen in <1s).
+	// We allow up to 2 fetches to be robust against a race on the very first call.
+	const maxFetches = 2
+	if fetchCount > maxFetches {
+		t.Errorf("JWKS endpoint was fetched %d times for 100 unknown-kid requests; want ≤%d (throttle not working)", fetchCount, maxFetches)
+	}
+}
+
 func TestDecodeBase64URL(t *testing.T) {
 	tests := []struct {
 		name    string

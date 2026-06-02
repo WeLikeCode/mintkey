@@ -18,14 +18,20 @@ import (
 	"time"
 )
 
+// minForceRefreshInterval is the minimum time between ForceRefresh calls.
+// Prevents a spray of unknown-kid tokens from amplifying outbound JWKS fetches
+// (one GET per request → DoS against the JWKS endpoint).
+const minForceRefreshInterval = 5 * time.Second
+
 // JWKSCache caches JWKS (JSON Web Key Set) from the broker.
 // Thread-safe; the first network fetch is deferred until GetKey is called.
 type JWKSCache struct {
-	jwksURL   string
-	keys      map[string]ed25519.PublicKey
-	mu        sync.RWMutex
-	lastFetch time.Time
-	ttl       time.Duration
+	jwksURL          string
+	keys             map[string]ed25519.PublicKey
+	mu               sync.RWMutex
+	lastFetch        time.Time
+	lastForceRefresh time.Time // separate rate-limit for ForceRefresh calls
+	ttl              time.Duration
 }
 
 // NewJWKSCache creates a new JWKS cache for the given full URL.
@@ -70,12 +76,19 @@ func (c *JWKSCache) GetKey(kid string) (ed25519.PublicKey, error) {
 	return key, nil
 }
 
-// ForceRefresh bypasses the rate-limit window and unconditionally fetches
-// the JWKS. Used by the unknown-kid path (ADR-0016.2).
+// ForceRefresh triggers an out-of-band JWKS fetch, used by the unknown-kid
+// path (ADR-0016.2). A dedicated 5-second rate-limit guards against an
+// attacker spraying random kids triggering one outbound GET per request.
+// If a force-refresh happened within the last 5 seconds, this is a no-op.
 func (c *JWKSCache) ForceRefresh() error {
 	c.mu.Lock()
-	// Reset lastFetch so Refresh() skips its rate-limit guard.
+	if time.Since(c.lastForceRefresh) < minForceRefreshInterval {
+		c.mu.Unlock()
+		return nil // throttled; a recent force-refresh already pulled fresh keys
+	}
+	// Reset lastFetch so Refresh() executes even within the 30s window.
 	c.lastFetch = time.Time{}
+	c.lastForceRefresh = time.Now()
 	c.mu.Unlock()
 	return c.Refresh()
 }
