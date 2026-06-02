@@ -104,6 +104,11 @@ jobs:
             context: .
             dockerfile: apps/ssh-proxy/Dockerfile
             image: mintkey-ssh-proxy
+          # email-proxy added in feat/email-proxy (ADR-0024 / C-11)
+          - service: email-proxy
+            context: .
+            dockerfile: apps/email-proxy/Dockerfile
+            image: mintkey-email-proxy
 
     steps:
       - name: Checkout repository

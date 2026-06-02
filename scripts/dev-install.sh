@@ -767,6 +767,9 @@ generate_env_file() {
         printf "# Generated secrets (not in .env.example — required at startup)\n"
         printf "# ---------------------------------------------------------------------------\n"
         printf "MINTKEY_AUDIT_HMAC_KEY=%s\n" "$(openssl rand -hex 32)"
+        printf "# Email-proxy shared secrets (ADR-0024 / C-11)\n"
+        printf "MINTKEY_VAULT_EMAIL_PROXY_TOKEN=%s\n" "$(openssl rand -hex 32)"
+        printf "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN=%s\n" "$(openssl rand -hex 32)"
     } >> "${env_file}"
 
     log INFO ".env file generated successfully."

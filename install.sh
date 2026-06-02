@@ -212,6 +212,14 @@ _write_env_var "MINTKEY_SSH_PROXY_PUBLIC_URL"     "ssh://localhost:2222"
 MINTKEY_VAULT_SSH_PROXY_TOKEN="$(openssl rand -hex 32)"
 _write_env_var "MINTKEY_VAULT_SSH_PROXY_TOKEN"    "${MINTKEY_VAULT_SSH_PROXY_TOKEN}"
 
+# Email proxy vars (ADR-0024 / C-11)
+_write_env_var "MINTKEY_EMAIL_PROXY_HTTP_PORT"    "8091"
+_write_env_var "MINTKEY_EMAIL_PROXY_METRICS_PORT" "8092"
+MINTKEY_VAULT_EMAIL_PROXY_TOKEN="$(openssl rand -hex 32)"
+_write_env_var "MINTKEY_VAULT_EMAIL_PROXY_TOKEN"  "${MINTKEY_VAULT_EMAIL_PROXY_TOKEN}"
+MINTKEY_EMAIL_PROXY_SERVICE_TOKEN="$(openssl rand -hex 32)"
+_write_env_var "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN" "${MINTKEY_EMAIL_PROXY_SERVICE_TOKEN}"
+
 # Admin-api audit HMAC key — required at startup (GAP-11)
 MINTKEY_AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
 _write_env_var "MINTKEY_AUDIT_HMAC_KEY"           "${MINTKEY_AUDIT_HMAC_KEY}"
@@ -267,6 +275,8 @@ cat <<EOF
   Keycloak:   http://localhost:8443
   SSH bastion: ssh -p 2222 <agent_id>@localhost
                (JWT from MCP request_token as password — see docs/HOW-TO.md §5)
+  Email bastion: configured for IMAP/SMTP at http://localhost:8091
+               (REST-only Phase 1; see docs/HOW-TO.md §6)
 
 To retrieve the bootstrap admin password once the seed-job
 completes (watch with: docker compose logs -f seed-job):

@@ -69,6 +69,12 @@ services:
       - "2322:2222"
       - "8189:8087"
 
+  email-proxy:
+    image: mintkey-email-proxy
+    ports: !override
+      - "8191:8088"   # REST API + healthz (+100 from primary host 8091)
+      - "8192:8090"   # Prometheus metrics (+100 from primary host 8092)
+
   # ─── Third-party services: port overrides only ────────────────────────────
 
   keycloak:
