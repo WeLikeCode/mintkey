@@ -91,7 +91,10 @@
         "admin_settings",
         "platform_admin_view",
         "api_key",
-        "ssh_session"
+        "ssh_session",
+        "email_service",
+        "email_message",
+        "email_mailbox"
       ]
     },
     "auth_scheme": {
@@ -105,7 +108,11 @@
         "oidc_client_secret",
         "mtls",
         "ssh_private_key",
-        "ssh_ca"
+        "ssh_ca",
+        "ssh_password",
+        "email_password",
+        "email_oauth2",
+        "email_app_password"
       ]
     },
     "envelope": {
@@ -2142,6 +2149,268 @@
           }
         }
       ]
+    },
+    "ev_email_service_registered": {
+      "title": "email.service.registered",
+      "description": "An email service was registered. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.service.registered"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "auth_scheme": {"type": "string", "enum": ["email_password", "email_oauth2", "email_app_password"]},
+            "provider": {"type": ["string", "null"], "enum": ["gmail", "outlook", null]}
+          },
+          "required": ["service_id", "auth_scheme"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_service_updated": {
+      "title": "email.service.updated",
+      "description": "An email service's metadata was updated. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.service.updated"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "fields_changed": {
+              "type": "array",
+              "items": {"type": "string"},
+              "minItems": 1
+            }
+          },
+          "required": ["service_id", "fields_changed"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_service_deleted": {
+      "title": "email.service.deleted",
+      "description": "An email service was deleted. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.service.deleted"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "reason": {"type": "string"}
+          },
+          "required": ["service_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_oauth2_authorized": {
+      "title": "email.oauth2.authorized",
+      "description": "OAuth2 consent flow completed; refresh token stored in vault. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.oauth2.authorized"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "provider": {"type": "string", "enum": ["gmail", "outlook"]}
+          },
+          "required": ["service_id", "provider"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_oauth2_refreshed": {
+      "title": "email.oauth2.refreshed",
+      "description": "OAuth2 access token refreshed successfully via admin-api proxy. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.oauth2.refreshed"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "provider": {"type": "string", "enum": ["gmail", "outlook"]}
+          },
+          "required": ["service_id", "provider"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_oauth2_expired": {
+      "title": "email.oauth2.expired",
+      "description": "OAuth2 refresh token expired or was revoked; re-authorization required. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.oauth2.expired"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "provider": {"type": "string", "enum": ["gmail", "outlook"]},
+            "reason": {"type": "string"}
+          },
+          "required": ["service_id", "provider"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_mailboxes_listed": {
+      "title": "email.mailboxes.listed",
+      "description": "Agent listed mailboxes for an email service. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.mailboxes.listed"},
+        "target_type": {"const": "email_service"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "mailbox_count": {"type": "integer", "minimum": 0}
+          },
+          "required": ["service_id", "mailbox_count"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_messages_listed": {
+      "title": "email.messages.listed",
+      "description": "Agent listed email messages in a mailbox. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.messages.listed"},
+        "target_type": {"const": "email_mailbox"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "mailbox": {"type": "string"},
+            "result_count": {"type": "integer", "minimum": 0}
+          },
+          "required": ["service_id", "mailbox", "result_count"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_message_read": {
+      "title": "email.message.read",
+      "description": "Agent fetched the full content of an email message. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.message.read"},
+        "target_type": {"const": "email_message"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "message_id": {"type": "string", "description": "RFC 5322 Message-ID or UID (not body content)."},
+            "attachment_count": {"type": "integer", "minimum": 0},
+            "body_size_bytes": {"type": "integer", "minimum": 0}
+          },
+          "required": ["service_id", "message_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_message_flags_updated": {
+      "title": "email.message.flags_updated",
+      "description": "Agent updated IMAP flags on an email message. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.message.flags_updated"},
+        "target_type": {"const": "email_message"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "message_id": {"type": "string"},
+            "flags_set": {"type": "array", "items": {"type": "string"}},
+            "flags_cleared": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["service_id", "message_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_message_deleted": {
+      "title": "email.message.deleted",
+      "description": "Agent deleted (expunged) an email message. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.message.deleted"},
+        "target_type": {"const": "email_message"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "message_id": {"type": "string"}
+          },
+          "required": ["service_id", "message_id"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_message_moved": {
+      "title": "email.message.moved",
+      "description": "Agent moved an email message to a different mailbox. Per ADR-0024.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.message.moved"},
+        "target_type": {"const": "email_message"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "message_id": {"type": "string"},
+            "destination_mailbox": {"type": "string"}
+          },
+          "required": ["service_id", "message_id", "destination_mailbox"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_email_message_sent": {
+      "title": "email.message.sent",
+      "description": "Agent sent an email message via SMTP. Per ADR-0024. Subject truncated to 100 chars; recipient count only (no addresses) in audit for PII safety.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "email.message.sent"},
+        "target_type": {"const": "email_message"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {"$ref": "#/$defs/service_id"},
+            "message_id": {"type": "string", "description": "Provider-assigned Message-ID."},
+            "recipient_count": {"type": "integer", "minimum": 1, "description": "Total recipient count (to+cc+bcc). Addresses not logged."},
+            "subject_truncated": {"type": "string", "maxLength": 100, "description": "Subject truncated to 100 chars for audit."},
+            "attachment_count": {"type": "integer", "minimum": 0}
+          },
+          "required": ["service_id", "message_id", "recipient_count"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -2258,6 +2527,45 @@
     },
     {
       "$ref": "#/$defs/ev_ssh_session_ended"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_registered"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_deleted"
+    },
+    {
+      "$ref": "#/$defs/ev_email_oauth2_authorized"
+    },
+    {
+      "$ref": "#/$defs/ev_email_oauth2_refreshed"
+    },
+    {
+      "$ref": "#/$defs/ev_email_oauth2_expired"
+    },
+    {
+      "$ref": "#/$defs/ev_email_mailboxes_listed"
+    },
+    {
+      "$ref": "#/$defs/ev_email_messages_listed"
+    },
+    {
+      "$ref": "#/$defs/ev_email_message_read"
+    },
+    {
+      "$ref": "#/$defs/ev_email_message_flags_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_email_message_deleted"
+    },
+    {
+      "$ref": "#/$defs/ev_email_message_moved"
+    },
+    {
+      "$ref": "#/$defs/ev_email_message_sent"
     }
   ],
   "discriminator": {
@@ -2300,7 +2608,20 @@
       "ssh.session.started": "#/$defs/ev_ssh_session_started",
       "ssh.session.exec": "#/$defs/ev_ssh_session_exec",
       "ssh.session.sftp": "#/$defs/ev_ssh_session_sftp",
-      "ssh.session.ended": "#/$defs/ev_ssh_session_ended"
+      "ssh.session.ended": "#/$defs/ev_ssh_session_ended",
+      "email.service.registered": "#/$defs/ev_email_service_registered",
+      "email.service.updated": "#/$defs/ev_email_service_updated",
+      "email.service.deleted": "#/$defs/ev_email_service_deleted",
+      "email.oauth2.authorized": "#/$defs/ev_email_oauth2_authorized",
+      "email.oauth2.refreshed": "#/$defs/ev_email_oauth2_refreshed",
+      "email.oauth2.expired": "#/$defs/ev_email_oauth2_expired",
+      "email.mailboxes.listed": "#/$defs/ev_email_mailboxes_listed",
+      "email.messages.listed": "#/$defs/ev_email_messages_listed",
+      "email.message.read": "#/$defs/ev_email_message_read",
+      "email.message.flags_updated": "#/$defs/ev_email_message_flags_updated",
+      "email.message.deleted": "#/$defs/ev_email_message_deleted",
+      "email.message.moved": "#/$defs/ev_email_message_moved",
+      "email.message.sent": "#/$defs/ev_email_message_sent"
     }
   },
   "examples": [

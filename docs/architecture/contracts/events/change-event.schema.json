@@ -265,6 +265,57 @@
       "required": [
         "event_type"
       ]
+    },
+    "ev_email_service_registered": {
+      "type": "object",
+      "description": "A new email service was registered. Published on mintkey:service. target_id = service_id. ADR-0024.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "email.service.registered"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_email_service_updated": {
+      "type": "object",
+      "description": "An email service's metadata changed. Published on mintkey:service. target_id = service_id. ADR-0024.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "email.service.updated"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
+    },
+    "ev_email_service_deleted": {
+      "type": "object",
+      "description": "An email service was deleted. Published on mintkey:service. target_id = service_id. ADR-0024.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "email.service.deleted"
+        }
+      },
+      "required": [
+        "event_type"
+      ]
     }
   },
   "oneOf": [
@@ -297,6 +348,15 @@
     },
     {
       "$ref": "#/$defs/ev_ssh_session_ended"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_registered"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_email_service_deleted"
     }
   ],
   "discriminator": {
@@ -311,7 +371,10 @@
       "token.revoked": "#/$defs/ev_token_revoked",
       "api_key.revoked": "#/$defs/ev_api_key_revoked",
       "ssh.session.started": "#/$defs/ev_ssh_session_started",
-      "ssh.session.ended": "#/$defs/ev_ssh_session_ended"
+      "ssh.session.ended": "#/$defs/ev_ssh_session_ended",
+      "email.service.registered": "#/$defs/ev_email_service_registered",
+      "email.service.updated": "#/$defs/ev_email_service_updated",
+      "email.service.deleted": "#/$defs/ev_email_service_deleted"
     }
   },
   "x-mintkey-channels": {
@@ -322,7 +385,10 @@
         "carries": [
           "service.registered",
           "service.updated",
-          "service.removed"
+          "service.removed",
+          "email.service.registered",
+          "email.service.updated",
+          "email.service.deleted"
         ]
       },
       {

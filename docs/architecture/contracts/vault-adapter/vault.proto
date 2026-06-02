@@ -105,6 +105,15 @@ enum AuthScheme {
   // The password is stored as raw bytes in the encrypted payload; target_address and
   // ssh_user are stored in the dedicated metadata columns (ADR-0022).
   AUTH_SCHEME_SSH_PASSWORD = 13;
+  // EMAIL_PASSWORD: Vault stores an email credential for IMAP/SMTP password auth (ADR-0024).
+  // Payload JSON: {"username","password","imap_host","imap_port","smtp_host","smtp_port"}.
+  AUTH_SCHEME_EMAIL_PASSWORD = 14;
+  // EMAIL_OAUTH2: Vault stores an OAuth2 refresh token for Gmail or Outlook (ADR-0024).
+  // Payload JSON: {"provider":"gmail"|"outlook","refresh_token","email_address"}.
+  AUTH_SCHEME_EMAIL_OAUTH2 = 15;
+  // EMAIL_APP_PASSWORD: Vault stores an app-password credential (e.g. Google App Password) (ADR-0024).
+  // Payload JSON: {"username","app_password","imap_host","imap_port","smtp_host","smtp_port"}.
+  AUTH_SCHEME_EMAIL_APP_PASSWORD = 16;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,
