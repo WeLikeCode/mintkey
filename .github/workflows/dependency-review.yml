@@ -117,7 +117,9 @@ jobs:
             pkg:npm/tinymce,
             pkg:npm/tldts,
             pkg:npm/tldts-core,
-            pkg:npm/tsx
+            pkg:npm/tsx,
+            pkg:npm/caniuse-lite,
+            pkg:pypi/uv
 
           # Post a comment on the PR with the review summary
           comment-summary-in-pr: always
