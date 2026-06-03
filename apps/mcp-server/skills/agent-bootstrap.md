@@ -295,6 +295,18 @@ The OAuth2 Providers form accepts `client_id` and `client_secret`; the secret is
 encrypted in vault and never returned. Without this step, the OAuth2 authorize endpoint
 returns `503 oauth2_not_configured`.
 
+The redirect URI to register in GCP/Azure Console is **per-(provider, tenant)** — one
+registration covers all email services for that provider under the same tenant:
+
+```
+${MINTKEY_ADMIN_API_PUBLIC_URL}/v1/tenants/{tenant_id}/oauth2/gmail/callback
+```
+
+For local dev: `http://localhost:8080/v1/tenants/<tenant_id>/oauth2/gmail/callback`
+
+You do NOT need to add a new GCP redirect URI for each new Gmail email service — the
+`state` parameter carries the `service_id` internally.
+
 **Permission scopes (4 actions):**
 
 | Action | Grants access to |

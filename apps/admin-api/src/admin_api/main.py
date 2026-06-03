@@ -33,6 +33,7 @@ from admin_api.api.agents import router as agents_router
 from admin_api.api.email_permission_grants import router as email_permission_grants_router
 from admin_api.api.email_services import router as email_services_router
 from admin_api.api.email_services import internal_oauth2_router as email_oauth2_internal_router
+from admin_api.api.email_services import oauth2_per_tenant_router as email_oauth2_per_tenant_router
 from admin_api.api.oauth2_providers import router as oauth2_providers_router
 from admin_api.api.api_keys import router as api_keys_router
 from admin_api.api.api_keys_shortcut import api_keys_shortcut_router
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(email_permission_grants_router)
     app.include_router(email_services_router)
     app.include_router(email_oauth2_internal_router)
+    app.include_router(email_oauth2_per_tenant_router)
     app.include_router(oauth2_providers_router)
     app.include_router(services_router)
     app.include_router(agents_router)

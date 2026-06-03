@@ -392,13 +392,35 @@ admin-api process, consistent with ADR-0020 / ADR-0024 §D7).
      with a 10-minute TTL; opportunistic GC on expiry — migration 023).
    - Browser redirects to the provider's OAuth2 consent screen.
 3. Complete consent in the provider's popup. Provider redirects back to
-   `http://localhost:8080/v1/tenants/{tid}/email-services/{sid}/oauth2/callback?code=...&state=...`.
+   `http://localhost:8080/v1/tenants/{tid}/oauth2/gmail/callback?code=...&state=...`.
+   The `service_id` is **not** in the redirect URI — it is recovered from the `oauth2_state`
+   row via the `state` parameter.  This means you only need to register **one** redirect URI
+   per provider per tenant in GCP/Azure Console, regardless of how many email services you
+   create for that provider.
 4. admin-api validates `state`, performs the token exchange, stores the refresh token in the
-   Vault Adapter via gRPC. The `email.service.registered` audit event is emitted.
+   Vault Adapter via gRPC. The `email.oauth2.authorized` audit event is emitted.
 5. The Admin UI displays **Connected** status.
 
-**Before authorizing Gmail or Outlook**, an operator must first configure the OAuth2
-client credentials for the tenant via the Admin UI:
+**Before authorizing Gmail or Outlook**, an operator must first:
+
+**Step A — Register the redirect URI in GCP/Azure Console (once per tenant per provider).**
+
+For **Gmail**: in Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client ID
+→ Authorized redirect URIs, add:
+
+```
+${MINTKEY_ADMIN_API_PUBLIC_URL}/v1/tenants/{tenant_id}/oauth2/gmail/callback
+```
+
+For local dev this is:
+```
+http://localhost:8080/v1/tenants/ce79c39d-33de-4689-b827-2e926cb5f2c7/oauth2/gmail/callback
+```
+
+You only need to register **one** URI per provider per tenant — creating additional Gmail
+email services under the same tenant does **not** require revisiting GCP Console.
+
+**Step B — Configure OAuth2 client credentials in Admin UI.**
 
 1. Open Admin UI → **Email** → **OAuth2 Providers**.
 2. Click **New** and fill in:
