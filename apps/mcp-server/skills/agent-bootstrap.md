@@ -288,6 +288,13 @@ sshpass -p "$JWT" ssh -p 2222 \
 HTTP egress proxy. You can detect them by `auth_scheme` in `{email_password, email_oauth2,
 email_app_password}` in `list_services` / `describe_service` output.
 
+**Before authorizing Gmail / Outlook (auth_scheme=email_oauth2):** the operator must first
+configure per-tenant OAuth2 client credentials via Admin UI → **Email → OAuth2 Providers**.
+Each tenant brings their own GCP project or Azure app registration — there is no shared client.
+The OAuth2 Providers form accepts `client_id` and `client_secret`; the secret is stored
+encrypted in vault and never returned. Without this step, the OAuth2 authorize endpoint
+returns `503 oauth2_not_configured`.
+
 **Permission scopes (4 actions):**
 
 | Action | Grants access to |

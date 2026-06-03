@@ -3272,6 +3272,123 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   ###########################################################################
+  # OAuth2 Provider Client Configuration — per-tenant
+  # feat/oauth2-providers-per-tenant-vault
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/oauth2-providers:
+    get:
+      operationId: listOAuth2Providers
+      tags: [OAuth2Providers]
+      summary: List configured OAuth2 client providers for the tenant.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of configured OAuth2 providers (no secrets).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OAuth2ProviderInfo"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/tenants/{tenant_id}/oauth2-providers/{provider}:
+    get:
+      operationId: getOAuth2Provider
+      tags: [OAuth2Providers]
+      summary: Get a single OAuth2 provider config (no secret returned).
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      responses:
+        "200":
+          description: OAuth2 provider config (no client_secret).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuth2ProviderInfo"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+    post:
+      operationId: configureOAuth2Provider
+      tags: [OAuth2Providers]
+      summary: Configure (or replace) OAuth2 client credentials for a provider.
+      description: |
+        Stores client_id in cleartext and client_secret via vault.
+        The response NEVER echoes client_secret (NFR-17).
+        Supported providers: gmail, outlook.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuth2ProviderConfigRequest"
+      responses:
+        "201":
+          description: OAuth2 provider configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuth2ProviderInfo"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "502":
+          description: Vault or upstream error.
+    delete:
+      operationId: deleteOAuth2Provider
+      tags: [OAuth2Providers]
+      summary: Remove OAuth2 client config and revoke the vault credential.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      responses:
+        "204":
+          description: OAuth2 provider config removed.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  ###########################################################################
   # Email Proxy — data-plane (served on :8088 by email-proxy container)
   ###########################################################################
 
@@ -5510,6 +5627,40 @@ components:
         icon:
           type: string
           nullable: true
+
+    # ----- OAuth2 Provider Client Configuration -----
+    # feat/oauth2-providers-per-tenant-vault
+
+    OAuth2ProviderInfo:
+      type: object
+      description: |
+        Per-tenant OAuth2 provider configuration (no client_secret — NFR-17).
+        client_id_last4: last 4 chars of client_id, for operator confirmation.
+      properties:
+        provider:
+          type: string
+          enum: [gmail, outlook]
+        client_id_last4:
+          type: string
+          description: Last 4 characters of the configured client_id.
+        configured_at:
+          type: string
+          format: date-time
+      required: [provider, client_id_last4, configured_at]
+
+    OAuth2ProviderConfigRequest:
+      type: object
+      description: |
+        Body for POST /v1/tenants/{tid}/oauth2-providers/{provider}.
+        client_secret is NEVER returned in any response (NFR-17).
+      properties:
+        client_id:
+          type: string
+          description: OAuth2 client ID (GCP or Azure). Stored in cleartext.
+        client_secret:
+          type: string
+          description: OAuth2 client secret. Stored encrypted in vault, NEVER returned.
+      required: [client_id, client_secret]
 
     # ----- Email Permission Grants -----
 

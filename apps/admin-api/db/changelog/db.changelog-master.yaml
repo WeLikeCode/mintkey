@@ -74,3 +74,6 @@ databaseChangeLog:
   - include:
       file: 025-email-permission-grants.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 026-oauth2-client-configs.yaml
+      relativeToChangelogFile: true

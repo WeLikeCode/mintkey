@@ -1,0 +1,120 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 026-oauth2-client-configs.yaml
+  #
+  # Creates public.oauth2_client_configs (feat/oauth2-providers-per-tenant-vault).
+  #
+  # Per-tenant OAuth2 client credentials for Gmail / Outlook.
+  # Each tenant brings their own GCP / Azure OAuth2 client.
+  #
+  # Design decision: client_id is stored in cleartext (it is public info —
+  # you'd expose it in a browser JS app); client_secret is stored as a
+  # synthetic vault credential via auth_scheme=email_oauth2_client, keyed
+  # by a synthetic service_id of the form "oauth2cfg_<provider>" (e.g.
+  # "oauth2cfg_gmail").  This reuses the existing vault.put_credential
+  # infrastructure with zero new gRPC contract (Option A, feat spec §Layer 2).
+  #
+  # RLS mirrors email_services (022-email-services.yaml).
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create oauth2_client_configs table --------------------------------
+  - changeSet:
+      id: "026-oauth2-client-configs-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: oauth2_client_configs
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE public.oauth2_client_configs (
+                id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id   UUID        NOT NULL,
+                provider    VARCHAR(32) NOT NULL,
+                client_id   TEXT        NOT NULL,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT fk_oauth2_client_configs_tenant
+                  FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
+                CONSTRAINT uq_oauth2_client_configs_tenant_provider
+                  UNIQUE (tenant_id, provider),
+                CONSTRAINT chk_oauth2_client_configs_provider
+                  CHECK (provider IN ('gmail', 'outlook'))
+              );
+              COMMENT ON TABLE public.oauth2_client_configs IS
+                'Per-tenant OAuth2 client credentials (client_id + vault-stored client_secret) for Gmail/Outlook (feat/oauth2-providers-per-tenant-vault).';
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS public.oauth2_client_configs;
+
+  # --- 2. Index on oauth2_client_configs.tenant_id --------------------------
+  - changeSet:
+      id: "026-oauth2-client-configs-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: oauth2_client_configs
+              indexName: idx_oauth2_client_configs_tenant
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_oauth2_client_configs_tenant
+                ON public.oauth2_client_configs (tenant_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_oauth2_client_configs_tenant;
+
+  # --- 3. Row Level Security on oauth2_client_configs -----------------------
+  - changeSet:
+      id: "026-oauth2-client-configs-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oauth2_client_configs
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.oauth2_client_configs ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON public.oauth2_client_configs
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON public.oauth2_client_configs;
+              ALTER TABLE public.oauth2_client_configs DISABLE ROW LEVEL SECURITY;
+
+  # --- 4. Grants for mintkey_app role ---------------------------------------
+  - changeSet:
+      id: "026-oauth2-client-configs-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oauth2_client_configs
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.oauth2_client_configs TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.oauth2_client_configs FROM mintkey_app;

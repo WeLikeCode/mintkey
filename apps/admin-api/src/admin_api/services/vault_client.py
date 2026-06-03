@@ -55,6 +55,7 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "email_password": 14,   # ADR-0024: Email IMAP/SMTP username+password
     "email_oauth2": 15,     # ADR-0024: Email OAuth2 refresh token (gmail/outlook)
     "email_app_password": 16,  # ADR-0024: Email app-password credential
+    "email_oauth2_client": 17,  # feat/oauth2-providers-per-tenant-vault: per-tenant OAuth2 client secret
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
