@@ -1,18 +1,22 @@
 """
-MCP email_list_mailboxes tool.
+MCP email_move_email tool.
 
-GET /v1/tools/email_list_mailboxes?email_service_id=<id>
-  (alias accepted: ?service_id=<id> — matches the broker token-hint vocabulary)
+POST /v1/tools/email_move_email
+  body: {email_service_id, message_id, from_mailbox, to_mailbox}
+  (alias accepted: service_id instead of email_service_id)
 
-Lists IMAP mailboxes for the agent's granted email service.
+Moves an IMAP message from one mailbox to another (IMAP MOVE).
+Falls back to COPY+STORE+EXPUNGE when server lacks MOVE extension.
 
 Implementation:
   1. Auth check (agent context present).
-  2. request_token exchange via broker (service_kind=email).
-  3. GET /v1/email-proxy/mailboxes?service_id=<id> on email-proxy.
-  4. Return the mailbox list.
+  2. Permission check (email_permission_grants).
+  3. Broker JWT exchange (scope: write:email).
+  4. POST /v1/email-proxy/messages/{uid}/move?service_id=<id>
+     body: {destination_mailbox: <to_mailbox>, from_mailbox: <from_mailbox>}.
+  5. Return 200 with {message_id, mailbox}.
 
-Source: feat/agent-email-e2e.
+Source: feat/email-tools-list-attach-move-mark-delete.
 """
 from __future__ import annotations
 
@@ -23,46 +27,60 @@ import httpx
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.tools.discovery import get_agent_context
+from mcp_server.tools.email_list_mailboxes import _get_email_jwt
 from mcp_server.utils.wire_ids import db_uuid_to_wire, resolve_email_service_id
 
 router = APIRouter(prefix="/v1/tools")
 
 
-@router.get("/email_list_mailboxes")
-async def email_list_mailboxes(
+class MoveEmailRequest(BaseModel):
+    email_service_id: Optional[str] = None
+    service_id: Optional[str] = None  # alias
+    message_id: str
+    from_mailbox: str = "INBOX"
+    to_mailbox: str
+
+
+@router.post("/email_move_email")
+async def email_move_email(
     request: Request,
-    email_service_id: Optional[str] = None,
-    service_id: Optional[str] = None,
+    body: MoveEmailRequest,
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
 ) -> JSONResponse:
     """
-    List IMAP mailboxes for a granted email service.
+    Move an email message to a different IMAP mailbox.
 
-    Parameters
-    ----------
+    Parameters (JSON body)
+    ----------------------
     email_service_id : str
-        The email service ID — accepts svc_ wire form or raw UUID.
-        Alias: ``service_id`` (matches the broker token-hint vocabulary).
+        The email service ID — svc_ wire form or raw UUID.
+        Alias: ``service_id``.
+    message_id : str
+        The IMAP UID of the message to move.
+    from_mailbox : str
+        Source mailbox (default: INBOX).
+    to_mailbox : str
+        Destination mailbox.
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
-    # Accept ?service_id= as alias for ?email_service_id= so agents following the
-    # broker's token hint verbatim don't 422 here.
-    email_service_id = email_service_id or service_id
-    if not email_service_id:
+    # Accept service_id alias.
+    esvc_input = body.email_service_id or body.service_id
+    if not esvc_input:
         return JSONResponse(
             status_code=422,
             content={
                 "code": "mintkey:bad_request",
-                "title": "Missing required query parameter: email_service_id (or service_id)",
+                "title": "Missing required field: email_service_id (or service_id)",
             },
         )
 
@@ -72,14 +90,14 @@ async def email_list_mailboxes(
     await set_tenant_context(session, tenant_id)
 
     # Resolve email_service_id.
-    esvc_uuid = await resolve_email_service_id(email_service_id, tenant_id, session)
+    esvc_uuid = await resolve_email_service_id(esvc_input, tenant_id, session)
     if esvc_uuid is None:
         return JSONResponse(
             status_code=404,
             content={
                 "code": "mintkey:not_found",
                 "reason_code": "email_service_not_found",
-                "email_service_id_input": email_service_id,
+                "email_service_id_input": esvc_input,
             },
         )
     db_esvc_id = str(esvc_uuid)
@@ -107,7 +125,7 @@ async def email_list_mailboxes(
             },
         )
 
-    # Obtain brokered JWT.
+    # Obtain brokered JWT (scope: write:email — included in all-scopes token).
     jwt = await _get_email_jwt(agent_id, tenant_id, db_esvc_id)
     if jwt is None:
         return JSONResponse(
@@ -115,17 +133,30 @@ async def email_list_mailboxes(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
 
-    # Call email-proxy.
+    # Call email-proxy — POST /v1/email-proxy/messages/{uid}/move.
+    # The email-proxy handler reads destination_mailbox from the JSON body and
+    # source mailbox from the ?mailbox= query param.
     email_proxy_url = os.getenv("EMAIL_PROXY_INTERNAL_URL", "http://email-proxy:8088")
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{email_proxy_url}/v1/email-proxy/mailboxes",
-            params={"service_id": db_esvc_id},
+        resp = await client.post(
+            f"{email_proxy_url}/v1/email-proxy/messages/{body.message_id}/move",
+            params={"service_id": db_esvc_id, "mailbox": body.from_mailbox},
+            json={"destination_mailbox": body.to_mailbox},
             headers={"Authorization": f"Bearer {jwt}"},
-            timeout=15.0,
+            timeout=30.0,
         )
 
-    if resp.status_code != 200:
+    if resp.status_code == 404:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "mintkey:not_found",
+                "reason_code": "message_not_found",
+                "message_id": body.message_id,
+            },
+        )
+
+    if resp.status_code not in (200, 204):
         return JSONResponse(
             status_code=resp.status_code,
             content={
@@ -135,31 +166,7 @@ async def email_list_mailboxes(
             },
         )
 
+    if resp.status_code == 204 or not resp.content:
+        return JSONResponse({"message_id": body.message_id, "mailbox": body.to_mailbox})
+
     return JSONResponse(resp.json())
-
-
-async def _get_email_jwt(agent_id: str, tenant_id: str, db_esvc_id: str) -> Optional[str]:
-    """Call broker /v1/issue and return the JWT string, or None on failure."""
-    broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
-    mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{broker_url}/v1/issue",
-            json={
-                "agent_id": agent_id,
-                "service_id": db_esvc_id,
-                "tenant_id": tenant_id,
-                # Option A: emit all 4 email scopes on every token.
-                # The email-proxy enforces per-endpoint scope checks.
-                # A future PR will tighten this to per-action scopes when
-                # request_token's `action` param is threaded through here.
-                "scope": "read:email send:email write:email delete:email",
-                "service_kind": "email",
-                "ttl_seconds": 600,
-            },
-            headers={"X-Mintkey-Service-Token": mcp_token},
-            timeout=5.0,
-        )
-    if resp.status_code != 200:
-        return None
-    return resp.json().get("token")

@@ -292,15 +292,16 @@ email_app_password}` in `list_services` / `describe_service` output.
 
 | Action | Grants access to |
 |---|---|
-| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message` (+ planned: `email_list_emails`, `email_download_attachment`) |
+| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message`, `email_list_emails`, `email_download_attachment` |
 | `send:email` | `email_send` |
-| `write:email` | planned: `email_move_email`, `email_mark_email` |
-| `delete:email` | planned: `email_delete_email` |
+| `write:email` | `email_move_email`, `email_mark_email` |
+| `delete:email` | `email_delete_email` |
 
-Request a token for the specific action you need (one token per action scope):
+Scope model: the broker emits all 4 email scopes on every email-service JWT; the email-proxy
+enforces per-endpoint scope checks. Per-action scope tightening is a future enhancement.
 
 ```json
-{ "tool": "request_token", "arguments": { "service_id": "svc_01...", "action": "send:email" } }
+{ "tool": "request_token", "arguments": { "service_id": "svc_01...", "action": "call" } }
 ```
 
 The `request_token` tool accepts **both** `email_service_id` and `service_id` as the
@@ -308,13 +309,7 @@ parameter name — they are aliases (PR #155). `service_id` is the canonical for
 `list_services`; `email_service_id` is accepted for backward compatibility. Use `service_id`
 in new code.
 
-**4 MCP email tools today (5 more planned):**
-
-The tool prefix is `email_*`. There are currently **4 implemented tools**. Five additional
-tools are planned but not yet built — they are listed below clearly so you do not waste time
-calling endpoints that will return 404.
-
-*Implemented tools:*
+**MCP email tools (all 9 implemented):**
 
 | Tool | Required scope | REST endpoint | Description |
 |---|---|---|---|
@@ -322,19 +317,11 @@ calling endpoints that will return 404.
 | `email_search_messages` | `read:email` | `GET /v1/tools/email_search_messages` | Search by RFC 3501 query string in a given mailbox |
 | `email_fetch_message` | `read:email` | `GET /v1/tools/email_fetch_message` | Fetch a single message by UID — returns envelope + body |
 | `email_send` | `send:email` | `POST /v1/tools/email_send` | Send via SMTP |
-
-*Planned tools (Not Implemented — will return 404 today):*
-
-| Tool | Scope | Intent |
-|---|---|---|
-| `email_list_emails` | `read:email` | Paginated UID listing per mailbox. Workaround: use `email_search_messages?query=ALL`. |
-| `email_download_attachment` | `read:email` | Download a specific MIME part by partID. Workaround: use `email_fetch_message` and parse MIME parts client-side (the response body includes them). |
-| `email_move_email` | `write:email` | IMAP MOVE between mailboxes. No workaround today. |
-| `email_mark_email` | `write:email` | IMAP STORE for flag changes (Seen / Flagged / Answered). No workaround today. |
-| `email_delete_email` | `delete:email` | Soft-delete (move to Trash) or hard-delete (EXPUNGE). No workaround today. |
-
-The 5 missing tools will be built in a separate follow-up PR. Track it there; do not attempt
-to call them in the meantime.
+| `email_list_emails` | `read:email` | `GET /v1/tools/email_list_emails` | Paginated UID listing per mailbox (limit+offset, default 50, max 200) |
+| `email_download_attachment` | `read:email` | `GET /v1/tools/email_download_attachment` | Download MIME part by partID — returns `{filename, content_type, size, content_base64}` |
+| `email_move_email` | `write:email` | `POST /v1/tools/email_move_email` | IMAP MOVE between mailboxes (COPY+STORE+EXPUNGE fallback) |
+| `email_mark_email` | `write:email` | `POST /v1/tools/email_mark_email` | IMAP STORE — add/remove flags (\\Seen, \\Flagged, \\Answered) |
+| `email_delete_email` | `delete:email` | `DELETE /v1/tools/email_delete_email` | Soft-delete (move to Trash, default) or hard-delete (?hard=true → EXPUNGE) |
 
 **Copy-pasteable example invocations:**
 
@@ -345,15 +332,21 @@ GET /v1/tools/email_list_mailboxes?email_service_id=svc_01...
 GET /v1/tools/email_list_mailboxes?service_id=svc_01...
 # → { "mailboxes": ["INBOX", "Sent", "Drafts", "[Gmail]/Spam"] }
 
-# Search messages (RFC 3501 query; use ALL to list every UID in the mailbox)
+# Search messages (RFC 3501 query)
 GET /v1/tools/email_search_messages?email_service_id=svc_01...&query=FROM "alice@example.com"&mailbox=INBOX
-# or to enumerate all UIDs as a substitute for the missing email_list_emails:
-GET /v1/tools/email_search_messages?email_service_id=svc_01...&query=ALL&mailbox=INBOX
 # → { "messages": [{"uid": 42, "subject": "Hello", "from": "alice@example.com", ...}, ...] }
 
-# Fetch a single message by UID (also returns MIME parts — useful when email_download_attachment is unavailable)
+# List emails with pagination (NEW)
+GET /v1/tools/email_list_emails?email_service_id=svc_01...&mailbox=INBOX&limit=20&offset=0
+# → { "messages": [...], "next_cursor": null }
+
+# Fetch a single message by UID
 GET /v1/tools/email_fetch_message?email_service_id=svc_01...&message_id=42&mailbox=INBOX
-# → { "uid": 42, "subject": "Hello", "from": "alice@example.com", "body": "...", "parts": [...] }
+# → { "uid": 42, "subject": "Hello", "from": "alice@example.com", "body": "..." }
+
+# Download an attachment by MIME part ID (NEW)
+GET /v1/tools/email_download_attachment?email_service_id=svc_01...&message_id=42&part_id=2&mailbox=INBOX
+# → { "filename": "report.pdf", "content_type": "application/pdf", "size": 12345, "content_base64": "..." }
 
 # Send email (POST with JSON body; service_id is accepted as alias for email_service_id)
 POST /v1/tools/email_send
@@ -367,6 +360,26 @@ Content-Type: application/json
   "html_body": "<p>See attached.</p>"
 }
 # → { "message_id": "<unique-id>", "status": "sent" }
+
+# Move email to Archive (NEW)
+POST /v1/tools/email_move_email
+Content-Type: application/json
+{"email_service_id": "svc_01...", "message_id": "42", "from_mailbox": "INBOX", "to_mailbox": "Archive"}
+# → { "message_id": "42", "mailbox": "Archive" }
+
+# Mark as Seen / unstar (NEW)
+POST /v1/tools/email_mark_email
+Content-Type: application/json
+{"email_service_id": "svc_01...", "message_id": "42", "mailbox": "INBOX", "add": ["\\Seen"], "remove": ["\\Flagged"]}
+# → { "message_id": "42", "flags_updated": true }
+
+# Soft-delete (move to Trash, default) (NEW)
+DELETE /v1/tools/email_delete_email?email_service_id=svc_01...&message_id=42&mailbox=INBOX
+# → 204 No Content
+
+# Hard-delete (EXPUNGE) (NEW)
+DELETE /v1/tools/email_delete_email?email_service_id=svc_01...&message_id=42&mailbox=INBOX&hard=true
+# → 204 No Content
 ```
 
 As MCP tool calls (for MCP clients):
@@ -375,13 +388,25 @@ As MCP tool calls (for MCP clients):
 { "tool": "email_list_mailboxes", "arguments": { "email_service_id": "svc_01..." } }
 // → { "mailboxes": [{"name": "INBOX", ...}, {"name": "Sent", ...}] }
 
-{ "tool": "email_search_messages",
-  "arguments": { "email_service_id": "svc_01...", "query": "ALL", "mailbox": "INBOX" } }
-// → { "messages": [{"uid": 42, "subject": "Hello", "from": "alice@…"}, …] }
+{ "tool": "email_list_emails",
+  "arguments": { "email_service_id": "svc_01...", "mailbox": "INBOX", "limit": 20, "offset": 0 } }
+// → { "messages": [...], "next_cursor": null }
 
 { "tool": "email_fetch_message",
   "arguments": { "email_service_id": "svc_01...", "message_id": "42", "mailbox": "INBOX" } }
-// → { "uid": 42, "subject": "Hello", "from": "alice@…", "body": "…", "parts": [] }
+// → { "uid": 42, "subject": "Hello", "from": "alice@…", "body": "…" }
+
+{ "tool": "email_move_email",
+  "arguments": { "email_service_id": "svc_01...", "message_id": "42", "from_mailbox": "INBOX", "to_mailbox": "Archive" } }
+// → { "message_id": "42", "mailbox": "Archive" }
+
+{ "tool": "email_mark_email",
+  "arguments": { "email_service_id": "svc_01...", "message_id": "42", "mailbox": "INBOX", "add": ["\\Seen"], "remove": [] } }
+// → { "message_id": "42", "flags_updated": true }
+
+{ "tool": "email_delete_email",
+  "arguments": { "email_service_id": "svc_01...", "message_id": "42", "mailbox": "INBOX" } }
+// → 204 (soft-delete: moved to Trash)
 
 { "tool": "email_send",
   "arguments": {
@@ -393,16 +418,6 @@ As MCP tool calls (for MCP clients):
 }
 // → { "message_id": "<id>", "status": "sent" }
 ```
-
-**Current workarounds for the 5 missing tools:**
-
-| Missing tool | Workaround |
-|---|---|
-| `email_list_emails` | Call `email_search_messages` with `query=ALL` — returns all UIDs in the mailbox. |
-| `email_download_attachment` | Call `email_fetch_message` and parse MIME parts from the `parts[]` array in the response body. |
-| `email_move_email` | No workaround. Track the follow-up PR. |
-| `email_mark_email` | No workaround. Track the follow-up PR. |
-| `email_delete_email` | No workaround. Track the follow-up PR. |
 
 **Per-service SMTP routing (PR #156):** There are no global SMTP defaults. The
 `smtp_host` and `smtp_port` stored on the registered email service are used directly for

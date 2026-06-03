@@ -421,12 +421,12 @@ OAuth2 refresh endpoint (OQ-2 resolution, ADR-0024 corrigendum).
 Email services use action-based scopes rather than a single `call` action. Grant the
 appropriate scope(s) based on what the agent needs:
 
-| Action / scope | Implemented tools | Planned tools |
-|---|---|---|
-| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message` | `email_list_emails`, `email_download_attachment` |
-| `send:email` | `email_send` | — |
-| `write:email` | — | `email_move_email`, `email_mark_email` |
-| `delete:email` | — | `email_delete_email` |
+| Action / scope | Implemented tools |
+|---|---|
+| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message`, `email_list_emails`, `email_download_attachment` |
+| `send:email` | `email_send` |
+| `write:email` | `email_move_email`, `email_mark_email` |
+| `delete:email` | `email_delete_email` |
 
 **Via Admin UI:** Permission Grants → New → select Agent, Service, and one of the four actions.
 
@@ -450,8 +450,7 @@ curl -s -X POST \
 ### 6.4 Agent calling the email service (MCP tools)
 
 Agents call email services through the MCP tools (see `agent-bootstrap.md`
-`<email_services>` block for the full reference). Only 4 tools are implemented today;
-5 more are planned. A typical flow:
+`<email_services>` block for the full reference). All 9 tools are implemented. A typical flow:
 
 **Step 1 — request a token with the required scope:**
 
@@ -478,26 +477,21 @@ TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
 
 Expected response: `{"message_id": "<id>", "status": "sent"}`.
 
-**Implemented tools (call these today):**
+**All 9 email tools:**
 
 | Tool | Scope | Description |
 |---|---|---|
 | `email_list_mailboxes` | `read:email` | List IMAP mailboxes for the service |
-| `email_search_messages` | `read:email` | Search messages — use `query=ALL` to list all UIDs |
+| `email_search_messages` | `read:email` | Search messages by RFC 3501 query string |
 | `email_fetch_message` | `read:email` | Fetch full message envelope + body by UID |
+| `email_list_emails` | `read:email` | Paginated UID listing (limit+offset, default 50, max 200) |
+| `email_download_attachment` | `read:email` | Download MIME part by partID → base64 JSON |
 | `email_send` | `send:email` | Send via SMTP |
+| `email_move_email` | `write:email` | Move message to another mailbox (IMAP MOVE) |
+| `email_mark_email` | `write:email` | Set/unset IMAP flags (\\Seen, \\Flagged, \\Answered) |
+| `email_delete_email` | `delete:email` | Soft-delete (→ Trash) or hard-delete (?hard=true → EXPUNGE) |
 
-**Planned tools (Not Implemented — will 404 until built in a follow-up PR):**
-
-| Tool | Scope | Intent |
-|---|---|---|
-| `email_list_emails` | `read:email` | Paginated UID listing per mailbox |
-| `email_download_attachment` | `read:email` | Download a specific MIME part by partID |
-| `email_move_email` | `write:email` | Move message to another mailbox |
-| `email_mark_email` | `write:email` | Set/unset IMAP flags |
-| `email_delete_email` | `delete:email` | Delete a message by UID |
-
-**Parameter note:** all 4 tools accept `email_service_id` (canonical) or `service_id`
+**Parameter note:** all 9 tools accept `email_service_id` (canonical) or `service_id`
 (alias, PR #155). Use `service_id` in new code for consistency with the rest of Mintkey.
 
 > **Email body content is never stored by Mintkey.** The broker fetches the body from

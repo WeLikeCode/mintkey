@@ -563,18 +563,22 @@ tools:
   # Tool prefix: email_*  (NOT mintkey_* — that prefix was a doc error)
   #
   # Implementation status (as of 2026-06-03):
-  #   IMPLEMENTED (4):  email_list_mailboxes, email_search_messages,
-  #                     email_fetch_message, email_send
-  #   PLANNED (5):      email_list_emails, email_download_attachment,
+  #   IMPLEMENTED (9):  email_list_mailboxes, email_search_messages,
+  #                     email_fetch_message, email_send,
+  #                     email_list_emails, email_download_attachment,
   #                     email_move_email, email_mark_email, email_delete_email
   #
   # Permission scopes:
   #   read:email   — email_list_mailboxes, email_search_messages,
-  #                  email_fetch_message (+ planned: email_list_emails,
-  #                  email_download_attachment)
+  #                  email_fetch_message, email_list_emails,
+  #                  email_download_attachment
   #   send:email   — email_send
-  #   write:email  — planned: email_move_email, email_mark_email
-  #   delete:email — planned: email_delete_email
+  #   write:email  — email_move_email, email_mark_email
+  #   delete:email — email_delete_email
+  #
+  # Scope model (Option A): the broker emits all 4 email scopes on every
+  # email-service JWT; the email-proxy enforces per-endpoint scope checks.
+  # Per-action scope tightening is tracked as a future enhancement.
   #
   # Parameter note: all email tools accept "email_service_id" (canonical)
   # or "service_id" (alias, PR #155). Use service_id in new code.
@@ -825,13 +829,15 @@ tools:
   # =========================================================================
 
   # =========================================================================
-  # PLANNED TOOL 1 of 5
+  # IMPLEMENTED TOOL 5 of 9
   - name: "email_list_emails"
     description: |
-      [NOT IMPLEMENTED] Paginated UID listing per mailbox.
-      Workaround: use email_search_messages with query=ALL.
+      Paginated UID listing per mailbox.
+      Requires `read:email` scope.
+      REST: GET /v1/tools/email_list_emails?email_service_id=<svc_…>&mailbox=INBOX&limit=50&offset=0
+      Returns: { "messages": [...], "next_cursor": null }
     x-mintkey-scope: "read:email"
-    x-mintkey-status: "planned"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -874,15 +880,15 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  # PLANNED TOOL 2 of 5
+  # IMPLEMENTED TOOL 6 of 9
   - name: "email_download_attachment"
     description: |
-      [NOT IMPLEMENTED] Download a specific MIME part by partID (IMAP BODYSTRUCTURE part number).
-      Returns base64-encoded content.
-      Workaround: use email_fetch_message and parse MIME parts from the parts[] array.
+      Download a specific MIME part by partID (IMAP BODYSTRUCTURE part number).
+      Returns base64-encoded content in: {filename, content_type, size, content_base64}.
       Requires `read:email` scope.
+      REST: GET /v1/tools/email_download_attachment?email_service_id=<svc_…>&message_id=<uid>&part_id=<pid>&mailbox=INBOX
     x-mintkey-scope: "read:email"
-    x-mintkey-status: "planned"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -923,14 +929,16 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  # PLANNED TOOL 3 of 5
+  # IMPLEMENTED TOOL 7 of 9
   - name: "email_move_email"
     description: |
-      [NOT IMPLEMENTED] Move an email message to a different mailbox (IMAP MOVE).
-      No workaround available today.
+      Move an email message to a different mailbox (IMAP MOVE).
+      Falls back to COPY+STORE+EXPUNGE when server lacks MOVE extension.
       Requires `write:email` scope.
+      REST: POST /v1/tools/email_move_email
+      Body: {email_service_id, message_id, from_mailbox, to_mailbox}
     x-mintkey-scope: "write:email"
-    x-mintkey-status: "planned"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -964,15 +972,16 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  # PLANNED TOOL 4 of 5
+  # IMPLEMENTED TOOL 8 of 9
   - name: "email_mark_email"
     description: |
-      [NOT IMPLEMENTED] Update IMAP flags on a message (IMAP STORE).
+      Update IMAP flags on a message (IMAP STORE +FLAGS / -FLAGS).
       Supports Seen / Flagged / Answered flag changes.
-      No workaround available today.
       Requires `write:email` scope.
+      REST: POST /v1/tools/email_mark_email
+      Body: {email_service_id, message_id, mailbox, add:["\\Seen"], remove:[]}
     x-mintkey-scope: "write:email"
-    x-mintkey-status: "planned"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -1017,15 +1026,16 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  # PLANNED TOOL 5 of 5
+  # IMPLEMENTED TOOL 9 of 9
   - name: "email_delete_email"
     description: |
-      [NOT IMPLEMENTED] Delete a message from a mailbox — soft-delete (move to Trash)
-      or hard-delete (IMAP EXPUNGE).
-      No workaround available today.
+      Delete a message — soft-delete (move to Trash, default) or hard-delete (IMAP EXPUNGE).
+      Soft-delete: moves UID to "Trash" mailbox; returns 422 with hint if mailbox doesn't exist.
+      Hard-delete: ?hard=true triggers EXPUNGE.
       Requires `delete:email` scope.
+      REST: DELETE /v1/tools/email_delete_email?email_service_id=<svc_…>&message_id=<uid>&mailbox=INBOX&hard=false
     x-mintkey-scope: "delete:email"
-    x-mintkey-status: "planned"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object

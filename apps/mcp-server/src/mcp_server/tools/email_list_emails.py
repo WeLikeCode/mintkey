@@ -1,18 +1,19 @@
 """
-MCP email_list_mailboxes tool.
+MCP email_list_emails tool.
 
-GET /v1/tools/email_list_mailboxes?email_service_id=<id>
-  (alias accepted: ?service_id=<id> — matches the broker token-hint vocabulary)
+GET /v1/tools/email_list_emails?email_service_id=<id>&mailbox=INBOX&limit=50&offset=0
+  (alias accepted: ?service_id=<id>)
 
-Lists IMAP mailboxes for the agent's granted email service.
+Paginated UID listing for a given IMAP mailbox.
 
 Implementation:
   1. Auth check (agent context present).
-  2. request_token exchange via broker (service_kind=email).
-  3. GET /v1/email-proxy/mailboxes?service_id=<id> on email-proxy.
-  4. Return the mailbox list.
+  2. Permission check (email_permission_grants).
+  3. Broker JWT exchange (scope: read:email).
+  4. GET /v1/email-proxy/messages?service_id=<id>&mailbox=<mb>&limit=<n>&offset=<o>.
+  5. Return paginated message list.
 
-Source: feat/agent-email-e2e.
+Source: feat/email-tools-list-attach-move-mark-delete.
 """
 from __future__ import annotations
 
@@ -29,33 +30,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.tools.discovery import get_agent_context
+from mcp_server.tools.email_list_mailboxes import _get_email_jwt
 from mcp_server.utils.wire_ids import db_uuid_to_wire, resolve_email_service_id
 
 router = APIRouter(prefix="/v1/tools")
 
 
-@router.get("/email_list_mailboxes")
-async def email_list_mailboxes(
+@router.get("/email_list_emails")
+async def email_list_emails(
     request: Request,
     email_service_id: Optional[str] = None,
     service_id: Optional[str] = None,
+    mailbox: str = "INBOX",
+    limit: int = 50,
+    offset: int = 0,
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
 ) -> JSONResponse:
     """
-    List IMAP mailboxes for a granted email service.
+    List emails in an IMAP mailbox with pagination.
 
     Parameters
     ----------
     email_service_id : str
-        The email service ID — accepts svc_ wire form or raw UUID.
+        The email service ID — svc_ wire form or raw UUID.
         Alias: ``service_id`` (matches the broker token-hint vocabulary).
+    mailbox : str
+        The mailbox to list (default: INBOX).
+    limit : int
+        Number of messages to return per page (1-200, default 50).
+    offset : int
+        Pagination offset (0-based).
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
-    # Accept ?service_id= as alias for ?email_service_id= so agents following the
-    # broker's token hint verbatim don't 422 here.
+    # Accept ?service_id= as alias for ?email_service_id=
     email_service_id = email_service_id or service_id
     if not email_service_id:
         return JSONResponse(
@@ -64,6 +74,18 @@ async def email_list_mailboxes(
                 "code": "mintkey:bad_request",
                 "title": "Missing required query parameter: email_service_id (or service_id)",
             },
+        )
+
+    # Validate pagination params.
+    if limit < 1 or limit > 200:
+        return JSONResponse(
+            status_code=422,
+            content={"code": "mintkey:bad_request", "title": "limit must be between 1 and 200"},
+        )
+    if offset < 0:
+        return JSONResponse(
+            status_code=422,
+            content={"code": "mintkey:bad_request", "title": "offset must be >= 0"},
         )
 
     agent_id: str = agent_ctx["agent_id"]
@@ -107,7 +129,7 @@ async def email_list_mailboxes(
             },
         )
 
-    # Obtain brokered JWT.
+    # Obtain brokered JWT (scope: read:email).
     jwt = await _get_email_jwt(agent_id, tenant_id, db_esvc_id)
     if jwt is None:
         return JSONResponse(
@@ -115,14 +137,19 @@ async def email_list_mailboxes(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
 
-    # Call email-proxy.
+    # Call email-proxy — GET /v1/email-proxy/messages with pagination params.
     email_proxy_url = os.getenv("EMAIL_PROXY_INTERNAL_URL", "http://email-proxy:8088")
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{email_proxy_url}/v1/email-proxy/mailboxes",
-            params={"service_id": db_esvc_id},
+            f"{email_proxy_url}/v1/email-proxy/messages",
+            params={
+                "service_id": db_esvc_id,
+                "mailbox": mailbox,
+                "limit": limit,
+                "offset": offset,
+            },
             headers={"Authorization": f"Bearer {jwt}"},
-            timeout=15.0,
+            timeout=30.0,
         )
 
     if resp.status_code != 200:
@@ -136,30 +163,3 @@ async def email_list_mailboxes(
         )
 
     return JSONResponse(resp.json())
-
-
-async def _get_email_jwt(agent_id: str, tenant_id: str, db_esvc_id: str) -> Optional[str]:
-    """Call broker /v1/issue and return the JWT string, or None on failure."""
-    broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
-    mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{broker_url}/v1/issue",
-            json={
-                "agent_id": agent_id,
-                "service_id": db_esvc_id,
-                "tenant_id": tenant_id,
-                # Option A: emit all 4 email scopes on every token.
-                # The email-proxy enforces per-endpoint scope checks.
-                # A future PR will tighten this to per-action scopes when
-                # request_token's `action` param is threaded through here.
-                "scope": "read:email send:email write:email delete:email",
-                "service_kind": "email",
-                "ttl_seconds": 600,
-            },
-            headers={"X-Mintkey-Service-Token": mcp_token},
-            timeout=5.0,
-        )
-    if resp.status_code != 200:
-        return None
-    return resp.json().get("token")

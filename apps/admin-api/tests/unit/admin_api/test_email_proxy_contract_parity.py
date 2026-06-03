@@ -94,12 +94,11 @@ EXPECTED_CHANGE_EVENT_TYPES = {
 }
 
 EXPECTED_MCP_TOOLS = {
-    # 4 implemented tools (email_* prefix)
+    # 9 implemented tools (email_* prefix) — all now implemented
     "email_list_mailboxes",
     "email_search_messages",
     "email_fetch_message",
     "email_send",
-    # 5 planned tools (email_* prefix, not yet implemented — will 404 until built)
     "email_list_emails",
     "email_download_attachment",
     "email_move_email",
@@ -108,11 +107,17 @@ EXPECTED_MCP_TOOLS = {
 }
 
 # Subset that must be implemented today (x-mintkey-status: implemented)
+# All 9 tools are now implemented — feat/email-tools-list-attach-move-mark-delete
 EXPECTED_IMPLEMENTED_MCP_TOOLS = {
     "email_list_mailboxes",
     "email_search_messages",
     "email_fetch_message",
     "email_send",
+    "email_list_emails",
+    "email_download_attachment",
+    "email_move_email",
+    "email_mark_email",
+    "email_delete_email",
 }
 
 
