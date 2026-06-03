@@ -40,6 +40,7 @@ Sources: feat/oauth2-providers-per-tenant-vault scope §Layer 3; ADR-0024; NFR-1
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -100,9 +101,23 @@ class OAuth2ProviderConfigBody(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _vault_service_id(provider: str) -> str:
-    """Return the synthetic vault service_id for the given provider."""
-    return _VAULT_SERVICE_ID_PREFIX + provider
+# Stable per-(tenant, provider) namespace for the UUIDv5. Generated once via
+# uuid.uuid4() and committed — any UUID works, this just disambiguates from
+# accidental collisions with other UUIDv5 callers in the codebase.
+_OAUTH2_CLIENT_VAULT_NAMESPACE = uuid.UUID("2f3a7b91-4c4e-5d6a-9e0f-a1b2c3d4e5f6")
+
+
+def _vault_service_id(tenant_id: str | UUID, provider: str) -> str:
+    """Deterministic UUID used as the vault service_id for the OAuth2 client config.
+
+    The vault postgres backend's `service_id` column is typed UUID — synthetic
+    strings like "oauth2cfg_gmail" don't cast. We derive a stable UUIDv5 from
+    (tenant_id, provider) so every PUT/GET for the same tenant+provider hits the
+    same vault row, while collisions across tenants or providers are impossible.
+
+    Returned as a string because vault.put_credential takes string IDs.
+    """
+    return str(uuid.uuid5(_OAUTH2_CLIENT_VAULT_NAMESPACE, f"{tenant_id}:{provider}"))
 
 
 def _client_id_last4(client_id: str) -> str:
@@ -156,7 +171,7 @@ async def configure_oauth2_provider(
     await set_tenant_context(session, tenant_id)
 
     # Store client_secret in vault — plaintext leaves scope after this call
-    vault_service_id = _vault_service_id(provider)
+    vault_service_id = _vault_service_id(tenant_id, provider)
     try:
         await vault.put_credential(
             tenant_id=str(tenant_id),
@@ -386,7 +401,7 @@ async def delete_oauth2_provider(
         )
 
     # Revoke vault credential — idempotent (empty value overwrites)
-    vault_service_id = _vault_service_id(provider)
+    vault_service_id = _vault_service_id(tenant_id, provider)
     try:
         existing = await vault.get_credential(
             tenant_id=str(tenant_id), service_id=vault_service_id
