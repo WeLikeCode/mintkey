@@ -830,23 +830,13 @@ async def _exchange_oauth2_code_for_refresh_token(
 
     now = datetime.now(timezone.utc)
 
-    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17)
-    await audit_emit(
-        session=session,
-        tenant_id=tenant_id,
-        event_type="email.oauth2.authorized",
-        actor_id=None,
-        actor_type="operator",
-        target_id=UUID(resolved_service_id) if _is_valid_uuid(resolved_service_id) else uuid.uuid4(),
-        target_type="email_service",
-        payload={
-            "service_id": resolved_service_id,
-            "provider": provider,
-            "authorized_at": now.isoformat(),
-            # token_type only — NEVER the token values
-            "token_type": token_data.get("token_type", "Bearer"),
-        },
-    )
+    # NOTE: audit_emit is intentionally NOT called here — the AST-based
+    # write-handler audit-coverage scanner (test_audit_coverage.py) requires
+    # every @router write handler to call audit_emit DIRECTLY. Callers
+    # (oauth2_callback POST + oauth2_callback_view GET) must emit
+    # email.oauth2.authorized on success — NO refresh_token, client_secret,
+    # or access_token in the payload (NFR-17). The token_type returned in
+    # _ExchangeResult is what those handlers should use.
 
     return _ExchangeResult(
         ok=True,
@@ -1038,6 +1028,25 @@ async def oauth2_callback(
             content={"mintkey:code": result.error_code, "title": result.error_title},
         )
 
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted in the handler (not in the shared helper) so the write-handler
+    # audit-coverage scanner sees a direct call (test_audit_coverage.py).
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorized",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
+        },
+    )
+
     return JSONResponse(
         status_code=200,
         content={
@@ -1177,6 +1186,25 @@ async def oauth2_callback_view(
             ),
             status_code=result.http_status,
         )
+
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted in the handler (not in the shared helper) so the write-handler
+    # audit-coverage scanner sees a direct call (test_audit_coverage.py).
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorized",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
+        },
+    )
 
     return HTMLResponse(
         content=_oauth2_callback_html(
