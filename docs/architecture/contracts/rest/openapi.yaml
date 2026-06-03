@@ -3109,6 +3109,123 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   ###########################################################################
+  # Per-(provider, tenant) OAuth2 callback — new preferred redirect_uri shape
+  # fix/oauth2-redirect-uri-per-tenant: ONE GCP/Azure registration per provider
+  # per tenant; service_id resolved from oauth2_state row via `state` parameter.
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/oauth2/{provider}/callback:
+    get:
+      operationId: oauth2CallbackPerTenantView
+      tags: [EmailServices]
+      summary: Handle the OAuth2 browser redirect at the per-tenant callback URL.
+      description: |
+        This is the preferred redirect URI shape (fix/oauth2-redirect-uri-per-tenant).
+        Operators register ONE URI per provider per tenant in GCP/Azure Console.
+        The `service_id` is resolved from the `oauth2_state` row via the `state`
+        query parameter — no `service_id` appears in the URL path.
+
+        On `?error=...` the endpoint returns 200 HTML with an error card.
+        On valid `code` + `state` it exchanges the code, stores the refresh token
+        in vault, and returns 200 HTML (success card / postMessage to opener).
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+        - in: query
+          name: code
+          schema:
+            type: string
+          description: Authorization code from the provider.
+        - in: query
+          name: state
+          schema:
+            type: string
+          description: CSRF state value from the authorize step.
+        - in: query
+          name: error
+          schema:
+            type: string
+          description: Error code if the provider declined.
+        - in: query
+          name: error_description
+          schema:
+            type: string
+          description: Human-readable error description from the provider.
+      responses:
+        "200":
+          description: HTML page (success or error card).
+          content:
+            text/html:
+              schema:
+                type: string
+        "422":
+          description: Invalid state, missing params, or unsupported provider (HTML error card).
+          content:
+            text/html:
+              schema:
+                type: string
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+    post:
+      operationId: oauth2CallbackPerTenant
+      tags: [EmailServices]
+      summary: Complete the OAuth2 flow at the per-tenant callback URL (programmatic).
+      description: |
+        Programmatic variant of the per-tenant callback (JSON body instead of
+        query params).  The `service_id` is resolved from the `oauth2_state` row
+        via `body.state` — no `service_id` in the URL path.
+
+        Returns 422 if state is invalid/expired, 503 if OAuth2 creds not configured.
+        On success emits `email.oauth2.authorized`.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [gmail, outlook]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, state]
+              properties:
+                code:
+                  type: string
+                  description: Authorization code from the provider redirect.
+                state:
+                  type: string
+                  description: CSRF state value from the authorize step.
+      responses:
+        "200":
+          description: OAuth2 flow completed; refresh token stored in vault.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailService"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  ###########################################################################
   # Internal OAuth2 refresh (admin-api internal — called by email-proxy)
   ###########################################################################
 

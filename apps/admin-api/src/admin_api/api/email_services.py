@@ -266,6 +266,7 @@ def _get_email_proxy_token() -> str:
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/email-services")
 internal_oauth2_router = APIRouter(prefix="/v1/internal/oauth2")
+oauth2_per_tenant_router = APIRouter(prefix="/v1/tenants/{tenant_id}/oauth2")
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -709,7 +710,7 @@ async def oauth2_authorize(
 
     redirect_uri = (
         _oauth2_redirect_base()
-        + f"/v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback"
+        + f"/v1/tenants/{tenant_id}/oauth2/{provider}/callback"
     )
 
     await session.execute(
@@ -2124,6 +2125,272 @@ async def delete_email_service(
     )
 
     return JSONResponse(status_code=204, content=None)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants/{tenant_id}/oauth2/{provider}/callback  (per-tenant, browser redirect)
+# POST /v1/tenants/{tenant_id}/oauth2/{provider}/callback (per-tenant, programmatic)
+#
+# These endpoints are the NEW preferred redirect_uri shape (fix/oauth2-redirect-uri-per-tenant).
+# Operators register ONE redirect URI per provider per tenant in GCP/Azure Console instead of
+# one per email_service.  The service_id is resolved from the oauth2_state row (which already
+# carries service_id — migration 023).
+#
+# The old per-service endpoints (/{service_id}/oauth2/{provider}/callback) remain alive for
+# backwards compat: any in-flight authorize flows that started before this PR will complete via
+# the per-service path because that is what is stored in their state row.
+# ---------------------------------------------------------------------------
+
+
+class OAuth2CallbackPerTenantBody(BaseModel):
+    """Body for POST /v1/tenants/{tenant_id}/oauth2/{provider}/callback."""
+
+    code: str
+    state: str
+
+
+@oauth2_per_tenant_router.get("/{provider}/callback")
+async def oauth2_callback_per_tenant_view(
+    tenant_id: UUID,
+    provider: str,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> HTMLResponse:
+    """Handle OAuth2 GET browser redirect at the per-(provider, tenant) callback URL (C-9).
+
+    This is the NEW preferred redirect_uri shape introduced in fix/oauth2-redirect-uri-per-tenant.
+    Operators register ONE URI per provider per tenant in GCP/Azure Console instead of one per
+    email_service.  The oauth2_state row carries service_id; no service_id appears in this URL.
+
+    Flow:
+      1. If ?error= is present: render error HTML immediately (no state lookup needed).
+      2. Validate code and state are present.
+      3. Look up and single-use-delete the state row; resolve service_id from it.
+      4. Call _exchange_oauth2_code_for_refresh_token with the resolved service_id.
+      5. Return HTML (same as per-service callback view).
+
+    Security (NFR-17): NEVER echoes code, state, refresh_token, client_secret, or access_token.
+    audit_emit is called directly in this handler (not delegated to the helper) so the
+    AST-based write-handler audit-coverage scanner sees a direct call.
+
+    Source: fix/oauth2-redirect-uri-per-tenant; ADR-0024 §B2.
+    """
+    admin_ui_origin = _admin_ui_base()
+    # Sentinel for error-path HTML (no service_id available from URL in this shape)
+    _sentinel_service_id = ""
+
+    # --- Provider sent ?error=... ---
+    if error:
+        logger.info(
+            "oauth2_callback_per_tenant_view: provider error=%s provider=%s tenant=%s",
+            error,
+            provider,
+            tenant_id,
+        )
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=_sentinel_service_id,
+                error_code=error,
+                error_description=error_description or "",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=200,
+        )
+
+    if provider not in _OAUTH2_PROVIDERS:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=_sentinel_service_id,
+                error_code="unsupported_provider",
+                error_description=f"OAuth2 is only supported for {sorted(_OAUTH2_PROVIDERS)}",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=422,
+        )
+
+    if not code or not state:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=_sentinel_service_id,
+                error_code="missing_params",
+                error_description="OAuth2 callback is missing required parameters (code or state).",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=422,
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    creds = await _oauth2_config_from_db(tenant_id, provider, session, vault)
+    if creds is None:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=_sentinel_service_id,
+                error_code="oauth2_not_configured",
+                error_description=f"OAuth2 credentials for provider '{provider}' are not configured",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=503,
+        )
+    client_id, client_secret = creds
+
+    # Exchange code — service_id is resolved from the state row inside the helper
+    result = await _exchange_oauth2_code_for_refresh_token(
+        tenant_id=tenant_id,
+        service_id=_sentinel_service_id,  # overridden by state row inside helper
+        provider=provider,
+        code=code,        # NEVER echoed in HTML / logs
+        state=state,      # NEVER echoed in HTML / logs
+        session=session,
+        vault=vault,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    if not result.ok:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=_sentinel_service_id,
+                error_code=result.error_code,
+                error_description=result.error_title,
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=result.http_status,
+        )
+
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted directly in this handler so the write-handler audit-coverage scanner
+    # (test_audit_coverage.py) sees the call (NOT delegated to the helper).
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorized",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
+        },
+    )
+
+    return HTMLResponse(
+        content=_oauth2_callback_html(
+            success=True,
+            service_id=result.service_id,
+            admin_ui_origin=admin_ui_origin,
+        ),
+        status_code=200,
+    )
+
+
+@oauth2_per_tenant_router.post("/{provider}/callback", status_code=200)
+async def oauth2_callback_per_tenant(
+    tenant_id: UUID,
+    provider: str,
+    body: OAuth2CallbackPerTenantBody,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> JSONResponse:
+    """Complete the OAuth2 flow at the per-(provider, tenant) callback URL (programmatic).
+
+    This is the NEW preferred redirect_uri shape introduced in fix/oauth2-redirect-uri-per-tenant.
+    The service_id is resolved from the oauth2_state row (not from the URL path).
+
+    Steps:
+      1. Validate provider.
+      2. Look up OAuth2 client credentials.
+      3. Delegate to _exchange_oauth2_code_for_refresh_token (state lookup + token exchange).
+      4. Emit email.oauth2.authorized audit event (direct, not via helper — audit scanner).
+      5. Return 200 JSON.
+
+    Returns 422 if provider is unsupported or state is invalid/expired.
+    Returns 503 if OAuth2 credentials are not configured.
+
+    Security (NFR-17): NEVER logs or returns code, state, refresh_token, or client_secret.
+    audit_emit is called directly in this handler.
+
+    Source: fix/oauth2-redirect-uri-per-tenant; ADR-0024 §B2.
+    """
+    if provider not in _OAUTH2_PROVIDERS:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "unsupported_provider",
+                "title": f"OAuth2 is only supported for {sorted(_OAUTH2_PROVIDERS)}",
+            },
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    creds = await _oauth2_config_from_db(tenant_id, provider, session, vault)
+    if creds is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "mintkey:code": "oauth2_not_configured",
+                "title": f"OAuth2 credentials for provider '{provider}' are not configured",
+            },
+        )
+    client_id, client_secret = creds
+
+    result = await _exchange_oauth2_code_for_refresh_token(
+        tenant_id=tenant_id,
+        service_id="",  # overridden by state row inside helper
+        provider=provider,
+        code=body.code,
+        state=body.state,
+        session=session,
+        vault=vault,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    if not result.ok:
+        return JSONResponse(
+            status_code=result.http_status,
+            content={"mintkey:code": result.error_code, "title": result.error_title},
+        )
+
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted directly in this handler (not delegated to the helper) so the AST-based
+    # write-handler audit-coverage scanner (test_audit_coverage.py) sees the call.
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorized",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
+        },
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

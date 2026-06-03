@@ -2602,3 +2602,343 @@ class TestOAuth2CallbackView:
         assert base == "https://api.example.com", (
             f"_oauth2_redirect_base() did not use MINTKEY_ADMIN_API_PUBLIC_URL; got: {base}"
         )
+
+
+# ---------------------------------------------------------------------------
+# T-PT (per-tenant callback): new per-(provider, tenant) callback endpoints
+# fix/oauth2-redirect-uri-per-tenant
+# ---------------------------------------------------------------------------
+
+
+class TestOAuth2PerTenantCallback:
+    """
+    T-PT-1 through T-PT-5: tests for the new per-(provider, tenant) callback endpoints.
+    These verify the behaviour introduced in fix/oauth2-redirect-uri-per-tenant.
+    """
+
+    def _fake_provider_resp(
+        self,
+        status_code: int = 200,
+        access_token: str = "fake_at",
+        refresh_token: str = "fake_rt",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_oauth2_callback_per_tenant_get_success(self) -> None:
+        """
+        T-PT-1: GET new per-tenant callback with valid state → 200 HTML, success branch,
+        vault.put_credential called with service_id from the STATE ROW (not from URL).
+        """
+        from admin_api.api.email_services import oauth2_callback_per_tenant_view
+
+        tenant_id = uuid.uuid4()
+        # service_id comes from the state row — NOT from the URL path
+        service_id_from_state = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id_from_state,
+            redirect_uri=f"http://localhost:8080/v1/tenants/{tenant_id}/oauth2/gmail/callback",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        provider_resp = self._fake_provider_resp()
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_callback_per_tenant_view(
+                tenant_id=tenant_id,
+                provider="gmail",
+                code="auth_code_xyz",
+                state="valid_state_abc",
+                error=None,
+                error_description=None,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        assert "Authorization complete" in result.body.decode()
+
+        # vault.put_credential must have been called with the service_id from the state row
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs.get("service_id") == service_id_from_state, (
+            "vault.put_credential must use service_id from state row, not from URL"
+        )
+        assert call_kwargs.get("auth_scheme") == "email_oauth2"
+
+        # Audit event must be emitted with the resolved service_id
+        assert any(a["event_type"] == "email.oauth2.authorized" for a in audit_calls)
+        auth_events = [a for a in audit_calls if a["event_type"] == "email.oauth2.authorized"]
+        assert auth_events[0]["payload"]["service_id"] == service_id_from_state
+
+    @pytest.mark.asyncio
+    async def test_oauth2_callback_per_tenant_get_state_invalid(self) -> None:
+        """
+        T-PT-2: GET per-tenant callback with bad/expired state → 422 HTML.
+        """
+        from admin_api.api.email_services import oauth2_callback_per_tenant_view
+
+        tenant_id = uuid.uuid4()
+        # DELETE FROM oauth2_state returns nothing — state is invalid/expired
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(None),
+        })
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        provider_resp = self._fake_provider_resp()
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_callback_per_tenant_view(
+                tenant_id=tenant_id,
+                provider="gmail",
+                code="code",
+                state="bad_state",
+                error=None,
+                error_description=None,
+                session=session,  # type: ignore[arg-type]
+                vault=AsyncMock(),
+            )
+
+        assert result.status_code == 422
+        assert "Authorization failed" in result.body.decode()
+
+    @pytest.mark.asyncio
+    async def test_oauth2_callback_per_tenant_post_success(self) -> None:
+        """
+        T-PT-3: POST per-tenant callback with valid state → 200 JSON, service_id
+        from state row, vault.put_credential called, audit emitted.
+        """
+        from admin_api.api.email_services import oauth2_callback_per_tenant, OAuth2CallbackPerTenantBody
+
+        tenant_id = uuid.uuid4()
+        service_id_from_state = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id_from_state,
+            redirect_uri=f"http://localhost:8080/v1/tenants/{tenant_id}/oauth2/gmail/callback",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        provider_resp = self._fake_provider_resp()
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            body = OAuth2CallbackPerTenantBody(code="auth_code", state="valid_state")
+            result = await oauth2_callback_per_tenant(
+                tenant_id=tenant_id,
+                provider="gmail",
+                body=body,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        body_content = json.loads(result.body)
+        assert body_content["provider"] == "gmail"
+        assert body_content["service_id"] == service_id_from_state
+
+        # Vault called with service_id from state row
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs.get("service_id") == service_id_from_state
+        assert call_kwargs.get("auth_scheme") == "email_oauth2"
+
+        # Audit event emitted with resolved service_id
+        auth_events = [a for a in audit_calls if a["event_type"] == "email.oauth2.authorized"]
+        assert len(auth_events) == 1
+        assert auth_events[0]["payload"]["service_id"] == service_id_from_state
+
+    @pytest.mark.asyncio
+    async def test_oauth2_redirect_uri_does_not_include_service_id(self) -> None:
+        """
+        T-PT-4: After POST authorize, the returned auth_url's redirect_uri param
+        must match /v1/tenants/{tid}/oauth2/{provider}/callback and must NOT
+        contain /email-services/<sid>/ anywhere in the path.
+        """
+        import urllib.parse
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session(**{
+            "SELECT id FROM email_services": _FakeResult(_FakeRow(id=service_id)),
+        })
+
+        fake_request = MagicMock()
+        fake_request.cookies.get.return_value = ""
+        fake_request.base_url = "http://localhost:8080/"
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "fake_client_id",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "fake_secret",
+            "MINTKEY_ADMIN_API_PUBLIC_URL": "http://localhost:8080",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await oauth2_authorize(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        body_content = json.loads(result.body)
+        auth_url = body_content["authorize_url"]
+
+        # Parse redirect_uri from the auth_url query string
+        parsed = urllib.parse.urlparse(auth_url)
+        qs = urllib.parse.parse_qs(parsed.query)
+        redirect_uri_vals = qs.get("redirect_uri", [])
+        assert len(redirect_uri_vals) == 1, f"Expected exactly one redirect_uri, got: {redirect_uri_vals}"
+        redirect_uri = redirect_uri_vals[0]
+
+        # Must match the new per-tenant shape
+        expected_path = f"/v1/tenants/{tenant_id}/oauth2/gmail/callback"
+        assert redirect_uri.endswith(expected_path), (
+            f"redirect_uri must end with '{expected_path}', got: '{redirect_uri}'"
+        )
+
+        # Must NOT contain the service_id (i.e. no /email-services/<sid>/ segment)
+        assert service_id not in redirect_uri, (
+            f"service_id must not appear in redirect_uri; got: '{redirect_uri}'"
+        )
+        assert "/email-services/" not in redirect_uri, (
+            f"/email-services/ must not appear in redirect_uri; got: '{redirect_uri}'"
+        )
+
+    @pytest.mark.asyncio
+    async def test_oauth2_state_row_redirect_uri_matches_new_shape(self) -> None:
+        """
+        T-PT-5: The redirect_uri stored in the oauth2_state row during authorize
+        must match the new per-tenant shape
+        /v1/tenants/{tid}/oauth2/{provider}/callback (no /email-services/<sid>/).
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session(**{
+            "SELECT id FROM email_services": _FakeResult(_FakeRow(id=service_id)),
+        })
+
+        fake_request = MagicMock()
+        fake_request.cookies.get.return_value = ""
+        fake_request.base_url = "http://localhost:8080/"
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "fake_client_id",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "fake_secret",
+            "MINTKEY_ADMIN_API_PUBLIC_URL": "http://localhost:8080",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await oauth2_authorize(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+
+        # Find the INSERT INTO oauth2_state call and extract the redirect_uri param
+        insert_calls = [
+            (sql, params)
+            for sql, params in session.executed_sql
+            if "INSERT INTO oauth2_state" in sql
+        ]
+        assert len(insert_calls) == 1, "Expected exactly one INSERT INTO oauth2_state"
+        _, params = insert_calls[0]
+        stored_redirect_uri = params.get("redirect_uri", "")
+
+        # Must use the new per-tenant shape
+        expected_suffix = f"/v1/tenants/{tenant_id}/oauth2/gmail/callback"
+        assert stored_redirect_uri.endswith(expected_suffix), (
+            f"State row redirect_uri must end with '{expected_suffix}', "
+            f"got: '{stored_redirect_uri}'"
+        )
+        # Must NOT contain service_id
+        assert service_id not in stored_redirect_uri, (
+            f"service_id must not appear in state row redirect_uri; "
+            f"got: '{stored_redirect_uri}'"
+        )
+        assert "/email-services/" not in stored_redirect_uri, (
+            f"/email-services/ must not appear in state row redirect_uri; "
+            f"got: '{stored_redirect_uri}'"
+        )
