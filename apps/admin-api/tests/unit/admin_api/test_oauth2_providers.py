@@ -527,6 +527,45 @@ async def test_oauth2_config_helper_falls_back_to_env_var() -> None:
 
 
 # ---------------------------------------------------------------------------
+# test_oauth2_config_helper_db_error_returns_none
+# Regression test for the tenant-isolation breach: when the DB query throws,
+# the helper MUST return None (caller surfaces 503), NOT silently fall through
+# to global env-var credentials.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_oauth2_config_helper_db_error_returns_none() -> None:
+    """_oauth2_config_from_db: DB exception → return None, NOT env-var fallback.
+
+    Security: env-var creds are GLOBAL (shared across tenants). If a tenant has
+    a DB row but the DB lookup fails (connection error, timeout, RLS issue),
+    silently substituting the global env-var creds would let one tenant inherit
+    another tenant's GCP client. The helper MUST return None on DB error.
+    """
+    # session.execute() raises — DB error path
+    session = AsyncMock()
+    session.execute = AsyncMock(side_effect=Exception("simulated DB connection error"))
+    vault = _FakeVault()
+    tenant_id = uuid.uuid4()
+
+    # Env vars ARE set — would have been the silent fallback if the bug existed
+    env_patches = {
+        "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "env-fallback-should-NOT-be-used",
+        "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "env-fallback-secret-should-NOT-be-used",
+    }
+
+    with patch.dict(os.environ, env_patches):
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await _oauth2_config_from_db(tenant_id, "gmail", session, vault)
+
+    assert result is None, (
+        "On DB error the helper MUST return None — NOT fall through to env-var creds. "
+        f"Got: {result}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # test_client_id_last4 helper
 # ---------------------------------------------------------------------------
 

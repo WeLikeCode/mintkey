@@ -138,6 +138,12 @@ async def _oauth2_config_from_db(
     Source: feat/oauth2-providers-per-tenant-vault §Layer 4.
     """
     # --- Try the per-tenant DB config first ---
+    # SECURITY: a DB exception MUST NOT silently fall through to the env-var
+    # fallback below. That fallback uses GLOBAL credentials shared across all
+    # tenants — silently substituting them when a tenant's DB row LOOKUP fails
+    # (vs. genuinely missing) would let one tenant inherit another's GCP
+    # client. On any DB error, return None immediately; the caller surfaces
+    # this as 503 oauth2_not_configured. Operator can retry once DB is healthy.
     try:
         row_result = await session.execute(
             text(
@@ -149,12 +155,13 @@ async def _oauth2_config_from_db(
         row = row_result.fetchone()
     except Exception as exc:
         logger.error(
-            "_oauth2_config_from_db: DB lookup failed provider=%s tenant=%s: %s",
+            "_oauth2_config_from_db: DB lookup failed provider=%s tenant=%s: %s "
+            "(returning None — NOT falling back to env vars; tenant isolation)",
             provider,
             tenant_id,
             type(exc).__name__,
         )
-        row = None
+        return None
 
     if row is not None:
         client_id: str = row.client_id
