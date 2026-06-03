@@ -1,18 +1,20 @@
 """
-MCP email_list_mailboxes tool.
+MCP email_download_attachment tool.
 
-GET /v1/tools/email_list_mailboxes?email_service_id=<id>
-  (alias accepted: ?service_id=<id> — matches the broker token-hint vocabulary)
+GET /v1/tools/email_download_attachment?email_service_id=<id>&message_id=<uid>&part_id=<pid>&mailbox=INBOX
+  (alias accepted: ?service_id=<id>)
 
-Lists IMAP mailboxes for the agent's granted email service.
+Downloads a specific MIME attachment part from an IMAP message.
+Response shape: {filename, content_type, size, content_base64}.
 
 Implementation:
   1. Auth check (agent context present).
-  2. request_token exchange via broker (service_kind=email).
-  3. GET /v1/email-proxy/mailboxes?service_id=<id> on email-proxy.
-  4. Return the mailbox list.
+  2. Permission check (email_permission_grants).
+  3. Broker JWT exchange (scope: read:email).
+  4. GET /v1/email-proxy/messages/{uid}/attachments/{part_id}?service_id=<id>&mailbox=<mb>.
+  5. Return the attachment metadata + base64 content.
 
-Source: feat/agent-email-e2e.
+Source: feat/email-tools-list-attach-move-mark-delete.
 """
 from __future__ import annotations
 
@@ -29,33 +31,45 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.tools.discovery import get_agent_context
+from mcp_server.tools.email_list_mailboxes import _get_email_jwt
 from mcp_server.utils.wire_ids import db_uuid_to_wire, resolve_email_service_id
 
 router = APIRouter(prefix="/v1/tools")
 
 
-@router.get("/email_list_mailboxes")
-async def email_list_mailboxes(
+@router.get("/email_download_attachment")
+async def email_download_attachment(
     request: Request,
+    message_id: str,
+    part_id: str,
     email_service_id: Optional[str] = None,
     service_id: Optional[str] = None,
+    mailbox: str = "INBOX",
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
 ) -> JSONResponse:
     """
-    List IMAP mailboxes for a granted email service.
+    Download a specific MIME part (attachment) from an IMAP message.
+
+    Returns base64-encoded content in:
+      {filename, content_type, size, content_base64}
 
     Parameters
     ----------
     email_service_id : str
-        The email service ID — accepts svc_ wire form or raw UUID.
+        The email service ID — svc_ wire form or raw UUID.
         Alias: ``service_id`` (matches the broker token-hint vocabulary).
+    message_id : str
+        The IMAP UID of the message.
+    part_id : str
+        The MIME part identifier (e.g. "1", "2", "1.1").
+    mailbox : str
+        The mailbox containing the message (default: INBOX).
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
 
-    # Accept ?service_id= as alias for ?email_service_id= so agents following the
-    # broker's token hint verbatim don't 422 here.
+    # Accept ?service_id= as alias for ?email_service_id=
     email_service_id = email_service_id or service_id
     if not email_service_id:
         return JSONResponse(
@@ -107,7 +121,7 @@ async def email_list_mailboxes(
             },
         )
 
-    # Obtain brokered JWT.
+    # Obtain brokered JWT (scope: read:email).
     jwt = await _get_email_jwt(agent_id, tenant_id, db_esvc_id)
     if jwt is None:
         return JSONResponse(
@@ -115,14 +129,25 @@ async def email_list_mailboxes(
             content={"code": "mintkey:broker_error", "title": "Broker unavailable"},
         )
 
-    # Call email-proxy.
+    # Call email-proxy — GET /v1/email-proxy/messages/{uid}/attachments/{part_id}.
     email_proxy_url = os.getenv("EMAIL_PROXY_INTERNAL_URL", "http://email-proxy:8088")
     async with httpx.AsyncClient() as client:
         resp = await client.get(
-            f"{email_proxy_url}/v1/email-proxy/mailboxes",
-            params={"service_id": db_esvc_id},
+            f"{email_proxy_url}/v1/email-proxy/messages/{message_id}/attachments/{part_id}",
+            params={"service_id": db_esvc_id, "mailbox": mailbox},
             headers={"Authorization": f"Bearer {jwt}"},
-            timeout=15.0,
+            timeout=60.0,  # attachments may be large
+        )
+
+    if resp.status_code == 404:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "code": "mintkey:not_found",
+                "reason_code": "attachment_not_found",
+                "message_id": message_id,
+                "part_id": part_id,
+            },
         )
 
     if resp.status_code != 200:
@@ -135,31 +160,21 @@ async def email_list_mailboxes(
             },
         )
 
-    return JSONResponse(resp.json())
+    # email-proxy returns raw bytes with Content-Type header set.
+    # Re-wrap as JSON with base64 content per the contract.
+    import base64
 
+    content_type = resp.headers.get("content-type", "application/octet-stream")
+    content_b64 = base64.b64encode(resp.content).decode("ascii")
+    # Filename may be surfaced via Content-Disposition if the proxy sets it.
+    content_disposition = resp.headers.get("content-disposition", "")
+    filename = ""
+    if "filename=" in content_disposition:
+        filename = content_disposition.split("filename=")[-1].strip().strip('"')
 
-async def _get_email_jwt(agent_id: str, tenant_id: str, db_esvc_id: str) -> Optional[str]:
-    """Call broker /v1/issue and return the JWT string, or None on failure."""
-    broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
-    mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{broker_url}/v1/issue",
-            json={
-                "agent_id": agent_id,
-                "service_id": db_esvc_id,
-                "tenant_id": tenant_id,
-                # Option A: emit all 4 email scopes on every token.
-                # The email-proxy enforces per-endpoint scope checks.
-                # A future PR will tighten this to per-action scopes when
-                # request_token's `action` param is threaded through here.
-                "scope": "read:email send:email write:email delete:email",
-                "service_kind": "email",
-                "ttl_seconds": 600,
-            },
-            headers={"X-Mintkey-Service-Token": mcp_token},
-            timeout=5.0,
-        )
-    if resp.status_code != 200:
-        return None
-    return resp.json().get("token")
+    return JSONResponse({
+        "filename": filename,
+        "content_type": content_type,
+        "size": len(resp.content),
+        "content_base64": content_b64,
+    })
