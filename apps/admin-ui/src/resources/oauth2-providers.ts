@@ -52,8 +52,13 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
     listProperties: ["provider", "client_id_last4", "configured_at"],
     showProperties: ["provider", "client_id_last4", "configured_at"],
     // client_id + client_secret are new-only (NEVER in show/list)
-    newProperties: ["provider", "client_id", "client_secret"],
-    editProperties: [],
+    // AdminJS uses editProperties for BOTH new AND edit forms; per-property
+    // isVisible.{new,edit} below scope each field to the right action.
+    // (newProperties is not a recognized AdminJS key, so the previous form
+    // rendered with no client_id/client_secret inputs.) The edit ACTION
+    // itself is disabled in the actions block below — only the `new` form
+    // ever renders these fields.
+    editProperties: ["provider", "client_id", "client_secret"],
     filterProperties: [],
     properties: {
       provider: {

@@ -165,7 +165,11 @@ async def _oauth2_config_from_db(
 
     if row is not None:
         client_id: str = row.client_id
-        vault_service_id = "oauth2cfg_" + provider
+        # Deterministic UUIDv5 (must match the writer in oauth2_providers.py
+        # _vault_service_id helper — the vault service_id column is UUID, so a
+        # synthetic string like "oauth2cfg_<provider>" was rejected by postgres).
+        _ns = uuid.UUID("2f3a7b91-4c4e-5d6a-9e0f-a1b2c3d4e5f6")
+        vault_service_id = str(uuid.uuid5(_ns, f"{tenant_id}:{provider}"))
         try:
             cred = await vault.get_credential(
                 tenant_id=str(tenant_id),

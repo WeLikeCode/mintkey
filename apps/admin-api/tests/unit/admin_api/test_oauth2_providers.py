@@ -162,11 +162,15 @@ async def test_post_provider_happy_path() -> None:
     assert "client_id_last4" in content
     assert "configured_at" in content
 
-    # Vault was called with the secret
+    # Vault was called with the secret. service_id is a deterministic UUIDv5
+    # derived from (tenant_id, provider) — see _vault_service_id helper.
+    import uuid
     assert len(vault.put_calls) == 1
     vc = vault.put_calls[0]
     assert vc["auth_scheme"] == "email_oauth2_client"
-    assert vc["service_id"] == "oauth2cfg_gmail"
+    # Validate the service_id is a UUID (postgres requires it) and matches the
+    # deterministic derivation rather than a literal string.
+    assert uuid.UUID(vc["service_id"])  # raises if not a valid UUID
     assert vc["plaintext"] == _FAKE_CLIENT_SECRET
 
     # Audit was emitted
@@ -583,6 +587,28 @@ def test_client_id_last4_basic() -> None:
 
 
 def test_vault_service_id_format() -> None:
-    """_vault_service_id returns 'oauth2cfg_<provider>'."""
-    assert _vault_service_id("gmail") == "oauth2cfg_gmail"
-    assert _vault_service_id("outlook") == "oauth2cfg_outlook"
+    """_vault_service_id returns a deterministic UUIDv5 per (tenant_id, provider).
+
+    The vault postgres backend types service_id as UUID, so synthetic strings
+    like "oauth2cfg_gmail" don't cast. We derive a stable UUIDv5 so PUT and
+    GET for the same (tenant, provider) always hit the same vault row.
+    """
+    import uuid
+
+    t1 = "ce79c39d-33de-4689-b827-2e926cb5f2c7"
+    t2 = "11111111-1111-1111-1111-111111111111"
+
+    g1 = _vault_service_id(t1, "gmail")
+    o1 = _vault_service_id(t1, "outlook")
+    g2 = _vault_service_id(t2, "gmail")
+
+    # All outputs are valid UUIDs (vault postgres requires this).
+    for v in (g1, o1, g2):
+        assert uuid.UUID(v)  # raises if not a valid UUID
+
+    # Deterministic — same inputs → same UUID.
+    assert _vault_service_id(t1, "gmail") == g1
+
+    # Different tenant or provider → different UUID.
+    assert g1 != o1
+    assert g1 != g2
