@@ -397,14 +397,31 @@ admin-api process, consistent with ADR-0020 / ADR-0024 §D7).
    Vault Adapter via gRPC. The `email.service.registered` audit event is emitted.
 5. The Admin UI displays **Connected** status.
 
-**Required env vars on admin-api** (set in `.env` before `make dev`):
+**Before authorizing Gmail or Outlook**, an operator must first configure the OAuth2
+client credentials for the tenant via the Admin UI:
 
-```bash
-MINTKEY_OAUTH2_GOOGLE_CLIENT_ID=<your-google-client-id>
-MINTKEY_OAUTH2_GOOGLE_CLIENT_SECRET=<your-google-client-secret>
-MINTKEY_OAUTH2_MICROSOFT_CLIENT_ID=<your-ms-client-id>
-MINTKEY_OAUTH2_MICROSOFT_CLIENT_SECRET=<your-ms-client-secret>
-```
+1. Open Admin UI → **Email** → **OAuth2 Providers**.
+2. Click **New** and fill in:
+   - **Provider**: `gmail` or `outlook`
+   - **Client ID**: your GCP or Azure OAuth2 client ID
+   - **Client Secret**: your OAuth2 client secret (stored encrypted in vault; never shown again)
+3. Click **Save**. The `configured_at` timestamp confirms the credentials are stored.
+4. Then return to the Email Service and click **Authorize with Google** (or Microsoft).
+
+Each tenant configures their **own** GCP project / Azure app — there is no shared client.
+
+> **Deprecated (backwards compat only):** The following env vars are still honoured as a
+> fallback for existing single-tenant deployments. Production deployments should migrate
+> to per-tenant configuration via the Admin UI. A deprecation warning is logged on admin-api
+> whenever the env-var fallback is used.
+>
+> ```bash
+> # DEPRECATED — use Admin UI → Email → OAuth2 Providers instead
+> MINTKEY_OAUTH2_GMAIL_CLIENT_ID=<your-google-client-id>
+> MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET=<your-google-client-secret>
+> MINTKEY_OAUTH2_OUTLOOK_CLIENT_ID=<your-ms-client-id>
+> MINTKEY_OAUTH2_OUTLOOK_CLIENT_SECRET=<your-ms-client-secret>
+> ```
 
 **Required env vars on email-proxy** (for the internal refresh call):
 

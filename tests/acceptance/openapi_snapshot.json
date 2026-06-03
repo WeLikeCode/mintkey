@@ -10,6 +10,7 @@
   "email_services": "/v1/tenants/{tenant_id}/email-services",
   "health": "/metrics",
   "internal": "/v1/internal",
+  "oauth2_providers": "/v1/tenants/{tenant_id}/oauth2-providers",
   "permissions": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
   "proxy": "/v1/proxy/call/{service_id}/{path_suffix:path}",
   "service_templates": "/v1/service-templates",

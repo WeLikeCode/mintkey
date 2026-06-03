@@ -90,9 +90,15 @@ _SUPPORTED_PROVIDERS = {"gmail", "outlook"}
 
 def _oauth2_config(provider: str) -> tuple[str, str] | None:
     """
-    Return (client_id, client_secret) for `provider`, or None if any var is missing.
+    DEPRECATED (env-var path): Return (client_id, client_secret) from env vars.
 
-    Fails-soft: missing env var → returns None → endpoints return 503.
+    This synchronous helper is kept for backwards compatibility and for use in
+    tests / contexts where no DB session is available.  Production code should
+    use _oauth2_config_from_db() instead, which reads from the per-tenant
+    oauth2_client_configs table.
+
+    Env-var fallback is still honoured for operators who have not yet migrated.
+    When env vars are used, a deprecation warning is emitted.
     """
     if provider == "gmail":
         cid = os.environ.get("MINTKEY_OAUTH2_GMAIL_CLIENT_ID", "")
@@ -109,6 +115,97 @@ def _oauth2_config(provider: str) -> tuple[str, str] | None:
         )
         return None
     return cid, csecret
+
+
+async def _oauth2_config_from_db(
+    tenant_id: UUID,
+    provider: str,
+    session: Any,
+    vault: Any,
+) -> Optional[tuple[str, str]]:
+    """
+    Return (client_id, client_secret) for provider, reading from the per-tenant
+    oauth2_client_configs table first, then falling back to env vars.
+
+    Flow:
+      1. SELECT from oauth2_client_configs WHERE tenant_id=:tid AND provider=:p.
+      2. If found, decrypt client_secret from vault (service_id=oauth2cfg_<p>).
+      3. If NOT found in DB, fall back to env vars (deprecated path) with a
+         deprecation warning (never logs the secret value).
+      4. Return None if neither DB nor env vars are configured.
+
+    This is the preferred helper for all OAuth2 handler callers.
+    Source: feat/oauth2-providers-per-tenant-vault §Layer 4.
+    """
+    # --- Try the per-tenant DB config first ---
+    try:
+        row_result = await session.execute(
+            text(
+                "SELECT client_id FROM oauth2_client_configs"
+                " WHERE tenant_id = :tid AND provider = :provider"
+            ),
+            {"tid": str(tenant_id), "provider": provider},
+        )
+        row = row_result.fetchone()
+    except Exception as exc:
+        logger.error(
+            "_oauth2_config_from_db: DB lookup failed provider=%s tenant=%s: %s",
+            provider,
+            tenant_id,
+            type(exc).__name__,
+        )
+        row = None
+
+    if row is not None:
+        client_id: str = row.client_id
+        vault_service_id = "oauth2cfg_" + provider
+        try:
+            cred = await vault.get_credential(
+                tenant_id=str(tenant_id),
+                service_id=vault_service_id,
+            )
+        except Exception as exc:
+            logger.error(
+                "_oauth2_config_from_db: vault get_credential failed provider=%s tenant=%s: %s",
+                provider,
+                tenant_id,
+                type(exc).__name__,
+            )
+            return None
+
+        if cred is None:
+            logger.warning(
+                "_oauth2_config_from_db: DB row found but vault has no credential "
+                "for provider=%s tenant=%s — treating as unconfigured",
+                provider,
+                tenant_id,
+            )
+            return None
+
+        client_secret: str = str(cred.get("plaintext", ""))
+        if not client_secret:
+            logger.warning(
+                "_oauth2_config_from_db: vault credential is empty for provider=%s tenant=%s",
+                provider,
+                tenant_id,
+            )
+            return None
+
+        return client_id, client_secret
+
+    # --- Env-var fallback (deprecated) ---
+    env_result = _oauth2_config(provider)
+    if env_result is not None:
+        logger.warning(
+            "DEPRECATED: OAuth2 client credentials for provider=%s tenant=%s are loaded from "
+            "environment variables. Migrate to per-tenant configuration via Admin UI → "
+            "Email → OAuth2 Providers to remove this warning.",
+            provider,
+            tenant_id,
+        )
+        return env_result
+
+    return None
 
 
 def _oauth2_available(provider: str) -> bool:
@@ -526,6 +623,7 @@ async def oauth2_authorize(
     provider: str,
     request: Request,
     session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """
     Start the OAuth2 authorization code flow for gmail|outlook.
@@ -538,6 +636,7 @@ async def oauth2_authorize(
     Returns 503 if OAuth2 client credentials are not configured.
 
     Source: ADR-0024 §B2; .kiro/specs/email-proxy/design.md; chunk C-9.
+    Cred source: feat/oauth2-providers-per-tenant-vault §Layer 4 (_oauth2_config_from_db).
     """
     if provider not in _OAUTH2_PROVIDERS:
         return JSONResponse(
@@ -548,7 +647,9 @@ async def oauth2_authorize(
             },
         )
 
-    creds = _oauth2_config(provider)
+    await set_tenant_context(session, tenant_id)
+
+    creds = await _oauth2_config_from_db(tenant_id, provider, session, vault)
     if creds is None:
         return JSONResponse(
             status_code=503,
@@ -558,8 +659,6 @@ async def oauth2_authorize(
             },
         )
     client_id, _ = creds
-
-    await set_tenant_context(session, tenant_id)
 
     # Verify the email service exists under this tenant (RLS enforces isolation)
     svc_row = await session.execute(
@@ -997,7 +1096,9 @@ async def oauth2_callback(
             },
         )
 
-    creds = _oauth2_config(provider)
+    await set_tenant_context(session, tenant_id)
+
+    creds = await _oauth2_config_from_db(tenant_id, provider, session, vault)
     if creds is None:
         return JSONResponse(
             status_code=503,
@@ -1007,8 +1108,6 @@ async def oauth2_callback(
             },
         )
     client_id, client_secret = creds
-
-    await set_tenant_context(session, tenant_id)
 
     result = await _exchange_oauth2_code_for_refresh_token(
         tenant_id=tenant_id,
@@ -1133,21 +1232,7 @@ async def oauth2_callback_view(
             status_code=422,
         )
 
-    creds = _oauth2_config(provider)
-    if creds is None:
-        return HTMLResponse(
-            content=_oauth2_callback_html(
-                success=False,
-                service_id=service_id,
-                error_code="oauth2_not_configured",
-                error_description=f"OAuth2 credentials for provider '{provider}' are not configured",
-                admin_ui_origin=admin_ui_origin,
-            ),
-            status_code=503,
-        )
-    client_id, client_secret = creds
-
-    # --- Require both code and state ---
+    # --- Require both code and state (before DB lookup — no point querying if missing) ---
     if not code or not state:
         return HTMLResponse(
             content=_oauth2_callback_html(
@@ -1161,6 +1246,20 @@ async def oauth2_callback_view(
         )
 
     await set_tenant_context(session, tenant_id)
+
+    creds = await _oauth2_config_from_db(tenant_id, provider, session, vault)
+    if creds is None:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code="oauth2_not_configured",
+                error_description=f"OAuth2 credentials for provider '{provider}' are not configured",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=503,
+        )
+    client_id, client_secret = creds
 
     # --- Exchange code (shared helper — no duplication with POST handler) ---
     result = await _exchange_oauth2_code_for_refresh_token(
@@ -1259,17 +1358,6 @@ async def oauth2_refresh(
             },
         )
 
-    creds = _oauth2_config(provider)
-    if creds is None:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "mintkey:code": "oauth2_not_configured",
-                "title": f"OAuth2 credentials for provider '{provider}' are not configured",
-            },
-        )
-    client_id, client_secret = creds
-
     # Parse tenant_id
     try:
         tenant_uuid = UUID(tenant_id)
@@ -1280,6 +1368,17 @@ async def oauth2_refresh(
         )
 
     await set_tenant_context(session, tenant_uuid)
+
+    creds = await _oauth2_config_from_db(tenant_uuid, provider, session, vault)
+    if creds is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "mintkey:code": "oauth2_not_configured",
+                "title": f"OAuth2 credentials for provider '{provider}' are not configured",
+            },
+        )
+    client_id, client_secret = creds
 
     # Fetch encrypted refresh_token from vault
     try:
