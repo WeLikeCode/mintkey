@@ -340,7 +340,11 @@ async function main() {
   // Source: Bug-A fix; ADR-0014.5 cookie-based session; C-10.
   app.post(
     "/admin/email-services/:tenantId/:serviceId/oauth2/:provider/authorize",
-    express.json(),
+    // NOTE: NO express.json() body parser. The browser sends an empty body
+    // (content-length: 0), and express.json() chokes on that combination
+    // ("stream is not readable"). The admin-api authorize endpoint takes no
+    // body — params come from the path + cookie auth — so we can safely drop
+    // body parsing here.
     async (req: Request, res: Response) => {
       const { tenantId, serviceId, provider } = req.params as {
         tenantId: string;
@@ -366,10 +370,7 @@ async function main() {
               Cookie: cookie,
               ...(csrfToken ? { "X-Mintkey-Csrf": csrfToken } : {}),
             },
-            // Forward body if present (admin-api currently ignores it, but pass through for compatibility)
-            body: req.body && Object.keys(req.body as object).length > 0
-              ? JSON.stringify(req.body)
-              : undefined,
+            // No body — admin-api authorize takes none.
           }
         );
 
