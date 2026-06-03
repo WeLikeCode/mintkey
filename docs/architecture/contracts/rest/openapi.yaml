@@ -3327,7 +3327,7 @@ paths:
                 $ref: "#/components/schemas/OAuth2ProviderInfo"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
     post:
       operationId: configureOAuth2Provider
       tags: [OAuth2Providers]
@@ -3362,7 +3362,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OAuth2ProviderInfo"
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
         "502":
           description: Vault or upstream error.
     delete:
@@ -3386,7 +3386,7 @@ paths:
           description: OAuth2 provider config removed.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "422": { $ref: "#/components/responses/ValidationError" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
 
   ###########################################################################
   # Email Proxy — data-plane (served on :8088 by email-proxy container)
