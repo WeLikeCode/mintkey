@@ -421,12 +421,12 @@ OAuth2 refresh endpoint (OQ-2 resolution, ADR-0024 corrigendum).
 Email services use action-based scopes rather than a single `call` action. Grant the
 appropriate scope(s) based on what the agent needs:
 
-| Action / scope | Allows |
-|---|---|
-| `read:email` | `list_mailboxes`, `list_emails`, `read_email`, `search_emails`, `download_attachment` |
-| `send:email` | `send_email` |
-| `write:email` | `move_email`, `mark_email` |
-| `delete:email` | `delete_email` |
+| Action / scope | Implemented tools | Planned tools |
+|---|---|---|
+| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message` | `email_list_emails`, `email_download_attachment` |
+| `send:email` | `email_send` | — |
+| `write:email` | — | `email_move_email`, `email_mark_email` |
+| `delete:email` | — | `email_delete_email` |
 
 **Via Admin UI:** Permission Grants → New → select Agent, Service, and one of the four actions.
 
@@ -449,8 +449,9 @@ curl -s -X POST \
 
 ### 6.4 Agent calling the email service (MCP tools)
 
-Agents call email services through the nine MCP tools (see `agent-bootstrap.md`
-`<email_services>` block for the full reference). A typical flow:
+Agents call email services through the MCP tools (see `agent-bootstrap.md`
+`<email_services>` block for the full reference). Only 4 tools are implemented today;
+5 more are planned. A typical flow:
 
 **Step 1 — request a token with the required scope:**
 
@@ -465,9 +466,9 @@ TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
 
 ```json
 {
-  "tool": "mintkey_send_email",
+  "tool": "email_send",
   "arguments": {
-    "service_id": "svc_01...",
+    "email_service_id": "svc_01...",
     "to": ["alice@example.com"],
     "subject": "Hello from agent",
     "body": "This message was sent by an agent without holding any credentials."
@@ -475,25 +476,33 @@ TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
 }
 ```
 
-Expected response: `{"message_id": "uid:12345", "status": "sent"}`.
+Expected response: `{"message_id": "<id>", "status": "sent"}`.
 
-**Available tools and required scopes:**
+**Implemented tools (call these today):**
 
 | Tool | Scope | Description |
 |---|---|---|
-| `mintkey_list_mailboxes` | `read:email` | List IMAP mailboxes for the service |
-| `mintkey_list_emails` | `read:email` | Fetch envelopes from a mailbox |
-| `mintkey_read_email` | `read:email` | Fetch full message body |
-| `mintkey_send_email` | `send:email` | Send via SMTP |
-| `mintkey_search_emails` | `read:email` | Search by subject / from / date |
-| `mintkey_delete_email` | `delete:email` | Delete a message by UID |
-| `mintkey_move_email` | `write:email` | Move message to another mailbox |
-| `mintkey_download_attachment` | `read:email` | Download attachment bytes |
-| `mintkey_mark_email` | `write:email` | Set/unset flags (e.g. `\Seen`, `\Flagged`) |
+| `email_list_mailboxes` | `read:email` | List IMAP mailboxes for the service |
+| `email_search_messages` | `read:email` | Search messages — use `query=ALL` to list all UIDs |
+| `email_fetch_message` | `read:email` | Fetch full message envelope + body by UID |
+| `email_send` | `send:email` | Send via SMTP |
+
+**Planned tools (Not Implemented — will 404 until built in a follow-up PR):**
+
+| Tool | Scope | Intent |
+|---|---|---|
+| `email_list_emails` | `read:email` | Paginated UID listing per mailbox |
+| `email_download_attachment` | `read:email` | Download a specific MIME part by partID |
+| `email_move_email` | `write:email` | Move message to another mailbox |
+| `email_mark_email` | `write:email` | Set/unset IMAP flags |
+| `email_delete_email` | `delete:email` | Delete a message by UID |
+
+**Parameter note:** all 4 tools accept `email_service_id` (canonical) or `service_id`
+(alias, PR #155). Use `service_id` in new code for consistency with the rest of Mintkey.
 
 > **Email body content is never stored by Mintkey.** The broker fetches the body from
-> email-proxy on each `read_email` call. Mintkey only stores the credential (password or
-> OAuth2 refresh token) and the service configuration.
+> email-proxy on each `email_fetch_message` call. Mintkey only stores the credential
+> (password or OAuth2 refresh token) and the service configuration.
 
 ### 6.5 Operational notes
 

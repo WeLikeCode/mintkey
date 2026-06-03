@@ -560,32 +560,56 @@ tools:
   # =========================================================================
   # Email-proxy tools (ADR-0024, Phase 1 REST-only on :8088)
   # ---------------------------------------------------------------------------
+  # Tool prefix: email_*  (NOT mintkey_* — that prefix was a doc error)
+  #
+  # Implementation status (as of 2026-06-03):
+  #   IMPLEMENTED (4):  email_list_mailboxes, email_search_messages,
+  #                     email_fetch_message, email_send
+  #   PLANNED (5):      email_list_emails, email_download_attachment,
+  #                     email_move_email, email_mark_email, email_delete_email
+  #
   # Permission scopes:
-  #   read:email   — list_mailboxes, list_emails, read_email, search_emails,
-  #                  download_attachment
-  #   send:email   — send_email
-  #   write:email  — mark_email, move_email
-  #   delete:email — delete_email
+  #   read:email   — email_list_mailboxes, email_search_messages,
+  #                  email_fetch_message (+ planned: email_list_emails,
+  #                  email_download_attachment)
+  #   send:email   — email_send
+  #   write:email  — planned: email_move_email, email_mark_email
+  #   delete:email — planned: email_delete_email
+  #
+  # Parameter note: all email tools accept "email_service_id" (canonical)
+  # or "service_id" (alias, PR #155). Use service_id in new code.
   #
   # All email tools require the agent to hold a brokered JWT for the email
   # service with the appropriate scope. The email-proxy validates the JWT
   # against the broker JWKS (Ed25519, kid force-refresh on unknown kid).
+  #
+  # Per-service SMTP routing (PR #156): smtp_host / smtp_port from the
+  # registered email_service row are used directly — there are no global
+  # SMTP defaults.
   # =========================================================================
 
   # =========================================================================
-  - name: "mintkey_list_mailboxes"
+  # IMPLEMENTED TOOL 1 of 4
+  - name: "email_list_mailboxes"
     description: |
       List all mailboxes (IMAP folders) for a registered email service.
-      Requires `read:email` scope on the brokered JWT for `service_id`.
+      Requires `read:email` scope on the brokered JWT for `email_service_id`.
+      Accepts `email_service_id` (canonical) or `service_id` (alias, PR #155).
+      REST: GET /v1/tools/email_list_mailboxes?email_service_id=<svc_…>
+      Returns: { "mailboxes": [...] }
     x-mintkey-scope: "read:email"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
+          description: "Email service ID (canonical). Alias: service_id."
         service_id:
           $ref: "#/$defs/service_id"
+          description: "Alias for email_service_id (backward compat, PR #155)."
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -614,46 +638,54 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_list_emails"
+  # IMPLEMENTED TOOL 2 of 4
+  - name: "email_search_messages"
     description: |
-      List email messages in a mailbox. Returns envelope metadata only
-      (no body). Requires `read:email` scope.
+      Search email messages using an RFC 3501 IMAP SEARCH query string.
+      The query is passed parameterised to prevent injection.
+      Requires `read:email` scope.
+      Accepts `email_service_id` (canonical) or `service_id` (alias, PR #155).
+      REST: GET /v1/tools/email_search_messages?email_service_id=<svc_…>&query=<RFC3501>&mailbox=INBOX
+      Returns: { "messages": [...] }
+      Workaround for missing email_list_emails: use query=ALL to enumerate all UIDs.
     x-mintkey-scope: "read:email"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id]
+      required: [query]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
+          description: "Email service ID (canonical). Alias: service_id."
         service_id:
           $ref: "#/$defs/service_id"
+          description: "Alias for email_service_id (backward compat, PR #155)."
+        query:
+          type: string
+          maxLength: 500
+          description: RFC 3501 IMAP SEARCH query string (e.g. ALL, FROM "alice@example.com").
         mailbox:
           type: string
-          description: Mailbox name (IMAP folder path). Defaults to INBOX.
           default: INBOX
+          description: Mailbox to search (defaults to INBOX).
         limit:
           type: integer
           minimum: 1
           maximum: 200
           default: 50
-        since:
-          type: string
-          format: date-time
-          description: Return only messages received at or after this UTC timestamp.
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [messages, next_cursor]
+      required: [messages]
       properties:
         messages:
           type: array
           items:
             type: object
-            description: Message envelope (no body).
             additionalProperties: true
-        next_cursor:
-          type: [string, "null"]
     errors:
       - code: "service_not_found"
         message: "Email service not found or agent has no permission on it."
@@ -661,27 +693,41 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_read_email"
+  # IMPLEMENTED TOOL 3 of 4
+  - name: "email_fetch_message"
     description: |
-      Read the full content of an email message including body and attachment
-      metadata. Requires `read:email` scope.
+      Fetch a single message by UID — returns the message envelope plus body.
+      Response `parts[]` contains MIME parts (use for attachment download
+      until email_download_attachment is implemented).
+      Requires `read:email` scope.
+      Accepts `email_service_id` (canonical) or `service_id` (alias, PR #155).
+      REST: GET /v1/tools/email_fetch_message?email_service_id=<svc_…>&message_id=<UID>&mailbox=INBOX
     x-mintkey-scope: "read:email"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, message_id]
+      required: [message_id]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
+          description: "Email service ID (canonical). Alias: service_id."
         service_id:
           $ref: "#/$defs/service_id"
+          description: "Alias for email_service_id (backward compat, PR #155)."
         message_id:
           type: string
-          description: Provider UID or RFC 5322 Message-ID.
+          description: Provider UID (integer or string depending on IMAP server).
+        mailbox:
+          type: string
+          default: INBOX
+          description: Mailbox containing the message (defaults to INBOX).
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: true
-      description: Full EmailMessage (see openapi.yaml EmailMessage schema).
+      description: Message envelope + body. See openapi.yaml EmailMessage schema.
     errors:
       - code: "service_not_found"
         message: "Email service not found or agent has no permission on it."
@@ -689,19 +735,30 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_send_email"
+  # IMPLEMENTED TOOL 4 of 4
+  - name: "email_send"
     description: |
       Send an email message via SMTP. All recipient addresses are RFC 5322
       validated and the domain allowlist is enforced. Requires `send:email` scope.
+      Accepts `email_service_id` (canonical) or `service_id` (alias, PR #155).
+      Per-service SMTP routing (PR #156): smtp_host / smtp_port from the registered
+      email_service row are used — there are no global SMTP defaults.
+      REST: POST /v1/tools/email_send with JSON body.
+      Returns: { "message_id": "...", "status": "sent" }
     x-mintkey-scope: "send:email"
+    x-mintkey-status: "implemented"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, to, subject, body]
+      required: [to, subject, body]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
+          description: "Email service ID (canonical). Alias: service_id."
         service_id:
           $ref: "#/$defs/service_id"
+          description: "Alias for email_service_id (backward compat, PR #155)."
         to:
           type: array
           items:
@@ -727,9 +784,9 @@ tools:
         body:
           type: string
           description: Plain-text body.
-        body_html:
+        html_body:
           type: [string, "null"]
-          description: Optional HTML body.
+          description: Optional HTML body. (Note: field is html_body, not body_html.)
         attachments:
           type: array
           items:
@@ -762,44 +819,54 @@ tools:
         message: "SMTP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_search_emails"
+  # PLANNED TOOLS (Not Implemented) — will return 404 until built in a follow-up PR.
+  # These entries document the intended contract so implementers have a spec to build to.
+  # Agents MUST NOT call these today.
+  # =========================================================================
+
+  # =========================================================================
+  # PLANNED TOOL 1 of 5
+  - name: "email_list_emails"
     description: |
-      Search email messages using a text query. The query is mapped to
-      parameterised IMAP SEARCH criteria to prevent injection.
-      Requires `read:email` scope.
+      [NOT IMPLEMENTED] Paginated UID listing per mailbox.
+      Workaround: use email_search_messages with query=ALL.
     x-mintkey-scope: "read:email"
+    x-mintkey-status: "planned"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, query]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
         service_id:
           $ref: "#/$defs/service_id"
-        query:
-          type: string
-          maxLength: 500
-          description: Search query string.
         mailbox:
           type: string
           default: INBOX
-          description: Mailbox to search (defaults to INBOX).
         limit:
           type: integer
           minimum: 1
           maximum: 200
           default: 50
+        since:
+          type: string
+          format: date-time
+          description: Return only messages received at or after this UTC timestamp.
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [messages]
+      required: [messages, next_cursor]
       properties:
         messages:
           type: array
           items:
             type: object
+            description: Message envelope (no body).
             additionalProperties: true
+        next_cursor:
+          type: [string, "null"]
     errors:
       - code: "service_not_found"
         message: "Email service not found or agent has no permission on it."
@@ -807,27 +874,48 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_delete_email"
+  # PLANNED TOOL 2 of 5
+  - name: "email_download_attachment"
     description: |
-      Delete (expunge) an email message from the mailbox.
-      Requires `delete:email` scope.
-    x-mintkey-scope: "delete:email"
+      [NOT IMPLEMENTED] Download a specific MIME part by partID (IMAP BODYSTRUCTURE part number).
+      Returns base64-encoded content.
+      Workaround: use email_fetch_message and parse MIME parts from the parts[] array.
+      Requires `read:email` scope.
+    x-mintkey-scope: "read:email"
+    x-mintkey-status: "planned"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, message_id]
+      required: [message_id, attachment_id]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
         service_id:
           $ref: "#/$defs/service_id"
         message_id:
           type: string
-          description: Provider UID or RFC 5322 Message-ID.
+          description: Provider UID.
+        attachment_id:
+          type: string
+          description: IMAP BODYSTRUCTURE part number (e.g. "2", "2.1").
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      properties: {}
+      required: [filename, content_type, content_base64, size_bytes]
+      properties:
+        filename:
+          type: string
+        content_type:
+          type: string
+        content_base64:
+          type: string
+          format: byte
+          description: Base64-encoded attachment bytes.
+        size_bytes:
+          type: integer
+          minimum: 0
     errors:
       - code: "service_not_found"
         message: "Email service not found or agent has no permission on it."
@@ -835,22 +923,27 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_move_email"
+  # PLANNED TOOL 3 of 5
+  - name: "email_move_email"
     description: |
-      Move an email message to a different mailbox (IMAP folder).
+      [NOT IMPLEMENTED] Move an email message to a different mailbox (IMAP MOVE).
+      No workaround available today.
       Requires `write:email` scope.
     x-mintkey-scope: "write:email"
+    x-mintkey-status: "planned"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, message_id, destination_mailbox]
+      required: [message_id, destination_mailbox]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
         service_id:
           $ref: "#/$defs/service_id"
         message_id:
           type: string
-          description: Provider UID or RFC 5322 Message-ID.
+          description: Provider UID.
         destination_mailbox:
           type: string
           description: Target IMAP mailbox path (e.g. "Archive", "Sent").
@@ -871,22 +964,28 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_mark_email"
+  # PLANNED TOOL 4 of 5
+  - name: "email_mark_email"
     description: |
-      Update IMAP flags on a message (mark read, unread, or starred).
+      [NOT IMPLEMENTED] Update IMAP flags on a message (IMAP STORE).
+      Supports Seen / Flagged / Answered flag changes.
+      No workaround available today.
       Requires `write:email` scope.
     x-mintkey-scope: "write:email"
+    x-mintkey-status: "planned"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, message_id, flags]
+      required: [message_id, flags]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
         service_id:
           $ref: "#/$defs/service_id"
         message_id:
           type: string
-          description: Provider UID or RFC 5322 Message-ID.
+          description: Provider UID.
         flags:
           type: object
           additionalProperties: false
@@ -918,42 +1017,33 @@ tools:
         message: "IMAP server unreachable."
 
   # =========================================================================
-  - name: "mintkey_download_attachment"
+  # PLANNED TOOL 5 of 5
+  - name: "email_delete_email"
     description: |
-      Download the bytes of an email attachment. Returns base64-encoded
-      content. Requires `read:email` scope.
-    x-mintkey-scope: "read:email"
+      [NOT IMPLEMENTED] Delete a message from a mailbox — soft-delete (move to Trash)
+      or hard-delete (IMAP EXPUNGE).
+      No workaround available today.
+      Requires `delete:email` scope.
+    x-mintkey-scope: "delete:email"
+    x-mintkey-status: "planned"
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [service_id, message_id, attachment_id]
+      required: [message_id]
       properties:
+        email_service_id:
+          $ref: "#/$defs/service_id"
         service_id:
           $ref: "#/$defs/service_id"
         message_id:
           type: string
-          description: Provider UID or RFC 5322 Message-ID.
-        attachment_id:
-          type: string
-          description: IMAP BODYSTRUCTURE part number (e.g. "2", "2.1").
+          description: Provider UID.
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
       additionalProperties: false
-      required: [filename, content_type, content_base64, size_bytes]
-      properties:
-        filename:
-          type: string
-        content_type:
-          type: string
-        content_base64:
-          type: string
-          format: byte
-          description: Base64-encoded attachment bytes.
-        size_bytes:
-          type: integer
-          minimum: 0
+      properties: {}
     errors:
       - code: "service_not_found"
         message: "Email service not found or agent has no permission on it."
