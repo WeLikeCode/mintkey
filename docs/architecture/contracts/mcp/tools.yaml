@@ -786,7 +786,7 @@ tools:
           description: Plain-text body.
         html_body:
           type: [string, "null"]
-          description: Optional HTML body. (Note: field is html_body, not body_html.)
+          description: "Optional HTML body. (Note: field is html_body, not body_html.)"
         attachments:
           type: array
           items:
