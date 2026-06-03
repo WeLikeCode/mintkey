@@ -47,7 +47,7 @@ import hashlib
 
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,6 +113,36 @@ def _oauth2_config(provider: str) -> tuple[str, str] | None:
 
 def _oauth2_available(provider: str) -> bool:
     return _oauth2_config(provider) is not None
+
+
+def _oauth2_redirect_base() -> str:
+    """Return the public-facing base URL that the OAuth2 provider redirects browsers to.
+
+    Inside docker compose, request.base_url resolves to http://admin-api:8080 which is
+    unreachable from Google's servers.  Use MINTKEY_ADMIN_API_PUBLIC_URL instead.
+
+    Falls back to http://localhost:8080 for `make dev` (no operator action needed).
+    Production operators set MINTKEY_ADMIN_API_PUBLIC_URL in .env.
+    """
+    return os.environ.get(
+        "MINTKEY_ADMIN_API_PUBLIC_URL",
+        "http://localhost:8080",
+    ).rstrip("/")
+
+
+def _admin_ui_base() -> str:
+    """Return the public-facing base URL of the admin-UI.
+
+    Used by the GET OAuth2 callback view to build the post-auth redirect target
+    (the admin-UI email-services show page).
+
+    Falls back to http://localhost:8081 for `make dev`.
+    Production operators set MINTKEY_ADMIN_UI_PUBLIC_URL in .env.
+    """
+    return os.environ.get(
+        "MINTKEY_ADMIN_UI_PUBLIC_URL",
+        "http://localhost:8081",
+    ).rstrip("/")
 
 
 # ---------------------------------------------------------------------------
@@ -572,7 +602,7 @@ async def oauth2_authorize(
                 pass  # keep generated session_id
 
     redirect_uri = (
-        str(request.base_url).rstrip("/")
+        _oauth2_redirect_base()
         + f"/v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback"
     )
 
@@ -646,6 +676,285 @@ async def oauth2_authorize(
 
 
 # ---------------------------------------------------------------------------
+# Shared helper: validate state + exchange code for refresh_token + store in vault
+# ---------------------------------------------------------------------------
+
+
+class _ExchangeResult:
+    """Typed result returned by _exchange_oauth2_code_for_refresh_token."""
+
+    __slots__ = ("ok", "service_id", "authorized_at", "token_type", "error_code", "error_title", "http_status")
+
+    def __init__(
+        self,
+        *,
+        ok: bool,
+        service_id: str = "",
+        authorized_at: str = "",
+        token_type: str = "Bearer",
+        error_code: str = "",
+        error_title: str = "",
+        http_status: int = 200,
+    ) -> None:
+        self.ok = ok
+        self.service_id = service_id
+        self.authorized_at = authorized_at
+        self.token_type = token_type
+        self.error_code = error_code
+        self.error_title = error_title
+        self.http_status = http_status
+
+
+async def _exchange_oauth2_code_for_refresh_token(
+    *,
+    tenant_id: UUID,
+    service_id: str,
+    provider: str,
+    code: str,
+    state: str,
+    session: AsyncSession,
+    vault: VaultAdapterClient,
+    client_id: str,
+    client_secret: str,
+) -> _ExchangeResult:
+    """Exchange an OAuth2 auth code for a refresh_token and store it in vault.
+
+    Shared by the POST callback (programmatic) and GET callback (browser redirect).
+
+    Steps:
+      1. Look up and single-use-delete the state row from oauth2_state.
+      2. POST to provider token endpoint with the auth code.
+      3. Encrypt and store refresh_token via vault.put_credential.
+      4. Emit email.oauth2.authorized audit event (NFR-17: no token material).
+
+    Returns an _ExchangeResult.  Callers check .ok to decide the response shape.
+    NEVER logs code / state / refresh_token / client_secret.
+    """
+    # Look up state — single-use, delete immediately
+    state_result = await session.execute(
+        text(
+            "DELETE FROM oauth2_state"
+            " WHERE state_value = :state"
+            "   AND tenant_id = :tid"
+            "   AND provider = :provider"
+            "   AND expires_at > now()"
+            " RETURNING service_id, redirect_uri, operator_id"
+        ),
+        {"state": state, "tid": str(tenant_id), "provider": provider},
+    )
+    state_row = state_result.fetchone()
+    if state_row is None:
+        return _ExchangeResult(
+            ok=False,
+            error_code="invalid_state",
+            error_title="OAuth2 state is invalid, expired, or already used",
+            http_status=422,
+        )
+
+    resolved_service_id = str(state_row.service_id) if state_row.service_id else service_id
+    redirect_uri = str(state_row.redirect_uri)
+
+    # Exchange auth code for tokens — server-side; client_secret never leaves admin-api
+    token_url = _GMAIL_TOKEN_URL if provider == "gmail" else _OUTLOOK_TOKEN_URL
+    exchange_payload: dict[str, str] = {
+        "code": code,  # NEVER logged
+        "client_id": client_id,
+        "client_secret": client_secret,  # NEVER logged
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            resp = await http_client.post(token_url, data=exchange_payload)
+    except httpx.HTTPError as exc:
+        logger.error(
+            "_exchange_oauth2_code: HTTP error calling provider=%s token endpoint: %s",
+            provider,
+            type(exc).__name__,
+        )
+        return _ExchangeResult(
+            ok=False,
+            error_code="provider_unreachable",
+            error_title="Provider token endpoint unreachable",
+            http_status=502,
+        )
+
+    if resp.status_code != 200:
+        logger.warning(
+            "_exchange_oauth2_code: provider returned %d for provider=%s (no secret in log)",
+            resp.status_code,
+            provider,
+        )
+        return _ExchangeResult(
+            ok=False,
+            error_code="provider_token_error",
+            error_title=f"Provider returned {resp.status_code} during token exchange",
+            http_status=502,
+        )
+
+    token_data: dict[str, Any] = resp.json()
+    refresh_token: str = token_data.get("refresh_token", "")
+    if not refresh_token:
+        logger.warning(
+            "_exchange_oauth2_code: provider returned no refresh_token for provider=%s",
+            provider,
+        )
+        return _ExchangeResult(
+            ok=False,
+            error_code="no_refresh_token",
+            error_title="Provider did not return a refresh_token",
+            http_status=502,
+        )
+
+    # Store encrypted refresh_token in vault — plaintext leaves scope here
+    try:
+        await vault.put_credential(
+            tenant_id=str(tenant_id),
+            service_id=resolved_service_id,
+            auth_scheme="email_oauth2",
+            plaintext=refresh_token,  # NEVER logged after this point
+        )
+    except Exception as exc:
+        logger.error(
+            "_exchange_oauth2_code: vault put_credential failed for service=%s: %s",
+            resolved_service_id,
+            type(exc).__name__,
+        )
+        return _ExchangeResult(
+            ok=False,
+            error_code="vault_error",
+            error_title="Failed to store credential in vault",
+            http_status=502,
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # NOTE: audit_emit is intentionally NOT called here — the AST-based
+    # write-handler audit-coverage scanner (test_audit_coverage.py) requires
+    # every @router write handler to call audit_emit DIRECTLY. Callers
+    # (oauth2_callback POST + oauth2_callback_view GET) must emit
+    # email.oauth2.authorized on success — NO refresh_token, client_secret,
+    # or access_token in the payload (NFR-17). The token_type returned in
+    # _ExchangeResult is what those handlers should use.
+
+    return _ExchangeResult(
+        ok=True,
+        service_id=resolved_service_id,
+        authorized_at=now.isoformat(),
+        token_type=token_data.get("token_type", "Bearer"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET OAuth2 callback HTML page builder
+# ---------------------------------------------------------------------------
+
+_ERROR_MESSAGES: dict[str, str] = {
+    "access_denied": "You declined to grant access. Please try again and click Allow.",
+    "invalid_request": "The OAuth2 request was invalid. Please contact support.",
+    "unauthorized_client": "This application is not authorized to request access. Please contact support.",
+    "unsupported_response_type": "OAuth2 configuration error. Please contact support.",
+    "invalid_scope": "The requested permissions are not available. Please contact support.",
+    "server_error": "The authorization server encountered an error. Please try again.",
+    "temporarily_unavailable": "The authorization server is temporarily unavailable. Please try again later.",
+}
+
+
+def _oauth2_callback_html(
+    *,
+    success: bool,
+    service_id: str,
+    error_code: str = "",
+    error_description: str = "",
+    admin_ui_origin: str,
+) -> str:
+    """Return a minimal HTML page for the OAuth2 browser-redirect callback.
+
+    On success: posts a postMessage to window.opener and closes the popup.
+    On error: shows a user-friendly message, posts error postMessage.
+    If no opener (popup was blocked / user navigated directly), redirects the
+    whole window to the admin-UI show page.
+
+    Security:
+    - NEVER echoes code, state, refresh_token, client_secret, or access_token.
+    - admin_ui_origin is used verbatim as the postMessage target — the value
+      comes from MINTKEY_ADMIN_UI_PUBLIC_URL (operator-controlled config), not
+      user input, so it is safe to embed.
+    - error_description is HTML-escaped before embedding (no XSS).
+    """
+    import html as _html
+
+    if success:
+        status_js = "ok"
+        safe_desc = ""
+        heading = "Authorization complete"
+        body_text = "You can close this window."
+        card_class = "success"
+        redirect_qs = "oauth2_authorized=true"
+    else:
+        status_js = "error"
+        # Map known error codes to friendly messages; fall back to escaped description.
+        friendly = _ERROR_MESSAGES.get(error_code, "")
+        if not friendly:
+            friendly = _html.escape(error_description or error_code or "Unknown error")
+        safe_desc = friendly
+        heading = "Authorization failed"
+        body_text = safe_desc
+        card_class = "error"
+        safe_error_code = _html.escape(error_code or "unknown_error")
+        redirect_qs = f"oauth2_error={safe_error_code}"
+
+    safe_service_id = _html.escape(service_id)
+    # Build the admin-UI redirect target (standalone / popup-blocked fallback)
+    show_url = (
+        f"{admin_ui_origin}/admin/resources/email_services/records"
+        f"/{safe_service_id}/show?{redirect_qs}"
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mintkey – OAuth2 {'complete' if success else 'error'}</title>
+  <style>
+    body{{margin:0;padding:0;font-family:system-ui,sans-serif;
+         background:#f0f4f8;display:flex;align-items:center;justify-content:center;min-height:100vh}}
+    .card{{background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.12);
+           padding:2rem 2.5rem;max-width:400px;width:100%;text-align:center}}
+    .success h1{{color:#166534}} .error h1{{color:#991b1b}}
+    h1{{font-size:1.25rem;margin:0 0 .75rem}} p{{color:#374151;margin:0 0 1rem;font-size:.95rem}}
+    small{{color:#6b7280;font-size:.8rem}}
+  </style>
+</head>
+<body>
+  <div class="card {card_class}">
+    <h1>{heading}</h1>
+    <p>{body_text}</p>
+    <small>This window will close automatically.</small>
+  </div>
+  <script>
+    (function(){{
+      var MSG = {{type:"oauth2_callback",status:"{status_js}",service_id:"{safe_service_id}"}};
+      var SHOW_URL = {repr(show_url)};
+      try {{
+        if (window.opener && !window.opener.closed) {{
+          window.opener.postMessage(MSG, {repr(admin_ui_origin)});
+          window.close();
+        }} else {{
+          window.location.replace(SHOW_URL);
+        }}
+      }} catch(e) {{
+        window.location.replace(SHOW_URL);
+      }}
+    }})();
+  </script>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
 # POST /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback
 # ---------------------------------------------------------------------------
 
@@ -660,7 +969,7 @@ async def oauth2_callback(
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """
-    Receive the OAuth2 auth-code and complete the flow.
+    Receive the OAuth2 auth-code and complete the flow (programmatic / server-to-server).
 
     1. Validates `state` — single-use (DELETE after lookup).
     2. Exchanges `code` for `refresh_token` via the provider's token endpoint.
@@ -673,6 +982,9 @@ async def oauth2_callback(
 
     Returns 422 if state is missing/expired/mismatched.
     Returns 503 if OAuth2 client credentials are not configured.
+
+    For browser-redirect flows (Google's RFC 6749 GET redirect), use the
+    sibling GET handler below.
 
     Source: ADR-0024 §B2; chunk C-9.
     """
@@ -698,122 +1010,209 @@ async def oauth2_callback(
 
     await set_tenant_context(session, tenant_id)
 
-    # Look up state — single-use, delete immediately
-    state_result = await session.execute(
-        text(
-            "DELETE FROM oauth2_state"
-            " WHERE state_value = :state"
-            "   AND tenant_id = :tid"
-            "   AND provider = :provider"
-            "   AND expires_at > now()"
-            " RETURNING service_id, redirect_uri, operator_id"
-        ),
-        {"state": body.state, "tid": str(tenant_id), "provider": provider},
+    result = await _exchange_oauth2_code_for_refresh_token(
+        tenant_id=tenant_id,
+        service_id=service_id,
+        provider=provider,
+        code=body.code,
+        state=body.state,
+        session=session,
+        vault=vault,
+        client_id=client_id,
+        client_secret=client_secret,
     )
-    state_row = state_result.fetchone()
-    if state_row is None:
+
+    if not result.ok:
         return JSONResponse(
-            status_code=422,
-            content={
-                "mintkey:code": "invalid_state",
-                "title": "OAuth2 state is invalid, expired, or already used",
-            },
+            status_code=result.http_status,
+            content={"mintkey:code": result.error_code, "title": result.error_title},
         )
 
-    resolved_service_id = str(state_row.service_id) if state_row.service_id else service_id
-    redirect_uri = body.redirect_uri or str(state_row.redirect_uri)
-    # operator_id from state used for audit actor binding (future: pass as actor_id)
-    # Currently kept for traceability; the audit event is emitted with actor_id=None.
-
-    # Exchange auth code for tokens — server-side; client_secret never leaves admin-api
-    token_url = _GMAIL_TOKEN_URL if provider == "gmail" else _OUTLOOK_TOKEN_URL
-    exchange_payload: dict[str, str] = {
-        "code": body.code,
-        "client_id": client_id,
-        "client_secret": client_secret,  # NEVER logged or returned
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code",
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(token_url, data=exchange_payload)
-    except httpx.HTTPError as exc:
-        logger.error("oauth2_callback: HTTP error exchanging code for provider=%s: %s", provider, type(exc).__name__)
-        return JSONResponse(
-            status_code=502,
-            content={"mintkey:code": "provider_unreachable", "title": "Provider token endpoint unreachable"},
-        )
-
-    if resp.status_code != 200:
-        logger.warning(
-            "oauth2_callback: provider returned %d for provider=%s (no secret in log)",
-            resp.status_code,
-            provider,
-        )
-        return JSONResponse(
-            status_code=502,
-            content={
-                "mintkey:code": "provider_token_error",
-                "title": f"Provider returned {resp.status_code} during token exchange",
-            },
-        )
-
-    token_data: dict[str, Any] = resp.json()
-    refresh_token: str = token_data.get("refresh_token", "")
-    if not refresh_token:
-        logger.warning("oauth2_callback: provider returned no refresh_token for provider=%s", provider)
-        return JSONResponse(
-            status_code=502,
-            content={"mintkey:code": "no_refresh_token", "title": "Provider did not return a refresh_token"},
-        )
-
-    # Store encrypted refresh_token in vault — plaintext leaves scope here
-    try:
-        await vault.put_credential(
-            tenant_id=str(tenant_id),
-            service_id=resolved_service_id,
-            auth_scheme="email_oauth2",
-            plaintext=refresh_token,  # NEVER logged after this point
-        )
-    except Exception as exc:
-        logger.error(
-            "oauth2_callback: vault put_credential failed for service=%s: %s",
-            resolved_service_id,
-            type(exc).__name__,
-        )
-        return JSONResponse(
-            status_code=502,
-            content={"mintkey:code": "vault_error", "title": "Failed to store credential in vault"},
-        )
-
-    now = datetime.now(timezone.utc)
-
-    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17)
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted in the handler (not in the shared helper) so the write-handler
+    # audit-coverage scanner sees a direct call (test_audit_coverage.py).
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
         event_type="email.oauth2.authorized",
         actor_id=None,
         actor_type="operator",
-        target_id=UUID(resolved_service_id) if _is_valid_uuid(resolved_service_id) else uuid.uuid4(),
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
         target_type="email_service",
         payload={
-            "service_id": resolved_service_id,
+            "service_id": result.service_id,
             "provider": provider,
-            "authorized_at": now.isoformat(),
-            # token_type only — NEVER the token values
-            "token_type": token_data.get("token_type", "Bearer"),
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
         },
     )
 
     return JSONResponse(
         status_code=200,
         content={
-            "service_id": resolved_service_id,
+            "service_id": result.service_id,
             "provider": provider,
-            "authorized_at": now.isoformat(),
+            "authorized_at": result.authorized_at,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/tenants/{tenant_id}/email-services/{service_id}/oauth2/{provider}/callback
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{service_id}/oauth2/{provider}/callback")
+async def oauth2_callback_view(
+    tenant_id: UUID,
+    service_id: str,
+    provider: str,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> HTMLResponse:
+    """Handle Google/Outlook OAuth2 GET browser redirect after consent (C-9 callback view).
+
+    Google performs a GET redirect to redirect_uri with ?code=...&state=...
+    (or ?error=...&error_description=...) per RFC 6749.  The browser hits this
+    endpoint directly — the existing POST handler is unreachable from the browser.
+
+    Flow:
+      1. If ?error= is present: render error page immediately (no code exchange).
+      2. Validate state/code presence.
+      3. Call _exchange_oauth2_code_for_refresh_token (shared with POST handler).
+      4. Return HTML that:
+         - Posts a postMessage to window.opener (popup pattern) and closes the window.
+         - Falls back to navigating the whole window to the admin-UI show page when
+           the popup was blocked or the user opened the URL directly.
+
+    Security (NFR-17):
+      - NEVER echoes code, state, refresh_token, client_secret, or access_token
+        in the HTML body, response headers, or redirect query strings.
+      - error_description is HTML-escaped before embedding.
+      - Logs NOTHING at INFO/DEBUG that contains code or state.
+
+    Source: ADR-0024 §B2; chunk C-9 ("C-9 callback view").
+    """
+    admin_ui_origin = _admin_ui_base()
+
+    # --- Provider sent ?error=... (checked first: no code exchange needed) ---
+    # This path fires even if the provider sent an error after OAuth2 was unconfigured
+    # later, so we handle it before the creds guard to avoid 503 in front of the user.
+    if error:
+        logger.info(
+            "oauth2_callback_view: provider returned error=%s for provider=%s service=%s",
+            error,
+            provider,
+            service_id,
+        )
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code=error,
+                error_description=error_description or "",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=200,
+        )
+
+    # --- Provider / config guard (same as POST) ---
+    if provider not in _OAUTH2_PROVIDERS:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code="unsupported_provider",
+                error_description=f"OAuth2 is only supported for {sorted(_OAUTH2_PROVIDERS)}",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=422,
+        )
+
+    creds = _oauth2_config(provider)
+    if creds is None:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code="oauth2_not_configured",
+                error_description=f"OAuth2 credentials for provider '{provider}' are not configured",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=503,
+        )
+    client_id, client_secret = creds
+
+    # --- Require both code and state ---
+    if not code or not state:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code="missing_params",
+                error_description="OAuth2 callback is missing required parameters (code or state).",
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=422,
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    # --- Exchange code (shared helper — no duplication with POST handler) ---
+    result = await _exchange_oauth2_code_for_refresh_token(
+        tenant_id=tenant_id,
+        service_id=service_id,
+        provider=provider,
+        code=code,        # NEVER echoed in HTML / logs
+        state=state,      # NEVER echoed in HTML / logs
+        session=session,
+        vault=vault,
+        client_id=client_id,
+        client_secret=client_secret,
+    )
+
+    if not result.ok:
+        return HTMLResponse(
+            content=_oauth2_callback_html(
+                success=False,
+                service_id=service_id,
+                error_code=result.error_code,
+                error_description=result.error_title,
+                admin_ui_origin=admin_ui_origin,
+            ),
+            status_code=result.http_status,
+        )
+
+    # Emit audit event — NO refresh_token, client_secret, or access_token (NFR-17).
+    # Emitted in the handler (not in the shared helper) so the write-handler
+    # audit-coverage scanner sees a direct call (test_audit_coverage.py).
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="email.oauth2.authorized",
+        actor_id=None,
+        actor_type="operator",
+        target_id=UUID(result.service_id) if _is_valid_uuid(result.service_id) else uuid.uuid4(),
+        target_type="email_service",
+        payload={
+            "service_id": result.service_id,
+            "provider": provider,
+            "authorized_at": result.authorized_at,
+            "token_type": result.token_type,
+        },
+    )
+
+    return HTMLResponse(
+        content=_oauth2_callback_html(
+            success=True,
+            service_id=result.service_id,
+            admin_ui_origin=admin_ui_origin,
+        ),
+        status_code=200,
     )
 
 

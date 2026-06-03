@@ -136,6 +136,7 @@ from admin_api.api.email_services import (
     EmailServiceCredentialBody,
     EmailServicePatch,
     _oauth2_config,
+    _oauth2_redirect_base,
     _valid_host_port,
     _is_valid_uuid,
     _VALID_PROVIDERS,
@@ -148,6 +149,7 @@ from admin_api.api.email_services import (
     delete_email_service,
     oauth2_authorize,
     oauth2_callback,
+    oauth2_callback_view,
     oauth2_refresh,
     set_email_service_credential,
     delete_email_service_credential,
@@ -2279,3 +2281,324 @@ class TestNoCredentialInResponse:
         single_body_str = single_result.body.decode("utf-8")
         for forbidden in ("password", "username", "client_secret"):
             assert f'"{forbidden}"' not in single_body_str
+
+
+# ---------------------------------------------------------------------------
+# T-GET-CB: GET OAuth2 callback view tests (C-9 callback view)
+# ---------------------------------------------------------------------------
+
+
+class TestOAuth2CallbackView:
+    """
+    Tests for GET /v1/tenants/{tid}/email-services/{sid}/oauth2/{provider}/callback.
+
+    T-GET-CB-1: Happy path — valid code+state → 200 HTML, popup-close script present,
+                NO refresh_token in body, vault.put_credential called.
+    T-GET-CB-2: ?error=access_denied → 200 HTML, error shown, vault NOT called.
+    T-GET-CB-3: Invalid state → 422 HTML, no exchange attempted.
+    T-GET-CB-4: No code in body — canary that refresh_token/code never appear in HTML.
+    T-GET-CB-5: POST authorize with MINTKEY_ADMIN_API_PUBLIC_URL set → auth_url
+                contains the public URL, NOT request.base_url (docker hostname).
+    """
+
+    def _fake_provider_resp(
+        self,
+        status_code: int = 200,
+        access_token: str = "fake_at",
+        refresh_token: str = "fake_rt",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_get_cb_1_success(self) -> None:
+        """T-GET-CB-1: GET callback with valid code+state → 200 HTML.
+
+        Verifies:
+        - 200 status.
+        - Response is HTML (Content-Type text/html).
+        - window.postMessage / window.close present in the page.
+        - vault.put_credential called exactly once with auth_scheme=email_oauth2.
+        - refresh_token value NEVER appears in the HTML body (NFR-17).
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        state_value = "valid_state_get_cb1"
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="http://localhost:8080/v1/tenants/.../callback",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+            "MINTKEY_ADMIN_UI_PUBLIC_URL": "http://localhost:8081",
+        }
+
+        provider_resp = self._fake_provider_resp()
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_callback_view(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code="auth_code_get_cb1",
+                state=state_value,
+                error=None,
+                error_description=None,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        # Must be HTML
+        assert "text/html" in result.media_type
+
+        html_body = result.body.decode("utf-8")
+        # Popup close script must be present
+        assert "window.opener" in html_body
+        assert "window.close" in html_body
+        assert "postMessage" in html_body
+
+        # NFR-17: refresh_token value must NEVER appear in the HTML
+        assert "fake_rt" not in html_body
+        assert "auth_code_get_cb1" not in html_body
+        assert state_value not in html_body
+
+        # Vault was called
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs["auth_scheme"] == "email_oauth2"
+
+    @pytest.mark.asyncio
+    async def test_get_cb_2_provider_error(self) -> None:
+        """T-GET-CB-2: GET callback with ?error=access_denied → 200 HTML, vault NOT called."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session()
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock()
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+            "MINTKEY_ADMIN_UI_PUBLIC_URL": "http://localhost:8081",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock):
+            result = await oauth2_callback_view(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code=None,
+                state=None,
+                error="access_denied",
+                error_description="User declined",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        html_body = result.body.decode("utf-8")
+        # Must show error state — "error" JS status
+        assert '"error"' in html_body
+        # Vault MUST NOT have been called
+        mock_vault.put_credential.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_cb_3_invalid_state(self) -> None:
+        """T-GET-CB-3: GET callback with bad state (DELETE returns no row) → 422 HTML."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # State lookup returns nothing
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(None),
+        })
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock()
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+            "MINTKEY_ADMIN_UI_PUBLIC_URL": "http://localhost:8081",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await oauth2_callback_view(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code="some_code",
+                state="bad_state",
+                error=None,
+                error_description=None,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        # 422 status (invalid_state from helper)
+        assert result.status_code == 422
+        html_body = result.body.decode("utf-8")
+        # Must show error state
+        assert '"error"' in html_body
+        # No exchange — vault not called
+        mock_vault.put_credential.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_cb_4_no_code_leak_in_body(self) -> None:
+        """T-GET-CB-4: Canary — code / state / refresh_token values NEVER appear in HTML.
+
+        Uses a success scenario and asserts the specific secret values are absent
+        from the rendered HTML at the string level (belt-and-suspenders NFR-17).
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        code_value = "super_secret_code_xyz_12345"
+        state_value = "super_secret_state_abc_67890"
+        refresh_token_value = "super_secret_rt_qwerty_00001"
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="http://localhost:8080/callback",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+            "MINTKEY_ADMIN_UI_PUBLIC_URL": "http://localhost:8081",
+        }
+
+        resp_mock = MagicMock()
+        resp_mock.status_code = 200
+        resp_mock.json.return_value = {
+            "access_token": "super_secret_at_zxcvb_99999",
+            "refresh_token": refresh_token_value,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=resp_mock)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_callback_view(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code=code_value,
+                state=state_value,
+                error=None,
+                error_description=None,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        html_body = result.body.decode("utf-8")
+
+        # NFR-17: none of the secret values must appear anywhere in the HTML
+        for secret in (code_value, state_value, refresh_token_value, "super_secret_at_zxcvb_99999", "csecret"):
+            assert secret not in html_body, (
+                f"NFR-17 violation: secret value '{secret[:20]}...' found in GET callback HTML"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_cb_5_redirect_uri_uses_public_url(self) -> None:
+        """T-GET-CB-5: POST authorize with MINTKEY_ADMIN_API_PUBLIC_URL set.
+
+        Asserts that the authorize_url returned by oauth2_authorize contains
+        redirect_uri=http://localhost:8080/... (from env var) and NOT
+        http://admin-api:8080/... (which would be request.base_url inside docker).
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        session = _make_session(**{
+            "SELECT id FROM email_services": _FakeResult(_FakeRow(id=service_id)),
+        })
+
+        # Simulate the docker-internal request.base_url
+        fake_request = MagicMock()
+        fake_request.cookies.get.return_value = ""
+        fake_request.base_url = "http://admin-api:8080/"  # docker-internal — must NOT appear
+
+        env_override = {
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "fake_client_id",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "fake_secret",
+            "MINTKEY_ADMIN_API_PUBLIC_URL": "http://localhost:8080",
+        }
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await oauth2_authorize(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                request=fake_request,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        import json as _json
+        body_content = _json.loads(result.body)
+        auth_url = body_content["authorize_url"]
+
+        # redirect_uri must use the public URL, NOT the docker-internal hostname
+        assert "redirect_uri=http://localhost:8080" in auth_url, (
+            f"Expected redirect_uri to use MINTKEY_ADMIN_API_PUBLIC_URL (http://localhost:8080), "
+            f"but got: {auth_url}"
+        )
+        assert "admin-api:8080" not in auth_url, (
+            f"Docker-internal hostname 'admin-api:8080' must not appear in authorize_url; "
+            f"got: {auth_url}"
+        )
+
+        # Also verify _oauth2_redirect_base() uses the env var
+        with patch.dict(os.environ, {"MINTKEY_ADMIN_API_PUBLIC_URL": "https://api.example.com"}):
+            base = _oauth2_redirect_base()
+        assert base == "https://api.example.com", (
+            f"_oauth2_redirect_base() did not use MINTKEY_ADMIN_API_PUBLIC_URL; got: {base}"
+        )
