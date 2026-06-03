@@ -15,7 +15,8 @@ Asserts that ALL contract files stay in lockstep on the email-proxy surface:
    - /v1/internal/oauth2/{provider}/refresh
 4. audit-event.schema.json contains all 14 email.* event type values in the
    discriminator mapping.
-5. mcp/tools.yaml lists all 9 mintkey_*_email tools.
+5. mcp/tools.yaml lists all 4 implemented email_* tools plus 5 planned email_* tools.
+   Tool names use the email_* prefix (NOT mintkey_*).
 6. change-event.schema.json contains the 3 email.service.* change events in
    the discriminator mapping.
 7. mcp/tools.yaml auth_scheme enum includes email_password, email_oauth2,
@@ -93,15 +94,25 @@ EXPECTED_CHANGE_EVENT_TYPES = {
 }
 
 EXPECTED_MCP_TOOLS = {
-    "mintkey_list_mailboxes",
-    "mintkey_list_emails",
-    "mintkey_read_email",
-    "mintkey_send_email",
-    "mintkey_search_emails",
-    "mintkey_delete_email",
-    "mintkey_move_email",
-    "mintkey_mark_email",
-    "mintkey_download_attachment",
+    # 4 implemented tools (email_* prefix)
+    "email_list_mailboxes",
+    "email_search_messages",
+    "email_fetch_message",
+    "email_send",
+    # 5 planned tools (email_* prefix, not yet implemented — will 404 until built)
+    "email_list_emails",
+    "email_download_attachment",
+    "email_move_email",
+    "email_mark_email",
+    "email_delete_email",
+}
+
+# Subset that must be implemented today (x-mintkey-status: implemented)
+EXPECTED_IMPLEMENTED_MCP_TOOLS = {
+    "email_list_mailboxes",
+    "email_search_messages",
+    "email_fetch_message",
+    "email_send",
 }
 
 
@@ -376,8 +387,8 @@ class TestChangeEventSchema:
 # ---------------------------------------------------------------------------
 
 class TestMCPTools:
-    def test_all_9_email_tools_present(self, mcp_tools_doc: dict) -> None:
-        """tools.yaml must list all 9 mintkey_*email* tools."""
+    def test_all_email_tools_present(self, mcp_tools_doc: dict) -> None:
+        """tools.yaml must list all 9 email_* tools (4 implemented + 5 planned)."""
         present = _get_mcp_tools_names(mcp_tools_doc)
         missing = EXPECTED_MCP_TOOLS - present
         assert not missing, (
@@ -385,6 +396,32 @@ class TestMCPTools:
             f"  Missing: {sorted(missing)}\n"
             f"  Present email tools: {sorted(t for t in present if 'email' in t.lower() or 'mailbox' in t.lower())}"
         )
+
+    def test_no_mintkey_prefix_email_tools(self, mcp_tools_doc: dict) -> None:
+        """tools.yaml must NOT use the old mintkey_* prefix for email tools."""
+        present = _get_mcp_tools_names(mcp_tools_doc)
+        old_prefix_tools = {t for t in present if t.startswith("mintkey_") and (
+            "email" in t or "mailbox" in t or "attachment" in t
+        )}
+        assert not old_prefix_tools, (
+            f"mcp/tools.yaml still has email tools with the old mintkey_* prefix: {sorted(old_prefix_tools)}\n"
+            "These should use the email_* prefix."
+        )
+
+    def test_implemented_tools_have_status(self, mcp_tools_doc: dict) -> None:
+        """The 4 implemented email tools must have x-mintkey-status: implemented."""
+        tools_by_name = {
+            t["name"]: t
+            for t in mcp_tools_doc.get("tools", [])
+            if isinstance(t, dict) and "name" in t
+        }
+        for tool_name in EXPECTED_IMPLEMENTED_MCP_TOOLS:
+            tool = tools_by_name.get(tool_name)
+            assert tool is not None, f"Tool {tool_name} not found in tools.yaml"
+            status = tool.get("x-mintkey-status")
+            assert status == "implemented", (
+                f"Tool {tool_name} must have x-mintkey-status: implemented, got: {status!r}"
+            )
 
     def test_email_schemes_in_mcp_authscheme_enum(self, mcp_tools_doc: dict) -> None:
         """$defs.auth_scheme.enum in tools.yaml must contain the 3 email schemes."""

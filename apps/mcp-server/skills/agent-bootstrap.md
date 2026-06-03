@@ -292,10 +292,10 @@ email_app_password}` in `list_services` / `describe_service` output.
 
 | Action | Grants access to |
 |---|---|
-| `read:email` | `mintkey_list_mailboxes`, `mintkey_list_emails`, `mintkey_read_email`, `mintkey_search_emails`, `mintkey_download_attachment` |
-| `send:email` | `mintkey_send_email` |
-| `write:email` | `mintkey_move_email`, `mintkey_mark_email` |
-| `delete:email` | `mintkey_delete_email` |
+| `read:email` | `email_list_mailboxes`, `email_search_messages`, `email_fetch_message` (+ planned: `email_list_emails`, `email_download_attachment`) |
+| `send:email` | `email_send` |
+| `write:email` | planned: `email_move_email`, `email_mark_email` |
+| `delete:email` | planned: `email_delete_email` |
 
 Request a token for the specific action you need (one token per action scope):
 
@@ -303,24 +303,117 @@ Request a token for the specific action you need (one token per action scope):
 { "tool": "request_token", "arguments": { "service_id": "svc_01...", "action": "send:email" } }
 ```
 
-**The 9 MCP email tools:**
+The `request_token` tool accepts **both** `email_service_id` and `service_id` as the
+parameter name — they are aliases (PR #155). `service_id` is the canonical form returned by
+`list_services`; `email_service_id` is accepted for backward compatibility. Use `service_id`
+in new code.
 
-| Tool | Required scope | Description |
+**4 MCP email tools today (5 more planned):**
+
+The tool prefix is `email_*`. There are currently **4 implemented tools**. Five additional
+tools are planned but not yet built — they are listed below clearly so you do not waste time
+calling endpoints that will return 404.
+
+*Implemented tools:*
+
+| Tool | Required scope | REST endpoint | Description |
+|---|---|---|---|
+| `email_list_mailboxes` | `read:email` | `GET /v1/tools/email_list_mailboxes` | List IMAP mailboxes (INBOX, Sent, Drafts, …) |
+| `email_search_messages` | `read:email` | `GET /v1/tools/email_search_messages` | Search by RFC 3501 query string in a given mailbox |
+| `email_fetch_message` | `read:email` | `GET /v1/tools/email_fetch_message` | Fetch a single message by UID — returns envelope + body |
+| `email_send` | `send:email` | `POST /v1/tools/email_send` | Send via SMTP |
+
+*Planned tools (Not Implemented — will return 404 today):*
+
+| Tool | Scope | Intent |
 |---|---|---|
-| `mintkey_list_mailboxes` | `read:email` | List IMAP mailboxes (INBOX, Sent, Drafts, …) |
-| `mintkey_list_emails` | `read:email` | Fetch message envelopes: `{mailbox, limit, after}` |
-| `mintkey_read_email` | `read:email` | Fetch full message body by UID: `{id}` |
-| `mintkey_send_email` | `send:email` | Send via SMTP: `{to, subject, body, cc?, bcc?, attachments?}` |
-| `mintkey_search_emails` | `read:email` | Search: `{query, mailbox?, limit?}` |
-| `mintkey_delete_email` | `delete:email` | Delete message by UID: `{id}` |
-| `mintkey_move_email` | `write:email` | Move to another mailbox: `{id, mailbox}` |
-| `mintkey_download_attachment` | `read:email` | Download attachment bytes: `{id}` (returns base64) |
-| `mintkey_mark_email` | `write:email` | Set/unset IMAP flags: `{id, flags}` (e.g. `["\Seen"]`) |
+| `email_list_emails` | `read:email` | Paginated UID listing per mailbox. Workaround: use `email_search_messages?query=ALL`. |
+| `email_download_attachment` | `read:email` | Download a specific MIME part by partID. Workaround: use `email_fetch_message` and parse MIME parts client-side (the response body includes them). |
+| `email_move_email` | `write:email` | IMAP MOVE between mailboxes. No workaround today. |
+| `email_mark_email` | `write:email` | IMAP STORE for flag changes (Seen / Flagged / Answered). No workaround today. |
+| `email_delete_email` | `delete:email` | Soft-delete (move to Trash) or hard-delete (EXPUNGE). No workaround today. |
+
+The 5 missing tools will be built in a separate follow-up PR. Track it there; do not attempt
+to call them in the meantime.
+
+**Copy-pasteable example invocations:**
+
+```bash
+# List mailboxes
+GET /v1/tools/email_list_mailboxes?email_service_id=svc_01...
+# or using the service_id alias:
+GET /v1/tools/email_list_mailboxes?service_id=svc_01...
+# → { "mailboxes": ["INBOX", "Sent", "Drafts", "[Gmail]/Spam"] }
+
+# Search messages (RFC 3501 query; use ALL to list every UID in the mailbox)
+GET /v1/tools/email_search_messages?email_service_id=svc_01...&query=FROM "alice@example.com"&mailbox=INBOX
+# or to enumerate all UIDs as a substitute for the missing email_list_emails:
+GET /v1/tools/email_search_messages?email_service_id=svc_01...&query=ALL&mailbox=INBOX
+# → { "messages": [{"uid": 42, "subject": "Hello", "from": "alice@example.com", ...}, ...] }
+
+# Fetch a single message by UID (also returns MIME parts — useful when email_download_attachment is unavailable)
+GET /v1/tools/email_fetch_message?email_service_id=svc_01...&message_id=42&mailbox=INBOX
+# → { "uid": 42, "subject": "Hello", "from": "alice@example.com", "body": "...", "parts": [...] }
+
+# Send email (POST with JSON body; service_id is accepted as alias for email_service_id)
+POST /v1/tools/email_send
+Content-Type: application/json
+{
+  "email_service_id": "svc_01...",
+  "to": ["bob@example.com"],
+  "subject": "Report",
+  "body": "See attached.",
+  "cc": ["carol@example.com"],
+  "html_body": "<p>See attached.</p>"
+}
+# → { "message_id": "<unique-id>", "status": "sent" }
+```
+
+As MCP tool calls (for MCP clients):
+
+```json
+{ "tool": "email_list_mailboxes", "arguments": { "email_service_id": "svc_01..." } }
+// → { "mailboxes": [{"name": "INBOX", ...}, {"name": "Sent", ...}] }
+
+{ "tool": "email_search_messages",
+  "arguments": { "email_service_id": "svc_01...", "query": "ALL", "mailbox": "INBOX" } }
+// → { "messages": [{"uid": 42, "subject": "Hello", "from": "alice@…"}, …] }
+
+{ "tool": "email_fetch_message",
+  "arguments": { "email_service_id": "svc_01...", "message_id": "42", "mailbox": "INBOX" } }
+// → { "uid": 42, "subject": "Hello", "from": "alice@…", "body": "…", "parts": [] }
+
+{ "tool": "email_send",
+  "arguments": {
+    "email_service_id": "svc_01...",
+    "to": ["bob@example.com"],
+    "subject": "Report",
+    "body": "See attached."
+  }
+}
+// → { "message_id": "<id>", "status": "sent" }
+```
+
+**Current workarounds for the 5 missing tools:**
+
+| Missing tool | Workaround |
+|---|---|
+| `email_list_emails` | Call `email_search_messages` with `query=ALL` — returns all UIDs in the mailbox. |
+| `email_download_attachment` | Call `email_fetch_message` and parse MIME parts from the `parts[]` array in the response body. |
+| `email_move_email` | No workaround. Track the follow-up PR. |
+| `email_mark_email` | No workaround. Track the follow-up PR. |
+| `email_delete_email` | No workaround. Track the follow-up PR. |
+
+**Per-service SMTP routing (PR #156):** There are no global SMTP defaults. The
+`smtp_host` and `smtp_port` stored on the registered email service are used directly for
+every outbound send. Operators must set both fields correctly when registering a service —
+leaving them blank will cause `email_send` to fail. Update them via Admin UI → Email
+Services → Edit if you need to change routing.
 
 **Important behavioural notes:**
 
 - **Email body content is never stored by Mintkey.** The MCP server fetches body content
-  from email-proxy on each `mintkey_read_email` call; no email body persists in Postgres.
+  from email-proxy on each `email_fetch_message` call; no email body persists in Postgres.
 - **You NEVER see the upstream password or OAuth2 token.** email-proxy holds the credential
   internally for the duration of the IMAP/SMTP operation, then discards it — same invariant
   as the HTTP proxy.
@@ -328,41 +421,11 @@ Request a token for the specific action you need (one token per action scope):
   is expired, email-proxy refreshes it via the admin-api without any action from you. If the
   refresh token itself is revoked by the provider, the tool call returns
   `503 email_service_auth_expired` — the operator must re-authorize in the Admin UI.
-- **Message IDs are opaque UID handles** shaped `uid:<imap_uid>`. Do not construct them
-  yourself; always use IDs returned by `mintkey_list_emails` or `mintkey_search_emails`.
-- **Attachment IDs** are shaped `att:<message_uid>:<part_number>`. Use IDs from the
-  `mintkey_read_email` response `attachments[]` array.
+- **Message IDs** are provider UIDs (integers or strings depending on the IMAP server).
+  Always use IDs returned by `email_search_messages` or `email_fetch_message`; do not
+  construct them yourself.
 - **Do NOT route email tool calls through the HTTP proxy (`:8000`).** Email is handled
-  exclusively by the email-proxy on `:8088` via these 9 MCP tools.
-
-**Example — list mailboxes then read newest message:**
-
-```json
-{ "tool": "mintkey_list_mailboxes", "arguments": { "service_id": "svc_01..." } }
-// → { "mailboxes": ["INBOX", "Sent", "Drafts", "[Gmail]/Spam"] }
-
-{ "tool": "mintkey_list_emails",
-  "arguments": { "service_id": "svc_01...", "mailbox": "INBOX", "limit": 5 } }
-// → { "messages": [{"id":"uid:42","subject":"Hello","from":"alice@…","date":"…"}, …] }
-
-{ "tool": "mintkey_read_email", "arguments": { "service_id": "svc_01...", "id": "uid:42" } }
-// → { "id": "uid:42", "subject": "Hello", "from": "alice@…", "body": "…", "attachments": [] }
-```
-
-**Example — send email:**
-
-```json
-{ "tool": "mintkey_send_email",
-  "arguments": {
-    "service_id": "svc_01...",
-    "to": ["bob@example.com"],
-    "subject": "Report",
-    "body": "See attached.",
-    "cc": ["carol@example.com"]
-  }
-}
-// → { "message_id": "uid:43", "status": "sent" }
-```
+  exclusively by the email-proxy on `:8088` via these MCP tools.
 </email_services>
 
 <errors_and_revocation>
