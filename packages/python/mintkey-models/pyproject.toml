@@ -8,7 +8,7 @@ version = "0.1.0-preview.1"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13.4",
-    "sqlalchemy[asyncio]>=2.0",
+    "sqlalchemy[asyncio]>=2.0.50",
     "prometheus-client>=0.25.0",
     "cryptography>=48.0.0",
 ]
