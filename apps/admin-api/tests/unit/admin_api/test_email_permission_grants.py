@@ -396,3 +396,242 @@ async def test_delete_grant() -> None:
     assert len(audit_calls) == 1
     assert audit_calls[0]["event_type"] == "email_permission_grant.revoked"
     assert str(GRANT_ID) in str(audit_calls[0]["payload"])
+
+
+# ---------------------------------------------------------------------------
+# T-08: create_email_permission_grant emits notify_change('mintkey:agent', ...)
+#       — invalidates mcp-server discovery cache. Mirrors permissions.py:633.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_email_permission_grant_emits_notify() -> None:
+    """
+    T-08: After a successful create, the handler MUST fire pg_notify on the
+    'mintkey:agent' channel so mcp-server's discovery cache is invalidated
+    (subscriber.py:122 keys off tenant_id).
+    """
+    agent_row = _FakeRow(id=str(AGENT_ID))
+    esvc_row = _FakeRow(id=str(ESVC_ID))
+    session = _make_session(
+        **{
+            "SELECT id FROM agents": _FakeResult(agent_row),
+            "SELECT id FROM email_services": _FakeResult(esvc_row),
+        }
+    )
+
+    body = EmailPermissionGrantCreate(
+        agent_id=str(AGENT_ID),
+        email_service_id=str(ESVC_ID),
+    )
+
+    notify_calls: list[tuple[Any, str, dict[str, Any]]] = []
+
+    async def fake_notify_change(session: Any, channel: str, payload: dict[str, Any]) -> None:
+        notify_calls.append((session, channel, payload))
+
+    async def fake_audit_emit(**kwargs: Any) -> None:
+        pass
+
+    async def fake_set_tenant(session: Any, tenant_id: Any) -> None:
+        pass
+
+    with (
+        patch("admin_api.api.email_permission_grants.notify_change", side_effect=fake_notify_change),
+        patch("admin_api.api.email_permission_grants.audit_emit", side_effect=fake_audit_emit),
+        patch("admin_api.api.email_permission_grants.set_tenant_context", side_effect=fake_set_tenant),
+    ):
+        response = await create_email_permission_grant(
+            tenant_id=TENANT_A,
+            body=body,
+            session=session,  # type: ignore[arg-type]
+        )
+
+    assert response.status_code == 201
+    assert len(notify_calls) == 1, f"Expected exactly 1 notify_change call, got {len(notify_calls)}"
+
+    _sess, channel, payload = notify_calls[0]
+    assert channel == "mintkey:agent"
+    assert payload["event"] == "email_permission_grant.created"
+    assert payload["tenant_id"] == str(TENANT_A)
+    assert payload["agent_id"] == str(AGENT_ID)
+    assert payload["email_service_id"] == str(ESVC_ID)
+    assert "grant_id" in payload
+    # grant_id is server-generated; just confirm it's a non-empty string
+    assert isinstance(payload["grant_id"], str) and len(payload["grant_id"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# T-09: NFR-17 — NOTIFY payload contains identifiers only, no PII / no secrets.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_email_permission_grant_notify_payload_no_pii_no_secrets() -> None:
+    """
+    T-09 (NFR-17 belt-and-suspenders): The pg_notify payload MUST NOT contain
+    any credential material (tokens, passwords, client_secret) or PII
+    (email_address, username). Only opaque identifiers may flow over the
+    cross-process notify channel.
+    """
+    agent_row = _FakeRow(id=str(AGENT_ID))
+    esvc_row = _FakeRow(id=str(ESVC_ID))
+    session = _make_session(
+        **{
+            "SELECT id FROM agents": _FakeResult(agent_row),
+            "SELECT id FROM email_services": _FakeResult(esvc_row),
+        }
+    )
+
+    body = EmailPermissionGrantCreate(
+        agent_id=str(AGENT_ID),
+        email_service_id=str(ESVC_ID),
+    )
+
+    captured_payloads: list[dict[str, Any]] = []
+
+    async def fake_notify_change(session: Any, channel: str, payload: dict[str, Any]) -> None:
+        captured_payloads.append(payload)
+
+    async def fake_audit_emit(**kwargs: Any) -> None:
+        pass
+
+    async def fake_set_tenant(session: Any, tenant_id: Any) -> None:
+        pass
+
+    with (
+        patch("admin_api.api.email_permission_grants.notify_change", side_effect=fake_notify_change),
+        patch("admin_api.api.email_permission_grants.audit_emit", side_effect=fake_audit_emit),
+        patch("admin_api.api.email_permission_grants.set_tenant_context", side_effect=fake_set_tenant),
+    ):
+        await create_email_permission_grant(
+            tenant_id=TENANT_A,
+            body=body,
+            session=session,  # type: ignore[arg-type]
+        )
+
+    assert len(captured_payloads) == 1
+    payload = captured_payloads[0]
+
+    forbidden_keys = {
+        "email_address",
+        "username",
+        "password",
+        "refresh_token",
+        "client_secret",
+        "access_token",
+    }
+    leaked = forbidden_keys & set(payload.keys())
+    assert not leaked, f"NFR-17 violation: NOTIFY payload leaked {leaked!r}"
+
+    # Defence in depth: also walk values stringified, to catch a hypothetical
+    # nested dict that someone might add later.
+    blob = str(payload).lower()
+    for term in ("password", "refresh_token", "client_secret", "access_token"):
+        assert term not in blob, f"NFR-17 violation: payload contains '{term}': {payload!r}"
+
+
+# ---------------------------------------------------------------------------
+# T-10: delete_email_permission_grant emits notify_change('mintkey:agent', ...)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_email_permission_grant_emits_notify() -> None:
+    """
+    T-10: After a successful delete, the handler MUST fire pg_notify on
+    'mintkey:agent' so mcp-server's discovery cache is invalidated.
+    """
+    row = _FakeRow(id=GRANT_ID, agent_id=AGENT_ID, email_service_id=ESVC_ID)
+    session = _make_session(
+        **{
+            "SELECT id, agent_id, email_service_id": _FakeResult(row),
+        }
+    )
+
+    notify_calls: list[tuple[Any, str, dict[str, Any]]] = []
+
+    async def fake_notify_change(session: Any, channel: str, payload: dict[str, Any]) -> None:
+        notify_calls.append((session, channel, payload))
+
+    async def fake_audit_emit(**kwargs: Any) -> None:
+        pass
+
+    async def fake_set_tenant(session: Any, tenant_id: Any) -> None:
+        pass
+
+    with (
+        patch("admin_api.api.email_permission_grants.notify_change", side_effect=fake_notify_change),
+        patch("admin_api.api.email_permission_grants.audit_emit", side_effect=fake_audit_emit),
+        patch("admin_api.api.email_permission_grants.set_tenant_context", side_effect=fake_set_tenant),
+    ):
+        response = await delete_email_permission_grant(
+            tenant_id=TENANT_A,
+            grant_id=str(GRANT_ID),
+            session=session,  # type: ignore[arg-type]
+        )
+
+    assert response.status_code == 204
+    assert len(notify_calls) == 1, f"Expected exactly 1 notify_change call, got {len(notify_calls)}"
+
+    _sess, channel, payload = notify_calls[0]
+    assert channel == "mintkey:agent"
+    assert payload["event"] == "email_permission_grant.revoked"
+    assert payload["tenant_id"] == str(TENANT_A)
+    assert payload["agent_id"] == str(AGENT_ID)
+    assert payload["email_service_id"] == str(ESVC_ID)
+    assert payload["grant_id"] == str(GRANT_ID)
+
+
+# ---------------------------------------------------------------------------
+# T-11: Delete is idempotent — NOTIFY still fires when row is missing.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_email_permission_grant_idempotent_notify_even_when_row_missing() -> None:
+    """
+    T-11: If the grant row doesn't exist (SELECT returns None), the audit
+    event already fires (existing line 311 behaviour); the NOTIFY must too,
+    for idempotency parity. The mcp-server's invalidation is keyed by
+    tenant_id, so an extra invalidation on an idempotent revoke is safe.
+    """
+    # SELECT returns None — the row is gone (or never existed).
+    session = _make_session()  # no query results → fetchone() returns None
+
+    notify_calls: list[tuple[Any, str, dict[str, Any]]] = []
+
+    async def fake_notify_change(session: Any, channel: str, payload: dict[str, Any]) -> None:
+        notify_calls.append((session, channel, payload))
+
+    async def fake_audit_emit(**kwargs: Any) -> None:
+        pass
+
+    async def fake_set_tenant(session: Any, tenant_id: Any) -> None:
+        pass
+
+    with (
+        patch("admin_api.api.email_permission_grants.notify_change", side_effect=fake_notify_change),
+        patch("admin_api.api.email_permission_grants.audit_emit", side_effect=fake_audit_emit),
+        patch("admin_api.api.email_permission_grants.set_tenant_context", side_effect=fake_set_tenant),
+    ):
+        response = await delete_email_permission_grant(
+            tenant_id=TENANT_A,
+            grant_id=str(GRANT_ID),
+            session=session,  # type: ignore[arg-type]
+        )
+
+    assert response.status_code == 204
+    assert len(notify_calls) == 1, (
+        f"NOTIFY must fire even when the row was already absent (got {len(notify_calls)} calls)"
+    )
+
+    _sess, channel, payload = notify_calls[0]
+    assert channel == "mintkey:agent"
+    assert payload["event"] == "email_permission_grant.revoked"
+    assert payload["tenant_id"] == str(TENANT_A)
+    assert payload["grant_id"] == str(GRANT_ID)
+    # When the row was missing, the handler falls back to grant_id for agent_id_val
+    # and "" for esvc_id_val — assert the keys are present, content is best-effort.
+    assert "agent_id" in payload
+    assert "email_service_id" in payload
