@@ -79,7 +79,7 @@ type AuditEmitter interface {
 // AuditEvent is a single email-proxy audit event. Payload MUST NOT contain
 // refresh_token / access_token / client_secret / raw body / attachment content.
 type AuditEvent struct {
-	EventType  string                 // e.g. "email.message.read"
+	EventType  string // e.g. "email.message.read"
 	TenantID   string
 	AgentID    string // actor
 	ServiceID  string // target
@@ -157,7 +157,7 @@ type EmailHandlers struct {
 //   - rl: rate limiter (from security.NewRateLimiter)
 //   - ae: audit emitter (C-8 injects the real queue; pass NoopAuditEmitter() for now)
 //   - pc: email permission checker (from permissions.NewChecker); if nil, a deny-all
-//         noop is used so callers that don't inject one fail safely.
+//     noop is used so callers that don't inject one fail safely.
 func New(
 	p PoolGetter,
 	o OAuth2Manager,
@@ -274,9 +274,9 @@ func (h *EmailHandlers) HandleListMailboxes(w http.ResponseWriter, r *http.Reque
 		TargetID:   serviceID,
 		TargetType: "email_service",
 		Payload: map[string]interface{}{
-			"agent_id":       claims.Subject,
-			"service_id":     serviceID,
-			"mailbox_count":  len(mailboxes),
+			"agent_id":      claims.Subject,
+			"service_id":    serviceID,
+			"mailbox_count": len(mailboxes),
 		},
 	})
 
@@ -499,12 +499,12 @@ func (h *EmailHandlers) HandleSendMessage(w http.ResponseWriter, r *http.Request
 		TargetID:   msgID,
 		TargetType: "email_message",
 		Payload: map[string]interface{}{
-			"agent_id":         claims.Subject,
-			"service_id":       serviceID,
-			"message_id":       msgID,
-			"recipient_count":  len(body.To) + len(body.Cc) + len(body.Bcc),
+			"agent_id":          claims.Subject,
+			"service_id":        serviceID,
+			"message_id":        msgID,
+			"recipient_count":   len(body.To) + len(body.Cc) + len(body.Bcc),
 			"subject_truncated": truncateSubject(body.Subject),
-			"body_summary":     security.ScrubBodyForLog(body.Body),
+			"body_summary":      security.ScrubBodyForLog(body.Body),
 			// NOTE: no body content, no refresh_token, no access_token, no client_secret.
 		},
 	})
@@ -1160,6 +1160,42 @@ func (h *EmailHandlers) HandleDownloadAttachment(w http.ResponseWriter, r *http.
 // Internal helpers
 // ============================================================================
 
+// resolveIMAPAddr returns the IMAP dial address for an email credential,
+// using a fixed priority order that mirrors getSMTPCredential's
+// cred.SMTPHost/cred.SMTPPort precedence (ADR-0024 Phase 2):
+//
+//  1. cred.IMAPHost:cred.IMAPPort — the JOIN-populated per-service fields
+//     from email_services (primary; populated for all post-cb2ae0b rows).
+//  2. payloadIMAPHost — legacy JSON-payload imap_host (backwards compat
+//     for pre-cb2ae0b email_password / email_app_password rows whose
+//     plaintext payload contains an imap_host field). Empty for OAuth2.
+//  3. cred.BaseUrl — legacy fallback (always empty for email_services rows
+//     because the vault-adapter's JOIN sources base_url from public.services,
+//     which has no row for email services; harmless to attempt).
+//
+// Returns "" when none of the three sources is populated; callers MUST
+// treat that as the "no IMAP address found for service" error case.
+//
+// Note: this resolves *addressing metadata*, not credential plaintext.
+// Logging/inspecting the returned string is safe under NFR-17.
+func resolveIMAPAddr(cred *vault.Credential, payloadIMAPHost string) string {
+	if cred == nil {
+		return ""
+	}
+	// Primary: per-service IMAP host/port from email_services JOIN.
+	// IMAPPort must be non-zero — IMAPPort=0 means "no port returned",
+	// in which case we must fall through, not emit "host:0".
+	if cred.IMAPHost != "" && cred.IMAPPort != 0 {
+		return fmt.Sprintf("%s:%d", cred.IMAPHost, cred.IMAPPort)
+	}
+	// Fallback 1: legacy payload imap_host (password schemes only).
+	if payloadIMAPHost != "" {
+		return payloadIMAPHost
+	}
+	// Fallback 2: legacy BaseUrl (always empty for email_services; harmless).
+	return cred.BaseUrl
+}
+
 // leaseIMAPClient resolves credentials and obtains a pooled IMAP client.
 // The caller MUST call pool.Release when done.
 func (h *EmailHandlers) leaseIMAPClient(ctx context.Context, claims *auth.Claims, serviceID string) (*imapwrap.Client, pool.ServiceConfig, error) {
@@ -1187,7 +1223,9 @@ func (h *EmailHandlers) leaseIMAPClient(ctx context.Context, claims *auth.Claims
 			AccessToken: accessToken,
 			AuthMode:    imapwrap.AuthModeXOAuth2,
 		}
-		addr = cred.BaseUrl
+		// OAuth2 payload has no imap_host field — pass "" so the helper
+		// falls through to the BaseUrl fallback when IMAPHost is empty.
+		addr = resolveIMAPAddr(cred, "")
 
 	case vault.AuthSchemeEmailPassword, vault.AuthSchemeEmailAppPassword:
 		// Parse JSON payload: {"username":"...","password":"...","imap_host":"..."}
@@ -1197,10 +1235,7 @@ func (h *EmailHandlers) leaseIMAPClient(ctx context.Context, claims *auth.Claims
 			Password: password,
 			AuthMode: imapwrap.AuthModeLogin,
 		}
-		addr = imapHost
-		if addr == "" {
-			addr = cred.BaseUrl
-		}
+		addr = resolveIMAPAddr(cred, imapHost)
 
 	default:
 		return nil, pool.ServiceConfig{}, fmt.Errorf("unsupported auth scheme %d for IMAP", cred.AuthScheme)
@@ -1264,30 +1299,30 @@ func (h *EmailHandlers) getSMTPCredential(ctx context.Context, claims *auth.Clai
 		}
 		emailAddr := parseEmailAddressFromPayload(cred.Value)
 		return smtp.Credential{
-			AuthMode:           smtp.AuthModeXOAUTH2,
-			Username:           emailAddr,
-			AccessToken:        accessToken,
-			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, smtpConnConfig{
-			fromAddr:           emailAddr,
-			smtpHost:           cred.SMTPHost,
-			smtpPort:           cred.SMTPPort,
-			insecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, nil
+				AuthMode:           smtp.AuthModeXOAUTH2,
+				Username:           emailAddr,
+				AccessToken:        accessToken,
+				InsecureSkipVerify: cred.TlsInsecureSkipVerify,
+			}, smtpConnConfig{
+				fromAddr:           emailAddr,
+				smtpHost:           cred.SMTPHost,
+				smtpPort:           cred.SMTPPort,
+				insecureSkipVerify: cred.TlsInsecureSkipVerify,
+			}, nil
 
 	case vault.AuthSchemeEmailPassword, vault.AuthSchemeEmailAppPassword:
 		username, password, _ := parsePasswordPayload(cred.Value)
 		return smtp.Credential{
-			AuthMode:           smtp.AuthModePLAIN,
-			Username:           username,
-			Password:           password,
-			InsecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, smtpConnConfig{
-			fromAddr:           username,
-			smtpHost:           cred.SMTPHost,
-			smtpPort:           cred.SMTPPort,
-			insecureSkipVerify: cred.TlsInsecureSkipVerify,
-		}, nil
+				AuthMode:           smtp.AuthModePLAIN,
+				Username:           username,
+				Password:           password,
+				InsecureSkipVerify: cred.TlsInsecureSkipVerify,
+			}, smtpConnConfig{
+				fromAddr:           username,
+				smtpHost:           cred.SMTPHost,
+				smtpPort:           cred.SMTPPort,
+				insecureSkipVerify: cred.TlsInsecureSkipVerify,
+			}, nil
 
 	default:
 		return smtp.Credential{}, smtpConnConfig{}, fmt.Errorf("unsupported auth scheme %d for SMTP", cred.AuthScheme)
