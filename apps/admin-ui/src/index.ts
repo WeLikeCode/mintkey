@@ -322,6 +322,73 @@ async function main() {
 
   app.use(admin.options.rootPath, router);
 
+  // ── BFF: OAuth2 authorize passthrough ───────────────────────────────────────
+  //
+  // POST /admin/email-services/:tenantId/:serviceId/oauth2/:provider/authorize
+  //
+  // The browser calls this same-origin endpoint (no CORS needed). This handler
+  // forwards the request server-side to admin-api using the internal docker
+  // hostname (ADMIN_API_URL) so the operator's browser never needs to reach
+  // admin-api directly.
+  //
+  // Cookie is forwarded so admin-api can validate the session. The JSON response
+  // (including auth_url) is relayed back to the browser as-is.
+  //
+  // This route is mounted AFTER requireSession (via app.use order), so only
+  // authenticated operators can call it.
+  //
+  // Source: Bug-A fix; ADR-0014.5 cookie-based session; C-10.
+  app.post(
+    "/admin/email-services/:tenantId/:serviceId/oauth2/:provider/authorize",
+    // NOTE: NO express.json() body parser. The browser sends an empty body
+    // (content-length: 0), and express.json() chokes on that combination
+    // ("stream is not readable"). The admin-api authorize endpoint takes no
+    // body — params come from the path + cookie auth — so we can safely drop
+    // body parsing here.
+    async (req: Request, res: Response) => {
+      const { tenantId, serviceId, provider } = req.params as {
+        tenantId: string;
+        serviceId: string;
+        provider: string;
+      };
+
+      const cookie = req.headers.cookie ?? "";
+
+      // Forward CSRF token — admin-api's Kong middleware requires X-Mintkey-Csrf
+      // on state-changing endpoints. The browser sends the CSRF token as a cookie;
+      // extract it server-side and re-inject it as the expected header.
+      const csrfTokenMatch = cookie.match(/csrf_token=([^;]+)/);
+      const csrfToken = csrfTokenMatch?.[1] ?? "";
+
+      try {
+        const upstream = await fetch(
+          `${ADMIN_API_URL}/v1/tenants/${tenantId}/email-services/${serviceId}/oauth2/${provider}/authorize`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Cookie: cookie,
+              ...(csrfToken ? { "X-Mintkey-Csrf": csrfToken } : {}),
+            },
+            // No body — admin-api authorize takes none.
+          }
+        );
+
+        const upstreamBody = await upstream.text();
+
+        res
+          .status(upstream.status)
+          .type("application/json")
+          .send(upstreamBody);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Upstream error";
+        res
+          .status(502)
+          .json({ title: "BFF proxy error", detail: message });
+      }
+    }
+  );
+
   app.listen(PORT, () => {
     console.info(`AdminJS running at http://localhost:${PORT}/admin`);
   });
