@@ -23,7 +23,7 @@
     "express-rate-limit": "7.5.0",
     "express-session": "^1.18.1",
     "jose": "^5.9.6",
-    "pino": "^9.5.0",
+    "pino": "^10.3.1",
     "pino-http": "^10.3.0",
     "uuid": "^11.0.3"
   },
