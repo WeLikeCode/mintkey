@@ -20,7 +20,7 @@ include = ["mintkey_models*"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
-    "pytest-asyncio>=0.24",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.15.15",
     "mypy>=2.1.0",
 ]
