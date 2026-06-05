@@ -168,6 +168,30 @@ async def configure_oauth2_provider(
             },
         )
 
+    # Defense-in-depth (#358): trim leading/trailing whitespace BEFORE persistence /
+    # vault-store. Operator paste-with-leading-space silently produced configs that
+    # Google rejected with `invalid_client` 401, requiring a manual SQL trim.
+    # Per-field explicit `.strip()` rather than a global Pydantic str_strip_whitespace
+    # to keep the blast radius small.
+    client_id = (body.client_id or "").strip()
+    client_secret = (body.client_secret or "").strip()
+    if not client_id:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_client_id",
+                "title": "client_id must not be empty or whitespace",
+            },
+        )
+    if not client_secret:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_client_secret",
+                "title": "client_secret must not be empty or whitespace",
+            },
+        )
+
     await set_tenant_context(session, tenant_id)
 
     # Store client_secret in vault — plaintext leaves scope after this call
@@ -177,7 +201,7 @@ async def configure_oauth2_provider(
             tenant_id=str(tenant_id),
             service_id=vault_service_id,
             auth_scheme=_VAULT_AUTH_SCHEME,
-            plaintext=body.client_secret,  # NEVER logged or returned
+            plaintext=client_secret,  # NEVER logged or returned
         )
     except Exception as exc:
         logger.error(
@@ -193,7 +217,7 @@ async def configure_oauth2_provider(
 
     # Upsert client_id row in oauth2_client_configs
     now = datetime.now(timezone.utc)
-    last4 = _client_id_last4(body.client_id)
+    last4 = _client_id_last4(client_id)
 
     await session.execute(
         text(
@@ -206,7 +230,7 @@ async def configure_oauth2_provider(
         {
             "tid": str(tenant_id),
             "provider": provider,
-            "client_id": body.client_id,
+            "client_id": client_id,
             "now": now,
         },
     )

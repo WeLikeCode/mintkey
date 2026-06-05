@@ -3630,3 +3630,347 @@ class TestOAuth2VaultEnvelopeC3:
             assert _parse_oauth2_plaintext(raw_input) == expected, (
                 f"_parse_oauth2_plaintext failure for case: {label}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth: whitespace trimming on POST + PATCH form inputs (#365)
+# ---------------------------------------------------------------------------
+
+
+class TestCreateEmailServiceTrimsWhitespace:
+    """#365: create_email_service strips leading/trailing whitespace from
+    string form fields before INSERT / audit-emit. Enum-validated fields
+    (provider, auth_scheme) are NOT trimmed — Pydantic's field_validator
+    rejects them outright."""
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_trims_leading_trailing_whitespace_from_imap_host(self) -> None:
+        """#365 repro: imap_host=' imap.gmail.com    ' produced DNS failures.
+        After fix the INSERT must store the trimmed value."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="Company Gmail",
+            imap_host=" imap.gmail.com    ",  # the exact #365 input
+            imap_port=993,
+            smtp_host="\tsmtp.gmail.com\n",
+            smtp_port=587,
+            auth_scheme="email_password",
+            allowed_recipient_domains="  example.com, other.com  ",
+        )
+
+        session = _make_session()
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit_emit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit_emit):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201, result.body
+
+        insert_params = [
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        ]
+        assert len(insert_params) == 1
+        ip = insert_params[0]
+        assert ip["imap_host"] == "imap.gmail.com", f"imap_host not trimmed: {ip['imap_host']!r}"
+        assert ip["smtp_host"] == "smtp.gmail.com", f"smtp_host not trimmed: {ip['smtp_host']!r}"
+        assert ip["name"] == "Company Gmail"
+        assert ip["allowed_domains"] == "example.com, other.com", (
+            f"allowed_recipient_domains not trimmed: {ip['allowed_domains']!r}"
+        )
+
+        # Audit payload also carries the trimmed values
+        body_content = json.loads(result.body)
+        assert body_content["imap_host"] == "imap.gmail.com"
+        assert body_content["smtp_host"] == "smtp.gmail.com"
+        assert body_content["name"] == "Company Gmail"
+        assert audit_calls[0]["payload"]["imap_host"] == "imap.gmail.com"
+        assert audit_calls[0]["payload"]["smtp_host"] == "smtp.gmail.com"
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_preserves_internal_whitespace_in_name(self) -> None:
+        """#365: only edges are trimmed — internal spaces in name are preserved."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="  Multi  Word  Name  ",  # internal double-spaces
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        ip = next(
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        )
+        assert ip["name"] == "Multi  Word  Name", (
+            "internal whitespace must be preserved; only edges trimmed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_no_whitespace_input_unchanged(self) -> None:
+        """#365: clean input is byte-identical pre/post trim (idempotent)."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="clean-name",
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+            allowed_recipient_domains="example.com",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        ip = next(
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        )
+        assert ip["name"] == "clean-name"
+        assert ip["imap_host"] == "imap.gmail.com"
+        assert ip["smtp_host"] == "smtp.gmail.com"
+        assert ip["allowed_domains"] == "example.com"
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_all_whitespace_imap_host_rejected_422(self) -> None:
+        """#365: all-whitespace imap_host trims → empty → invalid_imap 422."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="x",
+            imap_host="    \t\n  ",  # all-whitespace
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 422
+        assert json.loads(result.body)["mintkey:code"] == "invalid_imap"
+        # No INSERT executed for a rejected request
+        assert not any(
+            "INSERT INTO email_services" in sql for sql, _ in session.executed_sql
+        )
+
+
+class TestPatchEmailServiceTrimsWhitespace:
+    """#365: patch_email_service strips leading/trailing whitespace from
+    string fields the caller explicitly set. PATCH cannot touch imap_host /
+    smtp_host (immutable) so this only covers name and
+    allowed_recipient_domains."""
+
+    def _make_patch_request(self, body: dict[str, Any]) -> Any:
+        fake_req = MagicMock()
+        fake_req.json = AsyncMock(return_value=body)
+        return fake_req
+
+    @pytest.mark.asyncio
+    async def test_patch_trims_leading_trailing_whitespace_from_name(self) -> None:
+        """#365: PATCH name='  new-name  ' → DB sees 'new-name'."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id), name="old-name",
+        )
+        updated_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id), name="new-name",
+        )
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        patch_body = EmailServicePatch(name="  new-name  ")
+        fake_request = self._make_patch_request({"name": "  new-name  "})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert len(captured_update_params) == 1
+        assert captured_update_params[0]["name"] == "new-name", (
+            f"PATCH didn't trim name: {captured_update_params[0]['name']!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_patch_preserves_internal_whitespace_in_allowed_recipient_domains(self) -> None:
+        """#365: only edges are trimmed — internal whitespace in
+        allowed_recipient_domains is preserved (no over-engineering)."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        updated_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        internal = "  example.com,  other.com  "
+        patch_body = EmailServicePatch(allowed_recipient_domains=internal)
+        fake_request = self._make_patch_request({"allowed_recipient_domains": internal})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert len(captured_update_params) == 1
+        # str.strip() only — internal "  " between domains is preserved.
+        assert (
+            captured_update_params[0]["allowed_recipient_domains"]
+            == "example.com,  other.com"
+        )
+
+    @pytest.mark.asyncio
+    async def test_patch_no_whitespace_input_unchanged(self) -> None:
+        """#365: clean input is byte-identical pre/post trim (idempotent)."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        updated_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        patch_body = EmailServicePatch(name="clean-name")
+        fake_request = self._make_patch_request({"name": "clean-name"})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert captured_update_params[0]["name"] == "clean-name"
+
+    @pytest.mark.asyncio
+    async def test_patch_all_whitespace_name_rejected_422(self) -> None:
+        """#365: all-whitespace name trims to empty → 422 invalid_name."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # No UPDATE should fire — only the existence-check SELECT
+        executed_sqls: list[str] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            executed_sqls.append(sql)
+            if "SELECT id FROM email_services" in sql:
+                return _FakeResult(_FakeRow(id=service_id))
+            return _FakeResult(None)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+
+        patch_body = EmailServicePatch(name="   \t \n ")
+        fake_request = self._make_patch_request({"name": "   \t \n "})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 422
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "invalid_name"
+        # No UPDATE was executed
+        assert not any("UPDATE email_services" in sql for sql in executed_sqls)
