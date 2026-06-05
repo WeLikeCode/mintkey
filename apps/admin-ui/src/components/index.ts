@@ -67,6 +67,8 @@ export const Components = {
   EmailServiceOAuth2Setup: componentLoader.add("EmailServiceOAuth2Setup", "./actions/EmailServiceOAuth2Setup"),
   // Email service credential form — username+password for email_password/email_app_password (feat/email-credentials-and-ui-fixes)
   EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
+  // Email service new form — provider-driven prefill for IMAP/SMTP host+port (Bug-B fix)
+  EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
 };
 
 // Global override: show-page renderer that inlines property.description below

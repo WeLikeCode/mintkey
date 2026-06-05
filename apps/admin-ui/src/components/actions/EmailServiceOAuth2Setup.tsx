@@ -5,8 +5,8 @@
  * Hides itself silently for other auth schemes.
  *
  * Flow:
- *   1. POST /v1/tenants/{tid}/email-services/{sid}/oauth2/{provider}/authorize
- *      → returns { auth_url: string }
+ *   1. POST /admin/email-services/{tid}/{sid}/oauth2/{provider}/authorize  (BFF — same-origin)
+ *      → admin-ui forwards server-side to admin-api → returns { auth_url: string }
  *   2. Opens auth_url in a new window (popup) or falls back to top-level redirect.
  *   3. On redirect-back the operator lands on a callback URL that includes
  *      `code` and `state` query params; those are forwarded server-side by C-9.
@@ -36,6 +36,8 @@ import { useSearchParams } from "react-router-dom";
 type Props = Record<string, any>;
 
 interface AuthorizeResponse {
+  // admin-api returns "authorize_url"; accept "auth_url" as legacy fallback
+  authorize_url?: string;
   auth_url?: string;
   title?: string;
   detail?: string;
@@ -43,11 +45,11 @@ interface AuthorizeResponse {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const ADMIN_API_BASE =
-  typeof window !== "undefined"
-    ? (window as Window & { ADMIN_API_PUBLIC_URL?: string })
-        .ADMIN_API_PUBLIC_URL ?? "http://localhost:8080"
-    : "http://localhost:8080";
+// BFF base: the authorize call is forwarded server-side by admin-ui so the
+// browser only talks to admin-ui (same origin — no CORS needed). The old
+// ADMIN_API_PUBLIC_URL fallback caused NetworkErrors when the operator's
+// browser was on a different host than localhost:8080.
+const BFF_BASE = "";
 
 const ERROR_MESSAGES: Record<string, string> = {
   state_expired: "The OAuth2 session timed out (state expired). Please try again.",
@@ -121,17 +123,19 @@ const EmailServiceOAuth2Setup = (props: Props): React.ReactElement | null => {
 
     try {
       const resp = await fetch(
-        `${ADMIN_API_BASE}/v1/tenants/${tenantId}/email-services/${serviceId}/oauth2/${normalizedProvider}/authorize`,
+        `${BFF_BASE}/admin/email-services/${tenantId}/${serviceId}/oauth2/${normalizedProvider}/authorize`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          credentials: "same-origin",
         }
       );
 
       const body = (await resp.json().catch(() => ({}))) as AuthorizeResponse;
+      // admin-api returns "authorize_url"; fall back to legacy "auth_url"
+      const authUrl = body.authorize_url ?? body.auth_url;
 
-      if (!resp.ok || !body.auth_url) {
+      if (!resp.ok || !authUrl) {
         setError(body.title ?? body.detail ?? "Failed to start OAuth2 authorization.");
         setLoading(false);
         return;
@@ -139,18 +143,18 @@ const EmailServiceOAuth2Setup = (props: Props): React.ReactElement | null => {
 
       // Open auth URL — try popup first, fall back to top-level navigation
       const popup = window.open(
-        body.auth_url,
+        authUrl,
         "oauth2_authorize",
         "width=600,height=700,menubar=no,toolbar=no,location=yes"
       );
 
       if (!popup || popup.closed) {
         // Popup blocked — redirect the current window
-        window.location.href = body.auth_url;
+        window.location.href = authUrl;
       }
     } catch (err: unknown) {
       setError(
-        err instanceof Error ? err.message : "Network error — cannot reach admin-api."
+        err instanceof Error ? err.message : "Network error — cannot reach the authorization endpoint."
       );
     } finally {
       setLoading(false);
