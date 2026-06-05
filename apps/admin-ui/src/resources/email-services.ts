@@ -238,6 +238,11 @@ export const EmailServicesResource: ResourceWithOptions & {
 
       new: {
         isVisible: true,
+        // Custom form component drives provider-prefill (Bug-B fix).
+        // Provider selection auto-populates imap_host/port, smtp_host/port and
+        // auth_scheme from well-known per-provider defaults; operator-typed values
+        // are never overwritten.
+        component: Components.EmailServiceNewForm,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
 

@@ -146,7 +146,7 @@ describe("EmailServiceOAuth2Setup — C-10 (jsdom)", () => {
 
   // ── Test 5: clicking authorize POSTs to the correct endpoint ─────────────
 
-  it("clicking Authorize calls POST /v1/tenants/{tid}/email-services/{sid}/oauth2/gmail/authorize", async () => {
+  it("clicking Authorize calls POST to the BFF path /admin/email-services/{tid}/{sid}/oauth2/gmail/authorize", async () => {
     // Mock window.open to avoid JSDOM issues
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
 
@@ -164,8 +164,10 @@ describe("EmailServiceOAuth2Setup — C-10 (jsdom)", () => {
     });
 
     await waitFor(() => {
+      // Bug-A fix: the component now calls the same-origin BFF path
+      // (not admin-api directly via ADMIN_API_PUBLIC_URL)
       expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/tenants/t_test/email-services/esvc_abc123/oauth2/gmail/authorize"),
+        expect.stringContaining("/admin/email-services/t_test/esvc_abc123/oauth2/gmail/authorize"),
         expect.objectContaining({ method: "POST" })
       );
     });

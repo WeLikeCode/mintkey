@@ -29,8 +29,8 @@ import (
 
 // stubPool is a fake PoolGetter.
 type stubPool struct {
-	client  *imapwrap.Client
-	err     error
+	client   *imapwrap.Client
+	err      error
 	released bool
 }
 
@@ -66,8 +66,8 @@ func (s *stubVault) GetCredential(_ context.Context, _, _ string, _ vault.AuthSc
 
 // stubSMTP is a fake SMTPSender.
 type stubSMTP struct {
-	msgID         string
-	err           error
+	msgID          string
+	err            error
 	capturedTarget smtp.DialTarget // records the DialTarget from the last Send call
 }
 
@@ -832,5 +832,90 @@ func TestEmailPermissionGrant_WithoutGrant(t *testing.T) {
 	}
 	if !strings.Contains(body, "email_permission_grant") {
 		t.Errorf("expected email_permission_grant in body, got: %s", body)
+	}
+}
+
+// ============================================================================
+// Per-service IMAP routing — leaseIMAPClient resolves cred.IMAPHost/IMAPPort
+// (C-1 / ADR-0024 Phase 2 — primary fix for "no IMAP address found" 503)
+// ============================================================================
+
+// capturingPool is a PoolGetter that records the ServiceConfig passed to Get.
+// We use it to assert that leaseIMAPClient threads the resolved addr through
+// to pool.ServiceConfig.Addr.
+type capturingPool struct {
+	capturedCfg pool.ServiceConfig
+	client      *imapwrap.Client
+	err         error
+}
+
+func (c *capturingPool) Get(_ context.Context, cfg pool.ServiceConfig) (*imapwrap.Client, error) {
+	c.capturedCfg = cfg
+	return c.client, c.err
+}
+func (c *capturingPool) Release(_ pool.ServiceConfig, _ *imapwrap.Client) {}
+
+// oauth2VaultCredWithIMAP returns an OAuth2 credential whose JOIN-populated
+// IMAPHost/IMAPPort fields point to the per-service IMAP endpoint. BaseUrl is
+// intentionally empty to mirror what the vault-adapter returns for
+// email_services rows (its JOIN sources BaseUrl from public.services, which
+// has no row for an email service).
+func oauth2VaultCredWithIMAP(imapHost string, imapPort int32) *vault.Credential {
+	payload := `{"provider":"gmail","refresh_token":"rt_secret","email_address":"alice@example.com"}`
+	return &vault.Credential{
+		Value:      []byte(payload),
+		AuthScheme: vault.AuthSchemeEmailOAuth2,
+		// BaseUrl deliberately empty — the bug was that the OAuth2 branch
+		// previously sourced addr from cred.BaseUrl, which is "" for
+		// email_services. Asserting BaseUrl="" + addr correctness proves
+		// IMAPHost/IMAPPort is now the primary source.
+		BaseUrl:  "",
+		IMAPHost: imapHost,
+		IMAPPort: imapPort,
+	}
+}
+
+// TestLeaseIMAPClient_OAuth2_UsesIMAPHostPort verifies the C-1 fix end-to-end:
+// when the vault-adapter returns IMAPHost/IMAPPort populated (post-cb2ae0b
+// behaviour) and BaseUrl empty (email_services has no public.services row),
+// leaseIMAPClient resolves addr to "IMAPHost:IMAPPort" rather than failing
+// with "no IMAP address found for service".
+func TestLeaseIMAPClient_OAuth2_UsesIMAPHostPort(t *testing.T) {
+	const wantHost = "imap.gmail.com"
+	const wantPort = int32(993)
+	const wantAddr = "imap.gmail.com:993"
+
+	capPool := &capturingPool{err: fmt.Errorf("dial failed: no real server")}
+	ae := &capturingAuditEmitter{}
+	h := makeHandlers(
+		capPool,
+		&stubOAuth2{token: "access_tok"},
+		&stubVault{cred: oauth2VaultCredWithIMAP(wantHost, wantPort)},
+		&stubSMTP{},
+		ae,
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/email-proxy/mailboxes?service_id=svc_01TEST", nil)
+	req = injectClaims(req, defaultClaims())
+	rr := httptest.NewRecorder()
+
+	h.HandleListMailboxes(rr, req)
+
+	// We expect 503 because the capturingPool intentionally fails — but
+	// it must fail in pool.Get, NOT in "no IMAP address found". So we
+	// inspect the captured config: if leaseIMAPClient resolved addr correctly,
+	// capPool.capturedCfg.Addr will be set to "imap.gmail.com:993".
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 (pool.Get fails), got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	if capPool.capturedCfg.Addr != wantAddr {
+		t.Errorf("pool.ServiceConfig.Addr = %q, want %q (the C-1 fix: cred.IMAPHost+IMAPPort, not cred.BaseUrl)",
+			capPool.capturedCfg.Addr, wantAddr)
+	}
+
+	// Regression guard for the specific 503 body that motivated this fix.
+	if strings.Contains(rr.Body.String(), "no IMAP address found") {
+		t.Errorf("response body contains the regressed 'no IMAP address found' error — leaseIMAPClient did not resolve addr; body: %s", rr.Body.String())
 	}
 }

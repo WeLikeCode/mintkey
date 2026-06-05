@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import wire_to_db_uuid
 from mintkey_models.audit import audit_emit
@@ -174,6 +175,22 @@ async def create_email_permission_grant(
         payload={
             "agent_id": agent_uuid,
             "email_service_id": email_service_uuid,
+        },
+    )
+
+    # NOTIFY global channel — invalidates mcp-server discovery cache for this tenant.
+    # Mirrors permissions.py:633 for regular HTTP/SSH permission_grants — ADR-0014.1.
+    # NFR-17: payload carries identifiers only (tenant_id, agent_id, email_service_id,
+    # grant_id, event) — no email_address, no usernames, no tokens.
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event": "email_permission_grant.created",
+            "tenant_id": str(tenant_id),
+            "agent_id": agent_uuid,
+            "email_service_id": email_service_uuid,
+            "grant_id": str(grant_id),
         },
     )
 
@@ -321,6 +338,22 @@ async def delete_email_permission_grant(
             "grant_id": str(grant_id),
             "agent_id": agent_id_val,
             "email_service_id": esvc_id_val,
+        },
+    )
+
+    # NOTIFY global channel — invalidates mcp-server discovery cache for this tenant.
+    # Mirrors permissions.py:633 for regular HTTP/SSH permission_grants — ADR-0014.1.
+    # Emitted idempotently even when the row was already gone (matches the audit
+    # behavior above). NFR-17: identifiers only, no PII / no secrets.
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event": "email_permission_grant.revoked",
+            "tenant_id": str(tenant_id),
+            "agent_id": agent_id_val,
+            "email_service_id": esvc_id_val,
+            "grant_id": str(grant_id),
         },
     )
 
