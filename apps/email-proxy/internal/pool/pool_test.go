@@ -274,6 +274,195 @@ func TestPerServiceIsolation(t *testing.T) {
 	p.Release(cfgB, cB)
 }
 
+// ---- Credential-change pool rebuild tests -----------------------------------
+//
+// These tests verify the fix for the stale-credentials bug where
+// getOrCreateServicePool returned a cached pool built with old credentials
+// after a re-auth (e.g. OAuth2 reauth replacing Username "" with the real
+// address, or XOAUTH2 access-token rotation). See chunk C-7 / task #364.
+
+// noopDialFn returns a dialer that never actually dials. The pool-rebuild
+// tests below only exercise getOrCreateServicePool's identity/lifecycle —
+// they do not call .Get, so no real connection is needed.
+func noopDialFn() dialFunc {
+	return func(_ context.Context, _ string, _ imapwrap.DialMode, _ imapwrap.Credentials, _ bool) (*imapwrap.Client, error) {
+		return nil, errors.New("noopDialFn: not implemented")
+	}
+}
+
+func baseXOAuth2Cfg() ServiceConfig {
+	return ServiceConfig{
+		TenantID:  "tnt",
+		ServiceID: "svc",
+		Addr:      "imap.example.com:993",
+		DialMode:  imapwrap.DialModeTLS,
+		Creds: imapwrap.Credentials{
+			Username:    "user@example.com",
+			AuthMode:    imapwrap.AuthModeXOAuth2,
+			AccessToken: "tok-original",
+		},
+	}
+}
+
+// TestGetOrCreateServicePool_NewKeyCreatesPool is the baseline: a fresh key
+// returns a newly-allocated PerServicePool registered in the map.
+func TestGetOrCreateServicePool_NewKeyCreatesPool(t *testing.T) {
+	p := newWithDialer(nil, noopDialFn())
+	defer p.Close()
+
+	cfg := baseXOAuth2Cfg()
+	sp := p.getOrCreateServicePool(cfg)
+	if sp == nil {
+		t.Fatal("expected non-nil PerServicePool")
+	}
+	if got := p.pools[poolKey{cfg.TenantID, cfg.ServiceID}]; got != sp {
+		t.Fatal("expected pool to be registered in pools map")
+	}
+	if !credsEquivalent(sp.creds, cfg.Creds) {
+		t.Fatalf("expected stored creds=%+v, got %+v", cfg.Creds, sp.creds)
+	}
+}
+
+// TestGetOrCreateServicePool_SameKeySameCredsReuses verifies the
+// happy-path cache hit: identical Creds → same pool instance, no rebuild.
+func TestGetOrCreateServicePool_SameKeySameCredsReuses(t *testing.T) {
+	p := newWithDialer(nil, noopDialFn())
+	defer p.Close()
+
+	cfg := baseXOAuth2Cfg()
+	sp1 := p.getOrCreateServicePool(cfg)
+	sp2 := p.getOrCreateServicePool(cfg)
+
+	if sp1 != sp2 {
+		t.Fatal("expected same pool instance for identical creds; cache miss")
+	}
+}
+
+// TestGetOrCreateServicePool_SameKeyDifferentUsername_RebuildsPool covers
+// the production symptom: first call lands with Username="" (vault not
+// populated yet), second call lands with the real email after OAuth2 reauth.
+// Expected: second call returns a different pool; map points at the new one.
+func TestGetOrCreateServicePool_SameKeyDifferentUsername_RebuildsPool(t *testing.T) {
+	p := newWithDialer(nil, noopDialFn())
+	defer p.Close()
+
+	cfg1 := baseXOAuth2Cfg()
+	cfg1.Creds.Username = "" // pre-reauth: envelope not yet written
+	cfg2 := baseXOAuth2Cfg()
+	cfg2.Creds.Username = "user@example.com" // post-reauth
+
+	sp1 := p.getOrCreateServicePool(cfg1)
+	sp2 := p.getOrCreateServicePool(cfg2)
+
+	if sp1 == sp2 {
+		t.Fatal("expected rebuilt pool when Username changed; got cached pool")
+	}
+	if p.pools[poolKey{cfg1.TenantID, cfg1.ServiceID}] != sp2 {
+		t.Fatal("expected map to hold the new (rebuilt) pool, not the stale one")
+	}
+	if sp2.creds.Username != "user@example.com" {
+		t.Fatalf("expected new pool's Username=%q, got %q", "user@example.com", sp2.creds.Username)
+	}
+}
+
+// TestGetOrCreateServicePool_SameKeyDifferentAccessToken_RebuildsPool
+// covers XOAUTH2 access-token rotation: the Username is unchanged but the
+// refreshed access token must propagate to the next dial. A stale pool
+// would keep dialing with the expired token and hit AUTHENTICATIONFAILED.
+func TestGetOrCreateServicePool_SameKeyDifferentAccessToken_RebuildsPool(t *testing.T) {
+	p := newWithDialer(nil, noopDialFn())
+	defer p.Close()
+
+	cfg1 := baseXOAuth2Cfg()
+	cfg1.Creds.AccessToken = "tok-original"
+	cfg2 := baseXOAuth2Cfg()
+	cfg2.Creds.AccessToken = "tok-refreshed"
+
+	sp1 := p.getOrCreateServicePool(cfg1)
+	sp2 := p.getOrCreateServicePool(cfg2)
+
+	if sp1 == sp2 {
+		t.Fatal("expected rebuilt pool when AccessToken changed; got cached pool")
+	}
+	if sp2.creds.AccessToken != "tok-refreshed" {
+		t.Fatalf("expected new pool's AccessToken=%q, got %q", "tok-refreshed", sp2.creds.AccessToken)
+	}
+}
+
+// TestGetOrCreateServicePool_SameKeyDifferentPassword_RebuildsPool covers
+// LOGIN-mode password rotation.
+func TestGetOrCreateServicePool_SameKeyDifferentPassword_RebuildsPool(t *testing.T) {
+	p := newWithDialer(nil, noopDialFn())
+	defer p.Close()
+
+	cfg1 := ServiceConfig{
+		TenantID:  "tnt",
+		ServiceID: "svc",
+		Addr:      "imap.example.com:993",
+		DialMode:  imapwrap.DialModeTLS,
+		Creds: imapwrap.Credentials{
+			Username: "alice",
+			Password: "old-pass",
+			AuthMode: imapwrap.AuthModeLogin,
+		},
+	}
+	cfg2 := cfg1
+	cfg2.Creds.Password = "new-pass"
+
+	sp1 := p.getOrCreateServicePool(cfg1)
+	sp2 := p.getOrCreateServicePool(cfg2)
+
+	if sp1 == sp2 {
+		t.Fatal("expected rebuilt pool when Password rotated; got cached pool")
+	}
+	if sp2.creds.Password != "new-pass" {
+		t.Fatalf("expected new pool's Password=%q, got %q", "new-pass", sp2.creds.Password)
+	}
+}
+
+// TestGetOrCreateServicePool_OldPoolConnectionsAreClosed verifies that when
+// creds rotate, the stale pool's idle connections are drained (closeAll).
+// Uses the real test IMAP server so we can prove the released connection is
+// in idle, then verify idleCount() drops to 0 after the rebuild.
+func TestGetOrCreateServicePool_OldPoolConnectionsAreClosed(t *testing.T) {
+	addr, stop := startServer(t)
+	defer stop()
+
+	p := newWithDialer(nil, testDialFn(addr))
+	defer p.Close()
+
+	cfg1 := makeConfig(addr, "tnt", "svc")
+	cfg2 := cfg1
+	cfg2.Creds.Username = "bob" // different creds → triggers rebuild
+
+	c, err := p.Get(context.Background(), cfg1)
+	if err != nil {
+		t.Fatalf("Get cfg1: %v", err)
+	}
+	p.Release(cfg1, c)
+
+	spOld := p.pools[poolKey{cfg1.TenantID, cfg1.ServiceID}]
+	if spOld == nil {
+		t.Fatal("expected initial pool to be registered")
+	}
+	if spOld.idleCount() != 1 {
+		t.Fatalf("expected 1 idle conn before rebuild, got %d", spOld.idleCount())
+	}
+
+	// Trigger rebuild via creds change.
+	spNew := p.getOrCreateServicePool(cfg2)
+
+	if spNew == spOld {
+		t.Fatal("expected new pool instance after creds change")
+	}
+	if spOld.idleCount() != 0 {
+		t.Fatalf("expected old pool's idle to be drained (closeAll), got %d", spOld.idleCount())
+	}
+	if spNew.idleCount() != 0 {
+		t.Fatalf("expected new pool to start with 0 idle, got %d", spNew.idleCount())
+	}
+}
+
 // TestConcurrencySafety spawns N goroutines racing on Get+Release.
 func TestConcurrencySafety(t *testing.T) {
 	addr, stop := startServer(t)

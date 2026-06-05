@@ -264,6 +264,16 @@ func (p *Pool) Close() {
 	p.pools = make(map[poolKey]*PerServicePool)
 }
 
+// credsEquivalent reports whether two Credentials sets are equivalent
+// for pool-reuse purposes. A mismatch on any auth-relevant field forces
+// the pool to be rebuilt so that fresh credentials reach the next dial.
+func credsEquivalent(a, b imapwrap.Credentials) bool {
+	return a.Username == b.Username &&
+		a.AuthMode == b.AuthMode &&
+		a.AccessToken == b.AccessToken &&
+		a.Password == b.Password
+}
+
 func (p *Pool) getOrCreateServicePool(cfg ServiceConfig) *PerServicePool {
 	key := poolKey{TenantID: cfg.TenantID, ServiceID: cfg.ServiceID}
 
@@ -271,7 +281,16 @@ func (p *Pool) getOrCreateServicePool(cfg ServiceConfig) *PerServicePool {
 	defer p.mu.Unlock()
 
 	if sp, ok := p.pools[key]; ok {
-		return sp
+		if credsEquivalent(sp.creds, cfg.Creds) {
+			return sp
+		}
+		// Creds rotated (OAuth2 re-auth, password change, XOAUTH2 token
+		// refresh) — close the stale pool's idle connections and rebuild
+		// so the next dial uses the new credentials.
+		sp.mu.Lock()
+		sp.closeAll()
+		sp.mu.Unlock()
+		delete(p.pools, key)
 	}
 
 	sp := newPerServicePool(key, cfg.Addr, cfg.DialMode, cfg.Creds, p.opts.maxConns(), p.opts.idleTimeout(), cfg.TlsInsecureSkipVerify)
