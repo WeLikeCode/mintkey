@@ -410,13 +410,28 @@ async def create_email_service(
             },
         )
 
-    # Validate host:port
-    if not _valid_host_port(body.imap_host, body.imap_port):
+    # Defense-in-depth (#365): trim leading/trailing whitespace BEFORE validation /
+    # persistence. Operator paste-with-trailing-newline previously stored
+    # imap_host=" imap.gmail.com    " which broke DNS resolution at runtime and
+    # required a manual SQL trim. Per-field explicit `.strip()` (not a global
+    # Pydantic str_strip_whitespace) — narrow blast radius.
+    # auth_scheme / provider are enum-validated above, so they are NOT trimmed here.
+    name = (body.name or "").strip()
+    imap_host = (body.imap_host or "").strip()
+    smtp_host = (body.smtp_host or "").strip()
+    allowed_recipient_domains: Optional[str] = (
+        body.allowed_recipient_domains.strip()
+        if isinstance(body.allowed_recipient_domains, str)
+        else body.allowed_recipient_domains
+    )
+
+    # Validate host:port (post-trim — all-whitespace input → empty → rejected)
+    if not _valid_host_port(imap_host, body.imap_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_imap", "title": "Invalid IMAP host or port"},
         )
-    if not _valid_host_port(body.smtp_host, body.smtp_port):
+    if not _valid_host_port(smtp_host, body.smtp_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_smtp", "title": "Invalid SMTP host or port"},
@@ -442,13 +457,13 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": body.name,
-            "imap_host": body.imap_host,
+            "name": name,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "auth_scheme": body.auth_scheme,
-            "allowed_domains": body.allowed_recipient_domains,
+            "allowed_domains": allowed_recipient_domains,
             "pool_size": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "now": now,
@@ -467,11 +482,11 @@ async def create_email_service(
         payload={
             "service_id": str(svc_id),
             "provider": body.provider,
-            "name": body.name,
+            "name": name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": body.imap_host,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
         },
@@ -483,11 +498,11 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": body.name,
+            "name": name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": body.imap_host,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "created_at": now.isoformat(),
@@ -2156,6 +2171,29 @@ async def patch_email_service(
             },
         )
 
+    # Defense-in-depth (#365): trim leading/trailing whitespace from string
+    # fields BEFORE persistence. Only mutable string fields are trimmed
+    # (name, allowed_recipient_domains); pool_size_max / tls_insecure_skip_verify
+    # are non-strings. imap_host/smtp_host are immutable on PATCH (rejected above).
+    # Operate on a copy of explicitly-set values so unset fields stay NULL
+    # (preserving the COALESCE-keeps-current semantics below).
+    patch_fields = body.model_dump(exclude_unset=True)
+    for _field in ("name", "allowed_recipient_domains"):
+        if _field in patch_fields and isinstance(patch_fields[_field], str):
+            patch_fields[_field] = patch_fields[_field].strip()
+
+    # After trim, reject all-whitespace name (trim → empty string is operator
+    # error; preserve the field's "not present" semantics by erroring rather
+    # than silently writing "").
+    if "name" in patch_fields and patch_fields["name"] == "":
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_name",
+                "title": "name must not be empty or whitespace",
+            },
+        )
+
     await set_tenant_context(session, tenant_id)
 
     # Verify service exists and belongs to this tenant (explicit guard — RLS also enforces)
@@ -2176,6 +2214,9 @@ async def patch_email_service(
 
     # Build fixed-template UPDATE (COALESCE keeps current value when new value is NULL).
     # SQL is a string literal — no f-strings; all values are bound parameters. ADR-0008.
+    # patch_fields holds trimmed string values for fields the caller actually set;
+    # fields NOT in patch_fields fall back to body.* (which is None) → COALESCE
+    # keeps the existing DB value. This preserves the original PATCH semantics.
     await session.execute(
         text(
             "UPDATE email_services"
@@ -2189,8 +2230,10 @@ async def patch_email_service(
             " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
         ),
         {
-            "name": body.name,
-            "allowed_recipient_domains": body.allowed_recipient_domains,
+            "name": patch_fields.get("name", body.name),
+            "allowed_recipient_domains": patch_fields.get(
+                "allowed_recipient_domains", body.allowed_recipient_domains
+            ),
             "pool_size_max": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "updated_at": now,
