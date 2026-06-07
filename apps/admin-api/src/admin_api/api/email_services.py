@@ -76,6 +76,15 @@ _OUTLOOK_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/author
 # scope (already in _GMAIL_SCOPES) is sufficient to call this endpoint.
 _GMAIL_USERINFO_URL = "https://www.googleapis.com/gmail/v1/users/me/profile"
 
+# Microsoft Graph endpoint used to extract the authorized user's email
+# after the OAuth2 token exchange (parallels _GMAIL_USERINFO_URL). The
+# `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
+# this call. We prefer `mail` (the SMTP address, which Exchange Online
+# IMAP accepts as the XOAUTH2 SASL username) over `userPrincipalName`
+# (canonical identity — for some account types in `@<tenant>.onmicrosoft.com`
+# form which IMAP wouldn't accept).
+_OUTLOOK_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
+
 _GMAIL_SCOPES = (
     "https://mail.google.com/ "
     "https://www.googleapis.com/auth/gmail.send "
@@ -84,7 +93,8 @@ _GMAIL_SCOPES = (
 _OUTLOOK_SCOPES = (
     "https://outlook.office.com/IMAP.AccessAsUser.All "
     "https://outlook.office.com/SMTP.Send "
-    "offline_access"
+    "offline_access "
+    "User.Read"
 )
 
 _SUPPORTED_PROVIDERS = {"gmail", "outlook"}
@@ -996,15 +1006,17 @@ async def _exchange_oauth2_code_for_refresh_token(
     # this call. The returned `emailAddress` is required for the email-proxy
     # IMAP XOAUTH2 path (`user=<email>` SASL parameter).
     #
-    # Outlook: the requested scopes are IMAP.AccessAsUser.All + SMTP.Send +
-    # offline_access — none of those grant Microsoft Graph access, so we
-    # cannot fetch /me from here. Store empty email_address; a follow-up
-    # task can add a Graph scope + fetch step (out of scope for C-3).
+    # Outlook: GET https://graph.microsoft.com/v1.0/me with the access_token.
+    # The `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
+    # this call. Prefer the `mail` field (SMTP address — what Exchange Online
+    # IMAP expects as the SASL username); fall back to `userPrincipalName`
+    # when `mail` is absent (common for some account types).
     #
-    # If the Gmail userinfo call fails we proceed with email_address="" so
-    # the operator's authorization is not lost — the agent's IMAP login will
-    # fail until they re-authorize (or a future migration backfills), which
-    # is a smaller blast radius than aborting the whole flow.
+    # If the userinfo call fails (httpx error, non-200, or both candidate
+    # fields missing) we proceed with email_address="" so the operator's
+    # authorization is not lost — the agent's IMAP login will fail until they
+    # re-authorize (or a future migration backfills), which is a smaller
+    # blast radius than aborting the whole flow.
     email_address: str = ""
     if provider == "gmail":
         try:
@@ -1036,8 +1048,39 @@ async def _exchange_oauth2_code_for_refresh_token(
                 provider,
                 type(exc).__name__,
             )
-    # else: provider == "outlook" — see comment above; intentionally no extra
-    # call. email_address remains "".
+    elif provider == "outlook":
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as profile_client:
+                profile_resp = await profile_client.get(
+                    _OUTLOOK_USERINFO_URL,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if profile_resp.status_code == 200:
+                profile_data = profile_resp.json()
+                mail_candidate = profile_data.get("mail")
+                upn_candidate = profile_data.get("userPrincipalName")
+                if isinstance(mail_candidate, str) and mail_candidate:
+                    email_address = mail_candidate
+                elif isinstance(upn_candidate, str) and upn_candidate:
+                    email_address = upn_candidate
+                else:
+                    logger.warning(
+                        "_exchange_oauth2_code: outlook graph /me returned neither mail nor userPrincipalName for service=%s",
+                        resolved_service_id,
+                    )
+            else:
+                logger.warning(
+                    "_exchange_oauth2_code: outlook graph /me returned %d for service=%s — proceeding with empty email_address",
+                    profile_resp.status_code,
+                    resolved_service_id,
+                )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "_exchange_oauth2_code: outlook graph /me fetch failed for service=%s provider=%s: %s — proceeding with empty email_address",
+                resolved_service_id,
+                provider,
+                type(exc).__name__,
+            )
 
     # Build the vault payload as a JSON envelope so the email-proxy can
     # extract both the refresh_token (for OAuth2 access_token exchange) and
