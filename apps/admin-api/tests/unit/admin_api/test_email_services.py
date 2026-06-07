@@ -3337,68 +3337,6 @@ class TestOAuth2VaultEnvelopeC3:
         assert envelope["email_address"] == ""
 
     @pytest.mark.asyncio
-    async def test_exchange_oauth2_code_outlook_stores_with_empty_email_no_userinfo_call(
-        self,
-    ) -> None:
-        """Outlook path: no userinfo call (scopes do not grant Graph access),
-        vault envelope has email_address="" and provider="outlook".
-        """
-        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
-
-        tenant_id = uuid.uuid4()
-        service_id = str(uuid.uuid4())
-
-        fake_state_row = _FakeRow(
-            service_id=service_id,
-            redirect_uri="https://example.com/cb",
-            operator_id=str(uuid.uuid4()),
-        )
-        session = _make_session(**{
-            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
-        })
-
-        mock_vault = AsyncMock()
-        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
-
-        token_resp = self._fake_token_resp()
-
-        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
-             patch("httpx.AsyncClient") as mock_client_cls:
-            mock_ctx_mgr = AsyncMock()
-            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
-            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
-            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
-            # Spy on .get so we can verify it is NOT called.
-            mock_ctx_mgr.get = AsyncMock()
-            mock_client_cls.return_value = mock_ctx_mgr
-
-            result = await _exchange_oauth2_code_for_refresh_token(
-                tenant_id=tenant_id,
-                service_id=service_id,
-                provider="outlook",
-                code="auth_code",
-                state="state_c3_outlook",
-                session=session,  # type: ignore[arg-type]
-                vault=mock_vault,  # type: ignore[arg-type]
-                client_id="cid",
-                client_secret="csecret",
-            )
-
-        assert result.ok is True
-        assert result.email_address == ""
-
-        # ONE post (token exchange); ZERO get (no userinfo for outlook).
-        assert mock_ctx_mgr.post.await_count == 1
-        assert mock_ctx_mgr.get.await_count == 0
-
-        mock_vault.put_credential.assert_called_once()
-        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
-        envelope = json.loads(stored_plaintext)
-        assert envelope["provider"] == "outlook"
-        assert envelope["refresh_token"] == "rt_test"
-        assert envelope["email_address"] == ""
-
-    @pytest.mark.asyncio
     async def test_exchange_oauth2_code_payload_no_pii_leak_in_logs(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -3629,6 +3567,359 @@ class TestOAuth2VaultEnvelopeC3:
         for raw_input, expected, label in cases:
             assert _parse_oauth2_plaintext(raw_input) == expected, (
                 f"_parse_oauth2_plaintext failure for case: {label}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Outlook userinfo fetch (C-3 parity — Microsoft Graph /me)
+# ---------------------------------------------------------------------------
+
+
+class TestOutlookUserinfo:
+    """Outlook OAuth2 exchange: fetch user's email via Microsoft Graph /me,
+    parallel to the Gmail flow under TestOAuth2VaultEnvelopeC3.
+    """
+
+    @staticmethod
+    def _fake_token_resp(
+        status_code: int = 200,
+        access_token: str = "at_outlook",
+        refresh_token: str = "rt_outlook",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+        return resp
+
+    @staticmethod
+    def _fake_graph_me_resp(
+        status_code: int = 200,
+        body: dict[str, Any] | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = body if body is not None else {}
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_stores_json_envelope_with_email_address(
+        self,
+    ) -> None:
+        """Outlook happy path: Graph /me returns both `mail` and
+        `userPrincipalName` → vault envelope must use `mail` (the SMTP
+        address), NOT the UPN.
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(
+            access_token="at_outlook", refresh_token="rt_outlook"
+        )
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "mail": "user@biz.example",
+                "userPrincipalName": "user@tenant.onmicrosoft.com",
+                "displayName": "Test User",
+            }
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_ok",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        assert result.ok is True
+        # `mail` preferred over `userPrincipalName`.
+        assert result.email_address == "user@biz.example"
+        assert result.service_id == service_id
+
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs.get("auth_scheme") == "email_oauth2"
+        stored_plaintext = call_kwargs.get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope == {
+            "provider": "outlook",
+            "refresh_token": "rt_outlook",
+            "email_address": "user@biz.example",
+        }
+
+        # Graph /me was called with the access_token.
+        from admin_api.api.email_services import _OUTLOOK_USERINFO_URL
+        get_calls = mock_ctx_mgr.get.call_args_list
+        assert len(get_calls) == 1
+        args, kwargs = get_calls[0]
+        assert (
+            _OUTLOOK_USERINFO_URL in args
+            or kwargs.get("url") == _OUTLOOK_USERINFO_URL
+            or (args and args[0] == _OUTLOOK_USERINFO_URL)
+        )
+        headers = kwargs.get("headers", {})
+        assert headers.get("Authorization") == "Bearer at_outlook"
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_falls_back_to_upn_when_mail_missing(
+        self,
+    ) -> None:
+        """When Graph /me returns userPrincipalName but no `mail` (common for
+        some account types), the envelope must store the UPN as email_address.
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp()
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "userPrincipalName": "user@biz.example",
+                "displayName": "Test User",
+            }
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_upn",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        assert result.ok is True
+        assert result.email_address == "user@biz.example"
+
+        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope["provider"] == "outlook"
+        assert envelope["refresh_token"] == "rt_outlook"
+        assert envelope["email_address"] == "user@biz.example"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure_mode",
+        ["http_500", "httpx_error"],
+        ids=["graph_returns_500", "graph_raises_httpx_error"],
+    )
+    async def test_exchange_oauth2_code_outlook_userinfo_failure_still_stores_with_empty_email(
+        self,
+        failure_mode: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """If Graph /me fails (HTTP 500 or httpx raises), we still store the
+        vault row with email_address="" and exchange returns ok=True. A
+        WARNING log is emitted.
+        """
+        import logging as _logging
+
+        import httpx as _httpx
+
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp()
+
+        with caplog.at_level(_logging.WARNING, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+
+            if failure_mode == "http_500":
+                err_resp = MagicMock()
+                err_resp.status_code = 500
+                err_resp.json.return_value = {"error": "server error"}
+                mock_ctx_mgr.get = AsyncMock(return_value=err_resp)
+            else:  # httpx_error
+                mock_ctx_mgr.get = AsyncMock(
+                    side_effect=_httpx.ConnectError("graph unreachable")
+                )
+
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state=f"state_outlook_fail_{failure_mode}",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        # Exchange still succeeds — operator's grant is preserved.
+        assert result.ok is True
+        assert result.email_address == ""
+
+        mock_vault.put_credential.assert_called_once()
+        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope["provider"] == "outlook"
+        assert envelope["refresh_token"] == "rt_outlook"
+        assert envelope["email_address"] == ""
+
+        # A WARNING log was emitted from the outlook code path.
+        warning_records = [
+            r
+            for r in caplog.records
+            if r.levelno == _logging.WARNING and "outlook" in r.getMessage()
+        ]
+        assert warning_records, (
+            f"Expected at least one outlook WARNING log for failure_mode={failure_mode}; "
+            f"got: {[r.getMessage() for r in caplog.records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_payload_no_pii_leak_in_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """NFR-17: refresh_token, access_token, email_address, and
+        client_secret MUST NOT appear in any log record during a successful
+        Outlook exchange.
+        """
+        import logging as _logging
+
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(
+            access_token="at_outlook_canary",
+            refresh_token="rt_outlook_canary",
+        )
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "mail": "outlook_canary@example.com",
+                "userPrincipalName": "outlook_canary@example.com",
+                "displayName": "Canary User",
+            }
+        )
+
+        with caplog.at_level(_logging.INFO, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_pii_canary",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid_outlook_canary",
+                client_secret="csecret_outlook_canary",
+            )
+
+        assert result.ok is True
+
+        all_log_text = "\n".join(
+            (rec.getMessage() + " " + str(rec.args or "")) for rec in caplog.records
+        )
+        for canary in (
+            "rt_outlook_canary",
+            "at_outlook_canary",
+            "outlook_canary@example.com",
+            "csecret_outlook_canary",
+        ):
+            assert canary not in all_log_text, (
+                f"NFR-17 violation: {canary!r} leaked into a log record"
             )
 
 
