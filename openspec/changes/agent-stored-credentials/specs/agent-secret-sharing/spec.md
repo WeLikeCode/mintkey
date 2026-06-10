@@ -35,6 +35,13 @@ Operators SHALL be able to list grants for a secret and revoke a grant via `DELE
 - **WHEN** an operator deletes a grant that was already deleted
 - **THEN** the response is successful (204) and the audit event is still emitted
 
+### Requirement: Operator can delete an agent secret
+As tenant administrators, operators SHALL be able to hard-delete any agent secret in their tenant via `DELETE /v1/tenants/{tenant_id}/agent-secrets/{secret_id}` (e.g. when offboarding an agent or responding to a leak). Deletion removes ciphertext and metadata, cascades share grants, is idempotent (204), and MUST emit `agent_secret.deleted` with operator actor attribution.
+
+#### Scenario: Operator deletes an agent's secret
+- **WHEN** an operator deletes agent A's secret that is shared with agent B
+- **THEN** the secret and its grants are removed, `agent_secret.deleted` is emitted with the operator as actor, and subsequent `secret_get` by A or B returns the uniform not-found error
+
 ### Requirement: Operators never see secret values
 The operator REST surface SHALL expose secret metadata (ID, name, owner agent, version, size, timestamps) and grants only. No admin-api endpoint may return an agent secret's plaintext or ciphertext.
 
