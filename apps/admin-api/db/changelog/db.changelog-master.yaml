@@ -77,3 +77,6 @@ databaseChangeLog:
   - include:
       file: 026-oauth2-client-configs.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 027-agent-secrets.yaml
+      relativeToChangelogFile: true

@@ -59,9 +59,10 @@ var methodScopes = map[string]string{
 // VaultServer is the gRPC server. It holds the KEK, VaultService, and a
 // reference to the shared DEK cache for metrics emission.
 type VaultServer struct {
-	kek      []byte
-	dekCache *cache.DEKCache
-	sshStore store.SSHStore // optional; nil when backend is SQLite or when SSH is not configured
+	kek              []byte
+	dekCache         *cache.DEKCache
+	sshStore         store.SSHStore         // optional; nil when backend is SQLite or when SSH is not configured
+	agentSecretStore store.AgentSecretStore // optional; nil when backend is SQLite
 }
 
 // New creates a VaultServer with the loaded KEK in memory.
@@ -81,6 +82,14 @@ func New(kek []byte, dekCache ...*cache.DEKCache) *VaultServer {
 // Call before ListenAndServe. Passing nil disables SSH RPC registration.
 func (s *VaultServer) WithSSHStore(ss store.SSHStore) *VaultServer {
 	s.sshStore = ss
+	return s
+}
+
+// WithAgentSecretStore attaches an AgentSecretStore to VaultServer so that
+// ListenAndServe can register the AgentSecretsVault service alongside VaultAdapter.
+// Call before ListenAndServe. Passing nil disables AgentSecretsVault registration.
+func (s *VaultServer) WithAgentSecretStore(as store.AgentSecretStore) *VaultServer {
+	s.agentSecretStore = as
 	return s
 }
 
@@ -511,6 +520,11 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	// Register SSHVaultAdapter when an SSHStore is configured.
 	if s.sshStore != nil {
 		RegisterSSHVaultServer(grpcSrv, svc, s.sshStore)
+	}
+
+	// Register AgentSecretsVault when an AgentSecretStore is configured.
+	if s.agentSecretStore != nil {
+		RegisterAgentSecretsVaultServer(grpcSrv, svc, s.agentSecretStore)
 	}
 
 	// HTTP mux for non-gRPC requests (e.g. /metrics).

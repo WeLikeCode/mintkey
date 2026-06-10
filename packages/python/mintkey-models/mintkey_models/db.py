@@ -115,7 +115,7 @@ class Session(Base):
 
 
 class Agent(Base):
-    """Mirror of the agents table. Source: 003-agents.yaml."""
+    """Mirror of the agents table. Source: 003-agents.yaml + 027-agent-secrets.yaml."""
 
     __tablename__ = "agents"
 
@@ -130,6 +130,7 @@ class Agent(Base):
     rate_limit_rps: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[Optional[UUID]] = mapped_column()
 
 
 # ---------------------------------------------------------------------------
@@ -319,3 +320,43 @@ class ServiceApiKey(Base):
     revoke_reason: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_by: Mapped[UUID] = mapped_column(nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 027-agent-secrets.yaml  (ADR-0025; agent-stored-secrets)
+# ---------------------------------------------------------------------------
+
+
+class AgentSecret(Base):
+    """
+    Mirror of the agent_secrets table. Source: 027-agent-secrets.yaml.
+    ADR-0025 §D2; per-agent KV secret metadata.
+    """
+
+    __tablename__ = "agent_secrets"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(256), nullable=False)
+    content_type: Mapped[Optional[str]] = mapped_column(String(256))
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AgentSecretGrant(Base):
+    """
+    Mirror of the agent_secret_grants table. Source: 027-agent-secrets.yaml.
+    ADR-0025 §D7; operator-managed read grants between agents.
+    """
+
+    __tablename__ = "agent_secret_grants"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    secret_id: Mapped[UUID] = mapped_column(ForeignKey("agent_secrets.id"), nullable=False)
+    recipient_agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

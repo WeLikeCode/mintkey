@@ -150,6 +150,28 @@ func main() {
 		log.Printf("vault-adapter: registered email-proxy service identity %q with scopes [vault.read]", emailProxyIdentityID)
 	}
 
+	// Register the MCP-server service identity so the scopeInterceptor allows
+	// it to call PutAgentSecret (vault.secret.put), GetAgentSecret (vault.secret.read),
+	// and DeleteAgentSecret (vault.secret.delete) on the AgentSecretsVault service.
+	// MINTKEY_VAULT_MCP_IDENTITY_ID defaults to "svcid_mcp"; must match the
+	// mcp-server's MINTKEY_VAULT_MCP_IDENTITY_ID env var.
+	// MINTKEY_VAULT_MCP_TOKEN must be a shared secret (≥ 32 bytes) provisioned
+	// via a Docker/Kubernetes secret and identical on both sides.
+	mcpIdentityID := os.Getenv("MINTKEY_VAULT_MCP_IDENTITY_ID")
+	if mcpIdentityID == "" {
+		mcpIdentityID = "svcid_mcp"
+	}
+	mcpToken := []byte(os.Getenv("MINTKEY_VAULT_MCP_TOKEN"))
+	if len(mcpToken) == 0 {
+		log.Printf("vault-adapter: MINTKEY_VAULT_MCP_TOKEN not set; MCP-server agent-secret operations WILL fail with PERMISSION_DENIED")
+	} else {
+		if err := svc.RegisterServiceIdentity(mcpIdentityID, mcpToken, []string{"vault.secret.put", "vault.secret.read", "vault.secret.delete"}); err != nil {
+			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", mcpIdentityID, err)
+			os.Exit(1)
+		}
+		log.Printf("vault-adapter: registered MCP service identity %q with scopes [vault.secret.put vault.secret.read vault.secret.delete]", mcpIdentityID)
+	}
+
 	// Wire the SSHStore so ListenAndServe registers the SSHVaultAdapter service.
 	// Only PostgresStore implements SSHStore; SQLite falls back to no SSH RPCs.
 	if pgStore, ok := st.(*store.PostgresStore); ok {
@@ -157,6 +179,15 @@ func main() {
 		log.Printf("vault-adapter: SSHVaultAdapter service enabled (postgres backend)")
 	} else {
 		log.Printf("vault-adapter: SSHVaultAdapter service disabled (non-postgres backend)")
+	}
+
+	// Wire the AgentSecretStore so ListenAndServe registers the AgentSecretsVault service.
+	// Only PostgresStore implements AgentSecretStore; SQLite falls back to no AgentSecretsVault RPCs.
+	if pgStore, ok := st.(*store.PostgresStore); ok {
+		srv.WithAgentSecretStore(pgStore)
+		log.Printf("vault-adapter: AgentSecretsVault service enabled (postgres backend)")
+	} else {
+		log.Printf("vault-adapter: AgentSecretsVault service disabled (non-postgres backend)")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
