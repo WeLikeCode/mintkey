@@ -116,9 +116,14 @@ def info(msg: str) -> None:
 # ---------------------------------------------------------------------------
 # Docker helper to get values from Postgres
 # ---------------------------------------------------------------------------
+# Compose project name — override (e.g. for an isolated worktree stack) with
+# MINTKEY_COMPOSE_PROJECT; container/volume names derive from it.
+COMPOSE_PROJECT = os.getenv("MINTKEY_COMPOSE_PROJECT", "mintkey")
+
+
 def pg_query(sql: str) -> str:
     r = subprocess.run(
-        ["docker", "exec", "mintkey-postgres-1", "psql", "-U", "mintkey_migrate", "-d", "mintkey", "-tAc", sql],
+        ["docker", "exec", f"{COMPOSE_PROJECT}-postgres-1", "psql", "-U", "mintkey_migrate", "-d", "mintkey", "-tAc", sql],
         capture_output=True, text=True, timeout=10,
     )
     lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip() and l.strip() != "SET"]
@@ -128,7 +133,7 @@ def pg_query(sql: str) -> str:
 def get_admin_password() -> str:
     """Read and decrypt the Fernet-encrypted admin_password from the bootstrap-secrets volume."""
     r = subprocess.run(
-        ["docker", "run", "--rm", "-v", "mintkey_bootstrap_secrets:/secrets", "alpine", "cat", "/secrets/admin_password"],
+        ["docker", "run", "--rm", "-v", f"{COMPOSE_PROJECT}_bootstrap_secrets:/secrets", "alpine", "cat", "/secrets/admin_password"],
         capture_output=True, timeout=15,
     )
     ciphertext = r.stdout.strip()
@@ -208,6 +213,42 @@ def step0_health() -> None:
 # ---------------------------------------------------------------------------
 # Step 1: Authenticate
 # ---------------------------------------------------------------------------
+def _oidc_login(password: str) -> bool:
+    """Keycloak OIDC headless flow (ADR-0020) — mirrors tests/acceptance/test_e2e_smoke.py::_oidc_login.
+
+    Populates the module-global requests session with mintkey_session +
+    csrf_token cookies. Returns True on success.
+    """
+    import re as _re
+
+    username = os.getenv("MINTKEY_OIDC_USER", ADMIN_EMAIL)
+    r1 = session.get(f"{ADMIN_API_URL}/v1/auth/oidc/login", allow_redirects=False, timeout=15)
+    if r1.status_code != 302:
+        bad(f"OIDC login redirect — expected 302, got {r1.status_code}")
+        return False
+    r2 = session.get(r1.headers["location"], allow_redirects=True, timeout=15)
+    if r2.status_code != 200:
+        bad(f"Keycloak login page — expected 200, got {r2.status_code}")
+        return False
+    m = _re.search(r'action="([^"]+)"', r2.text)
+    if not m:
+        bad("Keycloak login page — <form action> not found")
+        return False
+    r3 = session.post(
+        m.group(1).replace("&amp;", "&"),
+        data={"username": username, "password": password, "credentialId": ""},
+        allow_redirects=False, timeout=15,
+    )
+    if r3.status_code not in (301, 302, 303, 307, 308):
+        bad(f"Keycloak credentials POST — expected redirect, got {r3.status_code} (bad password?)")
+        return False
+    r4 = session.get(r3.headers["location"], allow_redirects=False, timeout=15)
+    if r4.status_code not in (301, 302, 303, 307, 308):
+        bad(f"OIDC callback — expected redirect, got {r4.status_code}")
+        return False
+    return bool(session.cookies.get("csrf_token"))
+
+
 def step1_auth() -> None:
     global csrf_token, tenant_id, operator_id
     info("Step 1: Authenticating as bootstrap admin...")
@@ -221,10 +262,21 @@ def step1_auth() -> None:
         f"{ADMIN_API_URL}/v1/auth/internal-login",
         json={"email": ADMIN_EMAIL, "password": password},
     )
-    if not assert_status("Login", resp, 200):
-        sys.exit(1)
+    if resp.status_code == 404:
+        # Internal login is OFF by default (ADR-0020) — use the Keycloak OIDC flow.
+        info("internal-login 404-gated — falling back to Keycloak OIDC flow (ADR-0020)")
+        if not _oidc_login(password):
+            sys.exit(1)
+        whoami = session.get(f"{ADMIN_API_URL}/v1/auth/whoami", timeout=15)
+        if whoami.status_code != 200:
+            bad(f"whoami after OIDC login — expected 200, got {whoami.status_code}")
+            sys.exit(1)
+        data = whoami.json().get("operator", whoami.json())
+    else:
+        if not assert_status("Login", resp, 200):
+            sys.exit(1)
+        data = resp.json()
 
-    data = resp.json()
     tenant_id = data["tenant_id"]
     operator_id = data["operator_id"]
 
@@ -412,6 +464,7 @@ def step1b_whoami() -> None:
     assert_status("whoami", r, 200)
     if r.status_code == 200:
         body = r.json()
+        body = body.get("operator", body)  # OIDC sessions nest identity under "operator"
         ok("whoami.operator_id present") if "operator_id" in body else bad("whoami.operator_id missing")
         ok("whoami.tenant_id present") if "tenant_id" in body else bad("whoami.tenant_id missing")
 
@@ -438,6 +491,7 @@ def step2a_create_tenant() -> str:
     info("Step 2a: POST /v1/tenants (create second tenant)...")
     r = api("POST", "/v1/tenants", json={
         "name": "smoke-tenant-b",
+        "slug": "smoke-tenant-b",
         "display_name": "Smoke Tenant B",
     })
     if r.status_code in (201, 409):
@@ -560,7 +614,8 @@ def step6b_list_api_keys(agent_uuid: str) -> None:
     r = api("GET", f"/v1/tenants/{tenant_id}/agents/{agent_uuid}/api-keys")
     assert_status("GET api-keys list", r, 200)
     if r.status_code == 200:
-        keys = r.json().get("api_keys", r.json() if isinstance(r.json(), list) else [])
+        body = r.json()
+        keys = body if isinstance(body, list) else body.get("api_keys", [])
         ok(f"API key list returned {len(keys)} key(s)")
 
 
@@ -1059,7 +1114,7 @@ def main() -> int:
         list_r = api("GET", f"/v1/tenants/{tenant_id}/agents/{agent_uuid}/api-keys")
         if list_r.status_code == 200:
             keys_data = list_r.json()
-            keys = keys_data.get("api_keys", keys_data if isinstance(keys_data, list) else [])
+            keys = keys_data if isinstance(keys_data, list) else keys_data.get("api_keys", [])
             for k in keys:
                 if k.get("service_id") == mock_svc and k.get("status") == "active":
                     mock_key_id = k.get("id", "")
