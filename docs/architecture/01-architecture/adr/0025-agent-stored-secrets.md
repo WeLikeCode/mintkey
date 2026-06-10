@@ -73,6 +73,8 @@ New target types: `agent_secret`, `agent_secret_grant`.
 
 The `agent_secret.read` event is unusual in that it audits a read, not a write. This is the correct behaviour: plaintext read-back is a sensitive operation that must be traceable. Precedent: the SSH proxy audits session starts and session I/O per ADR-0022.
 
+Idempotent no-op deletes/revokes (the row was already gone) do NOT emit an audit event: nothing changed state, and the schema-required identifiers (recipient, owner) are unknowable once the row is deleted. This deliberately deviates from the email-permission-grants precedent of emitting on the already-gone path.
+
 ### D5 — New error code: `secret_not_found`
 
 The agent-facing surface (`secret_get`, `secret_delete`) applies the anti-enumeration rule: "secret does not exist" and "secret exists but caller has no access" are indistinguishable. A single error code `secret_not_found` covers both cases, added to the `x-mintkey-error-codes` list in `openapi.yaml` and the `error_code` enum in `tools.yaml`.

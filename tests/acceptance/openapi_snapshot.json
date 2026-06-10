@@ -1,4 +1,5 @@
 {
+  "agent_secrets": "/v1/tenants/{tenant_id}/agent-secrets",
   "agents": "/v1/tenants/{tenant_id}/agents",
   "api_keys": "/v1/tenants/{tenant_id}/agents/{agent_id}/api-keys",
   "audit": "/v1/tenants/{tenant_id}/audit",

@@ -220,6 +220,62 @@ async def resolve_service_id(
     return _uuid_mod.UUID(str(rows[0].id))
 
 
+async def resolve_secret_id(
+    input_str: str,
+    tenant_id: str,
+    session,
+) -> _uuid_mod.UUID | None:
+    """
+    Attempt to resolve input_str as an agent_secret UUID.
+
+    Accepts:
+      1. Raw UUID (36 chars with dashes) — direct lookup in agent_secrets.
+      2. sec_ wire form (Crockford 26-char) — decoded to UUID, then looked up.
+
+    Returns the UUID if found in agent_secrets for this tenant, else None.
+    Does NOT raise — returns None on any mismatch so callers can try fallbacks.
+
+    Source: ADR-0025; task 4.6.
+    """
+    from sqlalchemy import text as _text  # local import to avoid circular deps
+
+    candidate: str | None = None
+
+    # Form 1 — raw UUID
+    if len(input_str) == 36 and input_str.count("-") == 4:
+        try:
+            candidate = str(_uuid_mod.UUID(input_str))
+        except ValueError:
+            return None
+
+    # Form 2 — sec_ wire form
+    elif input_str.startswith("sec_"):
+        try:
+            candidate = wire_to_db_uuid(input_str, "sec")
+            # Validate it's actually a UUID
+            _uuid_mod.UUID(candidate)
+        except (ValueError, AttributeError):
+            return None
+
+    else:
+        return None
+
+    result = await session.execute(
+        _text(
+            "SELECT id FROM agent_secrets"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {"sid": candidate, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return None
+    try:
+        return _uuid_mod.UUID(str(row.id))
+    except (ValueError, AttributeError):
+        return None
+
+
 async def resolve_email_service_id(
     input_str: str,
     tenant_id: str,

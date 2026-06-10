@@ -25,7 +25,7 @@ An agent holding a share grant SHALL read the shared secret's plaintext via the 
 - **THEN** the plaintext value is returned and `agent_secret.read` is emitted with agent B as the reading actor
 
 ### Requirement: Operator can list and revoke share grants
-Operators SHALL be able to list grants for a secret and revoke a grant via `DELETE`. Revocation MUST be idempotent, MUST take effect immediately (the next `secret_get` by the former recipient returns the uniform not-found error), and MUST emit `agent_secret_grant.revoked`.
+Operators SHALL be able to list grants for a secret and revoke a grant via `DELETE`. Revocation MUST be idempotent, MUST take effect immediately (the next `secret_get` by the former recipient returns the uniform not-found error), and MUST emit `agent_secret_grant.revoked` when a grant row was actually removed.
 
 #### Scenario: Revocation takes immediate effect
 - **WHEN** an operator revokes agent B's grant and agent B then calls `secret_get`
@@ -33,7 +33,7 @@ Operators SHALL be able to list grants for a secret and revoke a grant via `DELE
 
 #### Scenario: Idempotent revoke
 - **WHEN** an operator deletes a grant that was already deleted
-- **THEN** the response is successful (204) and the audit event is still emitted
+- **THEN** the response is successful (204); no audit event is emitted because no state changed (the schema-required grant identifiers are unknowable once the row is gone)
 
 ### Requirement: Operator can delete an agent secret
 As tenant administrators, operators SHALL be able to hard-delete any agent secret in their tenant via `DELETE /v1/tenants/{tenant_id}/agent-secrets/{secret_id}` (e.g. when offboarding an agent or responding to a leak). Deletion removes ciphertext and metadata, cascades share grants, is idempotent (204), and MUST emit `agent_secret.deleted` with operator actor attribution.

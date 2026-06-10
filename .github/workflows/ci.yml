@@ -134,6 +134,11 @@ jobs:
         run: |
           uv sync
           uv run pytest tests/ -v --tb=short
+      - name: Test mcp-server unit
+        working-directory: apps/mcp-server
+        run: |
+          uv sync
+          uv run pytest tests/ -v --tb=short
 
   test-go-unit:
     name: Go Unit Tests

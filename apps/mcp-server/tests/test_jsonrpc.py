@@ -266,18 +266,18 @@ def test_tools_list_with_auth_returns_tools():
     assert "result" in body, f"Expected result, got: {body}"
     tools = body["result"]["tools"]
     assert isinstance(tools, list)
-    assert len(tools) == 6
+    assert len(tools) == 10
 
 
-def test_tools_list_count_is_6():
-    """tools/list result.tools must contain exactly 6 entries."""
+def test_tools_list_count_is_10():
+    """tools/list result.tools must contain exactly 10 entries (6 core + 4 secret tools)."""
     resp = _post(
         "/mcp",
         {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
         headers={"Authorization": f"Bearer {_FAKE_KEY}"},
     )
     tools = resp.json()["result"]["tools"]
-    assert len(tools) == 6, f"Expected 6 tools, got {len(tools)}: {[t['name'] for t in tools]}"
+    assert len(tools) == 10, f"Expected 10 tools, got {len(tools)}: {[t['name'] for t in tools]}"
 
 
 def test_tools_list_all_have_input_schema():
@@ -306,7 +306,7 @@ def test_tools_list_all_have_name_and_description():
 
 
 def test_tools_list_tool_names():
-    """tools/list must contain all 6 expected tool names."""
+    """tools/list must contain all 10 expected tool names (6 core + 4 secret tools)."""
     resp = _post(
         "/mcp",
         {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
@@ -320,6 +320,11 @@ def test_tools_list_tool_names():
         "mintkey_describe_service",
         "mintkey_get_openapi",
         "mintkey_request_token",
+        # Agent secret tools (ADR-0025)
+        "secret_put",
+        "secret_get",
+        "secret_list",
+        "secret_delete",
     }
     assert names == expected, f"Tool name mismatch. Got: {names}"
 
