@@ -34,3 +34,10 @@ dev = [
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.ruff]
+# Exclude auto-generated protobuf files — same policy as admin-api.
+exclude = [
+    "src/mcp_server/vault/vault_pb2.py",
+    "src/mcp_server/vault/vault_pb2_grpc.py",
+]

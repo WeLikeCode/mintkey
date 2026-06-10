@@ -875,7 +875,7 @@ def step_agent_secrets(agent_a_key: str, agent_b_key: str, agent_b_uuid: str) ->
         if returned_value == _AGENT_SECRET_CANARY:
             ok("agent-secrets: A secret_get returned canary value")
         else:
-            bad(f"agent-secrets: A secret_get value mismatch: {returned_value!r}")
+            bad(f"agent-secrets: A secret_get value mismatch (redacted; len={len(returned_value or '')})")
         access = get_r.json().get("access", "")
         if access == "owner":
             ok("agent-secrets: access=owner on owner read")
@@ -891,7 +891,7 @@ def step_agent_secrets(agent_a_key: str, agent_b_key: str, agent_b_uuid: str) ->
         if owner_entries:
             ok("agent-secrets: secret_list contains secret with access=owner")
         else:
-            bad(f"agent-secrets: secret_list missing owner entry for {secret_id}; got {secrets}")
+            bad(f"agent-secrets: secret_list missing owner entry for {secret_id} ({len(secrets)} entries)")
         # Values must NOT be present in list response
         for s in secrets:
             if "value" in s:
@@ -918,7 +918,7 @@ def step_agent_secrets(agent_a_key: str, agent_b_key: str, agent_b_uuid: str) ->
         if b_value == _AGENT_SECRET_CANARY:
             ok("agent-secrets: B secret_get (shared) returned canary value")
         else:
-            bad(f"agent-secrets: B secret_get value mismatch: {b_value!r}")
+            bad(f"agent-secrets: B secret_get value mismatch (redacted; len={len(b_value or '')})")
         b_access = get_b_r.json().get("access", "")
         if b_access == "shared":
             ok("agent-secrets: access=shared on recipient read")
@@ -934,7 +934,7 @@ def step_agent_secrets(agent_a_key: str, agent_b_key: str, agent_b_uuid: str) ->
         if shared_entries:
             ok("agent-secrets: B secret_list shows shared entry")
         else:
-            bad(f"agent-secrets: B secret_list missing shared entry for {secret_id}; got {b_secrets}")
+            bad(f"agent-secrets: B secret_list missing shared entry for {secret_id} ({len(b_secrets)} entries)")
 
     # Operator DELETE grant — revoke B's access
     info("Agent-secrets: operator DELETE grant (revoke)...")
