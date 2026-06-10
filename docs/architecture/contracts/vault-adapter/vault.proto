@@ -382,6 +382,117 @@ message ListVersionsResponse {
   uint32 current_key_version = 3;
 }
 
+// AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+//
+// Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+// is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+// Multiple secrets per agent are handled by SQL (public.agent_secrets);
+// this service handles only the encrypted blob.
+//
+// Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+// Per-transaction set_config('app.current_tenant', …) and
+// pg_advisory_xact_lock are applied identically to VaultAdapter.
+//
+// !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+service AgentSecretsVault {
+  // PutAgentSecret seals the plaintext value and stores (or replaces)
+  // the encrypted blob keyed by (tenant_id, secret_id).
+  //
+  // On overwrite the previous blob is replaced atomically.
+  // The plaintext in the request is discarded after sealing.
+  //
+  // Errors:
+  //   INVALID_ARGUMENT  — tenant_id or secret_id is empty, or value
+  //                       exceeds 65536 bytes.
+  //   PERMISSION_DENIED — caller lacks vault.secret.put scope.
+  //   UNAVAILABLE       — Postgres backend unreachable.
+  rpc PutAgentSecret(PutAgentSecretRequest) returns (PutAgentSecretResponse);
+
+  // GetAgentSecret unseals and returns the plaintext value for one
+  // (tenant_id, secret_id). Every call should be accompanied by an
+  // agent_secret.read audit event emitted by the MCP server.
+  //
+  // Errors:
+  //   NOT_FOUND         — no blob exists for (tenant_id, secret_id).
+  //   PERMISSION_DENIED — caller lacks vault.secret.read scope.
+  //   UNAVAILABLE       — Postgres backend unreachable.
+  rpc GetAgentSecret(GetAgentSecretRequest) returns (GetAgentSecretResponse);
+
+  // DeleteAgentSecret removes the encrypted blob for (tenant_id, secret_id).
+  // Idempotent: returns OK when the row is already absent.
+  //
+  // Errors:
+  //   PERMISSION_DENIED — caller lacks vault.secret.delete scope.
+  //   UNAVAILABLE       — Postgres backend unreachable.
+  rpc DeleteAgentSecret(DeleteAgentSecretRequest) returns (DeleteAgentSecretResponse);
+}
+
+// ----------------------------------------------------------------------
+// PutAgentSecret
+// ----------------------------------------------------------------------
+
+message PutAgentSecretRequest {
+  // ULID-prefixed tenant id (e.g. "tenant_01HX..."). REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed secret id (sec_…). REQUIRED. Assigned by the MCP server
+  // before the call; stable across overwrites of the same named secret.
+  string secret_id = 2;
+
+  // SENSITIVE — plaintext secret bytes. At most 65536 bytes.
+  // The adapter seals this with a fresh AES-256-GCM DEK, discards the
+  // plaintext, and stores the wrapped DEK + ciphertext in vault.agent_secrets.
+  bytes value = 3;
+
+  // KEK version to use for wrapping the DEK. Pass 0 to use the current KEK.
+  uint32 kek_version = 4;
+}
+
+message PutAgentSecretResponse {
+  // The KEK version that wrapped the DEK for this write.
+  uint32 kek_version = 1;
+
+  // Server-side write timestamp.
+  google.protobuf.Timestamp written_at = 2;
+}
+
+// ----------------------------------------------------------------------
+// GetAgentSecret
+// ----------------------------------------------------------------------
+
+message GetAgentSecretRequest {
+  // ULID-prefixed tenant id. REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed secret id (sec_…). REQUIRED.
+  string secret_id = 2;
+}
+
+message GetAgentSecretResponse {
+  // SENSITIVE — plaintext secret bytes. Never log; never persist.
+  bytes value = 1;
+
+  // The KEK version that wrapped the DEK at write time.
+  uint32 kek_version = 2;
+}
+
+// ----------------------------------------------------------------------
+// DeleteAgentSecret
+// ----------------------------------------------------------------------
+
+message DeleteAgentSecretRequest {
+  // ULID-prefixed tenant id. REQUIRED.
+  string tenant_id = 1;
+
+  // ULID-prefixed secret id (sec_…). REQUIRED.
+  string secret_id = 2;
+}
+
+message DeleteAgentSecretResponse {
+  // True if a row was deleted; false if it was already absent (idempotent).
+  bool deleted = 1;
+}
+
 // ValidateServiceIdentityRequest authenticates a calling service.
 message ValidateServiceIdentityRequest {
   // The service identity ID, e.g., svcid_admin_api, svcid_mcp, svcid_broker, svcid_proxy.

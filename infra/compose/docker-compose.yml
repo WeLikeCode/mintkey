@@ -197,6 +197,13 @@ services:
       # secret manager; never commit a real secret here.
       MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID: ${MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID:-svcid_email_proxy}
       MINTKEY_VAULT_EMAIL_PROXY_TOKEN: ${MINTKEY_VAULT_EMAIL_PROXY_TOKEN:-mk_vault_email_proxy_dev_shared_secret!}
+      # MCP-server service identity: vault-adapter registers this on boot so
+      # the scopeInterceptor grants vault.secret.put/read/delete to mcp-server
+      # for AgentSecretsVault RPCs (ADR-0025).
+      # Both services MUST carry the SAME value.  Override in production via a
+      # secret manager; never commit a real secret here.
+      MINTKEY_VAULT_MCP_IDENTITY_ID: ${MINTKEY_VAULT_MCP_IDENTITY_ID:-svcid_mcp}
+      MINTKEY_VAULT_MCP_TOKEN: ${MINTKEY_VAULT_MCP_TOKEN:-mk_vault_mcp_dev_shared_secret!}
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
@@ -351,6 +358,12 @@ services:
       # MINTKEY_MCP_URL: "..."
       # MINTKEY_PROXY_URL: "..."
       # KONG_PROXY_URL: "..."
+      # AgentSecretsVault gRPC (ADR-0025): mcp-server calls vault-adapter for
+      # agent-secret seal/unseal operations.  Phase C tool implementations read
+      # these env vars to construct the gRPC client and authenticate.
+      VAULT_GRPC_ADDR: vault-adapter:8084
+      MINTKEY_VAULT_MCP_IDENTITY_ID: ${MINTKEY_VAULT_MCP_IDENTITY_ID:-svcid_mcp}
+      MINTKEY_VAULT_MCP_TOKEN: ${MINTKEY_VAULT_MCP_TOKEN:-mk_vault_mcp_dev_shared_secret!}
     ports:
       - "8082:8082"
     networks:

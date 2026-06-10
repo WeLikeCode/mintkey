@@ -31,6 +31,8 @@ info:
     | `audit_…`       | AuditEvent                        |
     | `change_…`      | ChangeEvent                       |
     | `session_…`     | Session                           |
+    | `sec_…`         | AgentSecret (ADR-0025)            |
+    | `secgrant_…`    | AgentSecretGrant (ADR-0025)       |
 
     ## Multi-tenancy
 
@@ -159,6 +161,12 @@ tags:
       Admin-API endpoints for granting/revoking agent access to email services.
       A row in email_permission_grants is required before the email-proxy will
       process any request from that agent to that email service.
+  - name: AgentSecrets
+    description: |
+      Operator-facing endpoints for inspecting agent-owned secret metadata and
+      managing read-only share grants between agents in the same tenant.
+      Operators never see secret values — only metadata (name, owner, version,
+      size, timestamps). Per ADR-0025.
 
 security:
   - OperatorSession: []
@@ -3906,6 +3914,182 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
 
+  ###########################################################################
+  # Agent Secrets — operator metadata + grant management (ADR-0025)
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/agent-secrets:
+    get:
+      operationId: listAgentSecrets
+      tags: [AgentSecrets]
+      summary: List agent secret metadata for a tenant.
+      description: |
+        Returns metadata for all agent-owned secrets in the tenant. Never
+        returns secret values or ciphertext. Cursor pagination per the
+        canonical convention (after/limit). Emits no audit event (read-only
+        metadata; secrets surface audits reads at the MCP server per ADR-0025.D4).
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of agent secret metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentSecret"
+                  next_cursor:
+                    type: [string, "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenant_id}/agent-secrets/{secret_id}:
+    parameters:
+      - in: path
+        name: tenant_id
+        required: true
+        schema:
+          type: string
+      - $ref: "#/components/parameters/SecretId"
+    get:
+      operationId: getAgentSecret
+      tags: [AgentSecrets]
+      summary: Get agent secret metadata.
+      description: |
+        Returns metadata for a single agent secret. Never returns the secret
+        value or ciphertext. Emits no audit event.
+      responses:
+        "200":
+          description: Agent secret metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSecret"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteAgentSecretByOperator
+      tags: [AgentSecrets]
+      summary: Delete an agent secret (operator action).
+      description: |
+        Operator hard-delete of an agent secret and its share grants. Idempotent
+        (returns 204 if already absent). Emits audit event: agent_secret.deleted
+        with actor_type=operator.
+      responses:
+        "204":
+          description: Secret deleted (or was already absent).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants:
+    parameters:
+      - in: path
+        name: tenant_id
+        required: true
+        schema:
+          type: string
+      - $ref: "#/components/parameters/SecretId"
+    post:
+      operationId: createAgentSecretGrant
+      tags: [AgentSecrets]
+      summary: Grant read access to a secret.
+      description: |
+        Creates an agent_secret_grants row giving a recipient agent read-only
+        access to this secret. The secret and recipient agent must both exist
+        in the path tenant (cross-tenant references are rejected with 422).
+        Granting to the secret's owner is rejected with 422. Duplicate grants
+        return 409. Emits audit event: agent_secret_grant.created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentSecretGrantRequest"
+      responses:
+        "201":
+          description: Grant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSecretGrant"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+    get:
+      operationId: listAgentSecretGrants
+      tags: [AgentSecrets]
+      summary: List share grants for a secret.
+      description: |
+        Returns all active share grants for the secret. Cursor pagination
+        per the canonical convention (after/limit). Emits no audit event.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Page of agent secret grants.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentSecretGrant"
+                  next_cursor:
+                    type: [string, "null"]
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants/{grant_id}:
+    parameters:
+      - in: path
+        name: tenant_id
+        required: true
+        schema:
+          type: string
+      - $ref: "#/components/parameters/SecretId"
+      - in: path
+        name: grant_id
+        required: true
+        schema:
+          type: string
+          pattern: "^secgrant_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: ULID-prefixed grant identifier.
+    delete:
+      operationId: deleteAgentSecretGrant
+      tags: [AgentSecrets]
+      summary: Revoke a share grant (idempotent).
+      description: |
+        Revokes a share grant. Idempotent: returns 204 even if the grant was
+        already revoked or does not exist. Revocation takes effect immediately.
+        Emits audit event: agent_secret_grant.revoked.
+      responses:
+        "204":
+          description: Grant revoked (or was already absent).
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
 
   ###########################################################################
@@ -4019,6 +4203,14 @@ components:
         type: string
         pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
       description: ULID-prefixed agent identifier.
+    SecretId:
+      in: path
+      name: secret_id
+      required: true
+      schema:
+        type: string
+        pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed agent secret identifier (ADR-0025).
     AfterCursor:
       in: query
       name: after
@@ -5098,6 +5290,12 @@ components:
         - auth.login.success
         - auth.login.failed
         - auth.logout
+        - agent_secret.created
+        - agent_secret.updated
+        - agent_secret.read
+        - agent_secret.deleted
+        - agent_secret_grant.created
+        - agent_secret_grant.revoked
 
     TargetType:
       type: string
@@ -5112,6 +5310,8 @@ components:
         - request
         - kek
         - session
+        - agent_secret
+        - agent_secret_grant
 
     AuditEvent:
       type: object
@@ -5822,6 +6022,93 @@ components:
           description: Email service UUID to grant access to.
       required: [agent_id, email_service_id]
 
+    # ----- Agent Secrets (ADR-0025) -----
+
+    AgentSecret:
+      type: object
+      description: |
+        Metadata for an agent-owned secret. Never contains the secret value or
+        ciphertext. Per ADR-0025.
+      additionalProperties: false
+      required: [id, tenant_id, agent_id, name, version, size_bytes, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID-prefixed secret identifier.
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Owning agent identifier.
+        name:
+          type: string
+          description: Secret name, unique per owning agent.
+        version:
+          type: integer
+          minimum: 1
+          description: Monotonically incremented on each overwrite.
+        size_bytes:
+          type: integer
+          minimum: 0
+          maximum: 65536
+          description: Plaintext size in bytes.
+        content_type:
+          type: [string, "null"]
+          description: Optional free-text content type hint.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentSecretGrant:
+      type: object
+      description: |
+        A read-only share grant giving a recipient agent access to one agent
+        secret. Created by a tenant operator. Per ADR-0025.
+      additionalProperties: false
+      required: [id, tenant_id, secret_id, recipient_agent_id, created_by, created_at]
+      properties:
+        id:
+          type: string
+          pattern: "^secgrant_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID-prefixed grant identifier.
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        secret_id:
+          type: string
+          pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
+        recipient_agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Agent receiving read access.
+        created_by:
+          type: string
+          pattern: "^operator_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: Operator who created the grant.
+        created_at:
+          type: string
+          format: date-time
+
+    CreateAgentSecretGrantRequest:
+      type: object
+      description: |
+        Request body for POST /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants.
+        The secret and recipient agent must both exist in the path tenant.
+        Granting to the secret's own owner is rejected with 422.
+      additionalProperties: false
+      required: [recipient_agent_id]
+      properties:
+        recipient_agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID-prefixed identifier of the agent to receive read access.
+
     # ----- Email Proxy -----
 
     EmailService:
@@ -6169,4 +6456,5 @@ x-mintkey-error-codes:
     - api_key_constraint_failed
     - api_key_resolution_unavailable
     - api_key_actions_exceed_grant
+    - secret_not_found
     - api_key_policy_violation

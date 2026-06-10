@@ -235,16 +235,21 @@ async def create_agent(
     mcp_base = resolve_mcp_public_url()
     mcp_endpoint = f"{mcp_base}/v1/agents/{agent_id}"
 
+    # TODO(ADR-0025 follow-up): created_by sourced from session.operator_id once
+    # the session model exposes the operator UUID. Until then it is NULL (column
+    # is nullable per Liquibase 027) — actor attribution only, no behavior change.
     await session.execute(
         text(
             "INSERT INTO agents"
             " (id, tenant_id, name, description, api_key_hash, api_key_fingerprint,"
             "  mcp_endpoint, status, rate_limit_rps, created_at, updated_at,"
-            "  api_key_expires_at, api_key_version, api_key_last_rotated_at)"
+            "  api_key_expires_at, api_key_version, api_key_last_rotated_at,"
+            "  created_by)"
             " VALUES"
             " (:id, :tenant_id, :name, :description, :api_key_hash, :api_key_fingerprint,"
             "  :mcp_endpoint, :status, :rate_limit_rps, :created_at, :updated_at,"
-            "  :api_key_expires_at, :api_key_version, :api_key_last_rotated_at)"
+            "  :api_key_expires_at, :api_key_version, :api_key_last_rotated_at,"
+            "  :created_by)"
         ),
         {
             "id": str(internal_id),
@@ -261,6 +266,7 @@ async def create_agent(
             "api_key_expires_at": expires_at,
             "api_key_version": 1,
             "api_key_last_rotated_at": None,
+            "created_by": None,  # session.operator_id not yet available
         },
     )
 

@@ -94,6 +94,16 @@ Legend:
 | /v1/internal/validate-agent-key | POST | both | tests/unit/admin_api/test_api_keys.py::test_internal_proxy_hit_accepts_api_key_fields | 200, 401 | 🟡 |
 | /v1/internal/proxy-hit | POST | both | tests/unit/admin_api/test_api_keys.py::test_internal_proxy_hit_accepts_api_key_fields | 200 | 🟡 |
 | /v1/proxy/call/{service_id}/{path_suffix} | GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD | both | TODO (proxy call — requires Kong/egress proxy in acceptance suite) | TODO | 🔴 |
+| /v1/tenants/{tenant_id}/agent-secrets | GET | both | scripts/e2e_smoke.py::step_agent_secrets (operator metadata list — no canary) | 200 | 🟡 |
+| /v1/tenants/{tenant_id}/agent-secrets/{secret_id} | GET | both | scripts/e2e_smoke.py::step_agent_secrets (operator metadata get) | 200, 404 | 🟡 |
+| /v1/tenants/{tenant_id}/agent-secrets/{secret_id} | DELETE | both | scripts/e2e_smoke.py::step_agent_secrets (operator hard-delete, idempotent 204) | 204 | 🟡 |
+| /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants | POST | both | scripts/e2e_smoke.py::step_agent_secrets (operator grant to B) | 201, 409 | 🟡 |
+| /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants | GET | both | tests/unit/admin_api/test_agent_secrets.py | 200, 404 | 🟡 |
+| /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants/{grant_id} | DELETE | both | scripts/e2e_smoke.py::step_agent_secrets (operator revoke, idempotent 204) | 204 | 🟡 |
+| /v1/tools/secret_put | POST | both (MCP server) | scripts/e2e_smoke.py::step_agent_secrets (A put canary) | 200, 401, 422 | 🟡 |
+| /v1/tools/secret_get | GET | both (MCP server) | scripts/e2e_smoke.py::step_agent_secrets (A owner read, B shared read, B post-revocation 404) | 200, 401, 404 | 🟡 |
+| /v1/tools/secret_list | GET | both (MCP server) | scripts/e2e_smoke.py::step_agent_secrets (A owner list, B shared list) | 200, 401 | 🟡 |
+| /v1/tools/secret_delete | DELETE | both (MCP server) | scripts/e2e_smoke.py::step_agent_secrets (A delete, idempotent re-delete) | 200, 401 | 🟡 |
 
 ---
 

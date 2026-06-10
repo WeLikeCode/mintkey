@@ -462,6 +462,83 @@ Services → Edit if you need to change routing.
   exclusively by the email-proxy on `:8088` via these MCP tools.
 </email_services>
 
+<agent_secrets>
+**Agent secrets** let an agent store small encrypted blobs in Mintkey's vault and optionally share them with other agents in the same tenant. Secrets are identified by a `sec_` wire ID and a human-readable `name`.
+
+**Permission scopes (3 actions):**
+
+| Scope | Grants access to |
+|---|---|
+| `read:secrets` | `secret_get`, `secret_list` |
+| `write:secrets` | `secret_put` |
+| `delete:secrets` | `secret_delete` |
+
+Scope model: an agent can only operate on its own secrets (owner) or secrets explicitly shared with it via a grant (shared). The `secret_put` and `secret_delete` tools are restricted to the owning agent.
+
+**Agent secret tools (4 implemented):**
+
+| Tool | Required scope | REST endpoint | Description |
+|---|---|---|---|
+| `secret_put` | `write:secrets` | `POST /v1/tools/secret_put` | Store or overwrite a named secret (creates version=1; increments on overwrite) |
+| `secret_get` | `read:secrets` | `GET /v1/tools/secret_get` | Read the plaintext value of an owned or shared secret |
+| `secret_list` | `read:secrets` | `GET /v1/tools/secret_list` | List metadata for owned + shared secrets (no values; cursor pagination) |
+| `secret_delete` | `delete:secrets` | `DELETE /v1/tools/secret_delete` | Delete an owned secret and all its grants |
+
+**Name validation.** Secret names must match `^[a-zA-Z0-9._-]{1,128}$`. Names outside this pattern are rejected with `422 invalid_argument`.
+
+**Value size limit.** Secret values must be ≤ 65,536 bytes (UTF-8 encoded). Larger values are rejected with `422 invalid_argument`.
+
+**Anti-enumeration.** `secret_get` and `secret_delete` return the same `404 mintkey:secret_not_found` response whether the secret does not exist OR exists but is not visible to the caller. This prevents agents from probing for secrets they were not granted access to.
+
+**Copy-pasteable example invocations:**
+
+```bash
+# Store a secret (creates version=1 or increments on overwrite)
+POST /v1/tools/secret_put
+Content-Type: application/json
+{"name": "db-password", "value": "s3cr3t"}
+# → { "secret_id": "sec_01...", "name": "db-password", "version": 1 }
+
+# Read a secret (owner or shared)
+GET /v1/tools/secret_get?secret_id=sec_01...
+# → { "secret_id": "sec_01...", "name": "db-password", "version": 1, "value": "s3cr3t", "access": "owner" }
+
+# List secrets (owned + shared, no values)
+GET /v1/tools/secret_list
+# → { "secrets": [{"secret_id": "sec_01...", "name": "db-password", "version": 1, "access": "owner", ...}], "next_cursor": null }
+
+# Paginate
+GET /v1/tools/secret_list?after=sec_01...&limit=20
+
+# Delete a secret (owner only)
+DELETE /v1/tools/secret_delete?secret_id=sec_01...
+# → {} (200)
+```
+
+As MCP tool calls (for MCP clients):
+
+```json
+{ "tool": "secret_put", "arguments": { "name": "db-password", "value": "s3cr3t" } }
+// → { "secret_id": "sec_01...", "name": "db-password", "version": 1 }
+
+{ "tool": "secret_get", "arguments": { "secret_id": "sec_01..." } }
+// → { "secret_id": "sec_01...", "name": "db-password", "version": 1, "value": "s3cr3t", "access": "owner" }
+
+{ "tool": "secret_list", "arguments": {} }
+// → { "secrets": [...], "next_cursor": null }
+
+{ "tool": "secret_delete", "arguments": { "secret_id": "sec_01..." } }
+// → {}
+```
+
+**Important behavioural notes:**
+
+- **Secret values are never stored by Mintkey in plaintext.** They are encrypted by the vault-adapter (AES-256-GCM with a per-secret DEK wrapped under the vault KEK) before being persisted. Mintkey never logs or emits the plaintext in audit events, span attributes, or change-event payloads.
+- **Versioning is automatic.** `secret_put` increments the version on every overwrite. Use `secret_get` to confirm the current version.
+- **Deletion is permanent.** `secret_delete` removes both the metadata row and the vault blob. All grants for the secret are also removed (CASCADE). There is no soft-delete or recovery.
+- **Sharing is managed by the operator.** Agents cannot grant each other access directly — an operator must create a grant record via the Admin API. Use `access: "shared"` in `secret_list` / `secret_get` responses to detect shared secrets.
+</agent_secrets>
+
 <errors_and_revocation>
 The proxy and MCP tools return errors with a structured `mintkey:code` field in the response body (for HTTP errors) or in the error frame (for streaming MCP). Handle these distinct cases:
 

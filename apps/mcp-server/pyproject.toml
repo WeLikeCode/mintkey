@@ -17,6 +17,8 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     "prometheus-client>=0.20",
+    "grpcio>=1.60",
+    "protobuf>=5.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -32,3 +34,10 @@ dev = [
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.ruff]
+# Exclude auto-generated protobuf files — same policy as admin-api.
+exclude = [
+    "src/mcp_server/vault/vault_pb2.py",
+    "src/mcp_server/vault/vault_pb2_grpc.py",
+]

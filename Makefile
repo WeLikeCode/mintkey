@@ -209,6 +209,7 @@ test-arch:
 		$(REPO_ROOT)/tests/acceptance/test_audit_append_only.py \
 		$(REPO_ROOT)/tests/acceptance/test_sqlalchemy_mirror.py \
 		$(REPO_ROOT)/tests/acceptance/test_platform_admin_rls.py \
+		$(REPO_ROOT)/tests/acceptance/test_no_plaintext_in_secret_audit.py \
 		-v
 
 test-acceptance:

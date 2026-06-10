@@ -134,6 +134,11 @@ jobs:
         run: |
           uv sync
           uv run pytest tests/ -v --tb=short
+      - name: Test mcp-server unit
+        working-directory: apps/mcp-server
+        run: |
+          uv sync
+          uv run pytest tests/ -v --tb=short
 
   test-go-unit:
     name: Go Unit Tests
@@ -178,6 +183,9 @@ jobs:
       - name: OTel redaction (T-1.10.1)
         working-directory: apps/admin-api
         run: uv run pytest ../../tests/acceptance/test_no_plaintext_in_spans.py ../../tests/acceptance/test_otel_collector_redaction.py -v
+      - name: Agent-secret plaintext-in-audit gate (ADR-0025)
+        working-directory: apps/admin-api
+        run: uv run pytest ../../tests/acceptance/test_no_plaintext_in_secret_audit.py -v
 
   # ────────────────────────────────────────────────────────────────────────────
   # Schema integrity gates (T-1.11.5, T-1.11.6, T-1.11.7)
