@@ -369,7 +369,7 @@ def issue_api_key(agent_uuid: str, svc_uuid: str) -> str:
                json={"service_id": svc_uuid, "allowed_actions": ["*"]})
     key = resp.json().get("plaintext_key", "")
     if key.startswith("mk_svckey_"):
-        ok(f"Service API key issued for svc={svc_uuid[:8]}…: {key[:4]}…")
+        ok(f"Service API key issued for svc={svc_uuid[:8]}… (key redacted)")
         return key
     bad(f"Service API key issue failed for svc={svc_uuid[:8]}…", resp.text)
     return ""
