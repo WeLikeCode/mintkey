@@ -538,24 +538,21 @@ Services → Edit if you need to change routing.
 <agent_secrets>
 **Agent secrets** let an agent store small encrypted blobs in Mintkey's vault and optionally share them with other agents in the same tenant. Secrets are identified by a `sec_` wire ID and a human-readable `name`.
 
-**Permission scopes (3 actions):**
-
-| Scope | Grants access to |
-|---|---|
-| `read:secrets` | `secret_get`, `secret_list` |
-| `write:secrets` | `secret_put` |
-| `delete:secrets` | `secret_delete` |
-
-Scope model: an agent can only operate on its own secrets (owner) or secrets explicitly shared with it via a grant (shared). The `secret_put` and `secret_delete` tools are restricted to the owning agent.
+**Authentication: your `mk_agent_` API key, directly — nothing else.**
+Secret tools do NOT use brokered JWTs. Do NOT call `request_token` for
+them (there is no `read:secrets` action to request; `request_token` is
+only for proxied calls to operator-registered services). Authorization
+is ownership: you can always operate on your own secrets, plus read
+secrets an operator has shared with you. No permission grant is needed.
 
 **Agent secret tools (4 implemented):**
 
-| Tool | Required scope | REST endpoint | Description |
+| Tool | Who may call | REST endpoint | Description |
 |---|---|---|---|
-| `secret_put` | `write:secrets` | `POST /v1/tools/secret_put` | Store or overwrite a named secret (creates version=1; increments on overwrite) |
-| `secret_get` | `read:secrets` | `GET /v1/tools/secret_get` | Read the plaintext value of an owned or shared secret |
-| `secret_list` | `read:secrets` | `GET /v1/tools/secret_list` | List metadata for owned + shared secrets (no values; cursor pagination) |
-| `secret_delete` | `delete:secrets` | `DELETE /v1/tools/secret_delete` | Delete an owned secret and all its grants |
+| `secret_put` | owner (you) | `POST /v1/tools/secret_put` | Store or overwrite a named secret (creates version=1; increments on overwrite) |
+| `secret_get` | owner or shared-with | `GET /v1/tools/secret_get?secret_id=sec_...` | Read the plaintext value (note: query parameter, not path segment) |
+| `secret_list` | owner or shared-with | `GET /v1/tools/secret_list` | List metadata for owned + shared secrets (no values; cursor pagination) |
+| `secret_delete` | owner (you) | `DELETE /v1/tools/secret_delete?secret_id=sec_...` | Delete an owned secret and all its grants |
 
 **Name validation.** Secret names must match `^[a-zA-Z0-9._-]{1,128}$`. Names outside this pattern are rejected with `422 invalid_argument`.
 
