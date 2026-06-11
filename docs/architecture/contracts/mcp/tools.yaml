@@ -149,11 +149,83 @@ $defs:
       - auth_scheme
       - actions
 
+  injection_hint:
+    type: object
+    description: |
+      Per-auth-scheme injection hint: what the proxy injects, where, and what
+      the agent must NOT send. Derived from the single-source-of-truth table in
+      `apps/mcp-server/src/mcp_server/auth_schemes.py`, which mirrors
+      `proxy-plugin/internal/credential/injector.go`.
+    additionalProperties: false
+    properties:
+      injects:
+        type: string
+        description: |
+          Human-readable description of what the proxy sets on the outbound
+          request (e.g. "Proxy sets Authorization: Bearer <secret>").
+      location:
+        type: string
+        enum: [header, query, connection, out_of_band]
+        description: |
+          Where the injected value appears: "header" for HTTP request headers,
+          "query" for URL query parameters, "connection" for transport-level
+          auth (SSH, mTLS), "out_of_band" for schemes handled by a dedicated
+          proxy surface (email, SSH) that is not the HTTP proxy.
+      never_send:
+        type: string
+        description: |
+          What the agent MUST NOT send to the upstream service — the proxy
+          either strips it or it conflicts with the injected value.
+      handled_by:
+        type: string
+        description: |
+          Mintkey component that handles this scheme: "http-proxy" (Kong egress
+          plugin), "ssh-proxy" (SSH bastion), or "email-proxy".
+      status:
+        type: string
+        enum: [injected_by_proxy, not_implemented, handled_by_other_proxy]
+        description: |
+          "injected_by_proxy"      — Kong plugin handles injection; call works.
+          "not_implemented"        — proxy returns an error (e.g. mtls).
+          "handled_by_other_proxy" — use the named proxy surface, not Kong.
+    required: [injects, location, never_send, handled_by, status]
+
+  how_to_call:
+    type: object
+    description: |
+      Usage hint for a service entry in `discover`. Contains the step-by-step
+      call recipe plus a per-scheme injection hint.
+    additionalProperties: false
+    properties:
+      action:
+        type: string
+        description: Default action string to request a token with.
+      step1_request_token:
+        type: string
+        description: Human-readable step 1 — how to call request_token.
+      step2_proxy_call:
+        type: string
+        description: Human-readable step 2 — how to call the proxy.
+      proxy_url_pattern:
+        type: string
+        description: |
+          Full proxy URL pattern including service_id and placeholder path.
+      notes:
+        type: string
+        description: Additional guidance for this service.
+      injection_hint:
+        $ref: "#/$defs/injection_hint"
+        description: |
+          Per-scheme hint: what the proxy injects and what the agent must not
+          send. Present for HTTP-proxy schemes; absent for SSH/email services
+          which use a separate how_to_call shape.
+
   service_full:
     type: object
     description: |
       Full service descriptor returned by `describe_service`. Identical to
-      `service_summary` plus optional `current_key_version` and proxy URLs.
+      `service_summary` plus optional `current_key_version`, proxy URLs,
+      auth scheme details, calling-agent constraints, and OpenAPI availability.
     additionalProperties: false
     properties:
       service_id:
@@ -191,6 +263,82 @@ $defs:
         format: uri
         description: |
           Virtual-host proxy URL — `https://<service-slug>.<tenant-slug>.proxy.local`.
+      auth_scheme_details:
+        type: object
+        description: |
+          Injection-point details for the service's auth scheme. Derived from
+          the injection-hint table (auth_schemes.py) plus per-credential
+          overrides (header_name, query_param).
+        additionalProperties: false
+        properties:
+          injection_point:
+            type: string
+            description: |
+              Where the credential is injected: "header", "query",
+              "connection", or "out_of_band".
+          header_name:
+            type: [string, "null"]
+            description: |
+              HTTP header name used for injection (e.g. "X-API-Key",
+              "Authorization"). Null for non-header schemes.
+          query_param:
+            type: [string, "null"]
+            description: |
+              URL query parameter name used for injection (e.g. "api_key").
+              Null for non-query schemes.
+          format:
+            type: string
+            description: |
+              Value format description, e.g. "Bearer <token>",
+              "base64(user:pass)", "<raw_key>".
+        required: [injection_point, header_name, query_param, format]
+      your_constraints:
+        type: object
+        description: |
+          The calling agent's permission-grant constraints for this service.
+          Each field is null when the operator has not set a limit.
+        additionalProperties: false
+        properties:
+          rate_limit:
+            type: [integer, "null"]
+            description: Maximum requests allowed within `time_window` seconds.
+          time_window:
+            type: [integer, "null"]
+            description: Time window in seconds for `rate_limit`.
+          request_path_prefix:
+            type: [string, "null"]
+            description: |
+              If set, only paths under this prefix are permitted through the
+              proxy for this agent on this service.
+          source_ip_allowlist:
+            type: ["array", "null"]
+            items:
+              type: string
+            description: |
+              If set, the proxy rejects requests whose source IP is not in
+              this CIDR allowlist.
+        required: [rate_limit, time_window, request_path_prefix, source_ip_allowlist]
+      openapi:
+        type: object
+        description: |
+          OpenAPI availability for this service. Tells the agent whether
+          calling `get_openapi` is worth it before actually fetching.
+        additionalProperties: false
+        properties:
+          status:
+            type: string
+            enum: [available, not_registered, fetch_failed]
+            description: |
+              "available"      — operator has registered an openapi_url; fetch
+                                 it via get_openapi.
+              "not_registered" — no openapi_url set; ask the operator to add one.
+              "fetch_failed"   — URL is registered but the last fetch attempt
+                                 failed (timeout, oversized, or unreachable).
+          url:
+            type: [string, "null"]
+            format: uri
+            description: The registered openapi_url, or null if not_registered.
+        required: [status, url]
     required:
       - service_id
       - name
@@ -343,6 +491,19 @@ tools:
           current_key_version: 3
           explicit_proxy_url: "https://proxy.local/v1/call/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
           virtual_host_proxy_url: "https://crm.acme.proxy.local"
+          auth_scheme_details:
+            injection_point: "header"
+            header_name: "Authorization"
+            query_param: null
+            format: "Bearer <token>"
+          your_constraints:
+            rate_limit: 100
+            time_window: 60
+            request_path_prefix: null
+            source_ip_allowlist: null
+          openapi:
+            status: "available"
+            url: "https://crm.acme.example/openapi.json"
 
   # =========================================================================
   - name: "get_openapi"
@@ -350,6 +511,10 @@ tools:
       Return the service's OpenAPI document — either as a URL (default) or
       inline (when ≤ 1 MB and the operator has opted in to inline serving).
       The result is discriminated by `kind`.
+
+      When no openapi_url is registered: `kind: not_registered`.
+      When the registered URL is unreachable or oversized: `kind: fetch_failed`
+      (the url is still included so the agent can report it to the operator).
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -357,12 +522,19 @@ tools:
       properties:
         service_id:
           $ref: "#/$defs/service_id"
+        inline:
+          type: boolean
+          default: false
+          description: |
+            When true, attempt to fetch the document and return it inline.
+            When false (default), return the URL only.
       required: [service_id]
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       oneOf:
         - type: object
           additionalProperties: false
+          description: Registered openapi_url returned as-is (default mode).
           properties:
             kind:
               type: string
@@ -371,11 +543,12 @@ tools:
               type: string
               format: uri
             etag:
-              type: string
-              nullable: true
+              type: [string, "null"]
           required: [kind, openapi_url]
         - type: object
           additionalProperties: false
+          description: |
+            Inline mode: document fetched server-side (≤ 1 MiB, etag-conditional).
           properties:
             kind:
               type: string
@@ -384,13 +557,42 @@ tools:
               type: string
               enum: ["application/json", "application/yaml"]
             etag:
-              type: string
-              nullable: true
+              type: [string, "null"]
             document:
               description: Verbatim OpenAPI document bytes (string-encoded).
               type: string
               maxLength: 1048576
           required: [kind, content_type, document]
+        - type: object
+          additionalProperties: false
+          description: No openapi_url has been registered for this service.
+          properties:
+            kind:
+              type: string
+              enum: [not_registered]
+            hint:
+              type: string
+              description: |
+                Operator-facing hint: how to set openapi_url at service
+                registration.
+          required: [kind]
+        - type: object
+          additionalProperties: false
+          description: |
+            Fetch was attempted but failed (timeout, oversized, or unreachable).
+            The url is included so the agent can report it to the operator.
+          properties:
+            kind:
+              type: string
+              enum: [fetch_failed]
+            openapi_url:
+              type: string
+              format: uri
+              description: The registered URL that could not be fetched.
+            reason:
+              type: string
+              description: Short human-readable failure reason.
+          required: [kind, openapi_url]
       discriminator:
         propertyName: kind
     errors:
@@ -412,11 +614,29 @@ tools:
       - name: "openapi-inline-yaml"
         request:
           service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S2"
+          inline: true
         response:
           kind: "inline"
           content_type: "application/yaml"
           etag: null
           document: "openapi: 3.1.0\ninfo: ...\n"
+      - name: "openapi-not-registered"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S3"
+        response:
+          kind: "not_registered"
+          hint: >
+            The operator has not set an openapi_url for this service.
+            Set it at service registration in the admin UI or via the
+            PATCH /v1/tenants/{tenant_id}/services/{service_id} endpoint.
+      - name: "openapi-fetch-failed"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S4"
+          inline: true
+        response:
+          kind: "fetch_failed"
+          openapi_url: "https://unreachable.example/openapi.json"
+          reason: "connection timeout after 10s"
 
   # =========================================================================
   - name: "request_token"

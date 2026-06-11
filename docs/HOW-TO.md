@@ -835,6 +835,32 @@ Expected: `{"id":"svc_01...","status":"active","slug":"myapi",...}`.
 **What could go wrong:** 422 if `slug` is not unique within the tenant. Choose a
 different slug or check for an existing service with the same slug.
 
+#### Setting `openapi_url` to make the spec agent-discoverable
+
+If the upstream service publishes an OpenAPI spec, set `openapi_url` at registration time (or update it later):
+
+```bash
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "MyAPI",
+    "slug":        "myapi",
+    "base_url":    "https://api.myservice.example.com",
+    "auth_scheme": "bearer_token",
+    "openapi_url": "https://api.myservice.example.com/openapi.json"
+  }')
+```
+
+Once set, agents see the spec in two ways:
+
+- `mintkey_describe_service` returns `openapi.status: "available"` and `openapi_url` — agents can check before fetching.
+- `mintkey_get_openapi` returns the registered URL (`kind: "url"`) or fetches the document inline (`kind: "inline"` when `inline=true`) with etag-conditional caching and a 1 MiB size cap.
+
+**Via Admin UI:** Services → Edit → fill the `OpenAPI URL` field → Save.
+
+If no `openapi_url` is set, `describe_service` reports `openapi.status: "not_registered"` and `get_openapi` returns `kind: "not_registered"` with a hint for the operator.
+
 ---
 
 ### Recipe 2: add a credential
