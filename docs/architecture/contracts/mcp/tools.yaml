@@ -430,6 +430,15 @@ tools:
         next_cursor:
           type: string
           nullable: true
+        hint:
+          type: string
+          description: "Next-step guidance (e.g. call describe_service for auth details)."
+        capabilities:
+          type: string
+          description: >-
+            One-line summary of the server's built-in tools (agent secret
+            storage, describe_service, get_openapi, email tools) so agents
+            that only refresh the service catalog still discover them.
       required: [services, next_cursor]
     errors:
       - code: "invalid_argument"

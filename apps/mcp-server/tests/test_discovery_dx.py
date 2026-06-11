@@ -1054,3 +1054,23 @@ class TestLandingChain:
         from mcp_server.tools.landing import _TOOLS_INDEX
         desc = _TOOLS_INDEX["tools"]["describe_service"]["description"]
         assert desc, "describe_service must have a non-empty description"
+
+
+class TestBuiltinCapabilitiesAdvertised:
+    """list_services and discover must always carry the built-in-capabilities
+    pointer, so catalog-refreshing agents learn about secret storage etc.
+    (Field added after a real agent refreshed via discover and concluded no
+    credential-storage capability existed.)"""
+
+    def test_constant_mentions_secret_tools(self):
+        from mcp_server.tools.discovery import _BUILTIN_CAPABILITIES
+        for tool in ("secret_put", "secret_get", "secret_list", "secret_delete"):
+            assert tool in _BUILTIN_CAPABILITIES
+        assert "mintkey_get_openapi" in _BUILTIN_CAPABILITIES
+
+    def test_list_services_and_discover_payloads_carry_capabilities(self):
+        import inspect
+        from mcp_server.tools import discovery
+        src = inspect.getsource(discovery)
+        # Both payload constructions reference the shared constant.
+        assert src.count('"capabilities": _BUILTIN_CAPABILITIES') == 2

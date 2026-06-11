@@ -273,6 +273,20 @@ def _make_how_to_call(service_id: str, base_url: str, auth_scheme: str = "") -> 
     return result
 
 
+# Shown on every list_services/discover response so agents whose refresh
+# habit is the service catalog still learn about built-in capabilities
+# (observed: agents re-running discover never see initialize/tools-list).
+_BUILTIN_CAPABILITIES = (
+    "Beyond these operator-registered services, this server has built-in "
+    "tools: agent secret storage (secret_put/secret_get/secret_list/"
+    "secret_delete — store your own credentials encrypted and read them "
+    "back), mintkey_describe_service (full auth details + your "
+    "constraints), mintkey_get_openapi (upstream API specs), and email_* "
+    "tools for granted email services. Full list: MCP tools/list or "
+    "GET /v1/tools/bootstrap."
+)
+
+
 @router.get("/list_services")
 async def list_services(
     request: Request,
@@ -341,7 +355,7 @@ async def list_services(
     ]
 
     all_services = services + email_services
-    payload: dict = {"services": all_services}
+    payload: dict = {"services": all_services, "capabilities": _BUILTIN_CAPABILITIES}
     if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
@@ -429,7 +443,7 @@ async def discover(
     ]
 
     all_services = services + email_services_list
-    payload: dict = {"services": all_services}
+    payload: dict = {"services": all_services, "capabilities": _BUILTIN_CAPABILITIES}
     if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
