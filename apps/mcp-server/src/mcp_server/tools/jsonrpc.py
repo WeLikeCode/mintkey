@@ -45,12 +45,22 @@ router = APIRouter()
 _PROTOCOL_VERSION = "2025-06-18"
 
 _INSTRUCTIONS = """\
-You are connected to Mintkey, a credential broker for backend service calls.
-Three core tools are available:
+You are connected to Mintkey, a credential broker for AI agents. Capabilities:
 
-1. mintkey_discover — list services this agent has permission to call
-2. mintkey_request_token — exchange a service_id for a short-lived JWT
-3. (call the service via the proxy URL returned in discover, with the JWT as Bearer)
+1. Brokered service calls — mintkey_discover lists services you may call
+   (with per-auth-scheme injection hints); mintkey_describe_service returns
+   full auth details, your constraints, and the exact proxy URL;
+   mintkey_request_token exchanges a service_id for a short-lived JWT; then
+   call the service via the proxy URL with the JWT as Bearer. The proxy
+   injects the real credential — never send your own upstream auth header.
+2. Agent secret storage — store your OWN credentials (DB passwords,
+   service-account JSON, SSH keys) encrypted at rest and read them back:
+   secret_put / secret_get / secret_list / secret_delete. Secrets are
+   private to you unless an operator shares one with another agent.
+3. Upstream API specs — mintkey_get_openapi returns a service's OpenAPI
+   document (url or inline) when the operator registered one.
+4. Email — email_* tools (send, list mailboxes/messages, attachments) for
+   granted email services, via the REST endpoints listed at GET /v1/tools.
 
 For the full onboarding skill (markdown), call mintkey_bootstrap.
 Auth: send `Authorization: Bearer mk_agent_<your-key>` on every tools/* call.
