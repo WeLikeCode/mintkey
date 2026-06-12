@@ -2,7 +2,10 @@
 FROM node:26-bookworm-slim@sha256:79723b41edbedf595f62e943a9f8b0ba9af5b1e61045c5f8f59c2c02c1212a16
 WORKDIR /app
 
-RUN corepack enable
+# node:26 images no longer bundle corepack (removed from Node >=25 dists);
+# install it from npm before enabling. Broke 'Publish admin-ui' after the
+# dependabot bump to node:26 (same failure as the reverted bump in #91).
+RUN npm install -g corepack@latest && corepack enable
 
 COPY .npmrc .pnpmfile.cjs package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
