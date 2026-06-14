@@ -69,6 +69,8 @@ export const Components = {
   EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
   // Email service new form — provider-driven prefill for IMAP/SMTP host+port (Bug-B fix)
   EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
+  // Agent secret create form with reveal-once panel (Chunk C6, D11)
+  AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
 };
 
 // Global override: show-page renderer that inlines property.description below
