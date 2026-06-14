@@ -40,7 +40,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from admin_api.auth.sessions import get_session_context
+from admin_api.auth.sessions import get_session_context, require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.agent_secrets_vault_client import (
@@ -159,6 +159,7 @@ class UpdateAgentSecretRequest(BaseModel):
 async def create_agent_secret(
     tenant_id: UUID,
     body: CreateAgentSecretRequest,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
@@ -336,6 +337,7 @@ async def list_agent_secrets(
     tenant_id: UUID,
     after: str | None = None,
     limit: int = 50,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -407,6 +409,7 @@ async def list_agent_secrets(
 async def get_agent_secret(
     tenant_id: UUID,
     secret_id: str,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -455,6 +458,7 @@ async def update_agent_secret(
     tenant_id: UUID,
     secret_id: str,
     body: UpdateAgentSecretRequest,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
@@ -604,6 +608,7 @@ async def update_agent_secret(
 async def delete_agent_secret(
     tenant_id: UUID,
     secret_id: str,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
@@ -705,6 +710,7 @@ async def create_agent_secret_grant(
     tenant_id: UUID,
     secret_id: str,
     body: CreateAgentSecretGrantRequest,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
@@ -867,6 +873,7 @@ async def list_agent_secret_grants(
     secret_id: str,
     after: str | None = None,
     limit: int = 50,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -956,6 +963,7 @@ async def delete_agent_secret_grant(
     tenant_id: UUID,
     secret_id: str,
     grant_id: str,
+    _authz: None = Depends(require_tenant_session),
     session: AsyncSession = Depends(get_db_session),
     ctx: Any = Depends(get_session_context),
 ) -> Response:

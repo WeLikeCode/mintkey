@@ -337,7 +337,7 @@ def _create_canary_app(session: Any, vault_client: Any) -> Any:
     """Build a minimal FastAPI app wired to the real agent_secrets router."""
     from fastapi import FastAPI
     from admin_api.api.agent_secrets import router as agent_secrets_router
-    from admin_api.auth.sessions import get_session_context
+    from admin_api.auth.sessions import get_session_context, require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
     from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
@@ -354,9 +354,13 @@ def _create_canary_app(session: Any, vault_client: Any) -> Any:
     async def _mock_ctx() -> Any:
         return _FakeCtxC()
 
+    async def _noop_require_tenant_session() -> None:
+        return None
+
     app.dependency_overrides[get_db_session] = _mock_db
     app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault
     app.dependency_overrides[get_session_context] = _mock_ctx
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(_BASE_C)
     csrf_exempt(_SECRET_PATH_C)

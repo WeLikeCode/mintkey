@@ -156,7 +156,7 @@ def _make_ctx(operator_id: str = OPERATOR_UUID, tenant_id: str = TENANT_ID) -> A
 def _create_app(session: Any, vault_client: Any = None, session_ctx: Any = None) -> Any:
     from fastapi import FastAPI
     from admin_api.api.agent_secrets import router as agent_secrets_router
-    from admin_api.auth.sessions import get_session_context
+    from admin_api.auth.sessions import get_session_context, require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
     from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
@@ -187,6 +187,15 @@ def _create_app(session: Any, vault_client: Any = None, session_ctx: Any = None)
         return _ctx
 
     app.dependency_overrides[get_session_context] = _mock_session_ctx
+
+    # Override require_tenant_session — unit tests run without a real session
+    # store.  The dependency is bypassed here so requests reach the real handler;
+    # happy-path business logic (validation, audit, vault) is still exercised.
+    # Cross-tenant rejection is tested separately in _create_app_with_real_authz.
+    async def _noop_require_tenant_session() -> None:
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(BASE)
     csrf_exempt(SECRET_PATH)
@@ -1429,3 +1438,191 @@ async def test_update_agent_secret_value_too_large_returns_422() -> None:
     body = resp.json()
     assert body["mintkey:code"] == "validation_failed", body
     mock_vault.put_agent_secret.assert_not_called()
+
+
+# ===========================================================================
+# C9: tenant-isolation — require_tenant_session enforced on all handlers
+# ===========================================================================
+
+
+TENANT_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+TENANT_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+
+def _create_app_with_real_authz(session: Any, vault_client: Any = None) -> Any:
+    """
+    Build a test app WITHOUT overriding require_tenant_session.
+
+    validate_session and _is_operator_platform_admin are patched by the
+    caller so no real DB is needed, but the real require_tenant_session
+    dependency is on the wire.  This is used to prove cross-tenant rejection.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agent_secrets import router as agent_secrets_router
+    from admin_api.auth.sessions import get_session_context
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+    from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
+
+    app = FastAPI()
+    app.include_router(agent_secrets_router)
+
+    async def _mock_db():
+        yield session
+
+    app.dependency_overrides[get_db_session] = _mock_db
+
+    _vc = vault_client if vault_client is not None else AsyncMock()
+
+    async def _mock_vault_client():
+        return _vc
+
+    app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault_client
+
+    # get_session_context returns a ctx so that audit / created_by fields work.
+    async def _mock_session_ctx():
+        return _make_ctx()
+
+    app.dependency_overrides[get_session_context] = _mock_session_ctx
+
+    # require_tenant_session is intentionally NOT overridden here.
+
+    path_b = f"/v1/tenants/{TENANT_B}/agent-secrets"
+    csrf_exempt(path_b)
+    csrf_exempt(f"{path_b}/{SECRET_UUID}")
+    csrf_exempt(f"{path_b}/{SECRET_UUID}/grants")
+
+    app.add_middleware(CsrfMiddleware)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_post_create_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when POSTing to
+    TENANT_B's agent-secrets path.  The real require_tenant_session dependency
+    is on the wire — the test will FAIL (returning 201 or 422) if the dependency
+    is absent, proving this test guards the fix.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[MagicMock(), None])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                f"/v1/tenants/{TENANT_B}/agent-secrets",
+                json={"agent_id": TARGET_AGENT_UUID, "name": "x", "value": "y"},
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("detail", {}).get("mintkey:code") == "permission_denied", body
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_put_update_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when PUTting to
+    TENANT_B's agent-secrets/{secret_id} path.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[_make_secret_row()])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.put(
+                f"/v1/tenants/{TENANT_B}/agent-secrets/{SECRET_UUID}",
+                json={"value": "new"},
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_delete_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when DELETEing
+    TENANT_B's agent-secrets/{secret_id}.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[_make_secret_row()])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.delete(
+                f"/v1/tenants/{TENANT_B}/agent-secrets/{SECRET_UUID}",
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )
