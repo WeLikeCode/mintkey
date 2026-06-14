@@ -4,6 +4,7 @@ Unit tests: Agent-secret REST endpoints (operator surface).
 GET    /v1/tenants/{tid}/agent-secrets                                   — list (200)
 POST   /v1/tenants/{tid}/agent-secrets                                   — create (201/409/422) [C5]
 GET    /v1/tenants/{tid}/agent-secrets/{secret_id}                       — get (200/404)
+PUT    /v1/tenants/{tid}/agent-secrets/{secret_id}                       — update/rotate (200/404/422) [C5b]
 DELETE /v1/tenants/{tid}/agent-secrets/{secret_id}                       — delete (204)
 POST   /v1/tenants/{tid}/agent-secrets/{secret_id}/grants                — create grant (201/409/422)
 GET    /v1/tenants/{tid}/agent-secrets/{secret_id}/grants                — list grants (200/404)
@@ -217,6 +218,20 @@ async def _post(path: str, session: Any, body: dict) -> Any:
     app = _create_app(session)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json=body, headers={"X-CSRF-Token": CSRF_TOKEN})
+
+
+async def _put(
+    path: str,
+    session: Any,
+    body: dict,
+    vault_client: Any = None,
+    session_ctx: Any = None,
+) -> Any:
+    from admin_api.middleware.csrf import csrf_exempt
+    csrf_exempt(path)
+    app = _create_app(session, vault_client=vault_client, session_ctx=session_ctx)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.put(path, json=body, headers={"X-CSRF-Token": CSRF_TOKEN})
 
 
 # ===========================================================================
@@ -1251,7 +1266,166 @@ async def test_create_agent_secret_vault_called_with_bare_uuid() -> None:
             "version": 1,
         },
     ),
+    # C5b: operator actor on agent_secret.updated — schema must accept actor_type=operator
+    (
+        "agent_secret.updated",
+        {
+            "secret_id": "sec_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "agent_id": "agent_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "name": "db-password",
+            "version": 2,
+            "previous_version": 1,
+        },
+    ),
 ])
 def test_admin_api_audit_payload_schema_conformance(event_type, payload) -> None:
     """Each agent_secret* payload must conform to the canonical schema $defs."""
     _validate_payload(event_type, payload)
+
+
+# ===========================================================================
+# C5b: PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id} — operator rotate
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_happy_path_returns_200() -> None:
+    """
+    PUT /{secret_id} with valid body returns 200 metadata-only.
+    Verifies: version incremented, vault put called with str(row.id), audit emitted
+    as agent_secret.updated with operator actor, 200 body has no value field.
+    Source: C5b AC-1.
+    """
+    old_row = _make_secret_row(version=3, size_bytes=5)
+    # fetchone calls: (1) SELECT existing row → old_row
+    session = _MockSession(fetch_once_rows=[old_row])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "new-secret-value"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # Metadata-only: must NOT contain value or ciphertext
+    assert "value" not in body, f"Response must not contain 'value': {body}"
+    assert "ciphertext" not in body
+    assert "enc_payload" not in body
+
+    # Wire IDs present
+    assert body["id"].startswith("sec_"), f"Expected sec_ prefix: {body['id']}"
+    assert body["agent_id"].startswith("agent_"), f"Expected agent_ prefix: {body['agent_id']}"
+    assert body["tenant_id"].startswith("tenant_"), f"Expected tenant_ prefix: {body['tenant_id']}"
+
+    # version must be old+1
+    assert body["version"] == old_row.version + 1, (
+        f"Expected version={old_row.version + 1}, got {body['version']}"
+    )
+
+    # size_bytes reflects new value
+    assert body["size_bytes"] == len("new-secret-value".encode("utf-8"))
+
+    # Vault called with str(row.id) — bare UUID, not sec_ wire form
+    mock_vault.put_agent_secret.assert_called_once()
+    vault_kwargs = mock_vault.put_agent_secret.call_args.kwargs
+    assert vault_kwargs["tenant_id"] == TENANT_ID
+    secret_id_passed = vault_kwargs["secret_id"]
+    assert not secret_id_passed.startswith("sec_"), (
+        f"Vault secret_id must be bare UUID, not wire ID; got: {secret_id_passed!r}"
+    )
+    # Must equal str(old_row.id) — the bare UUID of the existing row
+    assert secret_id_passed == str(old_row.id), (
+        f"Expected vault secret_id == str(row.id) == {str(old_row.id)!r}, got {secret_id_passed!r}"
+    )
+
+    # Audit emitted with correct event_type + operator actor
+    mock_audit.assert_called_once()
+    audit_kwargs = mock_audit.call_args.kwargs
+    assert audit_kwargs["event_type"] == "agent_secret.updated"
+    assert audit_kwargs["actor_type"] == "operator"
+    assert audit_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID)
+
+    # Audit payload is identifier-only, no value
+    payload = audit_kwargs["payload"]
+    assert "secret_id" in payload
+    assert "agent_id" in payload
+    assert "name" in payload
+    assert "version" in payload
+    assert "previous_version" in payload
+    assert "value" not in payload
+    assert payload["version"] == old_row.version + 1
+    assert payload["previous_version"] == old_row.version
+
+    # Schema conformance
+    _validate_payload("agent_secret.updated", payload)
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_not_found_returns_404() -> None:
+    """
+    PUT /{secret_id} where the secret does not exist in this tenant returns 404.
+    Vault must NOT be called.
+    Source: C5b AC-b.
+    """
+    session = _MockSession(fetch_once_rows=[None])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock()
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "whatever"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 404, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "secret_not_found", body
+    mock_vault.put_agent_secret.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_value_too_large_returns_422() -> None:
+    """
+    PUT /{secret_id} with value > 65536 bytes returns 422 validation_failed.
+    Vault must NOT be called.
+    Source: C5b AC-c.
+    """
+    session = _MockSession()
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock()
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "x" * 65537},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "validation_failed", body
+    mock_vault.put_agent_secret.assert_not_called()

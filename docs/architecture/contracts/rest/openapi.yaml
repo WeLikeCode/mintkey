@@ -4012,6 +4012,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: updateAgentSecret
+      tags: [AgentSecrets]
+      summary: Operator rotate/overwrite an agent secret value.
+      description: |
+        Overwrites the encrypted secret value for an existing agent secret.
+        Increments the version counter. Response is metadata-only — the secret
+        value is never returned (ADR-0025.D4). Emits audit event:
+        agent_secret.updated with actor_type=operator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentSecretRequest"
+      responses:
+        "200":
+          description: Secret updated. Returns metadata only — no value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSecret"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
     delete:
       operationId: deleteAgentSecretByOperator
       tags: [AgentSecrets]
@@ -6166,6 +6192,24 @@ components:
         content_type:
           type: ["string", "null"]
           description: Optional free-text content type hint (e.g. "application/json").
+
+    UpdateAgentSecretRequest:
+      type: object
+      description: |
+        Request body for PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id}.
+        Overwrites the encrypted value of an existing agent secret. Increments
+        the version counter. Response is metadata-only (ADR-0025.D4).
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          maxLength: 65536
+          x-mintkey-sensitive: true
+          description: New plaintext secret value (UTF-8, max 65536 bytes). Never returned in responses.
+        content_type:
+          type: ["string", "null"]
+          description: Optional free-text content type hint (e.g. "application/json"). If omitted, existing value is preserved.
 
     # ----- Email Proxy -----
 

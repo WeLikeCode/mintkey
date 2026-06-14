@@ -143,6 +143,13 @@ class CreateAgentSecretRequest(BaseModel):
     content_type: Optional[str] = None
 
 
+class UpdateAgentSecretRequest(BaseModel):
+    """Request body for PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id}."""
+
+    value: str
+    content_type: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/tenants/{tenant_id}/agent-secrets — operator provision (C5)
 # ---------------------------------------------------------------------------
@@ -436,6 +443,156 @@ async def get_agent_secret(
         )
 
     return JSONResponse(_secret_row_to_dict(row))
+
+
+# ---------------------------------------------------------------------------
+# PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id} — operator rotate (C5b)
+# ---------------------------------------------------------------------------
+
+
+@router.put("/{secret_id}", status_code=200)
+async def update_agent_secret(
+    tenant_id: UUID,
+    secret_id: str,
+    body: UpdateAgentSecretRequest,
+    session: AsyncSession = Depends(get_db_session),
+    vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
+    ctx: Any = Depends(get_session_context),
+) -> JSONResponse:
+    """
+    Operator overwrite/rotate of an agent secret value.
+
+    - secret must exist in this tenant (404 secret_not_found otherwise).
+    - value must be ≤ 65536 bytes UTF-8 (422 validation_failed).
+    - vault write uses str(row.id) — bare-UUID form, same as POST/read path.
+    - UPDATE version=version+1, size_bytes, content_type (if provided), updated_at.
+    - emits agent_secret.updated with actor_type=operator, no value in payload.
+    - response is metadata-only: no value or ciphertext (ADR-0025.D4).
+
+    Source: ADR-0025; C5b chunk; openapi.yaml updateAgentSecret.
+    """
+    # Validate value size first (before any DB I/O)
+    value_bytes = body.value.encode("utf-8")
+    if len(value_bytes) > _MAX_VALUE_BYTES:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "validation_failed",
+                "title": f"value exceeds {_MAX_VALUE_BYTES} bytes",
+            },
+        )
+
+    # Decode secret_id (accept wire form or bare UUID)
+    try:
+        secret_uuid = _decode_secret_id(secret_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "validation_failed", "title": "Invalid secret_id"},
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    # Look up existing row in this tenant
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, agent_id, name, content_type,"
+            " size_bytes, version, created_at, updated_at"
+            " FROM agent_secrets"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {"sid": secret_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "secret_not_found", "title": "Agent secret not found"},
+        )
+
+    previous_version = int(row.version)
+    new_version = previous_version + 1
+    now = datetime.now(timezone.utc)
+    operator_id = ctx.operator_id if ctx is not None else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+    # Overwrite vault ciphertext — use str(row.id) bare UUID (same as read path)
+    await vault_client.put_agent_secret(
+        tenant_id=str(tenant_id),
+        secret_id=str(row.id),
+        value=value_bytes,
+    )
+
+    # Determine new content_type: use body value if provided, else keep existing
+    new_content_type = body.content_type if body.content_type is not None else row.content_type
+
+    # UPDATE metadata row
+    await session.execute(
+        text(
+            "UPDATE agent_secrets"
+            " SET version = :new_ver,"
+            "     size_bytes = :size,"
+            "     content_type = :ctype,"
+            "     updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "new_ver": new_version,
+            "size": len(value_bytes),
+            "ctype": new_content_type,
+            "now": now,
+            "sid": secret_uuid,
+            "tid": str(tenant_id),
+        },
+    )
+
+    # Audit — identifier-only payload, no value (ADR-0025.D4)
+    secret_wire_id = db_uuid_to_wire_sec(row.id)
+    agent_wire_id = db_uuid_to_wire(row.agent_id, "agent")
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="agent_secret.updated",
+        actor_id=operator_id,
+        actor_type="operator",
+        target_id=row.id,
+        target_type="agent_secret",
+        payload={
+            "secret_id": secret_wire_id,
+            "agent_id": agent_wire_id,
+            "name": row.name,
+            "version": new_version,
+            "previous_version": previous_version,
+        },
+    )
+
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event": "agent_secret.updated",
+            "tenant_id": str(tenant_id),
+            "secret_id": secret_wire_id,
+            "agent_id": agent_wire_id,
+        },
+    )
+
+    await session.commit()
+
+    # Metadata-only 200 response — never returns value or ciphertext (ADR-0025.D4)
+    return JSONResponse(
+        status_code=200,
+        content={
+            "id": secret_wire_id,
+            "tenant_id": db_uuid_to_wire(tenant_id, "tenant"),
+            "agent_id": agent_wire_id,
+            "name": row.name,
+            "version": new_version,
+            "size_bytes": len(value_bytes),
+            "content_type": new_content_type,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": now.isoformat(),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
