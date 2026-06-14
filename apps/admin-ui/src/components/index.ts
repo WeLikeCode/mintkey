@@ -73,6 +73,8 @@ export const Components = {
   AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
   // Agent secret rotate form with reveal-once panel (Chunk C6b)
   AgentSecretUpdateForm: componentLoader.add("AgentSecretUpdateForm", "./actions/AgentSecretUpdateForm"),
+  // Agent secret grants panel — list/create/revoke sharing grants (Chunk C6c)
+  AgentSecretGrantsPanel: componentLoader.add("AgentSecretGrantsPanel", "./actions/AgentSecretGrantsPanel"),
 };
 
 // Global override: show-page renderer that inlines property.description below

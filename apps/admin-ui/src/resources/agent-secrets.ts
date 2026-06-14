@@ -231,6 +231,143 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
         },
       },
 
+      // Manage sharing (C6c): list grants, create a grant, revoke a grant.
+      // GET  → fetches /v1/tenants/{tid}/agent-secrets/{sid}/grants via session
+      //         cookie; stashes list in record.params._grants for the component.
+      // POST + _action=create → apiWrite POST to grants path.
+      // POST + _action=revoke → apiWrite DELETE to specific grant path.
+      manageGrants: {
+        actionType: "record",
+        isVisible: true,
+        label: "Manage Sharing",
+        icon: "Share2",
+        component: Components.AgentSecretGrantsPanel,
+        handler: async (request, _response, context) => {
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const secretId = request.params.recordId ?? "";
+          const adminApiUrl = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
+
+          const grantsPath = `/v1/tenants/${tenantId}/agent-secrets/${secretId}/grants`;
+
+          /** Fetch grants list via session cookie (read path). */
+          const fetchGrants = async (): Promise<Record<string, unknown>[]> => {
+            const sessionToken = (currentAdmin as { sessionToken?: string }).sessionToken ?? "";
+            try {
+              const resp = await fetch(`${adminApiUrl}${grantsPath}`, {
+                headers: sessionToken ? { Cookie: `mintkey_session=${sessionToken}` } : {},
+              });
+              if (!resp.ok) return [];
+              const data = await resp.json() as { data?: Record<string, unknown>[] };
+              return Array.isArray(data.data) ? data.data : [];
+            } catch {
+              return [];
+            }
+          };
+
+          if (request.method === "get") {
+            const grants = await fetchGrants();
+            const base = context.record ? context.record.toJSON(currentAdmin) : await (async () => {
+              const built = await context.resource.build({});
+              return built.toJSON(currentAdmin);
+            })();
+            return {
+              record: {
+                ...base,
+                params: { ...(base.params ?? {}), _grants: grants },
+              },
+            };
+          }
+
+          // POST branch
+          const payload = request.payload as {
+            _action?: string;
+            recipient_agent_id?: string;
+            grant_id?: string;
+          };
+
+          if (payload._action === "create") {
+            const resp = await apiWrite(
+              `${grantsPath}`,
+              "POST",
+              { recipient_agent_id: payload.recipient_agent_id ?? "" },
+              operatorOpts
+            );
+
+            const grants = await fetchGrants();
+            const base = context.record ? context.record.toJSON(currentAdmin) : await (async () => {
+              const built = await context.resource.build({});
+              return built.toJSON(currentAdmin);
+            })();
+            const recordWithGrants = {
+              ...base,
+              params: { ...(base.params ?? {}), _grants: grants },
+            };
+
+            if (!resp.ok) {
+              const errBody = await resp.json().catch(() => ({})) as { title?: string };
+              return {
+                record: recordWithGrants,
+                notice: { message: errBody.title ?? "Failed to create grant", type: "error" },
+              };
+            }
+
+            return {
+              record: recordWithGrants,
+              notice: { message: "Grant created — recipient agent can now read this secret.", type: "success" },
+            };
+          }
+
+          if (payload._action === "revoke") {
+            const grantId = payload.grant_id ?? "";
+            const resp = await apiWrite(
+              `${grantsPath}/${grantId}`,
+              "DELETE",
+              undefined,
+              operatorOpts
+            );
+
+            const grants = await fetchGrants();
+            const base = context.record ? context.record.toJSON(currentAdmin) : await (async () => {
+              const built = await context.resource.build({});
+              return built.toJSON(currentAdmin);
+            })();
+            const recordWithGrants = {
+              ...base,
+              params: { ...(base.params ?? {}), _grants: grants },
+            };
+
+            if (!resp.ok) {
+              const errBody = await resp.json().catch(() => ({})) as { title?: string };
+              return {
+                record: recordWithGrants,
+                notice: { message: errBody.title ?? "Failed to revoke grant", type: "error" },
+              };
+            }
+
+            return {
+              record: recordWithGrants,
+              notice: { message: "Grant revoked.", type: "success" },
+            };
+          }
+
+          // Unknown _action
+          const grants = await fetchGrants();
+          const base = context.record ? context.record.toJSON(currentAdmin) : await (async () => {
+            const built = await context.resource.build({});
+            return built.toJSON(currentAdmin);
+          })();
+          return {
+            record: {
+              ...base,
+              params: { ...(base.params ?? {}), _grants: grants },
+            },
+            notice: { message: "Unknown action", type: "error" },
+          };
+        },
+      },
+
       edit: { isVisible: false },
     },
   },
