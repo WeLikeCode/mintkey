@@ -71,6 +71,8 @@ export const Components = {
   EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
   // Agent secret create form with reveal-once panel (Chunk C6, D11)
   AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
+  // Agent secret rotate form with reveal-once panel (Chunk C6b)
+  AgentSecretUpdateForm: componentLoader.add("AgentSecretUpdateForm", "./actions/AgentSecretUpdateForm"),
 };
 
 // Global override: show-page renderer that inlines property.description below

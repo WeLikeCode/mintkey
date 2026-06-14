@@ -135,8 +135,103 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
           };
         },
       },
+
+      // Rotate action (C6b): replace the encrypted value; version++ on backend.
+      // The reveal-once panel shows the value the operator TYPED — never from the API.
+      editValue: {
+        actionType: "record",
+        isVisible: true,
+        label: "Rotate Value",
+        icon: "RefreshCw",
+        component: Components.AgentSecretUpdateForm,
+        handler: async (request, _response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const secretId = request.params.recordId ?? "";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
+
+          const payload = request.payload as {
+            value?: string;
+            content_type?: string;
+          };
+
+          const body: Record<string, string> = {
+            value: payload.value ?? "",
+          };
+          if (payload.content_type) {
+            body.content_type = payload.content_type;
+          }
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agent-secrets/${secretId}`,
+            "PUT",
+            body,
+            operatorOpts
+          );
+
+          if (!resp.ok) {
+            const errBody = await resp.json().catch(() => ({})) as { title?: string };
+            return {
+              record: await recordJSON(context),
+              notice: { message: errBody.title ?? "Failed to update secret", type: "error" },
+            };
+          }
+
+          return {
+            record: await recordJSON(context),
+            notice: { message: "Secret value rotated", type: "success" },
+          };
+        },
+      },
+
+      // Delete action (C6b): purges the ciphertext; idempotent on the backend.
+      delete: {
+        actionType: "record",
+        isVisible: true,
+        label: "Delete Secret",
+        icon: "Trash",
+        component: Components.ConfirmAction,
+        custom: {
+          description: "This permanently removes the encrypted secret value. The agent will no longer be able to retrieve it.",
+        },
+        handler: async (request, _response, context) => {
+          if (request.method === "get") {
+            return { record: await recordJSON(context) };
+          }
+
+          const { currentAdmin } = context;
+          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const secretId = request.params.recordId ?? "";
+          const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
+
+          const resp = await apiWrite(
+            `/v1/tenants/${tenantId}/agent-secrets/${secretId}`,
+            "DELETE",
+            undefined,
+            operatorOpts
+          );
+
+          if (!resp.ok) {
+            const errBody = await resp.json().catch(() => ({})) as { title?: string };
+            return {
+              record: await recordJSON(context),
+              notice: { message: errBody.title ?? "Failed to delete secret", type: "error" },
+            };
+          }
+
+          return {
+            record: await recordJSON(context),
+            notice: { message: "Secret deleted", type: "success" },
+            redirectUrl: `/admin/resources/agent-secrets`,
+          };
+        },
+      },
+
       edit: { isVisible: false },
-      delete: { isVisible: false },
     },
   },
 };
