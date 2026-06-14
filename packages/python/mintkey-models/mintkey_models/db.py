@@ -324,12 +324,14 @@ class ServiceApiKey(Base):
 
 # ---------------------------------------------------------------------------
 # 027-agent-secrets.yaml  (ADR-0025; agent-stored-secrets)
+# 028-agent-secrets-created-by.yaml  (ADR-0026; operator attribution)
 # ---------------------------------------------------------------------------
 
 
 class AgentSecret(Base):
     """
-    Mirror of the agent_secrets table. Source: 027-agent-secrets.yaml.
+    Mirror of the agent_secrets table. Source: 027-agent-secrets.yaml,
+    028-agent-secrets-created-by.yaml.
     ADR-0025 §D2; per-agent KV secret metadata.
     """
 
@@ -344,6 +346,7 @@ class AgentSecret(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[Optional[UUID]] = mapped_column(nullable=True)
 
 
 class AgentSecretGrant(Base):
