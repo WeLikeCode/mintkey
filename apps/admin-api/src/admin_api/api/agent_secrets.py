@@ -285,7 +285,7 @@ async def create_agent_secret(
         if "unique" in exc_str or "duplicate" in exc_str or "uq_agent_secrets_name" in exc_str:
             # Best-effort purge of the orphaned vault blob; swallow cleanup errors.
             try:
-                await vault_client.delete_agent_secret(secret_db_id)
+                await vault_client.delete_agent_secret(tenant_id=str(tenant_id), secret_id=secret_db_id)
             except Exception:
                 pass
             return JSONResponse(

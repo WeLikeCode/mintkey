@@ -1301,13 +1301,14 @@ async def test_create_agent_secret_race_duplicate_insert_returns_409_and_purges_
     body = resp.json()
     assert body["mintkey:code"] == "duplicate_resource", body
 
-    # (b) Vault delete called exactly once to purge the orphan blob
-    mock_vault.delete_agent_secret.assert_called_once()
-    purge_secret_id = mock_vault.delete_agent_secret.call_args.args[0] if mock_vault.delete_agent_secret.call_args.args else mock_vault.delete_agent_secret.call_args.kwargs.get("secret_id")
-    # Must be a bare UUID (the same one passed to put)
+    # (b) Vault delete called exactly once with the correct keyword args — matching the
+    # real signature delete_agent_secret(self, tenant_id: str, secret_id: str).
+    # The same bare UUID that was passed to put_agent_secret must be purged, and
+    # tenant_id must be the string form of the path tenant.
     put_secret_id = mock_vault.put_agent_secret.call_args.kwargs["secret_id"]
-    assert purge_secret_id == put_secret_id, (
-        f"delete_agent_secret({purge_secret_id!r}) must purge the same blob put by put_agent_secret({put_secret_id!r})"
+    mock_vault.delete_agent_secret.assert_called_once_with(
+        tenant_id=TENANT_ID,
+        secret_id=put_secret_id,
     )
 
 
