@@ -257,26 +257,45 @@ async def create_agent_secret(
         value=value_bytes,
     )
 
-    # INSERT metadata row
-    await session.execute(
-        text(
-            "INSERT INTO agent_secrets"
-            " (id, tenant_id, agent_id, name, content_type, size_bytes, version,"
-            "  created_by, created_at, updated_at)"
-            " VALUES (:sid, :tid, :aid, :name, :ctype, :size, 1,"
-            "         :created_by, :now, :now)"
-        ),
-        {
-            "sid": secret_db_id,
-            "tid": str(tenant_id),
-            "aid": agent_uuid,
-            "name": body.name,
-            "ctype": body.content_type,
-            "size": len(value_bytes),
-            "created_by": str(operator_id),
-            "now": now,
-        },
-    )
+    # INSERT metadata row — wrap to catch the race where a concurrent writer
+    # already committed the same (tenant_id, agent_id, name) between our pre-check
+    # and this INSERT (uq_agent_secrets_name unique violation).
+    try:
+        await session.execute(
+            text(
+                "INSERT INTO agent_secrets"
+                " (id, tenant_id, agent_id, name, content_type, size_bytes, version,"
+                "  created_by, created_at, updated_at)"
+                " VALUES (:sid, :tid, :aid, :name, :ctype, :size, 1,"
+                "         :created_by, :now, :now)"
+            ),
+            {
+                "sid": secret_db_id,
+                "tid": str(tenant_id),
+                "aid": agent_uuid,
+                "name": body.name,
+                "ctype": body.content_type,
+                "size": len(value_bytes),
+                "created_by": str(operator_id),
+                "now": now,
+            },
+        )
+    except Exception as exc:
+        exc_str = str(exc).lower()
+        if "unique" in exc_str or "duplicate" in exc_str or "uq_agent_secrets_name" in exc_str:
+            # Best-effort purge of the orphaned vault blob; swallow cleanup errors.
+            try:
+                await vault_client.delete_agent_secret(secret_db_id)
+            except Exception:
+                pass
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "mintkey:code": "duplicate_resource",
+                    "title": "A secret with this name already exists for the target agent",
+                },
+            )
+        raise
 
     # Audit — identifier-only payload, no value (ADR-0025.D4)
     secret_wire_id = db_uuid_to_wire_sec(secret_uuid)

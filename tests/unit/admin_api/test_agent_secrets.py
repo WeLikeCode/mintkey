@@ -1238,6 +1238,79 @@ async def test_create_agent_secret_vault_called_with_bare_uuid() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_create_agent_secret_race_duplicate_insert_returns_409_and_purges_orphan() -> None:
+    """
+    C10: Concurrent duplicate-name write loses the race at INSERT time.
+
+    Scenario: two identical POSTs arrive; the pre-check passes (no row found yet)
+    for both; vault.put_agent_secret succeeds; then the INSERT raises a unique-
+    constraint violation (uq_agent_secrets_name). The handler must:
+      (a) return 409 duplicate_resource — not 500 / re-raise,
+      (b) call vault_client.delete_agent_secret(secret_db_id) to purge the orphan.
+
+    Source: C10 acceptance criteria 1–3.
+    """
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+
+    # The session executes in this order for create_agent_secret:
+    #   call 1: set_tenant_context (patched — no real call)
+    #   call 1: SELECT agents (agent-exists check) → agent_row found
+    #   call 2: SELECT agent_secrets (dup pre-check)     → None (pre-check passes)
+    #   call 3: INSERT agent_secrets                     → raises unique violation
+    class _RaceSession:
+        _calls: int = 0
+
+        async def execute(self, *args: Any, **kwargs: Any) -> Any:
+            self._calls += 1
+            if self._calls == 1:
+                # agent-exists check
+                result = MagicMock()
+                result.fetchone.return_value = agent_row
+                return result
+            elif self._calls == 2:
+                # dup pre-check — passes (no existing row)
+                result = MagicMock()
+                result.fetchone.return_value = None
+                return result
+            else:
+                # INSERT — unique-constraint violation (the losing concurrent writer)
+                raise Exception("unique constraint uq_agent_secrets_name")
+
+        async def commit(self) -> None:
+            pass
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+    mock_vault.delete_agent_secret = AsyncMock(return_value=True)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post_create_secret(
+            _RaceSession(),
+            {"agent_id": TARGET_AGENT_UUID, "name": "race-secret", "value": "v"},
+            vault_client=mock_vault,
+        )
+
+    # (a) Must return 409 duplicate_resource — NOT 500
+    assert resp.status_code == 409, f"Expected 409 on race, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body["mintkey:code"] == "duplicate_resource", body
+
+    # (b) Vault delete called exactly once to purge the orphan blob
+    mock_vault.delete_agent_secret.assert_called_once()
+    purge_secret_id = mock_vault.delete_agent_secret.call_args.args[0] if mock_vault.delete_agent_secret.call_args.args else mock_vault.delete_agent_secret.call_args.kwargs.get("secret_id")
+    # Must be a bare UUID (the same one passed to put)
+    put_secret_id = mock_vault.put_agent_secret.call_args.kwargs["secret_id"]
+    assert purge_secret_id == put_secret_id, (
+        f"delete_agent_secret({purge_secret_id!r}) must purge the same blob put by put_agent_secret({put_secret_id!r})"
+    )
+
+
 @pytest.mark.parametrize("event_type,payload", [
     (
         "agent_secret.deleted",
