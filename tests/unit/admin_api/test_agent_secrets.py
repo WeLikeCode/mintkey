@@ -46,6 +46,7 @@ SECRET_UUID = "11111111-1111-1111-1111-111111111111"
 AGENT_UUID = "22222222-2222-2222-2222-222222222222"
 OWNER_UUID = "33333333-3333-3333-3333-333333333333"
 GRANT_UUID = "44444444-4444-4444-4444-444444444444"
+OPERATOR_UUID = "55555555-5555-5555-5555-555555555555"
 
 BASE = f"/v1/tenants/{TENANT_ID}/agent-secrets"
 SECRET_PATH = f"{BASE}/{SECRET_UUID}"
@@ -135,9 +136,22 @@ class _MockSession:
         return result
 
 
-def _create_app(session: Any, vault_client: Any = None) -> Any:
+def _make_ctx(operator_id: str = OPERATOR_UUID, tenant_id: str = TENANT_ID) -> Any:
+    """Return a _Ctx-like object with operator_id and tenant_id as UUIDs."""
+
+    class _FakeCtx:
+        pass
+
+    ctx = _FakeCtx()
+    ctx.operator_id = uuid.UUID(operator_id)
+    ctx.tenant_id = uuid.UUID(tenant_id)
+    return ctx
+
+
+def _create_app(session: Any, vault_client: Any = None, session_ctx: Any = None) -> Any:
     from fastapi import FastAPI
     from admin_api.api.agent_secrets import router as agent_secrets_router
+    from admin_api.auth.sessions import get_session_context
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
     from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
@@ -159,6 +173,15 @@ def _create_app(session: Any, vault_client: Any = None) -> Any:
         return _vc
 
     app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault_client
+
+    # Override get_session_context so tests can seed a specific operator identity
+    # without hitting the database.  Default: return a ctx with OPERATOR_UUID.
+    _ctx = session_ctx if session_ctx is not None else _make_ctx()
+
+    async def _mock_session_ctx():
+        return _ctx
+
+    app.dependency_overrides[get_session_context] = _mock_session_ctx
 
     csrf_exempt(BASE)
     csrf_exempt(SECRET_PATH)
@@ -845,3 +868,116 @@ async def test_delete_agent_secret_idempotent_skips_vault_call() -> None:
 def test_admin_api_audit_payload_schema_conformance(event_type, payload) -> None:
     """Each agent_secret* payload must conform to the canonical schema $defs."""
     _validate_payload(event_type, payload)
+
+
+# ===========================================================================
+# C4b: operator identity threading — actor_id + created_by from session ctx
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_grant_created_by_is_session_operator_id() -> None:
+    """
+    POST /grants must set created_by from the session context operator_id,
+    NOT the nil-UUID placeholder.  The response body's created_by wire ID
+    must encode the seeded OPERATOR_UUID (operator_<crockford>).
+
+    Source: ADR-0025; C4b acceptance criterion AC-2.
+    """
+    secret_row = _make_secret_row(agent_id=OWNER_UUID)
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[secret_row, agent_row, None])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post(GRANTS_PATH, session, {"recipient_agent_id": AGENT_UUID})
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    # created_by must be an operator_ wire ID encoding OPERATOR_UUID — NOT the nil-UUID
+    assert body["created_by"].startswith("operator_"), f"Expected operator_ prefix: {body['created_by']}"
+    nil_wire = "operator_0000000000000000000000000"
+    assert body["created_by"] != nil_wire, (
+        f"created_by is the nil-UUID placeholder; expected the seeded OPERATOR_UUID"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_grant_audit_actor_id_is_session_operator_id() -> None:
+    """
+    POST /grants must pass actor_id == session operator_id to audit_emit,
+    NOT None.
+
+    Source: ADR-0025; C4b acceptance criterion AC-2.
+    """
+    secret_row = _make_secret_row(agent_id=OWNER_UUID)
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[secret_row, agent_row, None])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post(GRANTS_PATH, session, {"recipient_agent_id": AGENT_UUID})
+
+    assert resp.status_code == 201, resp.text
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_revoke_grant_audit_actor_id_is_session_operator_id() -> None:
+    """
+    DELETE /grants/{grant_id} must pass actor_id == session operator_id to audit_emit.
+
+    Source: ADR-0025; C4b acceptance criterion AC-3.
+    """
+    grant_row = _make_grant_row()
+    session = _MockSession(fetch_once_rows=[grant_row])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(GRANT_PATH, session)
+
+    assert resp.status_code == 204, resp.text
+    mock_audit.assert_called_once()
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_secret_audit_actor_id_is_session_operator_id() -> None:
+    """
+    DELETE /{secret_id} must pass actor_id == session operator_id to audit_emit.
+
+    Source: ADR-0025; C4b acceptance criterion AC-4.
+    """
+    row = _make_secret_row()
+    session = _MockSession(fetch_once_rows=[row])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session)
+
+    assert resp.status_code == 204, resp.text
+    mock_audit.assert_called_once()
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )

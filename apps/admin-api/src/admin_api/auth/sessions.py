@@ -152,6 +152,21 @@ async def require_platform_admin_session(request: Request) -> None:
         )
 
 
+async def get_session_context(request: Request) -> Any | None:
+    """
+    FastAPI dependency: return the session context (_Ctx with operator_id and
+    tenant_id) for the caller's mintkey_session cookie, or None if absent/invalid.
+
+    Intended for handlers that need the operator's identity (actor_id, created_by)
+    after the request has already been authenticated by require_tenant_session.
+    Safe to call without a valid session — returns None defensively.
+    """
+    token = request.cookies.get("mintkey_session")
+    if not token:
+        return None
+    return await validate_session(token)
+
+
 async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
     """
     FastAPI dependency: enforce that the caller's session is scoped to `tenant_id`.

@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import get_session_context
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.agent_secrets_vault_client import (
@@ -253,6 +254,7 @@ async def delete_agent_secret(
     secret_id: str,
     session: AsyncSession = Depends(get_db_session),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
+    ctx: Any = Depends(get_session_context),
 ) -> Response:
     """
     Operator hard-delete of an agent secret and its share grants.
@@ -314,7 +316,7 @@ async def delete_agent_secret(
             session=session,
             tenant_id=tenant_id,
             event_type="agent_secret.deleted",
-            actor_id=None,
+            actor_id=ctx.operator_id if ctx is not None else None,
             actor_type="operator",
             target_id=None,
             target_type="agent_secret",
@@ -352,6 +354,7 @@ async def create_agent_secret_grant(
     secret_id: str,
     body: CreateAgentSecretGrantRequest,
     session: AsyncSession = Depends(get_db_session),
+    ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """
     Create a share grant giving a recipient agent read-only access to a secret.
@@ -426,11 +429,10 @@ async def create_agent_secret_grant(
     grant_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
-    # created_by: the operator session; actor_id is None in the current operator
-    # session model (sessions carry no parsed operator UUID yet). Use a nil UUID
-    # as the created_by placeholder — matches the agent-creation precedent.
-    # TODO(ADR-0025 follow-up): populate from session.operator_id once available.
-    created_by_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
+    # created_by: the operator who issued the request, read from the session context.
+    # The request is already authenticated by require_tenant_session (ctx is present
+    # in the normal path). Fall back to nil-UUID only if ctx is unexpectedly absent.
+    created_by_id = ctx.operator_id if ctx is not None else uuid.UUID("00000000-0000-0000-0000-000000000000")
 
     try:
         await session.execute(
@@ -465,7 +467,7 @@ async def create_agent_secret_grant(
         session=session,
         tenant_id=tenant_id,
         event_type="agent_secret_grant.created",
-        actor_id=None,
+        actor_id=ctx.operator_id if ctx is not None else None,
         actor_type="operator",
         target_id=grant_id,
         target_type="agent_secret_grant",
@@ -603,6 +605,7 @@ async def delete_agent_secret_grant(
     secret_id: str,
     grant_id: str,
     session: AsyncSession = Depends(get_db_session),
+    ctx: Any = Depends(get_session_context),
 ) -> Response:
     """
     Revoke a share grant. Idempotent (204 even if already absent).
@@ -652,7 +655,7 @@ async def delete_agent_secret_grant(
             session=session,
             tenant_id=tenant_id,
             event_type="agent_secret_grant.revoked",
-            actor_id=None,
+            actor_id=ctx.operator_id if ctx is not None else None,
             actor_type="operator",
             target_id=None,
             target_type="agent_secret_grant",
