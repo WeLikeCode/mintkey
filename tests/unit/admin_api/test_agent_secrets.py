@@ -135,11 +135,12 @@ class _MockSession:
         return result
 
 
-def _create_app(session: Any) -> Any:
+def _create_app(session: Any, vault_client: Any = None) -> Any:
     from fastapi import FastAPI
     from admin_api.api.agent_secrets import router as agent_secrets_router
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+    from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
 
     app = FastAPI()
     app.include_router(agent_secrets_router)
@@ -148,6 +149,16 @@ def _create_app(session: Any) -> Any:
         yield session
 
     app.dependency_overrides[get_db_session] = _mock_db
+
+    # Override the vault client dependency so tests stay fully in-process.
+    # When no vault_client is provided, use a no-op AsyncMock so existing tests
+    # that don't care about vault behaviour are unaffected.
+    _vc = vault_client if vault_client is not None else AsyncMock()
+
+    async def _mock_vault_client():
+        return _vc
+
+    app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault_client
 
     csrf_exempt(BASE)
     csrf_exempt(SECRET_PATH)
@@ -169,8 +180,8 @@ async def _get(path: str, session: Any, params: dict | None = None) -> Any:
         return await client.get(path, params=params or {})
 
 
-async def _delete(path: str, session: Any) -> Any:
-    app = _create_app(session)
+async def _delete(path: str, session: Any, vault_client: Any = None) -> Any:
+    app = _create_app(session, vault_client=vault_client)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.delete(path, headers={"X-CSRF-Token": CSRF_TOKEN})
 
@@ -745,6 +756,62 @@ def _validate_payload(event_type: str, payload: dict) -> None:
             assert field in properties, (
                 f"[{event_type}] Unexpected field '{field}' in payload: {payload}"
             )
+
+
+# ===========================================================================
+# DELETE secret — vault ciphertext purge (C4)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_secret_calls_vault_client_with_correct_args() -> None:
+    """
+    DELETE /{secret_id} when the secret EXISTS must call
+    AgentSecretsVaultClient.delete_agent_secret(tenant_id=<str>, secret_id=<str>)
+    exactly once with the raw UUID strings before deleting the metadata row.
+    Source: C4 acceptance criterion AC-1; ADR-0025.
+    """
+    row = _make_secret_row()
+    session = _MockSession(fetch_once_rows=[row])
+
+    mock_vault_client = AsyncMock()
+    mock_vault_client.delete_agent_secret = AsyncMock(return_value=True)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session, vault_client=mock_vault_client)
+
+    assert resp.status_code == 204, resp.text
+    mock_vault_client.delete_agent_secret.assert_called_once_with(
+        tenant_id=TENANT_ID,
+        secret_id=SECRET_UUID,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_secret_idempotent_skips_vault_call() -> None:
+    """
+    DELETE /{secret_id} when the secret is ALREADY ABSENT returns 204 and
+    does NOT call the vault client (no metadata row → no vault blob to purge).
+    Source: C4 acceptance criterion AC-2; ADR-0025.
+    """
+    session = _MockSession(fetch_once_rows=[None])
+
+    mock_vault_client = AsyncMock()
+    mock_vault_client.delete_agent_secret = AsyncMock(return_value=False)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session, vault_client=mock_vault_client)
+
+    assert resp.status_code == 204, resp.text
+    mock_vault_client.delete_agent_secret.assert_not_called()
 
 
 @pytest.mark.parametrize("event_type,payload", [

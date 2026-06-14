@@ -10,12 +10,10 @@ DELETE /v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants/{grant_id}  — 
 
 Design constraints (ADR-0025):
   - Metadata-only: no endpoint may return secret values or ciphertext.
-  - Operator hard-delete removes the metadata row (cascades grants); vault blob is
-    orphaned and unreachable without its metadata row. The vault-adapter's
-    svcid_admin_api identity does not hold vault.secret.delete scope in Phase 1.
-    Orphaned blobs will be reclaimed opportunistically in a future cleanup pass.
-    TODO(phase2): add vault.secret.delete scope to svcid_admin_api and call
-    vault_client.delete_agent_secret(secret_id) before the metadata delete.
+  - Operator hard-delete purges the vault ciphertext blob first (via AgentSecretsVaultClient),
+    then deletes the metadata row (cascades grants). Vault-first ordering ensures no window
+    where the blob is accessible after metadata is gone. svcid_admin_api holds
+    vault.secret.delete scope (granted as of C3/ADR-0025).
   - Wire IDs use prefixes sec_ / secgrant_ / agent_ / tenant_ — ADR-0017.11, ADR-0025.
   - set_tenant_context is the FIRST statement in every handler — ADR-0008.
   - text() SQL calls use static string literals + bound params only — no f-strings — ADR-0014.
@@ -42,6 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
+from admin_api.services.agent_secrets_vault_client import (
+    AgentSecretsVaultClient,
+    get_agent_secrets_vault_client,
+)
 from admin_api.utils.wire_ids import (
     db_uuid_to_wire,
     db_uuid_to_wire_sec,
@@ -250,6 +252,7 @@ async def delete_agent_secret(
     tenant_id: UUID,
     secret_id: str,
     session: AsyncSession = Depends(get_db_session),
+    vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
 ) -> Response:
     """
     Operator hard-delete of an agent secret and its share grants.
@@ -257,12 +260,11 @@ async def delete_agent_secret(
     Idempotent (204 even if already absent). Emits agent_secret.deleted with
     actor_type=operator.
 
-    Note: The vault blob in vault.agent_secrets is NOT deleted here because
-    svcid_admin_api does not hold vault.secret.delete scope in Phase 1. The
-    orphaned blob is unreachable without its metadata row and will be reclaimed
-    opportunistically in a future cleanup pass.
-    TODO(phase2): call vault_client.delete_agent_secret(secret_id) once
-    svcid_admin_api has vault.secret.delete scope.
+    Ordering: (1) purge vault ciphertext blob, (2) delete metadata row + cascade grants.
+    Vault-first ordering ensures the blob cannot be read after metadata is gone yet before
+    the blob is purged. If the vault purge raises, the error propagates as a 5xx and the
+    metadata row is left intact (no orphaned-blob risk).  When the metadata row is already
+    absent (idempotent path), the vault client is skipped entirely.
 
     Source: ADR-0025; openapi.yaml deleteAgentSecretByOperator.
     """
@@ -282,6 +284,14 @@ async def delete_agent_secret(
         {"sid": secret_uuid, "tid": str(tenant_id)},
     )
     row = fetch_result.fetchone()
+
+    if row is not None:
+        # Purge the vault ciphertext blob before deleting the metadata row.
+        # If this raises, the 5xx propagates and the metadata row is left intact.
+        await vault_client.delete_agent_secret(
+            tenant_id=str(tenant_id),
+            secret_id=secret_uuid,
+        )
 
     # Delete cascades grants via FK
     await session.execute(
