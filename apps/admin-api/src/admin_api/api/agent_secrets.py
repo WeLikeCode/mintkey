@@ -1,6 +1,7 @@
 """
 Agent secret REST endpoints (operator surface) — ADR-0025.
 
+POST   /v1/tenants/{tenant_id}/agent-secrets                        — operator provision a secret (201) [C5]
 GET    /v1/tenants/{tenant_id}/agent-secrets                        — list metadata (cursor paged)
 GET    /v1/tenants/{tenant_id}/agent-secrets/{secret_id}            — get metadata
 DELETE /v1/tenants/{tenant_id}/agent-secrets/{secret_id}            — operator hard-delete (204)
@@ -27,9 +28,10 @@ Source: ADR-0025; openspec/changes/agent-stored-credentials/design.md.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
@@ -116,12 +118,205 @@ def _grant_row_to_dict(row: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Validation constants
+# ---------------------------------------------------------------------------
+
+_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_MAX_VALUE_BYTES = 65536
+
+
+# ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
 
 
 class CreateAgentSecretGrantRequest(BaseModel):
     recipient_agent_id: str
+
+
+class CreateAgentSecretRequest(BaseModel):
+    """Request body for POST /v1/tenants/{tenant_id}/agent-secrets."""
+
+    agent_id: str
+    name: str
+    value: str
+    content_type: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/tenants/{tenant_id}/agent-secrets — operator provision (C5)
+# ---------------------------------------------------------------------------
+
+
+@router.post("", status_code=201)
+async def create_agent_secret(
+    tenant_id: UUID,
+    body: CreateAgentSecretRequest,
+    session: AsyncSession = Depends(get_db_session),
+    vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
+    ctx: Any = Depends(get_session_context),
+) -> JSONResponse:
+    """
+    Operator-provision a named secret into an agent's namespace.
+
+    - target agent must exist in this tenant (422 not_found otherwise).
+    - name must match ^[A-Za-z0-9._-]{1,128}$ (422 validation_failed).
+    - value must be ≤ 65536 bytes UTF-8 (422 validation_failed).
+    - duplicate (tenant_id, agent_id, name) returns 409 duplicate_resource.
+    - vault write uses bare-UUID secret_id — matches the agent read path.
+    - response is metadata-only: no value or ciphertext (ADR-0025.D4).
+    - emits agent_secret.created with actor_type=operator.
+
+    Source: ADR-0025; C5 chunk; openapi.yaml createAgentSecret.
+    """
+    # Validate name pattern
+    if not _NAME_RE.match(body.name):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "validation_failed",
+                "title": f"name must match ^[A-Za-z0-9._-]{{1,128}}$; got {body.name!r}",
+            },
+        )
+
+    # Validate value size
+    value_bytes = body.value.encode("utf-8")
+    if len(value_bytes) > _MAX_VALUE_BYTES:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "validation_failed",
+                "title": f"value exceeds {_MAX_VALUE_BYTES} bytes",
+            },
+        )
+
+    # Decode agent_id (accept wire form or bare UUID)
+    try:
+        agent_uuid = _decode_agent_id(body.agent_id)
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "validation_failed", "title": "Invalid agent_id"},
+        )
+
+    await set_tenant_context(session, tenant_id)
+
+    # Validate target agent exists in this tenant
+    agent_result = await session.execute(
+        text("SELECT id FROM agents WHERE id = :aid AND tenant_id = :tid"),
+        {"aid": agent_uuid, "tid": str(tenant_id)},
+    )
+    if agent_result.fetchone() is None:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "not_found",
+                "title": "Target agent not found or does not belong to this tenant",
+            },
+        )
+
+    # Pre-check for duplicate (tenant_id, agent_id, name) before touching vault
+    dup_result = await session.execute(
+        text(
+            "SELECT id FROM agent_secrets"
+            " WHERE tenant_id = :tid AND agent_id = :aid AND name = :name"
+        ),
+        {"tid": str(tenant_id), "aid": agent_uuid, "name": body.name},
+    )
+    if dup_result.fetchone() is not None:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "mintkey:code": "duplicate_resource",
+                "title": "A secret with this name already exists for the target agent",
+            },
+        )
+
+    # Mint a new UUID — the vault uses the bare UUID string (not the sec_ wire form)
+    # so that the agent read path (secret_get/GetAgentSecret) can find it:
+    # secret_get.py line 118: vault_client.get_agent_secret(secret_id=meta_secret_id)
+    # where meta_secret_id = str(row.id) — a bare UUID string.
+    secret_uuid = uuid.uuid4()
+    secret_db_id = str(secret_uuid)
+
+    now = datetime.now(timezone.utc)
+    operator_id = ctx.operator_id if ctx is not None else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+    # Blob-first: call vault before committing metadata (orphaned blobs are safe on retry)
+    await vault_client.put_agent_secret(
+        tenant_id=str(tenant_id),
+        secret_id=secret_db_id,
+        value=value_bytes,
+    )
+
+    # INSERT metadata row
+    await session.execute(
+        text(
+            "INSERT INTO agent_secrets"
+            " (id, tenant_id, agent_id, name, content_type, size_bytes, version,"
+            "  created_by, created_at, updated_at)"
+            " VALUES (:sid, :tid, :aid, :name, :ctype, :size, 1,"
+            "         :created_by, :now, :now)"
+        ),
+        {
+            "sid": secret_db_id,
+            "tid": str(tenant_id),
+            "aid": agent_uuid,
+            "name": body.name,
+            "ctype": body.content_type,
+            "size": len(value_bytes),
+            "created_by": str(operator_id),
+            "now": now,
+        },
+    )
+
+    # Audit — identifier-only payload, no value (ADR-0025.D4)
+    secret_wire_id = db_uuid_to_wire_sec(secret_uuid)
+    agent_wire_id = db_uuid_to_wire(uuid.UUID(agent_uuid), "agent")
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="agent_secret.created",
+        actor_id=operator_id,
+        actor_type="operator",
+        target_id=secret_uuid,
+        target_type="agent_secret",
+        payload={
+            "secret_id": secret_wire_id,
+            "agent_id": agent_wire_id,
+            "name": body.name,
+            "version": 1,
+        },
+    )
+
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event": "agent_secret.created",
+            "tenant_id": str(tenant_id),
+            "secret_id": secret_wire_id,
+            "agent_id": body.agent_id,
+        },
+    )
+
+    await session.commit()
+
+    # Metadata-only 201 response — never returns value or ciphertext (ADR-0025.D4)
+    return JSONResponse(
+        status_code=201,
+        content={
+            "id": secret_wire_id,
+            "tenant_id": db_uuid_to_wire(tenant_id, "tenant"),
+            "agent_id": agent_wire_id,
+            "name": body.name,
+            "version": 1,
+            "size_bytes": len(value_bytes),
+            "content_type": body.content_type,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
