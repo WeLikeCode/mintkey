@@ -19,10 +19,7 @@ from __future__ import annotations
 import logging
 import os
 
-import grpc
-import grpc.aio
-
-from admin_api.services import vault_pb2, vault_pb2_grpc  # type: ignore[attr-defined]
+from admin_api.services import vault_pb2, vault_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +42,7 @@ class AgentSecretsVaultClient:
     agent-secret plaintext (vault.secret.read is NOT granted).
     """
 
-    def _metadata(self) -> tuple:
+    def _metadata(self) -> tuple[tuple[str, str], ...]:
         return (
             ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
             ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
