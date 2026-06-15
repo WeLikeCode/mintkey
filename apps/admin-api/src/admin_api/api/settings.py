@@ -5,13 +5,13 @@ GET   /v1/admin/settings — retrieve current platform-wide settings.
 PATCH /v1/admin/settings — update platform-wide settings (partial update supported).
 
 Architecture constraints:
-  - PlatformAdmin check via X-Platform-Admin header (MVP stub; real auth wired later).
+  - PlatformAdmin check via session (ADR-0027 §D2) — X-Platform-Admin header no longer trusted.
   - Settings stored in tenant_settings with key='admin_settings' and tenant_id IS NULL.
   - All SQL uses bound parameters — no f-string interpolation — ADR-0008.
   - Pydantic extra="forbid" on all models enforces unknown-key 422.
   - Audit event "settings.updated" emitted on every PATCH — ADR-0014.7.
 
-Source: T-1.13.1; ADR-0008; ADR-0014.7.
+Source: T-1.13.1; ADR-0008; ADR-0014.7; ADR-0027 §D2.
 """
 from __future__ import annotations
 
@@ -19,12 +19,13 @@ import json
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_platform_admin_session
 from admin_api.db.deps import get_db_session
 from mintkey_models.audit import audit_emit
 
@@ -71,28 +72,10 @@ class AdminSettings(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PlatformAdmin guard (MVP stub)
+# Constants
 # ---------------------------------------------------------------------------
 
 _SYSTEM_TENANT_ID = UUID("00000000-0000-0000-0000-000000000000")
-
-_PERMISSION_DENIED = JSONResponse(
-    status_code=403,
-    content={"mintkey:code": "permission_denied", "title": "Platform admin required"},
-)
-
-
-def _is_platform_admin(request: Request) -> bool:
-    """
-    MVP stub: returns True when X-Platform-Admin: true header is present.
-
-    In production this will validate a signed session claim. The header
-    approach is intentionally test-only — the real gate is wired in T-1.13.2.
-
-    Source: T-1.13.1.
-    """
-    return request.headers.get("X-Platform-Admin") == "true"
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,21 +123,16 @@ async def _save_settings(session: AsyncSession, settings: AdminSettings) -> None
 
 @router.get("/settings")
 async def get_admin_settings(
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     Return current platform-wide admin settings.
 
-    Requires PlatformAdmin role (X-Platform-Admin: true in MVP).
+    Requires PlatformAdmin role (session-based — ADR-0027 §D2).
 
     Source: T-1.13.1.
     """
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={"mintkey:code": "permission_denied", "title": "Platform admin required"},
-        )
     settings = await _load_settings(session)
     return JSONResponse(settings.model_dump())
 
@@ -162,7 +140,7 @@ async def get_admin_settings(
 @router.patch("/settings")
 async def patch_admin_settings(
     body: AdminSettings,
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -172,14 +150,8 @@ async def patch_admin_settings(
     Unknown keys → 422 (Pydantic extra="forbid").
     Emits audit event "settings.updated" — ADR-0014.7.
 
-    Source: T-1.13.1.
+    Source: T-1.13.1; ADR-0027 §D2.
     """
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={"mintkey:code": "permission_denied", "title": "Platform admin required"},
-        )
-
     # Load current state; merge with incoming body (body wins for provided fields)
     current = await _load_settings(session)
 

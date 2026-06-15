@@ -37,6 +37,11 @@ VERIFY_URL = "/v1/admin/audit/verify-chain"
 TENANT_ID = "tenant_00000000000000000000000001"
 
 
+async def _noop_platform_admin():
+    """Dep override: treat all callers as platform-admin."""
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Chain helpers (mirrors audit-verify-job/verify.py logic for test setup)
 # ---------------------------------------------------------------------------
@@ -107,6 +112,7 @@ def _make_mock_session(rows=None):
 def _create_test_app(rows=None):
     from fastapi import FastAPI
     from admin_api.api.audit_admin import router as audit_admin_router
+    from admin_api.auth.sessions import require_platform_admin_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -117,6 +123,7 @@ def _create_test_app(rows=None):
         yield _make_mock_session(rows=rows)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_platform_admin_session] = _noop_platform_admin
 
     csrf_exempt(VERIFY_URL)
     app.add_middleware(CsrfMiddleware)
@@ -142,7 +149,6 @@ async def test_verify_chain_ok() -> None:
         resp = await client.post(
             VERIFY_URL,
             params={"tenant_id": TENANT_ID},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 200, resp.text
@@ -167,7 +173,6 @@ async def test_verify_chain_tampered() -> None:
         resp = await client.post(
             VERIFY_URL,
             params={"tenant_id": TENANT_ID},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 200, resp.text
@@ -181,20 +186,36 @@ async def test_verify_chain_tampered() -> None:
 @pytest.mark.asyncio
 async def test_verify_chain_requires_platform_admin() -> None:
     """
-    POST /v1/admin/audit/verify-chain without X-Platform-Admin header returns 403.
+    POST /v1/admin/audit/verify-chain without a valid platform-admin session returns 401.
+    Session-based authz (ADR-0027 §D2) — no session cookie → 401.
     Source: T-1.13.3.
     """
-    app = _create_test_app(rows=[])
+    from fastapi import FastAPI
+    from admin_api.api.audit_admin import router as audit_admin_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    # No dep override — real require_platform_admin_session; no cookie → 401
+    app_no_auth = FastAPI()
+    app_no_auth.include_router(audit_admin_router)
+
+    async def mock_db_session():
+        yield _make_mock_session(rows=[])
+
+    app_no_auth.dependency_overrides[get_db_session] = mock_db_session
+    csrf_exempt(VERIFY_URL)
+    app_no_auth.add_middleware(CsrfMiddleware)
+
+    async with AsyncClient(transport=ASGITransport(app=app_no_auth), base_url="http://test") as client:
         resp = await client.post(
             VERIFY_URL,
             params={"tenant_id": TENANT_ID},
         )
 
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 401, resp.text
     body = resp.json()
-    assert body.get("mintkey:code") == "permission_denied"
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "unauthenticated"
 
 
 @pytest.mark.asyncio
@@ -209,6 +230,7 @@ async def test_verify_chain_tenant_id_param() -> None:
 
     from fastapi import FastAPI
     from admin_api.api.audit_admin import router as audit_admin_router
+    from admin_api.auth.sessions import require_platform_admin_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -231,6 +253,7 @@ async def test_verify_chain_tenant_id_param() -> None:
         yield session
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_platform_admin_session] = _noop_platform_admin
     csrf_exempt(VERIFY_URL)
     app.add_middleware(CsrfMiddleware)
 
@@ -238,7 +261,6 @@ async def test_verify_chain_tenant_id_param() -> None:
         resp = await client.post(
             VERIFY_URL,
             params={"tenant_id": TENANT_ID},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 200, resp.text
