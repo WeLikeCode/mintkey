@@ -66,6 +66,14 @@ def _make_test_app():
     app.include_router(services_router)
     app.include_router(agents_router)
     app.include_router(audit_router)
+
+    # SCOPE-A (ADR-0027) added require_tenant_session to these endpoints. These
+    # tests verify set_tenant_context forwarding (RLS / ADR-0008), not auth, so
+    # no-op the auth dependency to reach the handlers. Auth + cross-tenant
+    # rejection are covered by test_cross_tenant_403.py and the per-router tests.
+    from admin_api.auth.sessions import require_tenant_session
+
+    app.dependency_overrides[require_tenant_session] = lambda: None
     return app, get_db_session
 
 
