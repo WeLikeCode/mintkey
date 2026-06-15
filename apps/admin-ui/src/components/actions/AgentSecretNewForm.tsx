@@ -33,6 +33,8 @@ import {
 import { ApiClient } from "adminjs";
 import { useSearchParams, useNavigate } from "react-router-dom";
 
+import AsyncCombobox from "../properties/AsyncCombobox.js";
+
 // ── types ────────────────────────────────────────────────────────────────────
 
 // Props injected by AdminJS for resource-type actions
@@ -358,14 +360,12 @@ const AgentSecretNewForm = (props: Props): React.ReactElement => {
               <input type="hidden" name="agent_id" value={agentId} />
             </Box>
           ) : (
-            <Input
-              id="agent_id"
-              type="text"
+            <AsyncCombobox
+              resourceId="agents"
               value={agentId}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAgentId(e.target.value)}
-              placeholder="agent_…"
-              style={inputStyle}
-              data-testid="field-input-agent_id"
+              onChange={(wireId) => setAgentId(wireId)}
+              placeholder="Search agents by name or ID"
+              testId="field-input-agent_id"
             />
           )}
         </FieldRow>

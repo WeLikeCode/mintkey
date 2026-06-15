@@ -18,6 +18,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
+// AsyncCombobox fetches the agents list on mount via the AdminJS API, which is
+// unavailable under jsdom. Stub it as a plain controlled input so these tests
+// exercise AgentSecretNewForm's own logic (AsyncCombobox has its own tests).
+vi.mock("../src/components/properties/AsyncCombobox.js", () => ({
+  default: ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) =>
+    React.createElement("input", {
+      "data-testid": "field-input-agent_id",
+      value: value ?? "",
+      placeholder,
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value),
+    }),
+}));
+
 // Control resourceAction responses (mapped via vitest.render.config.ts alias)
 import { resourceAction as mockResourceAction } from "./__mocks__/adminjs-stub.js";
 
