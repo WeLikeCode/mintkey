@@ -386,6 +386,7 @@ async def create_email_service(
     tenant_id: UUID,
     body: EmailServiceCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Register a new email service.
@@ -505,6 +506,7 @@ async def create_email_service_from_template(
     tenant_id: UUID,
     body: EmailServiceFromTemplate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Create an email service from a catalog template (feat/email-service-templates).
@@ -646,6 +648,7 @@ async def oauth2_authorize(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Start the OAuth2 authorization code flow for gmail|outlook.
@@ -1681,6 +1684,7 @@ async def set_email_service_credential(
     body: EmailServiceCredentialBody,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Store a username+password credential for an email_password or email_app_password
@@ -1817,6 +1821,7 @@ async def delete_email_service_credential(
     service_id: str,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Revoke the stored credential for an email service.
