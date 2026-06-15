@@ -117,6 +117,7 @@ def _create_apple_jwt_app() -> object:
     """FastAPI test app with credentials router, mocked vault + DB."""
     from fastapi import FastAPI
     from admin_api.api.credentials import router as credentials_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
@@ -157,6 +158,11 @@ def _create_apple_jwt_app() -> object:
         return _vault
 
     app.dependency_overrides[get_vault_client] = _mock_vault
+
+    async def _noop_require_tenant_session() -> None:
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(BASE_URL_PATH)
     app.add_middleware(CsrfMiddleware)

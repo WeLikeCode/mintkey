@@ -778,6 +778,7 @@ async def list_services(
     tenant_id: UUID,
     q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List all services for a tenant.
@@ -836,6 +837,7 @@ async def get_service(
     tenant_id: UUID,
     service_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Describe a single service.

@@ -69,6 +69,7 @@ def _make_app_with_vault(vault_client_instance):
     """Build a FastAPI test app with the given vault client instance."""
     from fastapi import FastAPI
     from admin_api.api.credentials import router as credentials_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.services.vault_client import get_vault_client
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
@@ -85,6 +86,11 @@ def _make_app_with_vault(vault_client_instance):
         return vault_client_instance
 
     app.dependency_overrides[get_vault_client] = mock_vault
+
+    async def _noop_require_tenant_session():
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(BASE_URL_PATH)
     app.add_middleware(CsrfMiddleware)
