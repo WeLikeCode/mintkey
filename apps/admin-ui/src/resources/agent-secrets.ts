@@ -23,7 +23,7 @@ const _agentSecretsResource = new RestResource({
   name: "Agent Secrets",
   listPath: "/v1/tenants/{tenantId}/agent-secrets",
   getPath: "/v1/tenants/{tenantId}/agent-secrets/{id}",
-  listKey: "secrets",
+  listKey: "data",
   idField: "id",
   filterKeys: ["agent_id"],
   properties: [
