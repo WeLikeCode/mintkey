@@ -32,6 +32,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.api_keys import _escape_like
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.db.deps import get_db_session
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -44,6 +45,7 @@ async def list_tenant_api_keys(
     q: Optional[str] = None,
     service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List all service API keys in the tenant across all agents.

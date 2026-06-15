@@ -39,6 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire
@@ -233,6 +234,7 @@ async def create_api_key(
     agent_id: str,
     body: ServiceApiKeyCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Create a service API key for an agent.
@@ -425,6 +427,7 @@ async def list_api_keys(
     q: Optional[str] = None,
     service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List API keys for an agent. Never returns plaintext or key_hash.
@@ -547,6 +550,7 @@ async def get_api_key(
     agent_id: str,
     api_key_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Get a single API key. Never returns plaintext or key_hash.
@@ -606,6 +610,7 @@ async def revoke_api_key(
     api_key_id: str,
     body: RevokeRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Revoke an API key.
@@ -700,6 +705,7 @@ async def rotate_api_key(
     agent_id: str,
     api_key_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Rotate an API key — creates a new key with the same binding; old key is NOT revoked.
