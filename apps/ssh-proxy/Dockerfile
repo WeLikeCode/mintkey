@@ -29,9 +29,17 @@ COPY apps/ssh-proxy/ apps/ssh-proxy/
 WORKDIR /workspace/apps/ssh-proxy
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /ssh-proxy ./cmd/ssh-proxy
 
+# Pre-create volume-mount directories owned by nonroot (uid 65532) so that
+# Docker seeds a fresh volume with the correct permissions. Without this,
+# Docker creates the mount-point as root:root 755, and the nonroot process
+# cannot write the generated SSH host key (EACCES on first start).
+RUN mkdir -p /var/lib/mintkey/ssh-recordings && \
+    chown -R 65532:65532 /var/lib/mintkey
+
 # Runtime — pinned 2026-06-01; re-pin every quarter.
 FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
 COPY --from=builder /ssh-proxy /ssh-proxy
+COPY --from=builder --chown=65532:65532 /var/lib/mintkey /var/lib/mintkey
 USER nonroot:nonroot
 EXPOSE 2222 8087
 ENTRYPOINT ["/ssh-proxy"]

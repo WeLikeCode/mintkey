@@ -72,10 +72,12 @@ jobs:
           # in case the file is changed without updating CI.
           SSH_PROXY_HOST_KEY_GENERATE: "true"
 
-      - name: Debug — container status + grafana log on stack failure
+      - name: Debug — container status + logs on stack failure
         if: failure()
         run: |
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml ps -a
+          echo '─── ssh-proxy logs (tail 50) ───'
+          docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs ssh-proxy --tail 50 || true
           echo '─── grafana logs (tail 100) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
           echo '─── keycloak logs (tail 50) ───'
@@ -164,10 +166,12 @@ jobs:
           # in case the file is changed without updating CI.
           SSH_PROXY_HOST_KEY_GENERATE: "true"
 
-      - name: Debug — container status + grafana log on stack failure
+      - name: Debug — container status + logs on stack failure
         if: failure()
         run: |
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml ps -a
+          echo '─── ssh-proxy logs (tail 50) ───'
+          docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs ssh-proxy --tail 50 || true
           echo '─── grafana logs (tail 100) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
           echo '─── keycloak logs (tail 50) ───'
