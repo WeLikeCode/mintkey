@@ -67,6 +67,10 @@ jobs:
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
           COMPOSE_HTTP_TIMEOUT: 180
+          # Fresh CI volume has no ssh host key; allow auto-generation.
+          # Belt-and-suspenders: .env.example already sets this, but explicit here
+          # in case the file is changed without updating CI.
+          SSH_PROXY_HOST_KEY_GENERATE: "true"
 
       - name: Debug — container status + grafana log on stack failure
         if: failure()
@@ -155,6 +159,10 @@ jobs:
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
           COMPOSE_HTTP_TIMEOUT: 180
+          # Fresh CI volume has no ssh host key; allow auto-generation.
+          # Belt-and-suspenders: .env.example already sets this, but explicit here
+          # in case the file is changed without updating CI.
+          SSH_PROXY_HOST_KEY_GENERATE: "true"
 
       - name: Debug — container status + grafana log on stack failure
         if: failure()
