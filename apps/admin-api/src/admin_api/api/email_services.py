@@ -76,15 +76,6 @@ _OUTLOOK_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/author
 # scope (already in _GMAIL_SCOPES) is sufficient to call this endpoint.
 _GMAIL_USERINFO_URL = "https://www.googleapis.com/gmail/v1/users/me/profile"
 
-# Microsoft Graph endpoint used to extract the authorized user's email
-# after the OAuth2 token exchange (parallels _GMAIL_USERINFO_URL). The
-# `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
-# this call. We prefer `mail` (the SMTP address, which Exchange Online
-# IMAP accepts as the XOAUTH2 SASL username) over `userPrincipalName`
-# (canonical identity — for some account types in `@<tenant>.onmicrosoft.com`
-# form which IMAP wouldn't accept).
-_OUTLOOK_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
-
 _GMAIL_SCOPES = (
     "https://mail.google.com/ "
     "https://www.googleapis.com/auth/gmail.send "
@@ -93,8 +84,7 @@ _GMAIL_SCOPES = (
 _OUTLOOK_SCOPES = (
     "https://outlook.office.com/IMAP.AccessAsUser.All "
     "https://outlook.office.com/SMTP.Send "
-    "offline_access "
-    "User.Read"
+    "offline_access"
 )
 
 _SUPPORTED_PROVIDERS = {"gmail", "outlook"}
@@ -420,28 +410,13 @@ async def create_email_service(
             },
         )
 
-    # Defense-in-depth (#365): trim leading/trailing whitespace BEFORE validation /
-    # persistence. Operator paste-with-trailing-newline previously stored
-    # imap_host=" imap.gmail.com    " which broke DNS resolution at runtime and
-    # required a manual SQL trim. Per-field explicit `.strip()` (not a global
-    # Pydantic str_strip_whitespace) — narrow blast radius.
-    # auth_scheme / provider are enum-validated above, so they are NOT trimmed here.
-    name = (body.name or "").strip()
-    imap_host = (body.imap_host or "").strip()
-    smtp_host = (body.smtp_host or "").strip()
-    allowed_recipient_domains: Optional[str] = (
-        body.allowed_recipient_domains.strip()
-        if isinstance(body.allowed_recipient_domains, str)
-        else body.allowed_recipient_domains
-    )
-
-    # Validate host:port (post-trim — all-whitespace input → empty → rejected)
-    if not _valid_host_port(imap_host, body.imap_port):
+    # Validate host:port
+    if not _valid_host_port(body.imap_host, body.imap_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_imap", "title": "Invalid IMAP host or port"},
         )
-    if not _valid_host_port(smtp_host, body.smtp_port):
+    if not _valid_host_port(body.smtp_host, body.smtp_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_smtp", "title": "Invalid SMTP host or port"},
@@ -467,13 +442,13 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": name,
-            "imap_host": imap_host,
+            "name": body.name,
+            "imap_host": body.imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": smtp_host,
+            "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
             "auth_scheme": body.auth_scheme,
-            "allowed_domains": allowed_recipient_domains,
+            "allowed_domains": body.allowed_recipient_domains,
             "pool_size": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "now": now,
@@ -492,11 +467,11 @@ async def create_email_service(
         payload={
             "service_id": str(svc_id),
             "provider": body.provider,
-            "name": name,
+            "name": body.name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": imap_host,
+            "imap_host": body.imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": smtp_host,
+            "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
         },
@@ -508,11 +483,11 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": name,
+            "name": body.name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": imap_host,
+            "imap_host": body.imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": smtp_host,
+            "smtp_host": body.smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "created_at": now.isoformat(),
@@ -1006,17 +981,15 @@ async def _exchange_oauth2_code_for_refresh_token(
     # this call. The returned `emailAddress` is required for the email-proxy
     # IMAP XOAUTH2 path (`user=<email>` SASL parameter).
     #
-    # Outlook: GET https://graph.microsoft.com/v1.0/me with the access_token.
-    # The `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
-    # this call. Prefer the `mail` field (SMTP address — what Exchange Online
-    # IMAP expects as the SASL username); fall back to `userPrincipalName`
-    # when `mail` is absent (common for some account types).
+    # Outlook: the requested scopes are IMAP.AccessAsUser.All + SMTP.Send +
+    # offline_access — none of those grant Microsoft Graph access, so we
+    # cannot fetch /me from here. Store empty email_address; a follow-up
+    # task can add a Graph scope + fetch step (out of scope for C-3).
     #
-    # If the userinfo call fails (httpx error, non-200, or both candidate
-    # fields missing) we proceed with email_address="" so the operator's
-    # authorization is not lost — the agent's IMAP login will fail until they
-    # re-authorize (or a future migration backfills), which is a smaller
-    # blast radius than aborting the whole flow.
+    # If the Gmail userinfo call fails we proceed with email_address="" so
+    # the operator's authorization is not lost — the agent's IMAP login will
+    # fail until they re-authorize (or a future migration backfills), which
+    # is a smaller blast radius than aborting the whole flow.
     email_address: str = ""
     if provider == "gmail":
         try:
@@ -1048,39 +1021,8 @@ async def _exchange_oauth2_code_for_refresh_token(
                 provider,
                 type(exc).__name__,
             )
-    elif provider == "outlook":
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as profile_client:
-                profile_resp = await profile_client.get(
-                    _OUTLOOK_USERINFO_URL,
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-            if profile_resp.status_code == 200:
-                profile_data = profile_resp.json()
-                mail_candidate = profile_data.get("mail")
-                upn_candidate = profile_data.get("userPrincipalName")
-                if isinstance(mail_candidate, str) and mail_candidate:
-                    email_address = mail_candidate
-                elif isinstance(upn_candidate, str) and upn_candidate:
-                    email_address = upn_candidate
-                else:
-                    logger.warning(
-                        "_exchange_oauth2_code: outlook graph /me returned neither mail nor userPrincipalName for service=%s",
-                        resolved_service_id,
-                    )
-            else:
-                logger.warning(
-                    "_exchange_oauth2_code: outlook graph /me returned %d for service=%s — proceeding with empty email_address",
-                    profile_resp.status_code,
-                    resolved_service_id,
-                )
-        except httpx.HTTPError as exc:
-            logger.warning(
-                "_exchange_oauth2_code: outlook graph /me fetch failed for service=%s provider=%s: %s — proceeding with empty email_address",
-                resolved_service_id,
-                provider,
-                type(exc).__name__,
-            )
+    # else: provider == "outlook" — see comment above; intentionally no extra
+    # call. email_address remains "".
 
     # Build the vault payload as a JSON envelope so the email-proxy can
     # extract both the refresh_token (for OAuth2 access_token exchange) and
@@ -2214,29 +2156,6 @@ async def patch_email_service(
             },
         )
 
-    # Defense-in-depth (#365): trim leading/trailing whitespace from string
-    # fields BEFORE persistence. Only mutable string fields are trimmed
-    # (name, allowed_recipient_domains); pool_size_max / tls_insecure_skip_verify
-    # are non-strings. imap_host/smtp_host are immutable on PATCH (rejected above).
-    # Operate on a copy of explicitly-set values so unset fields stay NULL
-    # (preserving the COALESCE-keeps-current semantics below).
-    patch_fields = body.model_dump(exclude_unset=True)
-    for _field in ("name", "allowed_recipient_domains"):
-        if _field in patch_fields and isinstance(patch_fields[_field], str):
-            patch_fields[_field] = patch_fields[_field].strip()
-
-    # After trim, reject all-whitespace name (trim → empty string is operator
-    # error; preserve the field's "not present" semantics by erroring rather
-    # than silently writing "").
-    if "name" in patch_fields and patch_fields["name"] == "":
-        return JSONResponse(
-            status_code=422,
-            content={
-                "mintkey:code": "invalid_name",
-                "title": "name must not be empty or whitespace",
-            },
-        )
-
     await set_tenant_context(session, tenant_id)
 
     # Verify service exists and belongs to this tenant (explicit guard — RLS also enforces)
@@ -2257,9 +2176,6 @@ async def patch_email_service(
 
     # Build fixed-template UPDATE (COALESCE keeps current value when new value is NULL).
     # SQL is a string literal — no f-strings; all values are bound parameters. ADR-0008.
-    # patch_fields holds trimmed string values for fields the caller actually set;
-    # fields NOT in patch_fields fall back to body.* (which is None) → COALESCE
-    # keeps the existing DB value. This preserves the original PATCH semantics.
     await session.execute(
         text(
             "UPDATE email_services"
@@ -2273,10 +2189,8 @@ async def patch_email_service(
             " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
         ),
         {
-            "name": patch_fields.get("name", body.name),
-            "allowed_recipient_domains": patch_fields.get(
-                "allowed_recipient_domains", body.allowed_recipient_domains
-            ),
+            "name": body.name,
+            "allowed_recipient_domains": body.allowed_recipient_domains,
             "pool_size_max": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "updated_at": now,

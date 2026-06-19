@@ -88,7 +88,10 @@ jobs:
       - name: Extract bootstrap credentials for Playwright
         run: |
           pip install cryptography --quiet 2>/dev/null
-          ADMIN_PASS=$(python3 -c "
+          # seed-job writes the encrypted file as root inside the container; the
+          # bind-mounted file lands on the host owned by root.  GitHub Actions
+          # runners have passwordless sudo, so use sudo python3 to read it.
+          ADMIN_PASS=$(sudo python3 -c "
           import sys
           from cryptography.fernet import Fernet
           ciphertext = open(sys.argv[1], 'rb').read()
@@ -200,7 +203,10 @@ jobs:
       - name: Extract bootstrap credentials for Playwright
         run: |
           pip install cryptography --quiet 2>/dev/null
-          ADMIN_PASS=$(python3 -c "
+          # seed-job writes the encrypted file as root inside the container; the
+          # bind-mounted file lands on the host owned by root.  GitHub Actions
+          # runners have passwordless sudo, so use sudo python3 to read it.
+          ADMIN_PASS=$(sudo python3 -c "
           import sys
           from cryptography.fernet import Fernet
           ciphertext = open(sys.argv[1], 'rb').read()
