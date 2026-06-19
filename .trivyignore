@@ -444,6 +444,13 @@ CVE-2026-11824
 #   Will be resolved in next quarterly base-image re-pin (by 2026-09-20).
 CVE-2026-45447
 
+# CVE-2026-42504  stdlib v1.25.9 (jaeger-auth / oauth2-proxy v7.15.2 binary) HIGH
+#   Decoding a maliciously-crafted MIME header causes excessive memory usage.
+#   Fixed in stdlib 1.25.11, 1.26.4. The oauth2-proxy v7.15.2 binary in jaeger-auth
+#   was compiled with Go 1.25.9.  Upgrade to oauth2-proxy v7.16+ tracked in
+#   MINTKEY-412.  Jaeger UI is internal-only; not reachable by untrusted clients.
+CVE-2026-42504
+
 # CVE-2026-12151  undici 6.26.0 (Node.js 26 internally bundled) HIGH
 #   Denial of Service via unbounded memory accumulation in undici.
 #   admin-ui uses node:26; Node.js 26 bundles undici v6.26.0 internally.
