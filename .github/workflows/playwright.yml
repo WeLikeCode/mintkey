@@ -85,6 +85,25 @@ jobs:
           echo '─── prometheus logs (tail 30) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
+      - name: Extract bootstrap credentials for Playwright
+        run: |
+          pip install cryptography --quiet 2>/dev/null
+          ADMIN_PASS=$(python3 -c "
+          import sys
+          from cryptography.fernet import Fernet
+          ciphertext = open(sys.argv[1], 'rb').read()
+          print(Fernet(sys.argv[2].encode()).decrypt(ciphertext).decode().strip())
+          " data/bootstrap-secrets/admin_password \
+            "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}")
+          printf "PLAYWRIGHT_PASS=%s\n" "${ADMIN_PASS}" >> "$GITHUB_ENV"
+          printf "PLAYWRIGHT_USER=admin@mintkey.internal\n" >> "$GITHUB_ENV"
+          TENANT_ID=$(docker compose --env-file .env.example -f infra/compose/docker-compose.yml \
+            exec -T postgres \
+            env PGPASSWORD=changeme psql -U mintkey_migrate -d mintkey -t -A \
+            -c "SELECT id FROM tenants WHERE slug = 't_default' LIMIT 1;" \
+            2>/dev/null | tr -d '[:space:]')
+          [ -n "${TENANT_ID}" ] && printf "PLAYWRIGHT_TENANT_ID=%s\n" "${TENANT_ID}" >> "$GITHUB_ENV" || true
+
       - name: Wait for admin-ui to be healthy
         run: |
           for i in $(seq 1 30); do
@@ -97,7 +116,6 @@ jobs:
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=chromium
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 
@@ -179,6 +197,25 @@ jobs:
           echo '─── prometheus logs (tail 30) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
 
+      - name: Extract bootstrap credentials for Playwright
+        run: |
+          pip install cryptography --quiet 2>/dev/null
+          ADMIN_PASS=$(python3 -c "
+          import sys
+          from cryptography.fernet import Fernet
+          ciphertext = open(sys.argv[1], 'rb').read()
+          print(Fernet(sys.argv[2].encode()).decrypt(ciphertext).decode().strip())
+          " data/bootstrap-secrets/admin_password \
+            "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}")
+          printf "PLAYWRIGHT_PASS=%s\n" "${ADMIN_PASS}" >> "$GITHUB_ENV"
+          printf "PLAYWRIGHT_USER=admin@mintkey.internal\n" >> "$GITHUB_ENV"
+          TENANT_ID=$(docker compose --env-file .env.example -f infra/compose/docker-compose.yml \
+            exec -T postgres \
+            env PGPASSWORD=changeme psql -U mintkey_migrate -d mintkey -t -A \
+            -c "SELECT id FROM tenants WHERE slug = 't_default' LIMIT 1;" \
+            2>/dev/null | tr -d '[:space:]')
+          [ -n "${TENANT_ID}" ] && printf "PLAYWRIGHT_TENANT_ID=%s\n" "${TENANT_ID}" >> "$GITHUB_ENV" || true
+
       - name: Wait for admin-ui to be healthy
         run: |
           for i in $(seq 1 30); do
@@ -191,7 +228,6 @@ jobs:
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=${{ matrix.browser }}
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 
