@@ -121,6 +121,18 @@ MINTKEY_RESTORE_FORCE=1 make restore BACKUP_DIR=~/mintkey-backups/20260531_22580
    ```
 4. The stack will restart automatically. Verify with `docker compose ps` and `make smoke`.
 
+### Restoring a raw pg_dump into a bare Postgres instance
+
+If you are restoring `postgres_dump.sql.gz` directly (e.g. into a standalone Postgres container for verification or disaster recovery outside the normal stack), the two application roles must exist before the dump is loaded — otherwise every table-ownership statement fails with `role does not exist`:
+
+```bash
+psql -U postgres -d mintkey -c "CREATE ROLE mintkey_app;"
+psql -U postgres -d mintkey -c "CREATE ROLE mintkey_migrate;"
+gunzip -c postgres_dump.sql.gz | psql -U postgres -d mintkey
+```
+
+`make restore` handles this automatically (the Makefile pre-creates both roles). This prerequisite only applies when loading the dump manually.
+
 > Note: if the seed-job runs again after restore (e.g. due to a container restart), it may rotate bootstrap secrets. To prevent this, restore *after* the seed-job has run and the stack is healthy — not before.
 
 ### List available backups

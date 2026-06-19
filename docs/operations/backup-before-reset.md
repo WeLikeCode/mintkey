@@ -104,6 +104,26 @@ The restore script:
 
 Exit codes: `0` success; `1` backup not found; `2` user declined; `3` KEK mismatch.
 
+### Prerequisite: application roles on a bare Postgres
+
+If you are loading `postgres_dump.sql.gz` directly into a **fresh Postgres instance**
+(e.g. a standalone container used for disaster-recovery verification — as confirmed
+by a restore test on 2026-06-17), the dump will fail on every ownership statement
+with `ERROR: role "mintkey_app" does not exist` unless both application roles are
+pre-created:
+
+```bash
+psql -U postgres -d mintkey -c "CREATE ROLE mintkey_app;"
+psql -U postgres -d mintkey -c "CREATE ROLE mintkey_migrate;"
+gunzip -c postgres_dump.sql.gz | psql -U postgres -d mintkey
+```
+
+`dev-restore.sh` and `make restore` handle this automatically. The manual step is
+only needed when loading the dump by hand (verification, bare-metal DR, cloud
+migration). Omitting it produces a flood of non-fatal errors but data is still
+loaded — the side-effect is that table ownership is not set correctly, which can
+cause permission errors if the stack later tries to connect as `mintkey_app`.
+
 ---
 
 ## 5. Secrets policy

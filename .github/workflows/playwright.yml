@@ -67,17 +67,45 @@ jobs:
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
           COMPOSE_HTTP_TIMEOUT: 180
+          # Fresh CI volume has no ssh host key; allow auto-generation.
+          # Belt-and-suspenders: .env.example already sets this, but explicit here
+          # in case the file is changed without updating CI.
+          SSH_PROXY_HOST_KEY_GENERATE: "true"
 
-      - name: Debug — container status + grafana log on stack failure
+      - name: Debug — container status + logs on stack failure
         if: failure()
         run: |
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml ps -a
+          echo '─── ssh-proxy logs (tail 50) ───'
+          docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs ssh-proxy --tail 50 || true
           echo '─── grafana logs (tail 100) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
           echo '─── keycloak logs (tail 50) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
           echo '─── prometheus logs (tail 30) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
+
+      - name: Extract bootstrap credentials for Playwright
+        run: |
+          pip install cryptography --quiet 2>/dev/null
+          # seed-job writes the encrypted file as root inside the container; the
+          # bind-mounted file lands on the host owned by root.  GitHub Actions
+          # runners have passwordless sudo, so use sudo python3 to read it.
+          ADMIN_PASS=$(sudo python3 -c "
+          import sys
+          from cryptography.fernet import Fernet
+          ciphertext = open(sys.argv[1], 'rb').read()
+          print(Fernet(sys.argv[2].encode()).decrypt(ciphertext).decode().strip())
+          " data/bootstrap-secrets/admin_password \
+            "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}")
+          printf "PLAYWRIGHT_PASS=%s\n" "${ADMIN_PASS}" >> "$GITHUB_ENV"
+          printf "PLAYWRIGHT_USER=admin@mintkey.internal\n" >> "$GITHUB_ENV"
+          TENANT_ID=$(docker compose --env-file .env.example -f infra/compose/docker-compose.yml \
+            exec -T postgres \
+            env PGPASSWORD=changeme psql -U mintkey_migrate -d mintkey -t -A \
+            -c "SELECT id FROM tenants WHERE slug = 't_default' LIMIT 1;" \
+            2>/dev/null | tr -d '[:space:]')
+          [ -n "${TENANT_ID}" ] && printf "PLAYWRIGHT_TENANT_ID=%s\n" "${TENANT_ID}" >> "$GITHUB_ENV" || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -91,7 +119,6 @@ jobs:
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=chromium
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 
@@ -155,17 +182,45 @@ jobs:
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml up -d --wait --timeout 180
         env:
           COMPOSE_HTTP_TIMEOUT: 180
+          # Fresh CI volume has no ssh host key; allow auto-generation.
+          # Belt-and-suspenders: .env.example already sets this, but explicit here
+          # in case the file is changed without updating CI.
+          SSH_PROXY_HOST_KEY_GENERATE: "true"
 
-      - name: Debug — container status + grafana log on stack failure
+      - name: Debug — container status + logs on stack failure
         if: failure()
         run: |
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml ps -a
+          echo '─── ssh-proxy logs (tail 50) ───'
+          docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs ssh-proxy --tail 50 || true
           echo '─── grafana logs (tail 100) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs grafana --tail 100 || true
           echo '─── keycloak logs (tail 50) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs keycloak --tail 50 || true
           echo '─── prometheus logs (tail 30) ───'
           docker compose --env-file .env.example -f infra/compose/docker-compose.yml logs prometheus --tail 30 || true
+
+      - name: Extract bootstrap credentials for Playwright
+        run: |
+          pip install cryptography --quiet 2>/dev/null
+          # seed-job writes the encrypted file as root inside the container; the
+          # bind-mounted file lands on the host owned by root.  GitHub Actions
+          # runners have passwordless sudo, so use sudo python3 to read it.
+          ADMIN_PASS=$(sudo python3 -c "
+          import sys
+          from cryptography.fernet import Fernet
+          ciphertext = open(sys.argv[1], 'rb').read()
+          print(Fernet(sys.argv[2].encode()).decrypt(ciphertext).decode().strip())
+          " data/bootstrap-secrets/admin_password \
+            "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}")
+          printf "PLAYWRIGHT_PASS=%s\n" "${ADMIN_PASS}" >> "$GITHUB_ENV"
+          printf "PLAYWRIGHT_USER=admin@mintkey.internal\n" >> "$GITHUB_ENV"
+          TENANT_ID=$(docker compose --env-file .env.example -f infra/compose/docker-compose.yml \
+            exec -T postgres \
+            env PGPASSWORD=changeme psql -U mintkey_migrate -d mintkey -t -A \
+            -c "SELECT id FROM tenants WHERE slug = 't_default' LIMIT 1;" \
+            2>/dev/null | tr -d '[:space:]')
+          [ -n "${TENANT_ID}" ] && printf "PLAYWRIGHT_TENANT_ID=%s\n" "${TENANT_ID}" >> "$GITHUB_ENV" || true
 
       - name: Wait for admin-ui to be healthy
         run: |
@@ -179,7 +234,6 @@ jobs:
         working-directory: apps/admin-ui
         run: pnpm test:e2e --project=${{ matrix.browser }}
         env:
-          PLAYWRIGHT_PASS: ${{ secrets.PLAYWRIGHT_PASS }}
           PLAYWRIGHT_BASE_URL: http://localhost:8081
           CI: "true"
 

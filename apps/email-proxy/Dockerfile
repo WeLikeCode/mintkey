@@ -4,8 +4,8 @@
 #
 # Build from repo root: docker build -f apps/email-proxy/Dockerfile -t mintkey-email-proxy .
 
-# Pinned 2026-06-02; re-pin every quarter.
-FROM golang:1.26-alpine@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS builder
+# Pinned 2026-06-19; re-pin every quarter.
+FROM golang:1.26-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
 
 WORKDIR /workspace
 

@@ -1,7 +1,7 @@
 # Credential Broker — Go 1.26, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
-FROM golang:1.26-alpine@sha256:376f4a381b112a7cfef541ecee0263ece432119fbbdad8d75f2f51fc197287f4 AS builder
+FROM golang:1.26-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
 
 WORKDIR /workspace
 
@@ -23,7 +23,7 @@ COPY apps/broker/ apps/broker/
 WORKDIR /workspace/apps/broker
 RUN go build -o /broker ./cmd/broker
 
-# Pinned 2026-05-18; re-pin every quarter.
+# Pinned 2026-06-19; re-pin every quarter.
 FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
 COPY --from=busybox:musl /bin/wget /wget
 COPY --from=builder /broker /broker

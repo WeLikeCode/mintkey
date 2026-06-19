@@ -422,3 +422,50 @@ CVE-2026-47429
 #   npm CLI is only used during admin-ui Docker build, never at runtime.
 #   Review by 2026-08-01 (next quarterly base-image bump).
 CVE-2026-33671
+
+# ── New CVEs 2026-06-20 (PR #229 Go 1.26.4 bump + Playwright fix) — review by 2026-09-20 ──
+
+# CVE-2026-11822  libsqlite3-0 3.40.1-2+deb12u2 (Debian 12 base images) HIGH
+#   SQLite <3.53.2 memory corruption.
+#   fix_deferred: no Debian 12 fix available. Services use PostgreSQL; libsqlite3
+#   is a Debian base image transitive dep never loaded at runtime. Vault-adapter
+#   uses the modernc.org/sqlite pure-Go driver, not libsqlite3-0.
+CVE-2026-11822
+
+# CVE-2026-11824  libsqlite3-0 3.40.1-2+deb12u2 (Debian 12 base images) HIGH
+#   SQLite <3.53.2 heap-based buffer overflow.
+#   Same context and mitigation as CVE-2026-11822 above.
+CVE-2026-11824
+
+# CVE-2026-45447  libssl3 (Debian 12 base images) HIGH
+#   OpenSSL: Heap Use-After-Free in PKCS7_verify(). Fixed in 3.0.20-1~deb12u2.
+#   Installed version is 3.0.18-1~deb12u2 or 3.0.20-1~deb12u1 (pre-pin).
+#   Mintkey services do not call PKCS7_verify(); TLS is terminated at Kong.
+#   Will be resolved in next quarterly base-image re-pin (by 2026-09-20).
+CVE-2026-45447
+
+# CVE-2026-42504  stdlib v1.25.9 (jaeger-auth / oauth2-proxy v7.15.2 binary) HIGH
+#   Decoding a maliciously-crafted MIME header causes excessive memory usage.
+#   Fixed in stdlib 1.25.11, 1.26.4. The oauth2-proxy v7.15.2 binary in jaeger-auth
+#   was compiled with Go 1.25.9.  Upgrade to oauth2-proxy v7.16+ tracked in
+#   MINTKEY-412.  Jaeger UI is internal-only; not reachable by untrusted clients.
+CVE-2026-42504
+
+# CVE-2026-12151  undici 6.26.0 (Node.js 26 internally bundled) HIGH
+#   Denial of Service via unbounded memory accumulation in undici.
+#   admin-ui uses node:26; Node.js 26 bundles undici v6.26.0 internally.
+#   Our app's pnpm dependency (from pnpm-lock.yaml) is undici@7.26.0.
+#   The bundled internal version cannot be upgraded without a Node.js base
+#   image bump (tracked in quarterly base-image re-pin by 2026-09-20).
+#   Admin-ui is operator-facing only; not exposed to untrusted clients directly.
+CVE-2026-12151
+
+# CVE-2026-6734   undici 6.26.0 (Node.js 26 internally bundled) HIGH
+#   Information disclosure and data integrity issue in undici.
+#   Same context as CVE-2026-12151; Node.js-bundled undici, not app dep.
+CVE-2026-6734
+
+# CVE-2026-9697   undici 6.26.0 (Node.js 26 internally bundled) HIGH
+#   Man-in-the-Middle attack via ignored TLS errors in undici.
+#   Same context as CVE-2026-12151; internal connection to trusted services only.
+CVE-2026-9697
