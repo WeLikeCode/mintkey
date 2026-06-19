@@ -116,9 +116,14 @@ def info(msg: str) -> None:
 # ---------------------------------------------------------------------------
 # Docker helper to get values from Postgres
 # ---------------------------------------------------------------------------
+# Compose project name — override (e.g. for an isolated worktree stack) with
+# MINTKEY_COMPOSE_PROJECT; container/volume names derive from it.
+COMPOSE_PROJECT = os.getenv("MINTKEY_COMPOSE_PROJECT", "mintkey")
+
+
 def pg_query(sql: str) -> str:
     r = subprocess.run(
-        ["docker", "exec", "mintkey-postgres-1", "psql", "-U", "mintkey_migrate", "-d", "mintkey", "-tAc", sql],
+        ["docker", "exec", f"{COMPOSE_PROJECT}-postgres-1", "psql", "-U", "mintkey_migrate", "-d", "mintkey", "-tAc", sql],
         capture_output=True, text=True, timeout=10,
     )
     lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip() and l.strip() != "SET"]
@@ -128,7 +133,7 @@ def pg_query(sql: str) -> str:
 def get_admin_password() -> str:
     """Read and decrypt the Fernet-encrypted admin_password from the bootstrap-secrets volume."""
     r = subprocess.run(
-        ["docker", "run", "--rm", "-v", "mintkey_bootstrap_secrets:/secrets", "alpine", "cat", "/secrets/admin_password"],
+        ["docker", "run", "--rm", "-v", f"{COMPOSE_PROJECT}_bootstrap_secrets:/secrets", "alpine", "cat", "/secrets/admin_password"],
         capture_output=True, timeout=15,
     )
     ciphertext = r.stdout.strip()
@@ -208,6 +213,42 @@ def step0_health() -> None:
 # ---------------------------------------------------------------------------
 # Step 1: Authenticate
 # ---------------------------------------------------------------------------
+def _oidc_login(password: str) -> bool:
+    """Keycloak OIDC headless flow (ADR-0020) — mirrors tests/acceptance/test_e2e_smoke.py::_oidc_login.
+
+    Populates the module-global requests session with mintkey_session +
+    csrf_token cookies. Returns True on success.
+    """
+    import re as _re
+
+    username = os.getenv("MINTKEY_OIDC_USER", ADMIN_EMAIL)
+    r1 = session.get(f"{ADMIN_API_URL}/v1/auth/oidc/login", allow_redirects=False, timeout=15)
+    if r1.status_code != 302:
+        bad(f"OIDC login redirect — expected 302, got {r1.status_code}")
+        return False
+    r2 = session.get(r1.headers["location"], allow_redirects=True, timeout=15)
+    if r2.status_code != 200:
+        bad(f"Keycloak login page — expected 200, got {r2.status_code}")
+        return False
+    m = _re.search(r'action="([^"]+)"', r2.text)
+    if not m:
+        bad("Keycloak login page — <form action> not found")
+        return False
+    r3 = session.post(
+        m.group(1).replace("&amp;", "&"),
+        data={"username": username, "password": password, "credentialId": ""},
+        allow_redirects=False, timeout=15,
+    )
+    if r3.status_code not in (301, 302, 303, 307, 308):
+        bad(f"Keycloak credentials POST — expected redirect, got {r3.status_code} (bad password?)")
+        return False
+    r4 = session.get(r3.headers["location"], allow_redirects=False, timeout=15)
+    if r4.status_code not in (301, 302, 303, 307, 308):
+        bad(f"OIDC callback — expected redirect, got {r4.status_code}")
+        return False
+    return bool(session.cookies.get("csrf_token"))
+
+
 def step1_auth() -> None:
     global csrf_token, tenant_id, operator_id
     info("Step 1: Authenticating as bootstrap admin...")
@@ -221,10 +262,21 @@ def step1_auth() -> None:
         f"{ADMIN_API_URL}/v1/auth/internal-login",
         json={"email": ADMIN_EMAIL, "password": password},
     )
-    if not assert_status("Login", resp, 200):
-        sys.exit(1)
+    if resp.status_code == 404:
+        # Internal login is OFF by default (ADR-0020) — use the Keycloak OIDC flow.
+        info("internal-login 404-gated — falling back to Keycloak OIDC flow (ADR-0020)")
+        if not _oidc_login(password):
+            sys.exit(1)
+        whoami = session.get(f"{ADMIN_API_URL}/v1/auth/whoami", timeout=15)
+        if whoami.status_code != 200:
+            bad(f"whoami after OIDC login — expected 200, got {whoami.status_code}")
+            sys.exit(1)
+        data = whoami.json().get("operator", whoami.json())
+    else:
+        if not assert_status("Login", resp, 200):
+            sys.exit(1)
+        data = resp.json()
 
-    data = resp.json()
     tenant_id = data["tenant_id"]
     operator_id = data["operator_id"]
 
@@ -317,7 +369,7 @@ def issue_api_key(agent_uuid: str, svc_uuid: str) -> str:
                json={"service_id": svc_uuid, "allowed_actions": ["*"]})
     key = resp.json().get("plaintext_key", "")
     if key.startswith("mk_svckey_"):
-        ok(f"Service API key issued for svc={svc_uuid[:8]}…: {key[:4]}…")
+        ok(f"Service API key issued for svc={svc_uuid[:8]}… (key redacted)")
         return key
     bad(f"Service API key issue failed for svc={svc_uuid[:8]}…", resp.text)
     return ""
@@ -412,6 +464,7 @@ def step1b_whoami() -> None:
     assert_status("whoami", r, 200)
     if r.status_code == 200:
         body = r.json()
+        body = body.get("operator", body)  # OIDC sessions nest identity under "operator"
         ok("whoami.operator_id present") if "operator_id" in body else bad("whoami.operator_id missing")
         ok("whoami.tenant_id present") if "tenant_id" in body else bad("whoami.tenant_id missing")
 
@@ -438,6 +491,7 @@ def step2a_create_tenant() -> str:
     info("Step 2a: POST /v1/tenants (create second tenant)...")
     r = api("POST", "/v1/tenants", json={
         "name": "smoke-tenant-b",
+        "slug": "smoke-tenant-b",
         "display_name": "Smoke Tenant B",
     })
     if r.status_code in (201, 409):
@@ -560,7 +614,8 @@ def step6b_list_api_keys(agent_uuid: str) -> None:
     r = api("GET", f"/v1/tenants/{tenant_id}/agents/{agent_uuid}/api-keys")
     assert_status("GET api-keys list", r, 200)
     if r.status_code == 200:
-        keys = r.json().get("api_keys", r.json() if isinstance(r.json(), list) else [])
+        body = r.json()
+        keys = body if isinstance(body, list) else body.get("api_keys", [])
         ok(f"API key list returned {len(keys)} key(s)")
 
 
@@ -766,6 +821,220 @@ def step13_logout() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Agent-secrets steps (task 7.1 — agent-stored credentials)
+# Gate: MINTKEY_INTEGRATION_TEST=true required (live stack + real vault-adapter)
+# Canary value used throughout: MINTKEY-CANARY-agent-secret-7f3e9d
+# ---------------------------------------------------------------------------
+_AGENT_SECRET_CANARY = "MINTKEY-CANARY-agent-secret-7f3e9d"
+_MCP_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8082")
+
+
+def _mcp(method: str, path: str, agent_key: str, **kwargs: Any) -> requests.Response:
+    """Call the MCP server with an agent API key."""
+    headers = kwargs.pop("headers", {})
+    headers["Authorization"] = f"Bearer {agent_key}"
+    return requests.request(method, f"{_MCP_URL}{path}", headers=headers, **kwargs)
+
+
+def step_agent_secrets(agent_a_key: str, agent_b_key: str, agent_b_uuid: str) -> None:
+    """
+    End-to-end agent-secrets golden path.
+
+    Covers:
+      A secret_put (canary)          -> A secret_get returns canary
+      secret_list owner marking      -> operator POST grant to B
+      B secret_get returns canary    -> B secret_list shared marking
+      operator DELETE grant          -> B secret_get uniform 404
+      A secret_delete                -> A secret_get 404
+      idempotent re-delete           -> operator metadata list/get (no canary)
+      pg_query: audit_events rows    -> docker-compose log grep (no canary)
+
+    Gated on MINTKEY_INTEGRATION_TEST=true.
+    """
+    if os.getenv("MINTKEY_INTEGRATION_TEST") != "true":
+        info("Agent-secrets steps: MINTKEY_INTEGRATION_TEST != true — skipping live stack assertions")
+        return
+
+    info("Agent-secrets: PUT secret (canary)...")
+    put_r = _mcp("POST", "/v1/tools/secret_put", agent_a_key,
+                 json={"name": "smoke-secret", "value": _AGENT_SECRET_CANARY})
+    if not assert_status("agent-secrets: A secret_put (canary)", put_r, 200):
+        return
+    secret_id: str = put_r.json().get("secret_id", "")
+    if not secret_id.startswith("sec_"):
+        bad("agent-secrets: secret_id missing or wrong prefix", put_r.text)
+        return
+    ok(f"agent-secrets: secret_id={secret_id}")
+
+    # A secret_get — should return canary
+    info("Agent-secrets: GET secret (owner)...")
+    get_r = _mcp("GET", f"/v1/tools/secret_get?secret_id={secret_id}", agent_a_key)
+    assert_status("agent-secrets: A secret_get (owner)", get_r, 200)
+    if get_r.status_code == 200:
+        returned_value = get_r.json().get("value", "")
+        if returned_value == _AGENT_SECRET_CANARY:
+            ok("agent-secrets: A secret_get returned canary value")
+        else:
+            bad(f"agent-secrets: A secret_get value mismatch (redacted; len={len(returned_value or '')})")
+        access = get_r.json().get("access", "")
+        if access == "owner":
+            ok("agent-secrets: access=owner on owner read")
+        else:
+            bad(f"agent-secrets: expected access=owner, got {access!r}")
+
+    # A secret_list — should show secret with access=owner
+    list_a_r = _mcp("GET", "/v1/tools/secret_list", agent_a_key)
+    assert_status("agent-secrets: A secret_list", list_a_r, 200)
+    if list_a_r.status_code == 200:
+        secrets = list_a_r.json().get("secrets", [])
+        owner_entries = [s for s in secrets if s.get("secret_id") == secret_id and s.get("access") == "owner"]
+        if owner_entries:
+            ok("agent-secrets: secret_list contains secret with access=owner")
+        else:
+            bad(f"agent-secrets: secret_list missing owner entry for {secret_id} ({len(secrets)} entries)")
+        # Values must NOT be present in list response
+        for s in secrets:
+            if "value" in s:
+                bad(f"agent-secrets: secret_list response contains 'value' field — plaintext leak!")
+            else:
+                ok("agent-secrets: secret_list entry has no value field")
+            break  # check first entry only
+
+    # Operator grants B read access
+    info("Agent-secrets: operator POST grant to B...")
+    grant_r = api("POST", f"/v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants",
+                  json={"recipient_agent_id": agent_b_uuid})
+    assert_status("agent-secrets: operator grant to B", grant_r, 201)
+    grant_id: str = grant_r.json().get("id", "") if grant_r.status_code == 201 else ""
+    if grant_id:
+        ok(f"agent-secrets: grant_id={grant_id}")
+
+    # B secret_get — should return canary
+    info("Agent-secrets: B secret_get (shared)...")
+    get_b_r = _mcp("GET", f"/v1/tools/secret_get?secret_id={secret_id}", agent_b_key)
+    assert_status("agent-secrets: B secret_get (shared)", get_b_r, 200)
+    if get_b_r.status_code == 200:
+        b_value = get_b_r.json().get("value", "")
+        if b_value == _AGENT_SECRET_CANARY:
+            ok("agent-secrets: B secret_get (shared) returned canary value")
+        else:
+            bad(f"agent-secrets: B secret_get value mismatch (redacted; len={len(b_value or '')})")
+        b_access = get_b_r.json().get("access", "")
+        if b_access == "shared":
+            ok("agent-secrets: access=shared on recipient read")
+        else:
+            bad(f"agent-secrets: expected access=shared for B, got {b_access!r}")
+
+    # B secret_list — should show secret with access=shared
+    list_b_r = _mcp("GET", "/v1/tools/secret_list", agent_b_key)
+    assert_status("agent-secrets: B secret_list", list_b_r, 200)
+    if list_b_r.status_code == 200:
+        b_secrets = list_b_r.json().get("secrets", [])
+        shared_entries = [s for s in b_secrets if s.get("secret_id") == secret_id and s.get("access") == "shared"]
+        if shared_entries:
+            ok("agent-secrets: B secret_list shows shared entry")
+        else:
+            bad(f"agent-secrets: B secret_list missing shared entry for {secret_id} ({len(b_secrets)} entries)")
+
+    # Operator DELETE grant — revoke B's access
+    info("Agent-secrets: operator DELETE grant (revoke)...")
+    if grant_id:
+        revoke_r = api("DELETE", f"/v1/tenants/{tenant_id}/agent-secrets/{secret_id}/grants/{grant_id}")
+        assert_status("agent-secrets: operator revoke grant", revoke_r, 204)
+
+    # B secret_get after revocation — uniform 404
+    info("Agent-secrets: B secret_get after revocation (expect 404)...")
+    get_b_after_r = _mcp("GET", f"/v1/tools/secret_get?secret_id={secret_id}", agent_b_key)
+    assert_status("agent-secrets: B secret_get post-revocation → 404", get_b_after_r, 404)
+
+    # Uniform 404 shape: same code for nonexistent ID
+    random_nonexistent = "sec_00000000000000000000000000"
+    get_nonexist_r = _mcp("GET", f"/v1/tools/secret_get?secret_id={random_nonexistent}", agent_b_key)
+    if get_nonexist_r.status_code == 404 and get_b_after_r.status_code == 404:
+        if get_nonexist_r.json().get("code") == get_b_after_r.json().get("code"):
+            ok("agent-secrets: revoked and nonexistent 404s have identical code (anti-enumeration)")
+        else:
+            bad(
+                f"agent-secrets: 404 code mismatch — revoked={get_b_after_r.json().get('code')!r} "
+                f"nonexist={get_nonexist_r.json().get('code')!r}"
+            )
+
+    # A secret_delete
+    info("Agent-secrets: A secret_delete...")
+    delete_r = _mcp("DELETE", f"/v1/tools/secret_delete?secret_id={secret_id}", agent_a_key)
+    assert_status("agent-secrets: A secret_delete", delete_r, 200)
+
+    # A secret_get after delete — 404
+    get_after_delete_r = _mcp("GET", f"/v1/tools/secret_get?secret_id={secret_id}", agent_a_key)
+    assert_status("agent-secrets: A secret_get post-delete → 404", get_after_delete_r, 404)
+
+    # Idempotent re-delete — should return same success shape (not 500)
+    info("Agent-secrets: idempotent re-delete...")
+    re_delete_r = _mcp("DELETE", f"/v1/tools/secret_delete?secret_id={secret_id}", agent_a_key)
+    # Idempotent: 200 (not-found treated as success per ADR-0025.D5) or 404 uniformly
+    if re_delete_r.status_code in (200, 404):
+        ok(f"agent-secrets: idempotent re-delete → {re_delete_r.status_code} (expected)")
+    else:
+        bad(f"agent-secrets: idempotent re-delete unexpected status {re_delete_r.status_code}", re_delete_r.text)
+
+    # Operator metadata endpoints — list and get — must not contain canary
+    info("Agent-secrets: operator metadata list/get (no canary)...")
+    meta_list_r = api("GET", f"/v1/tenants/{tenant_id}/agent-secrets")
+    assert_status("agent-secrets: operator list metadata", meta_list_r, 200)
+    if meta_list_r.status_code == 200:
+        if _AGENT_SECRET_CANARY in meta_list_r.text:
+            bad("agent-secrets: SECURITY: canary value in operator metadata list response!")
+        else:
+            ok("agent-secrets: operator metadata list contains no canary")
+
+    # pg_query: audit_events must have the expected event types (no canary in payload)
+    info("Agent-secrets: pg_query audit_events rows...")
+    audit_check = pg_query(
+        f"SET app.current_tenant = '{tenant_id}'; "
+        "SELECT COUNT(*) FROM audit_events "
+        "WHERE event_type IN ('agent_secret.created','agent_secret.read','agent_secret.deleted',"
+        "'agent_secret_grant.created','agent_secret_grant.revoked');"
+    )
+    if audit_check and int(audit_check) > 0:
+        ok(f"agent-secrets: audit_events has {audit_check} agent_secret* rows")
+    else:
+        bad(f"agent-secrets: expected audit_events rows for agent_secret*, got {audit_check!r}")
+
+    # Ensure canary is NOT in any audit payload
+    canary_in_audit = pg_query(
+        f"SET app.current_tenant = '{tenant_id}'; "
+        f"SELECT COUNT(*) FROM audit_events WHERE payload::text LIKE '%{_AGENT_SECRET_CANARY}%';"
+    )
+    if canary_in_audit == "0" or canary_in_audit == "":
+        ok("agent-secrets: canary absent from audit_events payloads")
+    else:
+        bad(f"agent-secrets: SECURITY: canary found in {canary_in_audit} audit_events payload(s)!")
+
+    # Grep docker-compose logs for canary
+    _step_agent_secrets_canary_log_grep()
+
+
+def _step_agent_secrets_canary_log_grep() -> None:
+    """Grep docker compose logs for the canary value — must be absent."""
+    info("Agent-secrets: grep compose logs for canary...")
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "logs", "--no-color"],
+            capture_output=True, text=True, timeout=30,
+        )
+        combined = result.stdout + result.stderr
+        if _AGENT_SECRET_CANARY in combined:
+            bad(
+                f"agent-secrets: SECURITY VIOLATION: canary '{_AGENT_SECRET_CANARY}' "
+                "found in docker compose logs!"
+            )
+        else:
+            ok("agent-secrets: canary absent from docker compose logs")
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        info(f"agent-secrets: compose log grep skipped ({e})")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 def main() -> int:
@@ -845,7 +1114,7 @@ def main() -> int:
         list_r = api("GET", f"/v1/tenants/{tenant_id}/agents/{agent_uuid}/api-keys")
         if list_r.status_code == 200:
             keys_data = list_r.json()
-            keys = keys_data.get("api_keys", keys_data if isinstance(keys_data, list) else [])
+            keys = keys_data if isinstance(keys_data, list) else keys_data.get("api_keys", [])
             for k in keys:
                 if k.get("service_id") == mock_svc and k.get("status") == "active":
                     mock_key_id = k.get("id", "")
@@ -896,6 +1165,31 @@ def main() -> int:
 
     # ── Auth rejection tests ──────────────────────────────────────────────────
     step12_auth_rejections(mock_svc or twilio_svc)
+
+    # ── Agent-stored secrets (ADR-0025) ───────────────────────────────────────
+    # Create a second agent (agent B) to exercise share-grant flow.
+    # Both agents need valid agent API keys — agent_api_key is A's key.
+    # Agent B is created fresh and deleted after the secret steps.
+    info("Agent-secrets: creating agent B for share-grant test...")
+    agent_b_resp = api("POST", f"/v1/tenants/{tenant_id}/agents",
+                       json={"name": "smoke-agent-b", "description": "Share-grant test agent"})
+    agent_b_uuid: str = ""
+    agent_b_key: str = ""
+    if agent_b_resp.status_code == 201:
+        ok("Agent B created for secret share test → 201")
+        agent_b_uuid = agent_b_resp.json().get("id", "")
+        agent_b_key = agent_b_resp.json().get("api_key", "")
+    else:
+        bad("Agent B creation failed — agent-secrets share steps will be skipped", agent_b_resp.text)
+
+    if agent_api_key and agent_b_key and agent_b_uuid:
+        step_agent_secrets(agent_api_key, agent_b_key, agent_b_uuid)
+    else:
+        info("Agent-secrets steps skipped (missing agent keys)")
+
+    if agent_b_uuid:
+        clean_b = api("DELETE", f"/v1/tenants/{tenant_id}/agents/{agent_b_uuid}")
+        assert_status("DELETE agent B (cleanup)", clean_b, 204)
 
     # ── Logout ───────────────────────────────────────────────────────────────
     step13_logout()

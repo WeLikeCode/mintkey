@@ -84,6 +84,27 @@ _REST_ENDPOINTS: dict = {
         "path": "/v1/tools/email_send",
         "auth": "bearer",
     },
+    # Agent secret tools — ADR-0025
+    "secret_put": {
+        "method": "POST",
+        "path": "/v1/tools/secret_put",
+        "auth": "bearer",
+    },
+    "secret_get": {
+        "method": "GET",
+        "path": "/v1/tools/secret_get",
+        "auth": "bearer",
+    },
+    "secret_list": {
+        "method": "GET",
+        "path": "/v1/tools/secret_list",
+        "auth": "bearer",
+    },
+    "secret_delete": {
+        "method": "DELETE",
+        "path": "/v1/tools/secret_delete",
+        "auth": "bearer",
+    },
 }
 
 _AUTH_DOC: dict = {
@@ -228,6 +249,31 @@ _TOOLS_INDEX: dict = {
             "path": "/v1/tools/email_send",
             "auth": "bearer",
             "description": "Send an email via a granted email service",
+        },
+        # Agent secret tools — ADR-0025
+        "secret_put": {
+            "method": "POST",
+            "path": "/v1/tools/secret_put",
+            "auth": "bearer",
+            "description": "Store (or overwrite) a named secret owned by the calling agent",
+        },
+        "secret_get": {
+            "method": "GET",
+            "path": "/v1/tools/secret_get",
+            "auth": "bearer",
+            "description": "Read the plaintext value of an owned or shared secret",
+        },
+        "secret_list": {
+            "method": "GET",
+            "path": "/v1/tools/secret_list",
+            "auth": "bearer",
+            "description": "List metadata for owned and shared secrets (no values)",
+        },
+        "secret_delete": {
+            "method": "DELETE",
+            "path": "/v1/tools/secret_delete",
+            "auth": "bearer",
+            "description": "Delete a secret owned by the calling agent",
         },
     }
 }

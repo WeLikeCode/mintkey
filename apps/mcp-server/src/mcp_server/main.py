@@ -26,6 +26,10 @@ from mcp_server.tools.email_send import router as email_send_router
 from mcp_server.tools.jsonrpc import router as jsonrpc_router
 from mcp_server.tools.landing import router as landing_router
 from mcp_server.tools.request_token import router as request_token_router
+from mcp_server.tools.secret_delete import router as secret_delete_router
+from mcp_server.tools.secret_get import router as secret_get_router
+from mcp_server.tools.secret_list import router as secret_list_router
+from mcp_server.tools.secret_put import router as secret_put_router
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics — T-1.10.2
@@ -134,6 +138,11 @@ def create_app() -> FastAPI:
     app.include_router(email_move_email_router)
     app.include_router(email_mark_email_router)
     app.include_router(email_delete_email_router)
+    # Agent secret tools (ADR-0025)
+    app.include_router(secret_put_router)
+    app.include_router(secret_get_router)
+    app.include_router(secret_list_router)
+    app.include_router(secret_delete_router)
     return app
 
 

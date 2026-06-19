@@ -111,26 +111,27 @@ After §authentication you can enumerate and inspect services. All tools accept 
 { "tool": "list_services", "arguments": {} }
 ```
 
-Response:
+Response — each item in `services` has `id`, `name`, `slug`, `base_url`, `auth_scheme`, `connect_type` (`http` / `ssh` / `email`), and `kind` (`service` or `email_service`):
 
 ```json
 {
   "services": [
     {
-      "service_id": "svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1",
+      "id": "svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1",
       "slug": "demo-crm",
       "name": "Demo CRM",
       "description": "Customer relationship management — read/write customers and orders.",
-      "auth_scheme": "api_key",
-      "base_url": "https://crm.example.com/api"
+      "auth_scheme": "bearer_token",
+      "base_url": "https://crm.example.com/api",
+      "connect_type": "http",
+      "kind": "service"
     }
-  ]
+  ],
+  "hint": "Call discover for per-service how_to_call hints, or describe_service/{service_id} for full auth details, constraints, and OpenAPI availability."
 }
 ```
 
-If `services` is empty:
-- Either your Agent has zero active permission grants → ask the operator to grant access to specific services with the constraints you need.
-- Or your tenant has no registered services at all → ask the operator.
+If `services` is empty, the response includes a `hint` explaining how to get a grant added. Call `describe_service` with the `id` value for full usage details on any service.
 
 **`describe_service` — full details for one service.**
 
@@ -138,40 +139,89 @@ If `services` is empty:
 { "tool": "describe_service", "arguments": { "service_id": "svc_01HKJ7G..." } }
 ```
 
-Response includes:
+Response is wrapped under a `service` key. Fields returned:
+
+- `id` — canonical `svc_` wire ID.
+- `name`, `slug`, `base_url`, `auth_scheme`, `description` — service registration metadata.
+- `connect_type` — `http`, `ssh`, or `email` (determines which proxy to use).
+- `openapi_url` — operator-registered URL for the upstream OpenAPI spec (may be null).
+- `explicit_proxy_url` — the exact URL to use when calling this service through the HTTP proxy: `{proxy_base}/v1/call/{service_id}`.
+- `auth_scheme_details` — injection specifics for this service's auth scheme:
+  - `injection_point` — `header`, `query`, `connection`, or `out_of_band`.
+  - `header_name` — header injected (e.g. `Authorization`, `X-API-Key`), or null for query/connection schemes.
+  - `query_param` — query parameter injected (e.g. `api_key`), or null for header/connection schemes.
+  - `format` — value format (e.g. `Bearer <token>`, `<raw_key>`, `Basic base64(user:pass)`).
+- `your_constraints` — the calling agent's permission-grant constraints (each field null when the operator has not set a limit):
+  - `rate_limit` — e.g. `{"requests_per_second": 10, "burst": 50}`.
+  - `time_window` — e.g. `{"timezone": "UTC", "days": [...], "start_local": "09:00", "end_local": "18:00"}`.
+  - `request_path_prefix` — list of allowed path prefixes (null = all paths allowed).
+  - `source_ip_allowlist` — list of allowed source IPs (null = any source allowed).
+- `openapi` — quick status check before calling `get_openapi`:
+  - `status` — `available` (URL registered) or `not_registered`.
+  - `url` — the registered OpenAPI URL, or null.
 
 ```json
 {
-  "service_id": "svc_01HKJ7G...",
-  "slug": "demo-crm",
-  "name": "Demo CRM",
-  "description": "...",
-  "base_url": "https://crm.example.com/api",
-  "auth_scheme": "api_key",
-  "auth_scheme_details": {
-    "header_name": "X-API-Key",
-    "header_format": "{secret}"
-  },
-  "openapi_url": "https://crm.example.com/openapi.yaml",
-  "your_constraints": {
-    "rate_limit": { "requests_per_second": 10, "burst": 50 },
-    "time_window": { "timezone": "UTC", "days": ["Mon","Tue","Wed","Thu","Fri"], "start_local": "09:00", "end_local": "18:00" },
-    "request_path_prefix": ["/v1/customers", "/v1/orders/list"],
-    "source_ip_allowlist": null
+  "service": {
+    "id": "svc_01HKJ7G...",
+    "slug": "demo-crm",
+    "name": "Demo CRM",
+    "description": "...",
+    "base_url": "https://crm.example.com/api",
+    "auth_scheme": "bearer_token",
+    "connect_type": "http",
+    "openapi_url": "https://crm.example.com/openapi.yaml",
+    "explicit_proxy_url": "http://localhost:8000/v1/call/svc_01HKJ7G...",
+    "auth_scheme_details": {
+      "injection_point": "header",
+      "header_name": "Authorization",
+      "query_param": null,
+      "format": "Bearer <token>"
+    },
+    "your_constraints": {
+      "rate_limit": { "requests_per_second": 10, "burst": 50 },
+      "time_window": { "timezone": "UTC", "days": ["Mon","Tue","Wed","Thu","Fri"], "start_local": "09:00", "end_local": "18:00" },
+      "request_path_prefix": ["/v1/customers", "/v1/orders/list"],
+      "source_ip_allowlist": null
+    },
+    "openapi": {
+      "status": "available",
+      "url": "https://crm.example.com/openapi.yaml"
+    }
   }
 }
 ```
 
 - `base_url` is informational only — you call the proxy, not the upstream directly.
-- `your_constraints` is the *intersection* of all your active grants on this service. Stay inside it or the proxy will return `403 constraint_violated`.
+- `your_constraints` covers *this agent's* grant only. Stay inside it or the proxy returns `403 constraint_violated`.
+- For SSH services (`connect_type: ssh`), the response also contains `agent_connection_guide` with step-by-step bastion instructions (see §ssh_services).
 
-**`get_openapi` — full upstream spec.**
+**`get_openapi` — upstream OpenAPI spec.**
 
 ```json
 { "tool": "get_openapi", "arguments": { "service_id": "svc_01HKJ7G..." } }
 ```
 
-Returns the upstream service's OpenAPI JSON/YAML (if Mintkey has fetched it). Use this to plan multi-step workflows.
+Two modes controlled by the `inline` boolean query parameter (default `false`):
+
+- **URL mode** (`inline=false`, default) — returns the registered URL without fetching:
+  ```json
+  { "kind": "url", "openapi_url": "https://crm.example.com/openapi.yaml", "etag": "\"abc\"" }
+  ```
+- **Inline mode** (`inline=true`) — server fetches the document (1 MiB cap, 10 s timeout, etag-conditional) and returns the content:
+  ```json
+  { "kind": "inline", "content_type": "application/json", "etag": "\"abc\"", "document": "..." }
+  ```
+- **Not registered** — operator has not set `openapi_url`:
+  ```json
+  { "kind": "not_registered", "hint": "Set openapi_url at service registration." }
+  ```
+- **Fetch failed** — URL unreachable or oversized:
+  ```json
+  { "kind": "fetch_failed", "openapi_url": "...", "reason": "..." }
+  ```
+
+Check `describe_service.openapi.status` first (`available` / `not_registered`) to decide whether `get_openapi` is worth calling.
 
 **`whoami` — confirm token identity (optional).**
 
@@ -243,11 +293,34 @@ The proxy:
 - Resolves `service_id` → service's base URL + bound credential.
 - Verifies your JWT signature against the published JWKS.
 - Checks your permission grants and the request against your constraints.
-- Injects the real credential per the service's `auth_scheme` (e.g. `X-API-Key: <real-key>` for api_key, mTLS handshake for mtls).
+- Injects the real credential per the service's `auth_scheme` (e.g. `X-API-Key: <real-key>` for `api_key_header`, see cheat-sheet below).
 - Forwards to the upstream service.
 - Streams the response back to you unmodified (status, headers, body).
 - Emits an audit event (`proxy.call`).
 </proxy_usage>
+
+<auth_scheme_cheatsheet>
+Per-scheme injection cheat-sheet. Derived from `proxy-plugin/internal/credential/injector.go`. Each entry states what the proxy injects and what you must NOT send. Use `describe_service.auth_scheme_details` for the scheme-specific detail on any given service.
+
+| Scheme | What the proxy injects | Never send |
+|---|---|---|
+| `api_key_header` | Custom header (default `X-API-Key`) set to the raw key. Operator may configure a different header name. | Your own `X-API-Key` or `Authorization`. |
+| `api_key_query` | URL query param (default `api_key`) set to the raw key. Operator may configure a different name. | Your own `api_key` query param or `Authorization`. |
+| `bearer_token` | `Authorization: Bearer <secret>`. | Your own `Authorization` header to the upstream. |
+| `basic_auth` | `Authorization: Basic base64(user:pass)`. The vault stores the credential as `user:pass` bytes; proxy base64-encodes it. | Your own `Authorization` header to the upstream. |
+| `oauth2_client_credentials` | `Authorization: Bearer <access_token>`. Vault Adapter performs the client_credentials exchange; proxy injects the result. | Your own `Authorization` header to the upstream. |
+| `oidc_client_secret` | `Authorization: Bearer <id_or_access_token>`. Vault Adapter performs the OIDC exchange; proxy injects the result. | Your own `Authorization` header to the upstream. |
+| `oauth2_password_grant` | `Authorization: Bearer <access_token>`. Vault Adapter performs the ROPC grant; proxy injects the result. | Your own `Authorization` header to the upstream. |
+| `apple_jwt` | `Authorization: Bearer <apple_jwt>`. Vault Adapter generates a signed Apple JWT (ES256) per request. | Your own `Authorization` header to the upstream. |
+| `google_service_account` | `Authorization: Bearer <google_access_token>`. Vault Adapter exchanges the service account JSON key per request (not cached). | Your own `Authorization` header to the upstream. |
+| `mtls` | **Not implemented** — proxy returns an error. Do not attempt to call an mTLS service through the HTTP proxy. | N/A — calls fail. |
+| `ssh_private_key` | **SSH bastion only** — handled by the SSH proxy, not Kong. Use bastion endpoint (§ssh_services). | Do not route through Kong. |
+| `ssh_ca` | **SSH bastion only** — CA signing handled by the SSH proxy. Use bastion endpoint (§ssh_services). | Do not route through Kong. |
+| `ssh_password` | **SSH bastion only** — password auth handled by the SSH proxy. Use bastion endpoint (§ssh_services). | Do not route through Kong. |
+| `email_password` | **Email proxy only** — IMAP/SMTP password auth via the email proxy. Use `email_*` MCP tools (§email_services). | Do not route through Kong. |
+| `email_oauth2` | **Email proxy only** — OAuth2 IMAP/SMTP (Gmail/Outlook) via the email proxy. Use `email_*` MCP tools (§email_services). | Do not route through Kong. |
+| `email_app_password` | **Email proxy only** — app-password IMAP/SMTP via the email proxy. Use `email_*` MCP tools (§email_services). | Do not route through Kong. |
+</auth_scheme_cheatsheet>
 
 <ssh_services>
 **SSH services** use a separate bastion path instead of the HTTP proxy. You can detect them via `connect_type: "ssh"` in `list_services` / `describe_service` output, or by `auth_scheme` in `{ssh_private_key, ssh_password, ssh_ca}`.
@@ -461,6 +534,80 @@ Services → Edit if you need to change routing.
 - **Do NOT route email tool calls through the HTTP proxy (`:8000`).** Email is handled
   exclusively by the email-proxy on `:8088` via these MCP tools.
 </email_services>
+
+<agent_secrets>
+**Agent secrets** let an agent store small encrypted blobs in Mintkey's vault and optionally share them with other agents in the same tenant. Secrets are identified by a `sec_` wire ID and a human-readable `name`.
+
+**Authentication: your `mk_agent_` API key, directly — nothing else.**
+Secret tools do NOT use brokered JWTs. Do NOT call `request_token` for
+them (there is no `read:secrets` action to request; `request_token` is
+only for proxied calls to operator-registered services). Authorization
+is ownership: you can always operate on your own secrets, plus read
+secrets an operator has shared with you. No permission grant is needed.
+
+**Agent secret tools (4 implemented):**
+
+| Tool | Who may call | REST endpoint | Description |
+|---|---|---|---|
+| `secret_put` | owner (you) | `POST /v1/tools/secret_put` | Store or overwrite a named secret (creates version=1; increments on overwrite) |
+| `secret_get` | owner or shared-with | `GET /v1/tools/secret_get?secret_id=sec_...` | Read the plaintext value (note: query parameter, not path segment) |
+| `secret_list` | owner or shared-with | `GET /v1/tools/secret_list` | List metadata for owned + shared secrets (no values; cursor pagination) |
+| `secret_delete` | owner (you) | `DELETE /v1/tools/secret_delete?secret_id=sec_...` | Delete an owned secret and all its grants |
+
+**Name validation.** Secret names must match `^[a-zA-Z0-9._-]{1,128}$`. Names outside this pattern are rejected with `422 invalid_argument`.
+
+**Value size limit.** Secret values must be ≤ 65,536 bytes (UTF-8 encoded). Larger values are rejected with `422 invalid_argument`.
+
+**Anti-enumeration.** `secret_get` and `secret_delete` return the same `404 mintkey:secret_not_found` response whether the secret does not exist OR exists but is not visible to the caller. This prevents agents from probing for secrets they were not granted access to.
+
+**Copy-pasteable example invocations:**
+
+```bash
+# Store a secret (creates version=1 or increments on overwrite)
+POST /v1/tools/secret_put
+Content-Type: application/json
+{"name": "db-password", "value": "s3cr3t"}
+# → { "secret_id": "sec_01...", "name": "db-password", "version": 1 }
+
+# Read a secret (owner or shared)
+GET /v1/tools/secret_get?secret_id=sec_01...
+# → { "secret_id": "sec_01...", "name": "db-password", "version": 1, "value": "s3cr3t", "access": "owner" }
+
+# List secrets (owned + shared, no values)
+GET /v1/tools/secret_list
+# → { "secrets": [{"secret_id": "sec_01...", "name": "db-password", "version": 1, "access": "owner", ...}], "next_cursor": null }
+
+# Paginate
+GET /v1/tools/secret_list?after=sec_01...&limit=20
+
+# Delete a secret (owner only)
+DELETE /v1/tools/secret_delete?secret_id=sec_01...
+# → {} (200)
+```
+
+As MCP tool calls (for MCP clients):
+
+```json
+{ "tool": "secret_put", "arguments": { "name": "db-password", "value": "s3cr3t" } }
+// → { "secret_id": "sec_01...", "name": "db-password", "version": 1 }
+
+{ "tool": "secret_get", "arguments": { "secret_id": "sec_01..." } }
+// → { "secret_id": "sec_01...", "name": "db-password", "version": 1, "value": "s3cr3t", "access": "owner" }
+
+{ "tool": "secret_list", "arguments": {} }
+// → { "secrets": [...], "next_cursor": null }
+
+{ "tool": "secret_delete", "arguments": { "secret_id": "sec_01..." } }
+// → {}
+```
+
+**Important behavioural notes:**
+
+- **Secret values are never stored by Mintkey in plaintext.** They are encrypted by the vault-adapter (AES-256-GCM with a per-secret DEK wrapped under the vault KEK) before being persisted. Mintkey never logs or emits the plaintext in audit events, span attributes, or change-event payloads.
+- **Versioning is automatic.** `secret_put` increments the version on every overwrite. Use `secret_get` to confirm the current version.
+- **Deletion is permanent.** `secret_delete` removes both the metadata row and the vault blob. All grants for the secret are also removed (CASCADE). There is no soft-delete or recovery.
+- **Sharing is managed by the operator.** Agents cannot grant each other access directly — an operator must create a grant record via the Admin API. Use `access: "shared"` in `secret_list` / `secret_get` responses to detect shared secrets.
+</agent_secrets>
 
 <errors_and_revocation>
 The proxy and MCP tools return errors with a structured `mintkey:code` field in the response body (for HTTP errors) or in the error frame (for streaming MCP). Handle these distinct cases:

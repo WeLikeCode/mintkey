@@ -70,6 +70,21 @@ _OUTLOOK_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token
 _GMAIL_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 _OUTLOOK_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 
+# Gmail profile endpoint — used to resolve the authorized user's emailAddress
+# during the OAuth2 exchange so that the email-proxy XOAUTH2 path has the
+# username it needs (IMAP XOAUTH2 requires user=<email>). The `gmail.readonly`
+# scope (already in _GMAIL_SCOPES) is sufficient to call this endpoint.
+_GMAIL_USERINFO_URL = "https://www.googleapis.com/gmail/v1/users/me/profile"
+
+# Microsoft Graph endpoint used to extract the authorized user's email
+# after the OAuth2 token exchange (parallels _GMAIL_USERINFO_URL). The
+# `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
+# this call. We prefer `mail` (the SMTP address, which Exchange Online
+# IMAP accepts as the XOAUTH2 SASL username) over `userPrincipalName`
+# (canonical identity — for some account types in `@<tenant>.onmicrosoft.com`
+# form which IMAP wouldn't accept).
+_OUTLOOK_USERINFO_URL = "https://graph.microsoft.com/v1.0/me"
+
 _GMAIL_SCOPES = (
     "https://mail.google.com/ "
     "https://www.googleapis.com/auth/gmail.send "
@@ -78,7 +93,8 @@ _GMAIL_SCOPES = (
 _OUTLOOK_SCOPES = (
     "https://outlook.office.com/IMAP.AccessAsUser.All "
     "https://outlook.office.com/SMTP.Send "
-    "offline_access"
+    "offline_access "
+    "User.Read"
 )
 
 _SUPPORTED_PROVIDERS = {"gmail", "outlook"}
@@ -279,6 +295,10 @@ oauth2_per_tenant_router = APIRouter(prefix="/v1/tenants/{tenant_id}/oauth2")
 _VALID_PROVIDERS = {"gmail", "outlook", "generic"}
 _VALID_AUTH_SCHEMES = {"email_password", "email_oauth2", "email_app_password"}
 
+# Numeric vault auth_scheme for EMAIL_OAUTH2 — mirrors AuthScheme enum value
+# in docs/architecture/contracts/vault-adapter/vault.proto:113.
+_AUTH_SCHEME_EMAIL_OAUTH2 = 15
+
 # Providers that support OAuth2
 _OAUTH2_PROVIDERS = {"gmail", "outlook"}
 
@@ -400,13 +420,28 @@ async def create_email_service(
             },
         )
 
-    # Validate host:port
-    if not _valid_host_port(body.imap_host, body.imap_port):
+    # Defense-in-depth (#365): trim leading/trailing whitespace BEFORE validation /
+    # persistence. Operator paste-with-trailing-newline previously stored
+    # imap_host=" imap.gmail.com    " which broke DNS resolution at runtime and
+    # required a manual SQL trim. Per-field explicit `.strip()` (not a global
+    # Pydantic str_strip_whitespace) — narrow blast radius.
+    # auth_scheme / provider are enum-validated above, so they are NOT trimmed here.
+    name = (body.name or "").strip()
+    imap_host = (body.imap_host or "").strip()
+    smtp_host = (body.smtp_host or "").strip()
+    allowed_recipient_domains: Optional[str] = (
+        body.allowed_recipient_domains.strip()
+        if isinstance(body.allowed_recipient_domains, str)
+        else body.allowed_recipient_domains
+    )
+
+    # Validate host:port (post-trim — all-whitespace input → empty → rejected)
+    if not _valid_host_port(imap_host, body.imap_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_imap", "title": "Invalid IMAP host or port"},
         )
-    if not _valid_host_port(body.smtp_host, body.smtp_port):
+    if not _valid_host_port(smtp_host, body.smtp_port):
         return JSONResponse(
             status_code=422,
             content={"mintkey:code": "invalid_smtp", "title": "Invalid SMTP host or port"},
@@ -432,13 +467,13 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": body.name,
-            "imap_host": body.imap_host,
+            "name": name,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "auth_scheme": body.auth_scheme,
-            "allowed_domains": body.allowed_recipient_domains,
+            "allowed_domains": allowed_recipient_domains,
             "pool_size": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "now": now,
@@ -457,11 +492,11 @@ async def create_email_service(
         payload={
             "service_id": str(svc_id),
             "provider": body.provider,
-            "name": body.name,
+            "name": name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": body.imap_host,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
         },
@@ -473,11 +508,11 @@ async def create_email_service(
             "id": str(svc_id),
             "tenant_id": str(tenant_id),
             "provider": body.provider,
-            "name": body.name,
+            "name": name,
             "auth_scheme": body.auth_scheme,
-            "imap_host": body.imap_host,
+            "imap_host": imap_host,
             "imap_port": body.imap_port,
-            "smtp_host": body.smtp_host,
+            "smtp_host": smtp_host,
             "smtp_port": body.smtp_port,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "created_at": now.isoformat(),
@@ -791,10 +826,46 @@ async def oauth2_authorize(
 # ---------------------------------------------------------------------------
 
 
+def _parse_oauth2_plaintext(plaintext: str) -> str:
+    """Return the refresh_token from a JSON envelope OR the raw string for legacy rows.
+
+    The vault payload format introduced for the OAuth2 IMAP XOAUTH2 fix is a JSON
+    envelope: {"provider": "...", "refresh_token": "...", "email_address": "..."}.
+    Pre-fix vault rows stored the raw refresh_token string. This helper handles
+    both: it tries JSON-decode; if the decoded value is a dict with a string
+    `refresh_token` key, that is returned; otherwise the input is treated as the
+    legacy raw refresh_token.
+
+    NFR-17: input is sensitive (vault plaintext). Never logs the input or output.
+    """
+    import json as _json  # noqa: PLC0415
+
+    if not plaintext:
+        return ""
+    try:
+        envelope = _json.loads(plaintext)
+    except _json.JSONDecodeError:
+        return plaintext
+    if isinstance(envelope, dict):
+        rt = envelope.get("refresh_token")
+        if isinstance(rt, str):
+            return rt
+    return plaintext
+
+
 class _ExchangeResult:
     """Typed result returned by _exchange_oauth2_code_for_refresh_token."""
 
-    __slots__ = ("ok", "service_id", "authorized_at", "token_type", "error_code", "error_title", "http_status")
+    __slots__ = (
+        "ok",
+        "service_id",
+        "authorized_at",
+        "token_type",
+        "email_address",
+        "error_code",
+        "error_title",
+        "http_status",
+    )
 
     def __init__(
         self,
@@ -803,6 +874,7 @@ class _ExchangeResult:
         service_id: str = "",
         authorized_at: str = "",
         token_type: str = "Bearer",
+        email_address: str = "",
         error_code: str = "",
         error_title: str = "",
         http_status: int = 200,
@@ -811,6 +883,11 @@ class _ExchangeResult:
         self.service_id = service_id
         self.authorized_at = authorized_at
         self.token_type = token_type
+        # email_address is the authorized user's email (resolved post-token-exchange
+        # via the Gmail profile endpoint for provider=gmail; empty string for outlook
+        # because the IMAP.AccessAsUser.All scope does not grant Graph access).
+        # Operator-visible via the email.oauth2.authorized audit event payload.
+        self.email_address = email_address
         self.error_code = error_code
         self.error_title = error_title
         self.http_status = http_status
@@ -918,13 +995,113 @@ async def _exchange_oauth2_code_for_refresh_token(
             http_status=502,
         )
 
-    # Store encrypted refresh_token in vault — plaintext leaves scope here
+    # access_token is needed to call the Gmail profile endpoint (only).
+    # NEVER logged. Discarded after the userinfo call.
+    access_token: str = token_data.get("access_token", "")
+
+    # Resolve the authorized user's email address.
+    #
+    # Gmail: GET /gmail/v1/users/me/profile with the access_token. The
+    # `gmail.readonly` scope (already requested in _GMAIL_SCOPES) authorizes
+    # this call. The returned `emailAddress` is required for the email-proxy
+    # IMAP XOAUTH2 path (`user=<email>` SASL parameter).
+    #
+    # Outlook: GET https://graph.microsoft.com/v1.0/me with the access_token.
+    # The `User.Read` delegated scope (already in _OUTLOOK_SCOPES) authorizes
+    # this call. Prefer the `mail` field (SMTP address — what Exchange Online
+    # IMAP expects as the SASL username); fall back to `userPrincipalName`
+    # when `mail` is absent (common for some account types).
+    #
+    # If the userinfo call fails (httpx error, non-200, or both candidate
+    # fields missing) we proceed with email_address="" so the operator's
+    # authorization is not lost — the agent's IMAP login will fail until they
+    # re-authorize (or a future migration backfills), which is a smaller
+    # blast radius than aborting the whole flow.
+    email_address: str = ""
+    if provider == "gmail":
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as profile_client:
+                profile_resp = await profile_client.get(
+                    _GMAIL_USERINFO_URL,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if profile_resp.status_code == 200:
+                profile_data: dict[str, Any] = profile_resp.json()
+                candidate = profile_data.get("emailAddress")
+                if isinstance(candidate, str):
+                    email_address = candidate
+                else:
+                    logger.warning(
+                        "_exchange_oauth2_code: gmail profile returned no emailAddress for service=%s",
+                        resolved_service_id,
+                    )
+            else:
+                logger.warning(
+                    "_exchange_oauth2_code: gmail profile returned %d for service=%s — proceeding with empty email_address",
+                    profile_resp.status_code,
+                    resolved_service_id,
+                )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "_exchange_oauth2_code: gmail profile fetch failed for service=%s provider=%s: %s — proceeding with empty email_address",
+                resolved_service_id,
+                provider,
+                type(exc).__name__,
+            )
+    elif provider == "outlook":
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as profile_client:
+                profile_resp = await profile_client.get(
+                    _OUTLOOK_USERINFO_URL,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if profile_resp.status_code == 200:
+                profile_data = profile_resp.json()
+                mail_candidate = profile_data.get("mail")
+                upn_candidate = profile_data.get("userPrincipalName")
+                if isinstance(mail_candidate, str) and mail_candidate:
+                    email_address = mail_candidate
+                elif isinstance(upn_candidate, str) and upn_candidate:
+                    email_address = upn_candidate
+                else:
+                    logger.warning(
+                        "_exchange_oauth2_code: outlook graph /me returned neither mail nor userPrincipalName for service=%s",
+                        resolved_service_id,
+                    )
+            else:
+                logger.warning(
+                    "_exchange_oauth2_code: outlook graph /me returned %d for service=%s — proceeding with empty email_address",
+                    profile_resp.status_code,
+                    resolved_service_id,
+                )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "_exchange_oauth2_code: outlook graph /me fetch failed for service=%s provider=%s: %s — proceeding with empty email_address",
+                resolved_service_id,
+                provider,
+                type(exc).__name__,
+            )
+
+    # Build the vault payload as a JSON envelope so the email-proxy can
+    # extract both the refresh_token (for OAuth2 access_token exchange) and
+    # the email_address (for IMAP XOAUTH2 SASL username). email-proxy's
+    # parseEmailAddressFromPayload tolerates any shape — non-JSON legacy
+    # rows simply yield emailAddress="".
+    import json as _json  # noqa: PLC0415
+
+    vault_plaintext = _json.dumps({
+        "provider": provider,
+        "refresh_token": refresh_token,
+        "email_address": email_address,
+    })
+
+    # Store encrypted vault envelope — plaintext leaves scope after this call
     try:
         await vault.put_credential(
             tenant_id=str(tenant_id),
             service_id=resolved_service_id,
             auth_scheme="email_oauth2",
-            plaintext=refresh_token,  # NEVER logged after this point
+            plaintext=vault_plaintext,  # NEVER logged after this point
         )
     except Exception as exc:
         logger.error(
@@ -938,6 +1115,13 @@ async def _exchange_oauth2_code_for_refresh_token(
             error_title="Failed to store credential in vault",
             http_status=502,
         )
+    finally:
+        # NFR-17: scrub local copies of credential material as soon as the
+        # vault call returns (success or failure). Mirrors the pattern in
+        # set_email_service_credential.
+        del vault_plaintext
+        del refresh_token
+        del access_token
 
     now = datetime.now(timezone.utc)
 
@@ -947,14 +1131,21 @@ async def _exchange_oauth2_code_for_refresh_token(
     # (oauth2_callback POST + oauth2_callback_view GET) must emit
     # email.oauth2.authorized on success — NO refresh_token, client_secret,
     # or access_token in the payload (NFR-17). The token_type returned in
-    # _ExchangeResult is what those handlers should use.
+    # _ExchangeResult is what those handlers should use. email_address is
+    # returned so callers can include it in the audit payload (operator-
+    # visible — same value lands in email_services.name after success).
 
-    return _ExchangeResult(
+    result = _ExchangeResult(
         ok=True,
         service_id=resolved_service_id,
         authorized_at=now.isoformat(),
         token_type=token_data.get("token_type", "Bearer"),
+        email_address=email_address,
     )
+    # Clear the local binding too (the value is already inside the result
+    # object; that's intended, since callers add it to the audit payload).
+    del email_address
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1346,11 @@ async def oauth2_callback(
             "provider": provider,
             "authorized_at": result.authorized_at,
             "token_type": result.token_type,
+            # email_address is operator-visible already (lands in the
+            # email_services.name column after successful auth) — recording
+            # it in the audit event lets operators tie a row to its Google
+            # account. Empty string for outlook (see helper docstring).
+            "email_address": result.email_address,
         },
     )
 
@@ -1314,6 +1510,11 @@ async def oauth2_callback_view(
             "provider": provider,
             "authorized_at": result.authorized_at,
             "token_type": result.token_type,
+            # email_address is operator-visible already (lands in the
+            # email_services.name column after successful auth) — recording
+            # it in the audit event lets operators tie a row to its Google
+            # account. Empty string for outlook (see helper docstring).
+            "email_address": result.email_address,
         },
     )
 
@@ -1412,7 +1613,11 @@ async def oauth2_refresh(
             content={"mintkey:code": "not_found", "title": "No credential found for this email service"},
         )
 
-    refresh_token: str = cred.get("plaintext", "")  # type: ignore[assignment]
+    # Vault payload may be either the new JSON envelope
+    # ({"provider","refresh_token","email_address"}) or — for rows written
+    # before the OAuth2 IMAP XOAUTH2 fix — the raw refresh_token string.
+    # _parse_oauth2_plaintext handles both shapes.
+    refresh_token: str = _parse_oauth2_plaintext(cred.get("plaintext", ""))  # type: ignore[arg-type]
     if not refresh_token:
         return JSONResponse(
             status_code=404,
@@ -1858,6 +2063,7 @@ async def get_email_service(
     tenant_id: UUID,
     service_id: str,
     session: AsyncSession = Depends(get_db_session),
+    vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -1865,6 +2071,16 @@ async def get_email_service(
 
     Returns 404 if the service does not exist, belongs to a different tenant,
     or has been soft-deleted.
+
+    The response includes an `oauth2_authorized` boolean derived from
+    `vault.get_credential` — True iff a current credential exists with
+    auth_scheme == _AUTH_SCHEME_EMAIL_OAUTH2 (15). The admin UI reads this
+    field to render the green "Authorized" status on the OAuth2 setup widget.
+    Vault errors are logged at WARNING and the field is set to False
+    (fail-closed on display; never block the page load).
+
+    No credential material (plaintext, header_name, query_param, etc.) is
+    ever returned — only the derived boolean (NFR-17).
 
     Auth dep: require_tenant_session.
     Tenant-scoped: WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL.
@@ -1891,6 +2107,26 @@ async def get_email_service(
             content={"mintkey:code": "not_found", "title": "Email service not found"},
         )
 
+    # Derive oauth2_authorized from the vault. Fail-closed on any vault error
+    # — never block the page load. Never echo credential material from `cred`.
+    oauth2_authorized = False
+    try:
+        cred = await vault.get_credential(
+            tenant_id=str(tenant_id),
+            service_id=service_id,
+        )
+        if cred is not None and cred.get("auth_scheme") == _AUTH_SCHEME_EMAIL_OAUTH2:
+            oauth2_authorized = True
+    except Exception:
+        logger.warning(
+            "get_email_service: vault.get_credential failed; defaulting"
+            " oauth2_authorized=False tenant=%s service=%s",
+            tenant_id,
+            service_id,
+            exc_info=True,
+        )
+        oauth2_authorized = False
+
     return JSONResponse(
         {
             "id": str(row.id),
@@ -1907,6 +2143,7 @@ async def get_email_service(
             "tls_insecure_skip_verify": row.tls_insecure_skip_verify,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "oauth2_authorized": oauth2_authorized,
         }
     )
 
@@ -1977,6 +2214,29 @@ async def patch_email_service(
             },
         )
 
+    # Defense-in-depth (#365): trim leading/trailing whitespace from string
+    # fields BEFORE persistence. Only mutable string fields are trimmed
+    # (name, allowed_recipient_domains); pool_size_max / tls_insecure_skip_verify
+    # are non-strings. imap_host/smtp_host are immutable on PATCH (rejected above).
+    # Operate on a copy of explicitly-set values so unset fields stay NULL
+    # (preserving the COALESCE-keeps-current semantics below).
+    patch_fields = body.model_dump(exclude_unset=True)
+    for _field in ("name", "allowed_recipient_domains"):
+        if _field in patch_fields and isinstance(patch_fields[_field], str):
+            patch_fields[_field] = patch_fields[_field].strip()
+
+    # After trim, reject all-whitespace name (trim → empty string is operator
+    # error; preserve the field's "not present" semantics by erroring rather
+    # than silently writing "").
+    if "name" in patch_fields and patch_fields["name"] == "":
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_name",
+                "title": "name must not be empty or whitespace",
+            },
+        )
+
     await set_tenant_context(session, tenant_id)
 
     # Verify service exists and belongs to this tenant (explicit guard — RLS also enforces)
@@ -1997,6 +2257,9 @@ async def patch_email_service(
 
     # Build fixed-template UPDATE (COALESCE keeps current value when new value is NULL).
     # SQL is a string literal — no f-strings; all values are bound parameters. ADR-0008.
+    # patch_fields holds trimmed string values for fields the caller actually set;
+    # fields NOT in patch_fields fall back to body.* (which is None) → COALESCE
+    # keeps the existing DB value. This preserves the original PATCH semantics.
     await session.execute(
         text(
             "UPDATE email_services"
@@ -2010,8 +2273,10 @@ async def patch_email_service(
             " WHERE id = :sid AND tenant_id = :tid AND deleted_at IS NULL"
         ),
         {
-            "name": body.name,
-            "allowed_recipient_domains": body.allowed_recipient_domains,
+            "name": patch_fields.get("name", body.name),
+            "allowed_recipient_domains": patch_fields.get(
+                "allowed_recipient_domains", body.allowed_recipient_domains
+            ),
             "pool_size_max": body.pool_size_max,
             "tls_insecure_skip_verify": body.tls_insecure_skip_verify,
             "updated_at": now,
@@ -2287,6 +2552,11 @@ async def oauth2_callback_per_tenant_view(
             "provider": provider,
             "authorized_at": result.authorized_at,
             "token_type": result.token_type,
+            # email_address is operator-visible already (lands in the
+            # email_services.name column after successful auth) — recording
+            # it in the audit event lets operators tie a row to its Google
+            # account. Empty string for outlook (see helper docstring).
+            "email_address": result.email_address,
         },
     )
 
@@ -2384,6 +2654,11 @@ async def oauth2_callback_per_tenant(
             "provider": provider,
             "authorized_at": result.authorized_at,
             "token_type": result.token_type,
+            # email_address is operator-visible already (lands in the
+            # email_services.name column after successful auth) — recording
+            # it in the audit event lets operators tie a row to its Google
+            # account. Empty string for outlook (see helper docstring).
+            "email_address": result.email_address,
         },
     )
 

@@ -835,6 +835,32 @@ Expected: `{"id":"svc_01...","status":"active","slug":"myapi",...}`.
 **What could go wrong:** 422 if `slug` is not unique within the tenant. Choose a
 different slug or check for an existing service with the same slug.
 
+#### Setting `openapi_url` to make the spec agent-discoverable
+
+If the upstream service publishes an OpenAPI spec, set `openapi_url` at registration time (or update it later):
+
+```bash
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "MyAPI",
+    "slug":        "myapi",
+    "base_url":    "https://api.myservice.example.com",
+    "auth_scheme": "bearer_token",
+    "openapi_url": "https://api.myservice.example.com/openapi.json"
+  }')
+```
+
+Once set, agents see the spec in two ways:
+
+- `mintkey_describe_service` returns `openapi.status: "available"` and `openapi_url` — agents can check before fetching.
+- `mintkey_get_openapi` returns the registered URL (`kind: "url"`) or fetches the document inline (`kind: "inline"` when `inline=true`) with etag-conditional caching and a 1 MiB size cap.
+
+**Via Admin UI:** Services → Edit → fill the `OpenAPI URL` field → Save.
+
+If no `openapi_url` is set, `describe_service` reports `openapi.status: "not_registered"` and `get_openapi` returns `kind: "not_registered"` with a hint for the operator.
+
 ---
 
 ### Recipe 2: add a credential
@@ -1051,5 +1077,132 @@ curl -s "http://localhost:16686/api/traces?service=admin-api&limit=5" \
 started and no requests have been made yet. Make any API call and refresh.
 If you get a 401, ensure you are signed in to Keycloak at `http://localhost:8081` first
 (the oauth2-proxy session is shared).
+
+---
+
+## 12. Agent-stored secrets
+
+Agents can store small named secrets (API keys, tokens, passwords — up to 64 KiB) inside
+Mintkey's vault without ever exposing them in logs, audit payloads, or span attributes.
+The architecture decision is [ADR-0025](architecture/01-architecture/adr/0025-agent-stored-secrets.md).
+
+### What it is
+
+- Each secret is scoped to `(tenant, owning agent, name)`.
+- Values are envelope-encrypted (AES-256-GCM DEK wrapped by the vault KEK) before reaching storage.
+- Agents access secrets via four MCP tools on the MCP server (`:8082`).
+- Operators manage metadata and share grants via the admin-api REST surface (`:8080`).
+- **Plaintext read-back caveat:** unlike service credentials (which the vault holds and the
+  egress proxy injects without the agent ever seeing them), agent-stored secrets ARE returned
+  to the owning agent in plaintext by `secret_get`. This is intentional — agents store and
+  retrieve their own secrets — but it means the agent must handle the plaintext value
+  responsibly. See ADR-0025 §Security deviation for the full rationale.
+
+### The four MCP tools
+
+All calls require an `Authorization: Bearer <mk_agent_KEY>` header against `http://localhost:8082`.
+
+#### `secret_put` — store or overwrite
+
+```bash
+curl -s -X POST http://localhost:8082/v1/tools/secret_put \
+  -H "Authorization: Bearer $MK_AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-db-password", "value": "s3cr3t", "content_type": "text/plain"}'
+```
+
+Response: `{"secret_id": "sec_...", "name": "my-db-password", "version": 1}`
+
+- `name` must match `^[a-zA-Z0-9._-]{1,128}$`
+- `value` is UTF-8 plaintext, maximum 65536 bytes
+- Storing to an existing `name` overwrites and increments `version`
+- Emits `agent_secret.created` (or `.updated`) audit event — identifier-only payload
+
+#### `secret_get` — read plaintext
+
+```bash
+curl -s "http://localhost:8082/v1/tools/secret_get?secret_id=sec_..." \
+  -H "Authorization: Bearer $MK_AGENT_KEY"
+```
+
+Response: `{"secret_id": "sec_...", "name": "my-db-password", "version": 1, "value": "s3cr3t", "access": "owner"}`
+
+- Only the owning agent or a recipient with a share grant may call this.
+- `access` is `"owner"` or `"shared"`.
+- Emits `agent_secret.read` audit event — identifier-only payload, value never logged.
+
+#### `secret_list` — list metadata
+
+```bash
+curl -s "http://localhost:8082/v1/tools/secret_list" \
+  -H "Authorization: Bearer $MK_AGENT_KEY"
+```
+
+Response: `{"secrets": [{...metadata only, no value...}], "next_cursor": null}`
+
+- Returns all owned and shared secrets with `access` flag (`"owner"` or `"shared"`).
+- Values are never returned. Pagination via `?after=sec_...&limit=50`.
+
+#### `secret_delete` — delete (owner only)
+
+```bash
+curl -s -X DELETE "http://localhost:8082/v1/tools/secret_delete?secret_id=sec_..." \
+  -H "Authorization: Bearer $MK_AGENT_KEY"
+```
+
+Response: `{}` (200 — idempotent)
+
+- Only the owning agent may delete.
+- Cascades all share grants. Emits `agent_secret.deleted` audit event.
+
+### Operator share grants
+
+Operators control which other agents may read an agent's secret.
+
+```bash
+# Grant agent B read access to agent A's secret
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agent-secrets/$SECRET_ID/grants" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -b /tmp/mk_cookies.txt \
+  -d '{"recipient_agent_id": "agent_..."}'
+# → 201 {"id": "secgrant_...", ...}
+
+# List grants
+curl -s "http://localhost:8080/v1/tenants/$TENANT_ID/agent-secrets/$SECRET_ID/grants" \
+  -b /tmp/mk_cookies.txt
+# → 200 {"data": [...], "next_cursor": null}
+
+# Revoke a grant (idempotent)
+curl -s -X DELETE \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agent-secrets/$SECRET_ID/grants/$GRANT_ID" \
+  -H "X-Mintkey-Csrf: $CSRF" -b /tmp/mk_cookies.txt
+# → 204
+
+# Operator hard-delete a secret (removes ciphertext + all grants)
+curl -s -X DELETE \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agent-secrets/$SECRET_ID" \
+  -H "X-Mintkey-Csrf: $CSRF" -b /tmp/mk_cookies.txt
+# → 204
+```
+
+**Constraints:**
+- Secret and recipient agent must both exist in the operator's tenant (cross-tenant references → 422).
+- Granting to the secret's own owner → 422 `grant_to_owner`.
+- Duplicate grant → 409 `already_exists`.
+- Operator metadata endpoints (`GET /agent-secrets`, `GET /agent-secrets/{id}`) return metadata only — no value, no ciphertext.
+
+### Audit events emitted
+
+| Event type | When | Payload keys |
+|---|---|---|
+| `agent_secret.created` | First `secret_put` for a name | `secret_id`, `agent_id`, `name`, `version` |
+| `agent_secret.updated` | Overwrite via `secret_put` | same + `previous_version` |
+| `agent_secret.read` | Successful `secret_get` | `secret_id`, `version`, `reader_agent_id`, `access` |
+| `agent_secret.deleted` | `secret_delete` (agent or operator) | `secret_id`, `agent_id`, `name` |
+| `agent_secret_grant.created` | Operator `POST .../grants` | `grant_id`, `secret_id`, `owner_agent_id`, `recipient_agent_id` |
+| `agent_secret_grant.revoked` | Operator `DELETE .../grants/{id}` | same |
+
+All payloads carry **identifiers only** — the plaintext value never appears in any audit row.
 
 ---

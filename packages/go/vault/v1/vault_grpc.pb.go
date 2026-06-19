@@ -375,3 +375,263 @@ var VaultAdapter_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "vault.proto",
 }
+
+const (
+	AgentSecretsVault_PutAgentSecret_FullMethodName    = "/mintkey.vault.v1.AgentSecretsVault/PutAgentSecret"
+	AgentSecretsVault_GetAgentSecret_FullMethodName    = "/mintkey.vault.v1.AgentSecretsVault/GetAgentSecret"
+	AgentSecretsVault_DeleteAgentSecret_FullMethodName = "/mintkey.vault.v1.AgentSecretsVault/DeleteAgentSecret"
+)
+
+// AgentSecretsVaultClient is the client API for AgentSecretsVault service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+//
+// Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+// is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+// Multiple secrets per agent are handled by SQL (public.agent_secrets);
+// this service handles only the encrypted blob.
+//
+// Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+// Per-transaction set_config('app.current_tenant', …) and
+// pg_advisory_xact_lock are applied identically to VaultAdapter.
+//
+// !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+type AgentSecretsVaultClient interface {
+	// PutAgentSecret seals the plaintext value and stores (or replaces)
+	// the encrypted blob keyed by (tenant_id, secret_id).
+	//
+	// On overwrite the previous blob is replaced atomically.
+	// The plaintext in the request is discarded after sealing.
+	//
+	// Errors:
+	//
+	//	INVALID_ARGUMENT  — tenant_id or secret_id is empty, or value
+	//	                    exceeds 65536 bytes.
+	//	PERMISSION_DENIED — caller lacks vault.secret.put scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	PutAgentSecret(ctx context.Context, in *PutAgentSecretRequest, opts ...grpc.CallOption) (*PutAgentSecretResponse, error)
+	// GetAgentSecret unseals and returns the plaintext value for one
+	// (tenant_id, secret_id). Every call should be accompanied by an
+	// agent_secret.read audit event emitted by the MCP server.
+	//
+	// Errors:
+	//
+	//	NOT_FOUND         — no blob exists for (tenant_id, secret_id).
+	//	PERMISSION_DENIED — caller lacks vault.secret.read scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	GetAgentSecret(ctx context.Context, in *GetAgentSecretRequest, opts ...grpc.CallOption) (*GetAgentSecretResponse, error)
+	// DeleteAgentSecret removes the encrypted blob for (tenant_id, secret_id).
+	// Idempotent: returns OK when the row is already absent.
+	//
+	// Errors:
+	//
+	//	PERMISSION_DENIED — caller lacks vault.secret.delete scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	DeleteAgentSecret(ctx context.Context, in *DeleteAgentSecretRequest, opts ...grpc.CallOption) (*DeleteAgentSecretResponse, error)
+}
+
+type agentSecretsVaultClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAgentSecretsVaultClient(cc grpc.ClientConnInterface) AgentSecretsVaultClient {
+	return &agentSecretsVaultClient{cc}
+}
+
+func (c *agentSecretsVaultClient) PutAgentSecret(ctx context.Context, in *PutAgentSecretRequest, opts ...grpc.CallOption) (*PutAgentSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PutAgentSecretResponse)
+	err := c.cc.Invoke(ctx, AgentSecretsVault_PutAgentSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentSecretsVaultClient) GetAgentSecret(ctx context.Context, in *GetAgentSecretRequest, opts ...grpc.CallOption) (*GetAgentSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAgentSecretResponse)
+	err := c.cc.Invoke(ctx, AgentSecretsVault_GetAgentSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentSecretsVaultClient) DeleteAgentSecret(ctx context.Context, in *DeleteAgentSecretRequest, opts ...grpc.CallOption) (*DeleteAgentSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteAgentSecretResponse)
+	err := c.cc.Invoke(ctx, AgentSecretsVault_DeleteAgentSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AgentSecretsVaultServer is the server API for AgentSecretsVault service.
+// All implementations must embed UnimplementedAgentSecretsVaultServer
+// for forward compatibility.
+//
+// AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+//
+// Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+// is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+// Multiple secrets per agent are handled by SQL (public.agent_secrets);
+// this service handles only the encrypted blob.
+//
+// Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+// Per-transaction set_config('app.current_tenant', …) and
+// pg_advisory_xact_lock are applied identically to VaultAdapter.
+//
+// !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+type AgentSecretsVaultServer interface {
+	// PutAgentSecret seals the plaintext value and stores (or replaces)
+	// the encrypted blob keyed by (tenant_id, secret_id).
+	//
+	// On overwrite the previous blob is replaced atomically.
+	// The plaintext in the request is discarded after sealing.
+	//
+	// Errors:
+	//
+	//	INVALID_ARGUMENT  — tenant_id or secret_id is empty, or value
+	//	                    exceeds 65536 bytes.
+	//	PERMISSION_DENIED — caller lacks vault.secret.put scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	PutAgentSecret(context.Context, *PutAgentSecretRequest) (*PutAgentSecretResponse, error)
+	// GetAgentSecret unseals and returns the plaintext value for one
+	// (tenant_id, secret_id). Every call should be accompanied by an
+	// agent_secret.read audit event emitted by the MCP server.
+	//
+	// Errors:
+	//
+	//	NOT_FOUND         — no blob exists for (tenant_id, secret_id).
+	//	PERMISSION_DENIED — caller lacks vault.secret.read scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	GetAgentSecret(context.Context, *GetAgentSecretRequest) (*GetAgentSecretResponse, error)
+	// DeleteAgentSecret removes the encrypted blob for (tenant_id, secret_id).
+	// Idempotent: returns OK when the row is already absent.
+	//
+	// Errors:
+	//
+	//	PERMISSION_DENIED — caller lacks vault.secret.delete scope.
+	//	UNAVAILABLE       — Postgres backend unreachable.
+	DeleteAgentSecret(context.Context, *DeleteAgentSecretRequest) (*DeleteAgentSecretResponse, error)
+	mustEmbedUnimplementedAgentSecretsVaultServer()
+}
+
+// UnimplementedAgentSecretsVaultServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAgentSecretsVaultServer struct{}
+
+func (UnimplementedAgentSecretsVaultServer) PutAgentSecret(context.Context, *PutAgentSecretRequest) (*PutAgentSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PutAgentSecret not implemented")
+}
+func (UnimplementedAgentSecretsVaultServer) GetAgentSecret(context.Context, *GetAgentSecretRequest) (*GetAgentSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAgentSecret not implemented")
+}
+func (UnimplementedAgentSecretsVaultServer) DeleteAgentSecret(context.Context, *DeleteAgentSecretRequest) (*DeleteAgentSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteAgentSecret not implemented")
+}
+func (UnimplementedAgentSecretsVaultServer) mustEmbedUnimplementedAgentSecretsVaultServer() {}
+func (UnimplementedAgentSecretsVaultServer) testEmbeddedByValue()                           {}
+
+// UnsafeAgentSecretsVaultServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AgentSecretsVaultServer will
+// result in compilation errors.
+type UnsafeAgentSecretsVaultServer interface {
+	mustEmbedUnimplementedAgentSecretsVaultServer()
+}
+
+func RegisterAgentSecretsVaultServer(s grpc.ServiceRegistrar, srv AgentSecretsVaultServer) {
+	// If the following call panics, it indicates UnimplementedAgentSecretsVaultServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AgentSecretsVault_ServiceDesc, srv)
+}
+
+func _AgentSecretsVault_PutAgentSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PutAgentSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentSecretsVaultServer).PutAgentSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentSecretsVault_PutAgentSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentSecretsVaultServer).PutAgentSecret(ctx, req.(*PutAgentSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentSecretsVault_GetAgentSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAgentSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentSecretsVaultServer).GetAgentSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentSecretsVault_GetAgentSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentSecretsVaultServer).GetAgentSecret(ctx, req.(*GetAgentSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentSecretsVault_DeleteAgentSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAgentSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentSecretsVaultServer).DeleteAgentSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentSecretsVault_DeleteAgentSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentSecretsVaultServer).DeleteAgentSecret(ctx, req.(*DeleteAgentSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AgentSecretsVault_ServiceDesc is the grpc.ServiceDesc for AgentSecretsVault service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AgentSecretsVault_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "mintkey.vault.v1.AgentSecretsVault",
+	HandlerType: (*AgentSecretsVaultServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "PutAgentSecret",
+			Handler:    _AgentSecretsVault_PutAgentSecret_Handler,
+		},
+		{
+			MethodName: "GetAgentSecret",
+			Handler:    _AgentSecretsVault_GetAgentSecret_Handler,
+		},
+		{
+			MethodName: "DeleteAgentSecret",
+			Handler:    _AgentSecretsVault_DeleteAgentSecret_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "vault.proto",
+}

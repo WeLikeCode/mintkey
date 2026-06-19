@@ -45,12 +45,22 @@ router = APIRouter()
 _PROTOCOL_VERSION = "2025-06-18"
 
 _INSTRUCTIONS = """\
-You are connected to Mintkey, a credential broker for backend service calls.
-Three core tools are available:
+You are connected to Mintkey, a credential broker for AI agents. Capabilities:
 
-1. mintkey_discover — list services this agent has permission to call
-2. mintkey_request_token — exchange a service_id for a short-lived JWT
-3. (call the service via the proxy URL returned in discover, with the JWT as Bearer)
+1. Brokered service calls — mintkey_discover lists services you may call
+   (with per-auth-scheme injection hints); mintkey_describe_service returns
+   full auth details, your constraints, and the exact proxy URL;
+   mintkey_request_token exchanges a service_id for a short-lived JWT; then
+   call the service via the proxy URL with the JWT as Bearer. The proxy
+   injects the real credential — never send your own upstream auth header.
+2. Agent secret storage — store your OWN credentials (DB passwords,
+   service-account JSON, SSH keys) encrypted at rest and read them back:
+   secret_put / secret_get / secret_list / secret_delete. Secrets are
+   private to you unless an operator shares one with another agent.
+3. Upstream API specs — mintkey_get_openapi returns a service's OpenAPI
+   document (url or inline) when the operator registered one.
+4. Email — email_* tools (send, list mailboxes/messages, attachments) for
+   granted email services, via the REST endpoints listed at GET /v1/tools.
 
 For the full onboarding skill (markdown), call mintkey_bootstrap.
 Auth: send `Authorization: Bearer mk_agent_<your-key>` on every tools/* call.
@@ -152,6 +162,89 @@ TOOLS: list[dict] = [
                 },
             },
             "required": ["service_id"],
+            "additionalProperties": False,
+        },
+    },
+    # Agent secret tools (ADR-0025)
+    {
+        "name": "secret_put",
+        "title": "Store Agent Secret",
+        "description": (
+            "Store (or overwrite) a named secret owned by the calling agent. "
+            "Name must match ^[a-zA-Z0-9._-]{1,128}$; value must be <= 65536 bytes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Secret name (unique per agent)."},
+                "value": {"type": "string", "description": "Plaintext secret value (UTF-8)."},
+                "content_type": {
+                    "type": "string",
+                    "description": "Optional free-text content-type hint.",
+                },
+            },
+            "required": ["name", "value"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "secret_get",
+        "title": "Get Agent Secret",
+        "description": (
+            "Read the plaintext value of a secret the calling agent owns or has been granted "
+            "read access to. Returns uniform not-found for nonexistent and not-visible secrets."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "secret_id": {
+                    "type": "string",
+                    "description": "sec_ wire form of the secret ID.",
+                }
+            },
+            "required": ["secret_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "secret_list",
+        "title": "List Agent Secrets",
+        "description": (
+            "List metadata (ID, name, version, size, access) for all secrets the calling "
+            "agent owns plus all secrets shared with it. Never returns values."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "after": {
+                    "type": "string",
+                    "description": "Pagination cursor — sec_ wire ID from previous page.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Page size (1–200, default 50).",
+                    "default": 50,
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "secret_delete",
+        "title": "Delete Agent Secret",
+        "description": (
+            "Delete a secret owned by the calling agent. Cascades share grants. Idempotent. "
+            "Returns uniform not-found for nonexistent and not-owned secrets."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "secret_id": {
+                    "type": "string",
+                    "description": "sec_ wire form of the secret ID.",
+                }
+            },
+            "required": ["secret_id"],
             "additionalProperties": False,
         },
     },
@@ -381,6 +474,54 @@ async def _dispatch_tool(
             "/v1/tools/request_token",
             headers=auth_header,
             json={"service_id": service_id, "action": action},
+        )
+
+    # Agent secret tools (ADR-0025)
+    if name == "secret_put":
+        name_arg = args.get("name")
+        value_arg = args.get("value")
+        if not name_arg or value_arg is None:
+            return _synthetic_error_response(
+                422,
+                {"code": "mintkey:invalid_params", "detail": "'name' and 'value' arguments are required"},
+            )
+        body: dict = {"name": name_arg, "value": value_arg}
+        if args.get("content_type"):
+            body["content_type"] = args["content_type"]
+        return await client.post(
+            "/v1/tools/secret_put", headers=auth_header, json=body
+        )
+
+    if name == "secret_get":
+        secret_id = args.get("secret_id")
+        if not secret_id:
+            return _synthetic_error_response(
+                422,
+                {"code": "mintkey:invalid_params", "detail": "'secret_id' argument is required"},
+            )
+        return await client.get(
+            "/v1/tools/secret_get", headers=auth_header, params={"secret_id": secret_id}
+        )
+
+    if name == "secret_list":
+        params: dict = {}
+        if args.get("after"):
+            params["after"] = args["after"]
+        if args.get("limit") is not None:
+            params["limit"] = args["limit"]
+        return await client.get(
+            "/v1/tools/secret_list", headers=auth_header, params=params
+        )
+
+    if name == "secret_delete":
+        secret_id = args.get("secret_id")
+        if not secret_id:
+            return _synthetic_error_response(
+                422,
+                {"code": "mintkey:invalid_params", "detail": "'secret_id' argument is required"},
+            )
+        return await client.delete(
+            "/v1/tools/secret_delete", headers=auth_header, params={"secret_id": secret_id}
         )
 
     return None  # unknown tool

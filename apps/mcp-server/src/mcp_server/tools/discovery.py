@@ -4,7 +4,7 @@ MCP discovery tools.
 GET /v1/tools/list_services        — services the agent has permission to call.
 GET /v1/tools/discover             — alias for list_services with how_to_call hints.
 GET /v1/tools/describe_service/{service_id} — full service metadata.
-GET /v1/tools/get_openapi/{service_id}      — OpenAPI URL or null.
+GET /v1/tools/get_openapi/{service_id}      — OpenAPI URL or inline document.
 GET /v1/tools/instructions         — LLM-ready usage guide (no auth required).
 
 All queries run under tenant context (RLS enforces isolation).
@@ -17,15 +17,22 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+import httpx
+from httpx import RequestError as _HttpxRequestError, TimeoutException as _HttpxTimeoutException, TooManyRedirects as _HttpxTooManyRedirects
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintkey_models.tenant_ctx import set_tenant_context
+from mcp_server.auth_schemes import INJECTION_HINTS
 from mcp_server.config.public_urls import resolve_proxy_public_url, resolve_ssh_proxy_public_host
 from mcp_server.db.session import get_db_session
 from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_service_id
+
+# OpenAPI fetch limits (task 3.4)
+_OPENAPI_MAX_BYTES = 1024 * 1024  # 1 MiB
+_OPENAPI_TIMEOUT_S = 10.0
 
 # Auth schemes that use SSH transport (ssh-proxy) rather than Kong HTTP proxy.
 _SSH_AUTH_SCHEMES = {"ssh_private_key", "ssh_password", "ssh_ca"}
@@ -67,6 +74,97 @@ def _ssh_agent_connection_guide() -> dict:
         ],
         "lifetime_seconds": 600,
     }
+
+def _make_auth_scheme_details(auth_scheme: str) -> dict:
+    """
+    Build auth_scheme_details for describe_service from the INJECTION_HINTS table.
+
+    Per-credential header_name/query_param overrides live in vault.credentials
+    (vault schema, ADR-0021) which is not reachable from the MCP-server's DB session
+    without a separate vault-adapter gRPC call. We use table defaults here and note
+    that the proxy may use a custom name configured by the operator at credential
+    registration.
+    """
+    hint = INJECTION_HINTS.get(auth_scheme)
+    if hint is None:
+        return {
+            "injection_point": "unknown",
+            "header_name": None,
+            "query_param": None,
+            "format": "unknown scheme",
+        }
+    location = hint["location"]
+    status = hint["status"]
+
+    if status == "not_implemented":
+        return {
+            "injection_point": location,
+            "header_name": None,
+            "query_param": None,
+            "format": "not_implemented — proxy returns an error for this scheme",
+        }
+    if status == "handled_by_other_proxy":
+        return {
+            "injection_point": location,
+            "header_name": None,
+            "query_param": None,
+            "format": f"handled by {hint['handled_by']} — not the HTTP proxy",
+        }
+
+    # location == "header" schemes
+    if auth_scheme == "api_key_header":
+        return {
+            "injection_point": "header",
+            "header_name": "X-API-Key",  # default; operator may override
+            "query_param": None,
+            "format": "<raw_key>",
+        }
+    if auth_scheme == "api_key_query":
+        return {
+            "injection_point": "query",
+            "header_name": None,
+            "query_param": "api_key",  # default; operator may override
+            "format": "<raw_key>",
+        }
+    if auth_scheme == "basic_auth":
+        return {
+            "injection_point": "header",
+            "header_name": "Authorization",
+            "query_param": None,
+            "format": "Basic base64(user:pass)",
+        }
+    # All remaining http-proxy schemes inject a Bearer token
+    return {
+        "injection_point": "header",
+        "header_name": "Authorization",
+        "query_param": None,
+        "format": "Bearer <token>",
+    }
+
+
+def _make_your_constraints(constraints_raw) -> dict:
+    """
+    Extract the calling agent's permission-grant constraints into the contracted shape.
+    constraints_raw may be a dict (asyncpg returns JSONB as dict), a JSON string, or None.
+    Each field is null when the operator has not set a limit.
+    """
+    if constraints_raw is None:
+        c: dict = {}
+    elif isinstance(constraints_raw, dict):
+        c = constraints_raw
+    else:
+        import json as _json
+        try:
+            c = _json.loads(constraints_raw)
+        except Exception:
+            c = {}
+    return {
+        "rate_limit": c.get("rate_limit"),
+        "time_window": c.get("time_window"),
+        "request_path_prefix": c.get("request_path_prefix"),
+        "source_ip_allowlist": c.get("source_ip_allowlist"),
+    }
+
 
 router = APIRouter(prefix="/v1/tools")
 
@@ -150,10 +248,10 @@ def _make_email_how_to_call(email_service_id: str) -> dict:
     }
 
 
-def _make_how_to_call(service_id: str, base_url: str) -> dict:
+def _make_how_to_call(service_id: str, base_url: str, auth_scheme: str = "") -> dict:
     """Build the how_to_call usage hint for a service entry."""
     proxy_url = resolve_proxy_public_url()
-    return {
+    result: dict = {
         "action": "call",
         "step1_request_token": (
             f'POST /v1/tools/request_token {{"service_id": "{service_id}", "action": "call"}}'
@@ -166,9 +264,27 @@ def _make_how_to_call(service_id: str, base_url: str) -> dict:
             'The action defaults to "call" for all services. '
             "Use the action string your operator granted you — if unsure, try \"call\". "
             "The proxy strips your Bearer token and injects the real credential before forwarding. "
-            "No X-Mintkey-Target header is needed — the target URL is stored with the credential."
+            "No X-Mintkey-Target header is needed — the target URL is stored with the credential. "
+            "Call describe_service for full auth details and your permission constraints."
         ),
     }
+    if auth_scheme and auth_scheme in INJECTION_HINTS:
+        result["injection_hint"] = INJECTION_HINTS[auth_scheme]
+    return result
+
+
+# Shown on every list_services/discover response so agents whose refresh
+# habit is the service catalog still learn about built-in capabilities
+# (observed: agents re-running discover never see initialize/tools-list).
+_BUILTIN_CAPABILITIES = (
+    "Beyond these operator-registered services, this server has built-in "
+    "tools: agent secret storage (secret_put/secret_get/secret_list/"
+    "secret_delete — store your own credentials encrypted and read them "
+    "back), mintkey_describe_service (full auth details + your "
+    "constraints), mintkey_get_openapi (upstream API specs), and email_* "
+    "tools for granted email services. Full list: MCP tools/list or "
+    "GET /v1/tools/bootstrap."
+)
 
 
 @router.get("/list_services")
@@ -239,12 +355,19 @@ async def list_services(
     ]
 
     all_services = services + email_services
-    payload: dict = {"services": all_services}
+    payload: dict = {"services": all_services, "capabilities": _BUILTIN_CAPABILITIES}
     if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
             "Ask your operator to add a Permission Grant in the admin UI: "
-            "Permissions > New > pick this agent + a service + action."
+            "Permissions > New > pick this agent + a service + action. "
+            "Once you have services, call discover for how_to_call hints or "
+            "describe_service/{service_id} for full auth details and constraints."
+        )
+    else:
+        payload["hint"] = (
+            "Call discover for per-service how_to_call hints, or "
+            "describe_service/{service_id} for full auth details, constraints, and OpenAPI availability."
         )
     return JSONResponse(payload)
 
@@ -285,7 +408,9 @@ async def discover(
             "auth_scheme": r.auth_scheme,
             "connect_type": _connect_type(r.auth_scheme),
             "kind": "service",
-            "how_to_call": _make_how_to_call(db_uuid_to_wire(r.id, "svc"), r.base_url),
+            "how_to_call": _make_how_to_call(
+                db_uuid_to_wire(r.id, "svc"), r.base_url, r.auth_scheme
+            ),
         }
         for r in rows
     ]
@@ -318,7 +443,7 @@ async def discover(
     ]
 
     all_services = services + email_services_list
-    payload: dict = {"services": all_services}
+    payload: dict = {"services": all_services, "capabilities": _BUILTIN_CAPABILITIES}
     if not all_services:
         payload["hint"] = (
             "You have no permission grants on any service. "
@@ -383,16 +508,45 @@ async def describe_service(
     if row is None:
         return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
 
+    # Fetch this agent's constraints for the service (task 3.2).
+    # Bound params use distinct names (agent_id_ds, service_id_ds) to avoid
+    # collision with existing fake sessions in tests.
+    constraints_result = await session.execute(
+        text(
+            "SELECT constraints FROM permission_grants"
+            " WHERE agent_id = :agent_id_ds AND service_id = :service_id_ds"
+            " ORDER BY (action = 'call') DESC, created_at DESC"
+            " LIMIT 1"
+        ),
+        {
+            "agent_id_ds": agent_ctx["agent_id"],
+            "service_id_ds": db_service_id,
+        },
+    )
+    constraints_row = constraints_result.fetchone()
+    constraints_raw = getattr(constraints_row, "constraints", None) if constraints_row else None
+
     ct = _connect_type(row.auth_scheme)
+    proxy_url = resolve_proxy_public_url()
+    wire_id = db_uuid_to_wire(row.id, "svc")
+    openapi_url = getattr(row, "openapi_url", None)
+
     service_payload: dict = {
-        "id": db_uuid_to_wire(row.id, "svc"),
+        "id": wire_id,
         "name": row.name,
         "slug": row.slug,
         "base_url": row.base_url,
         "auth_scheme": row.auth_scheme,
         "description": row.description,  # may be null
-        "openapi_url": row.openapi_url,   # may be null
+        "openapi_url": openapi_url,       # may be null
         "connect_type": ct,
+        "explicit_proxy_url": f"{proxy_url}/v1/call/{wire_id}",
+        "auth_scheme_details": _make_auth_scheme_details(row.auth_scheme),
+        "your_constraints": _make_your_constraints(constraints_raw),
+        "openapi": {
+            "status": "available" if openapi_url else "not_registered",
+            "url": openapi_url,
+        },
     }
     if ct == "ssh":
         service_payload["agent_connection_guide"] = _ssh_agent_connection_guide()
@@ -403,12 +557,21 @@ async def describe_service(
 async def get_openapi(
     service_id: str,
     request: Request,
+    inline: bool = Query(default=False),
     session: AsyncSession = Depends(get_db_session),
     agent_ctx: Optional[dict] = Depends(get_agent_context),
 ) -> JSONResponse:
     """
-    Return the OpenAPI URL for a service, or null if not set.
-    Source: Req 6 AC4; ADR-0008.
+    Return the service's OpenAPI document — URL or inline.
+
+    Default (inline=false): returns {kind: url, openapi_url, etag}.
+    inline=true: fetches server-side with If-None-Match from services.openapi_etag,
+      1 MiB cap, 10 s timeout, no off-host redirects; updates etag on 200.
+    No URL registered: {kind: not_registered}.
+    Fetch failure: {kind: fetch_failed, openapi_url, reason} — tool never raises.
+    Response content is passed through opaque; never logged (SSRF/plaintext gates).
+
+    Source: Req 6 AC4; ADR-0008; design.md D4; spec openapi-exposure.
     """
     if agent_ctx is None:
         return JSONResponse(status_code=401, content={"code": "mintkey:auth_required"})
@@ -438,7 +601,7 @@ async def get_openapi(
     db_service_id = str(db_service_uuid)
 
     result = await session.execute(
-        text("SELECT openapi_url FROM services WHERE id = :sid"),
+        text("SELECT openapi_url, openapi_etag FROM services WHERE id = :sid"),
         {"sid": db_service_id},
     )
     row = result.fetchone()
@@ -446,4 +609,106 @@ async def get_openapi(
         return JSONResponse(status_code=404, content={"code": "mintkey:not_found"})
 
     openapi_url = getattr(row, "openapi_url", None)
-    return JSONResponse({"openapi_url": openapi_url})
+    openapi_etag = getattr(row, "openapi_etag", None)
+
+    if not openapi_url:
+        return JSONResponse({
+            "kind": "not_registered",
+            "hint": (
+                "The operator has not set an openapi_url for this service. "
+                "Set it via PATCH /v1/tenants/{tenant_id}/services/{service_id} "
+                "or the admin UI service registration form."
+            ),
+        })
+
+    if not inline:
+        return JSONResponse({
+            "kind": "url",
+            "openapi_url": openapi_url,
+            "etag": openapi_etag,
+        })
+
+    # Inline mode: fetch server-side with etag-conditional request.
+    fetch_headers: dict = {}
+    if openapi_etag:
+        fetch_headers["If-None-Match"] = openapi_etag
+
+    try:
+        async with httpx.AsyncClient(timeout=_OPENAPI_TIMEOUT_S) as client:
+            resp = await client.get(
+                openapi_url,
+                headers=fetch_headers,
+                follow_redirects=False,
+            )
+    except (_HttpxTooManyRedirects, _HttpxTimeoutException, _HttpxRequestError) as exc:
+        return JSONResponse({
+            "kind": "fetch_failed",
+            "openapi_url": openapi_url,
+            "reason": str(exc)[:200],
+        })
+    except Exception as exc:
+        return JSONResponse({
+            "kind": "fetch_failed",
+            "openapi_url": openapi_url,
+            "reason": f"unexpected error: {type(exc).__name__}",
+        })
+
+    if resp.status_code == 304:
+        # Not Modified — cached version still valid; return url mode with stored etag.
+        return JSONResponse({
+            "kind": "url",
+            "openapi_url": openapi_url,
+            "etag": openapi_etag,
+        })
+
+    if resp.status_code != 200:
+        return JSONResponse({
+            "kind": "fetch_failed",
+            "openapi_url": openapi_url,
+            "reason": f"upstream returned HTTP {resp.status_code}",
+        })
+
+    # Size check: content-length header first, then actual body.
+    content_length_header = resp.headers.get("content-length")
+    if content_length_header:
+        try:
+            if int(content_length_header) > _OPENAPI_MAX_BYTES:
+                return JSONResponse({
+                    "kind": "fetch_failed",
+                    "openapi_url": openapi_url,
+                    "reason": f"document exceeds 1 MiB (content-length={content_length_header})",
+                })
+        except ValueError:
+            pass
+
+    body_bytes = resp.content
+    if len(body_bytes) > _OPENAPI_MAX_BYTES:
+        return JSONResponse({
+            "kind": "fetch_failed",
+            "openapi_url": openapi_url,
+            "reason": f"document exceeds 1 MiB ({len(body_bytes)} bytes)",
+        })
+
+    # Persist updated etag (best-effort; do not fail the request if this fails).
+    new_etag = resp.headers.get("etag") or openapi_etag
+    if new_etag and new_etag != openapi_etag:
+        try:
+            await session.execute(
+                text("UPDATE services SET openapi_etag = :etag WHERE id = :sid"),
+                {"etag": new_etag, "sid": db_service_id},
+            )
+        except Exception:
+            pass  # non-fatal; etag column update is best-effort caching only
+
+    content_type_header = resp.headers.get("content-type", "")
+    if "yaml" in content_type_header:
+        ct_out = "application/yaml"
+    else:
+        ct_out = "application/json"
+
+    return JSONResponse({
+        "kind": "inline",
+        "content_type": ct_out,
+        "etag": new_etag,
+        "document": resp.text,
+    })

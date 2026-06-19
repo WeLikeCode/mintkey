@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,8 @@ version = "0.1.0-preview.1"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13.4",
-    "sqlalchemy[asyncio]>=2.0",
-    "prometheus-client>=0.20",
+    "sqlalchemy[asyncio]>=2.0.50",
+    "prometheus-client>=0.25.0",
     "cryptography>=48.0.0",
 ]
 
@@ -20,8 +20,8 @@ include = ["mintkey_models*"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
-    "pytest-asyncio>=0.24",
-    "ruff>=0.9",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.15",
     "mypy>=2.1.0",
 ]
 

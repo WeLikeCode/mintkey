@@ -1105,6 +1105,342 @@ func (x *ListVersionsResponse) GetCurrentKeyVersion() uint32 {
 	return 0
 }
 
+type PutAgentSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ULID-prefixed tenant id (e.g. "tenant_01HX..."). REQUIRED.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// ULID-prefixed secret id (sec_…). REQUIRED. Assigned by the MCP server
+	// before the call; stable across overwrites of the same named secret.
+	SecretId string `protobuf:"bytes,2,opt,name=secret_id,json=secretId,proto3" json:"secret_id,omitempty"`
+	// SENSITIVE — plaintext secret bytes. At most 65536 bytes.
+	// The adapter seals this with a fresh AES-256-GCM DEK, discards the
+	// plaintext, and stores the wrapped DEK + ciphertext in vault.agent_secrets.
+	Value []byte `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// KEK version to use for wrapping the DEK. Pass 0 to use the current KEK.
+	KekVersion    uint32 `protobuf:"varint,4,opt,name=kek_version,json=kekVersion,proto3" json:"kek_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutAgentSecretRequest) Reset() {
+	*x = PutAgentSecretRequest{}
+	mi := &file_vault_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutAgentSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutAgentSecretRequest) ProtoMessage() {}
+
+func (x *PutAgentSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutAgentSecretRequest.ProtoReflect.Descriptor instead.
+func (*PutAgentSecretRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *PutAgentSecretRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *PutAgentSecretRequest) GetSecretId() string {
+	if x != nil {
+		return x.SecretId
+	}
+	return ""
+}
+
+func (x *PutAgentSecretRequest) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *PutAgentSecretRequest) GetKekVersion() uint32 {
+	if x != nil {
+		return x.KekVersion
+	}
+	return 0
+}
+
+type PutAgentSecretResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The KEK version that wrapped the DEK for this write.
+	KekVersion uint32 `protobuf:"varint,1,opt,name=kek_version,json=kekVersion,proto3" json:"kek_version,omitempty"`
+	// Server-side write timestamp.
+	WrittenAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=written_at,json=writtenAt,proto3" json:"written_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PutAgentSecretResponse) Reset() {
+	*x = PutAgentSecretResponse{}
+	mi := &file_vault_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PutAgentSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PutAgentSecretResponse) ProtoMessage() {}
+
+func (x *PutAgentSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PutAgentSecretResponse.ProtoReflect.Descriptor instead.
+func (*PutAgentSecretResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *PutAgentSecretResponse) GetKekVersion() uint32 {
+	if x != nil {
+		return x.KekVersion
+	}
+	return 0
+}
+
+func (x *PutAgentSecretResponse) GetWrittenAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.WrittenAt
+	}
+	return nil
+}
+
+type GetAgentSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ULID-prefixed tenant id. REQUIRED.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// ULID-prefixed secret id (sec_…). REQUIRED.
+	SecretId      string `protobuf:"bytes,2,opt,name=secret_id,json=secretId,proto3" json:"secret_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAgentSecretRequest) Reset() {
+	*x = GetAgentSecretRequest{}
+	mi := &file_vault_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAgentSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAgentSecretRequest) ProtoMessage() {}
+
+func (x *GetAgentSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAgentSecretRequest.ProtoReflect.Descriptor instead.
+func (*GetAgentSecretRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetAgentSecretRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *GetAgentSecretRequest) GetSecretId() string {
+	if x != nil {
+		return x.SecretId
+	}
+	return ""
+}
+
+type GetAgentSecretResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// SENSITIVE — plaintext secret bytes. Never log; never persist.
+	Value []byte `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	// The KEK version that wrapped the DEK at write time.
+	KekVersion    uint32 `protobuf:"varint,2,opt,name=kek_version,json=kekVersion,proto3" json:"kek_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAgentSecretResponse) Reset() {
+	*x = GetAgentSecretResponse{}
+	mi := &file_vault_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAgentSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAgentSecretResponse) ProtoMessage() {}
+
+func (x *GetAgentSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAgentSecretResponse.ProtoReflect.Descriptor instead.
+func (*GetAgentSecretResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetAgentSecretResponse) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *GetAgentSecretResponse) GetKekVersion() uint32 {
+	if x != nil {
+		return x.KekVersion
+	}
+	return 0
+}
+
+type DeleteAgentSecretRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ULID-prefixed tenant id. REQUIRED.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// ULID-prefixed secret id (sec_…). REQUIRED.
+	SecretId      string `protobuf:"bytes,2,opt,name=secret_id,json=secretId,proto3" json:"secret_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAgentSecretRequest) Reset() {
+	*x = DeleteAgentSecretRequest{}
+	mi := &file_vault_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAgentSecretRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAgentSecretRequest) ProtoMessage() {}
+
+func (x *DeleteAgentSecretRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAgentSecretRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAgentSecretRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *DeleteAgentSecretRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *DeleteAgentSecretRequest) GetSecretId() string {
+	if x != nil {
+		return x.SecretId
+	}
+	return ""
+}
+
+type DeleteAgentSecretResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// True if a row was deleted; false if it was already absent (idempotent).
+	Deleted       bool `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAgentSecretResponse) Reset() {
+	*x = DeleteAgentSecretResponse{}
+	mi := &file_vault_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAgentSecretResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAgentSecretResponse) ProtoMessage() {}
+
+func (x *DeleteAgentSecretResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAgentSecretResponse.ProtoReflect.Descriptor instead.
+func (*DeleteAgentSecretResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *DeleteAgentSecretResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
 // ValidateServiceIdentityRequest authenticates a calling service.
 type ValidateServiceIdentityRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1119,7 +1455,7 @@ type ValidateServiceIdentityRequest struct {
 
 func (x *ValidateServiceIdentityRequest) Reset() {
 	*x = ValidateServiceIdentityRequest{}
-	mi := &file_vault_proto_msgTypes[9]
+	mi := &file_vault_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1131,7 +1467,7 @@ func (x *ValidateServiceIdentityRequest) String() string {
 func (*ValidateServiceIdentityRequest) ProtoMessage() {}
 
 func (x *ValidateServiceIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vault_proto_msgTypes[9]
+	mi := &file_vault_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1144,7 +1480,7 @@ func (x *ValidateServiceIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateServiceIdentityRequest.ProtoReflect.Descriptor instead.
 func (*ValidateServiceIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_vault_proto_rawDescGZIP(), []int{9}
+	return file_vault_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ValidateServiceIdentityRequest) GetServiceIdentityId() string {
@@ -1175,7 +1511,7 @@ type ValidateServiceIdentityResponse struct {
 
 func (x *ValidateServiceIdentityResponse) Reset() {
 	*x = ValidateServiceIdentityResponse{}
-	mi := &file_vault_proto_msgTypes[10]
+	mi := &file_vault_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1523,7 @@ func (x *ValidateServiceIdentityResponse) String() string {
 func (*ValidateServiceIdentityResponse) ProtoMessage() {}
 
 func (x *ValidateServiceIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vault_proto_msgTypes[10]
+	mi := &file_vault_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1536,7 @@ func (x *ValidateServiceIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateServiceIdentityResponse.ProtoReflect.Descriptor instead.
 func (*ValidateServiceIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_vault_proto_rawDescGZIP(), []int{10}
+	return file_vault_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ValidateServiceIdentityResponse) GetOk() bool {
@@ -1323,7 +1659,30 @@ const file_vault_proto_rawDesc = "" +
 	"\x14ListVersionsResponse\x12?\n" +
 	"\bversions\x18\x01 \x03(\v2#.mintkey.vault.v1.VersionDescriptorR\bversions\x123\n" +
 	"\x16next_after_key_version\x18\x02 \x01(\rR\x13nextAfterKeyVersion\x12.\n" +
-	"\x13current_key_version\x18\x03 \x01(\rR\x11currentKeyVersion\"f\n" +
+	"\x13current_key_version\x18\x03 \x01(\rR\x11currentKeyVersion\"\x88\x01\n" +
+	"\x15PutAgentSecretRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\fR\x05value\x12\x1f\n" +
+	"\vkek_version\x18\x04 \x01(\rR\n" +
+	"kekVersion\"t\n" +
+	"\x16PutAgentSecretResponse\x12\x1f\n" +
+	"\vkek_version\x18\x01 \x01(\rR\n" +
+	"kekVersion\x129\n" +
+	"\n" +
+	"written_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\twrittenAt\"Q\n" +
+	"\x15GetAgentSecretRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\"O\n" +
+	"\x16GetAgentSecretResponse\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\fR\x05value\x12\x1f\n" +
+	"\vkek_version\x18\x02 \x01(\rR\n" +
+	"kekVersion\"T\n" +
+	"\x18DeleteAgentSecretRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1b\n" +
+	"\tsecret_id\x18\x02 \x01(\tR\bsecretId\"5\n" +
+	"\x19DeleteAgentSecretResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"f\n" +
 	"\x1eValidateServiceIdentityRequest\x12.\n" +
 	"\x13service_identity_id\x18\x01 \x01(\tR\x11serviceIdentityId\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\fR\x05token\"\x86\x01\n" +
@@ -1361,7 +1720,11 @@ const file_vault_proto_rawDesc = "" +
 	"\rPutCredential\x12&.mintkey.vault.v1.PutCredentialRequest\x1a'.mintkey.vault.v1.PutCredentialResponse\x12i\n" +
 	"\x10RevokeCredential\x12).mintkey.vault.v1.RevokeCredentialRequest\x1a*.mintkey.vault.v1.RevokeCredentialResponse\x12]\n" +
 	"\fListVersions\x12%.mintkey.vault.v1.ListVersionsRequest\x1a&.mintkey.vault.v1.ListVersionsResponse\x12~\n" +
-	"\x17ValidateServiceIdentity\x120.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a1.mintkey.vault.v1.ValidateServiceIdentityResponseBP\n" +
+	"\x17ValidateServiceIdentity\x120.mintkey.vault.v1.ValidateServiceIdentityRequest\x1a1.mintkey.vault.v1.ValidateServiceIdentityResponse2\xcb\x02\n" +
+	"\x11AgentSecretsVault\x12c\n" +
+	"\x0ePutAgentSecret\x12'.mintkey.vault.v1.PutAgentSecretRequest\x1a(.mintkey.vault.v1.PutAgentSecretResponse\x12c\n" +
+	"\x0eGetAgentSecret\x12'.mintkey.vault.v1.GetAgentSecretRequest\x1a(.mintkey.vault.v1.GetAgentSecretResponse\x12l\n" +
+	"\x11DeleteAgentSecret\x12*.mintkey.vault.v1.DeleteAgentSecretRequest\x1a+.mintkey.vault.v1.DeleteAgentSecretResponseBP\n" +
 	"\x13io.mintkey.vault.v1P\x01Z7github.com/mintkey/mintkey/packages/go/vault/v1;vaultv1b\x06proto3"
 
 var (
@@ -1377,7 +1740,7 @@ func file_vault_proto_rawDescGZIP() []byte {
 }
 
 var file_vault_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_vault_proto_goTypes = []any{
 	(AuthScheme)(0),                         // 0: mintkey.vault.v1.AuthScheme
 	(CredentialStatus)(0),                   // 1: mintkey.vault.v1.CredentialStatus
@@ -1390,40 +1753,53 @@ var file_vault_proto_goTypes = []any{
 	(*ListVersionsRequest)(nil),             // 8: mintkey.vault.v1.ListVersionsRequest
 	(*VersionDescriptor)(nil),               // 9: mintkey.vault.v1.VersionDescriptor
 	(*ListVersionsResponse)(nil),            // 10: mintkey.vault.v1.ListVersionsResponse
-	(*ValidateServiceIdentityRequest)(nil),  // 11: mintkey.vault.v1.ValidateServiceIdentityRequest
-	(*ValidateServiceIdentityResponse)(nil), // 12: mintkey.vault.v1.ValidateServiceIdentityResponse
-	(*timestamppb.Timestamp)(nil),           // 13: google.protobuf.Timestamp
+	(*PutAgentSecretRequest)(nil),           // 11: mintkey.vault.v1.PutAgentSecretRequest
+	(*PutAgentSecretResponse)(nil),          // 12: mintkey.vault.v1.PutAgentSecretResponse
+	(*GetAgentSecretRequest)(nil),           // 13: mintkey.vault.v1.GetAgentSecretRequest
+	(*GetAgentSecretResponse)(nil),          // 14: mintkey.vault.v1.GetAgentSecretResponse
+	(*DeleteAgentSecretRequest)(nil),        // 15: mintkey.vault.v1.DeleteAgentSecretRequest
+	(*DeleteAgentSecretResponse)(nil),       // 16: mintkey.vault.v1.DeleteAgentSecretResponse
+	(*ValidateServiceIdentityRequest)(nil),  // 17: mintkey.vault.v1.ValidateServiceIdentityRequest
+	(*ValidateServiceIdentityResponse)(nil), // 18: mintkey.vault.v1.ValidateServiceIdentityResponse
+	(*timestamppb.Timestamp)(nil),           // 19: google.protobuf.Timestamp
 }
 var file_vault_proto_depIdxs = []int32{
 	0,  // 0: mintkey.vault.v1.GetCredentialResponse.auth_scheme:type_name -> mintkey.vault.v1.AuthScheme
-	13, // 1: mintkey.vault.v1.GetCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 1: mintkey.vault.v1.GetCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: mintkey.vault.v1.PutCredentialRequest.auth_scheme:type_name -> mintkey.vault.v1.AuthScheme
-	13, // 3: mintkey.vault.v1.PutCredentialRequest.expires_at:type_name -> google.protobuf.Timestamp
-	13, // 4: mintkey.vault.v1.PutCredentialResponse.created_at:type_name -> google.protobuf.Timestamp
+	19, // 3: mintkey.vault.v1.PutCredentialRequest.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 4: mintkey.vault.v1.PutCredentialResponse.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 5: mintkey.vault.v1.RevokeCredentialResponse.status:type_name -> mintkey.vault.v1.CredentialStatus
-	13, // 6: mintkey.vault.v1.RevokeCredentialResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	19, // 6: mintkey.vault.v1.RevokeCredentialResponse.revoked_at:type_name -> google.protobuf.Timestamp
 	1,  // 7: mintkey.vault.v1.VersionDescriptor.status:type_name -> mintkey.vault.v1.CredentialStatus
 	0,  // 8: mintkey.vault.v1.VersionDescriptor.auth_scheme:type_name -> mintkey.vault.v1.AuthScheme
-	13, // 9: mintkey.vault.v1.VersionDescriptor.created_at:type_name -> google.protobuf.Timestamp
-	13, // 10: mintkey.vault.v1.VersionDescriptor.revoked_at:type_name -> google.protobuf.Timestamp
-	13, // 11: mintkey.vault.v1.VersionDescriptor.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 9: mintkey.vault.v1.VersionDescriptor.created_at:type_name -> google.protobuf.Timestamp
+	19, // 10: mintkey.vault.v1.VersionDescriptor.revoked_at:type_name -> google.protobuf.Timestamp
+	19, // 11: mintkey.vault.v1.VersionDescriptor.expires_at:type_name -> google.protobuf.Timestamp
 	9,  // 12: mintkey.vault.v1.ListVersionsResponse.versions:type_name -> mintkey.vault.v1.VersionDescriptor
-	13, // 13: mintkey.vault.v1.ValidateServiceIdentityResponse.valid_until:type_name -> google.protobuf.Timestamp
-	2,  // 14: mintkey.vault.v1.VaultAdapter.GetCredential:input_type -> mintkey.vault.v1.GetCredentialRequest
-	4,  // 15: mintkey.vault.v1.VaultAdapter.PutCredential:input_type -> mintkey.vault.v1.PutCredentialRequest
-	6,  // 16: mintkey.vault.v1.VaultAdapter.RevokeCredential:input_type -> mintkey.vault.v1.RevokeCredentialRequest
-	8,  // 17: mintkey.vault.v1.VaultAdapter.ListVersions:input_type -> mintkey.vault.v1.ListVersionsRequest
-	11, // 18: mintkey.vault.v1.VaultAdapter.ValidateServiceIdentity:input_type -> mintkey.vault.v1.ValidateServiceIdentityRequest
-	3,  // 19: mintkey.vault.v1.VaultAdapter.GetCredential:output_type -> mintkey.vault.v1.GetCredentialResponse
-	5,  // 20: mintkey.vault.v1.VaultAdapter.PutCredential:output_type -> mintkey.vault.v1.PutCredentialResponse
-	7,  // 21: mintkey.vault.v1.VaultAdapter.RevokeCredential:output_type -> mintkey.vault.v1.RevokeCredentialResponse
-	10, // 22: mintkey.vault.v1.VaultAdapter.ListVersions:output_type -> mintkey.vault.v1.ListVersionsResponse
-	12, // 23: mintkey.vault.v1.VaultAdapter.ValidateServiceIdentity:output_type -> mintkey.vault.v1.ValidateServiceIdentityResponse
-	19, // [19:24] is the sub-list for method output_type
-	14, // [14:19] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	19, // 13: mintkey.vault.v1.PutAgentSecretResponse.written_at:type_name -> google.protobuf.Timestamp
+	19, // 14: mintkey.vault.v1.ValidateServiceIdentityResponse.valid_until:type_name -> google.protobuf.Timestamp
+	2,  // 15: mintkey.vault.v1.VaultAdapter.GetCredential:input_type -> mintkey.vault.v1.GetCredentialRequest
+	4,  // 16: mintkey.vault.v1.VaultAdapter.PutCredential:input_type -> mintkey.vault.v1.PutCredentialRequest
+	6,  // 17: mintkey.vault.v1.VaultAdapter.RevokeCredential:input_type -> mintkey.vault.v1.RevokeCredentialRequest
+	8,  // 18: mintkey.vault.v1.VaultAdapter.ListVersions:input_type -> mintkey.vault.v1.ListVersionsRequest
+	17, // 19: mintkey.vault.v1.VaultAdapter.ValidateServiceIdentity:input_type -> mintkey.vault.v1.ValidateServiceIdentityRequest
+	11, // 20: mintkey.vault.v1.AgentSecretsVault.PutAgentSecret:input_type -> mintkey.vault.v1.PutAgentSecretRequest
+	13, // 21: mintkey.vault.v1.AgentSecretsVault.GetAgentSecret:input_type -> mintkey.vault.v1.GetAgentSecretRequest
+	15, // 22: mintkey.vault.v1.AgentSecretsVault.DeleteAgentSecret:input_type -> mintkey.vault.v1.DeleteAgentSecretRequest
+	3,  // 23: mintkey.vault.v1.VaultAdapter.GetCredential:output_type -> mintkey.vault.v1.GetCredentialResponse
+	5,  // 24: mintkey.vault.v1.VaultAdapter.PutCredential:output_type -> mintkey.vault.v1.PutCredentialResponse
+	7,  // 25: mintkey.vault.v1.VaultAdapter.RevokeCredential:output_type -> mintkey.vault.v1.RevokeCredentialResponse
+	10, // 26: mintkey.vault.v1.VaultAdapter.ListVersions:output_type -> mintkey.vault.v1.ListVersionsResponse
+	18, // 27: mintkey.vault.v1.VaultAdapter.ValidateServiceIdentity:output_type -> mintkey.vault.v1.ValidateServiceIdentityResponse
+	12, // 28: mintkey.vault.v1.AgentSecretsVault.PutAgentSecret:output_type -> mintkey.vault.v1.PutAgentSecretResponse
+	14, // 29: mintkey.vault.v1.AgentSecretsVault.GetAgentSecret:output_type -> mintkey.vault.v1.GetAgentSecretResponse
+	16, // 30: mintkey.vault.v1.AgentSecretsVault.DeleteAgentSecret:output_type -> mintkey.vault.v1.DeleteAgentSecretResponse
+	23, // [23:31] is the sub-list for method output_type
+	15, // [15:23] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_vault_proto_init() }
@@ -1437,9 +1813,9 @@ func file_vault_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vault_proto_rawDesc), len(file_vault_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   17,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_vault_proto_goTypes,
 		DependencyIndexes: file_vault_proto_depIdxs,

@@ -33,6 +33,8 @@
 #   perm_…      PermissionGrant
 #   audit_…     AuditEvent
 #   change_…    ChangeEvent
+#   sec_…       AgentSecret         (ADR-0025)
+#   secgrant_…  AgentSecretGrant    (ADR-0025)
 #
 # ---------------------------------------------------------------------------
 # Time
@@ -76,6 +78,11 @@ $defs:
   agent_id:
     type: string
     pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+
+  secret_id:
+    type: string
+    pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
+    description: AgentSecret ULID (sec_ prefix, per ADR-0025).
 
   timestamp:
     type: string
@@ -142,11 +149,83 @@ $defs:
       - auth_scheme
       - actions
 
+  injection_hint:
+    type: object
+    description: |
+      Per-auth-scheme injection hint: what the proxy injects, where, and what
+      the agent must NOT send. Derived from the single-source-of-truth table in
+      `apps/mcp-server/src/mcp_server/auth_schemes.py`, which mirrors
+      `proxy-plugin/internal/credential/injector.go`.
+    additionalProperties: false
+    properties:
+      injects:
+        type: string
+        description: |
+          Human-readable description of what the proxy sets on the outbound
+          request (e.g. "Proxy sets Authorization: Bearer <secret>").
+      location:
+        type: string
+        enum: [header, query, connection, out_of_band]
+        description: |
+          Where the injected value appears: "header" for HTTP request headers,
+          "query" for URL query parameters, "connection" for transport-level
+          auth (SSH, mTLS), "out_of_band" for schemes handled by a dedicated
+          proxy surface (email, SSH) that is not the HTTP proxy.
+      never_send:
+        type: string
+        description: |
+          What the agent MUST NOT send to the upstream service — the proxy
+          either strips it or it conflicts with the injected value.
+      handled_by:
+        type: string
+        description: |
+          Mintkey component that handles this scheme: "http-proxy" (Kong egress
+          plugin), "ssh-proxy" (SSH bastion), or "email-proxy".
+      status:
+        type: string
+        enum: [injected_by_proxy, not_implemented, handled_by_other_proxy]
+        description: |
+          "injected_by_proxy"      — Kong plugin handles injection; call works.
+          "not_implemented"        — proxy returns an error (e.g. mtls).
+          "handled_by_other_proxy" — use the named proxy surface, not Kong.
+    required: [injects, location, never_send, handled_by, status]
+
+  how_to_call:
+    type: object
+    description: |
+      Usage hint for a service entry in `discover`. Contains the step-by-step
+      call recipe plus a per-scheme injection hint.
+    additionalProperties: false
+    properties:
+      action:
+        type: string
+        description: Default action string to request a token with.
+      step1_request_token:
+        type: string
+        description: Human-readable step 1 — how to call request_token.
+      step2_proxy_call:
+        type: string
+        description: Human-readable step 2 — how to call the proxy.
+      proxy_url_pattern:
+        type: string
+        description: |
+          Full proxy URL pattern including service_id and placeholder path.
+      notes:
+        type: string
+        description: Additional guidance for this service.
+      injection_hint:
+        $ref: "#/$defs/injection_hint"
+        description: |
+          Per-scheme hint: what the proxy injects and what the agent must not
+          send. Present for HTTP-proxy schemes; absent for SSH/email services
+          which use a separate how_to_call shape.
+
   service_full:
     type: object
     description: |
       Full service descriptor returned by `describe_service`. Identical to
-      `service_summary` plus optional `current_key_version` and proxy URLs.
+      `service_summary` plus optional `current_key_version`, proxy URLs,
+      auth scheme details, calling-agent constraints, and OpenAPI availability.
     additionalProperties: false
     properties:
       service_id:
@@ -184,6 +263,82 @@ $defs:
         format: uri
         description: |
           Virtual-host proxy URL — `https://<service-slug>.<tenant-slug>.proxy.local`.
+      auth_scheme_details:
+        type: object
+        description: |
+          Injection-point details for the service's auth scheme. Derived from
+          the injection-hint table (auth_schemes.py) plus per-credential
+          overrides (header_name, query_param).
+        additionalProperties: false
+        properties:
+          injection_point:
+            type: string
+            description: |
+              Where the credential is injected: "header", "query",
+              "connection", or "out_of_band".
+          header_name:
+            type: [string, "null"]
+            description: |
+              HTTP header name used for injection (e.g. "X-API-Key",
+              "Authorization"). Null for non-header schemes.
+          query_param:
+            type: [string, "null"]
+            description: |
+              URL query parameter name used for injection (e.g. "api_key").
+              Null for non-query schemes.
+          format:
+            type: string
+            description: |
+              Value format description, e.g. "Bearer <token>",
+              "base64(user:pass)", "<raw_key>".
+        required: [injection_point, header_name, query_param, format]
+      your_constraints:
+        type: object
+        description: |
+          The calling agent's permission-grant constraints for this service.
+          Each field is null when the operator has not set a limit.
+        additionalProperties: false
+        properties:
+          rate_limit:
+            type: [integer, "null"]
+            description: Maximum requests allowed within `time_window` seconds.
+          time_window:
+            type: [integer, "null"]
+            description: Time window in seconds for `rate_limit`.
+          request_path_prefix:
+            type: [string, "null"]
+            description: |
+              If set, only paths under this prefix are permitted through the
+              proxy for this agent on this service.
+          source_ip_allowlist:
+            type: ["array", "null"]
+            items:
+              type: string
+            description: |
+              If set, the proxy rejects requests whose source IP is not in
+              this CIDR allowlist.
+        required: [rate_limit, time_window, request_path_prefix, source_ip_allowlist]
+      openapi:
+        type: object
+        description: |
+          OpenAPI availability for this service. Tells the agent whether
+          calling `get_openapi` is worth it before actually fetching.
+        additionalProperties: false
+        properties:
+          status:
+            type: string
+            enum: [available, not_registered, fetch_failed]
+            description: |
+              "available"      — operator has registered an openapi_url; fetch
+                                 it via get_openapi.
+              "not_registered" — no openapi_url set; ask the operator to add one.
+              "fetch_failed"   — URL is registered but the last fetch attempt
+                                 failed (timeout, oversized, or unreachable).
+          url:
+            type: [string, "null"]
+            format: uri
+            description: The registered openapi_url, or null if not_registered.
+        required: [status, url]
     required:
       - service_id
       - name
@@ -212,6 +367,7 @@ $defs:
       - token_revoked
       - validation_failed
       - unavailable
+      - secret_not_found
 
 # ---------------------------------------------------------------------------
 # Errors emitted by ANY tool (in addition to per-tool error lists).
@@ -274,6 +430,15 @@ tools:
         next_cursor:
           type: string
           nullable: true
+        hint:
+          type: string
+          description: "Next-step guidance (e.g. call describe_service for auth details)."
+        capabilities:
+          type: string
+          description: >-
+            One-line summary of the server's built-in tools (agent secret
+            storage, describe_service, get_openapi, email tools) so agents
+            that only refresh the service catalog still discover them.
       required: [services, next_cursor]
     errors:
       - code: "invalid_argument"
@@ -335,6 +500,19 @@ tools:
           current_key_version: 3
           explicit_proxy_url: "https://proxy.local/v1/call/svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
           virtual_host_proxy_url: "https://crm.acme.proxy.local"
+          auth_scheme_details:
+            injection_point: "header"
+            header_name: "Authorization"
+            query_param: null
+            format: "Bearer <token>"
+          your_constraints:
+            rate_limit: 100
+            time_window: 60
+            request_path_prefix: null
+            source_ip_allowlist: null
+          openapi:
+            status: "available"
+            url: "https://crm.acme.example/openapi.json"
 
   # =========================================================================
   - name: "get_openapi"
@@ -342,6 +520,10 @@ tools:
       Return the service's OpenAPI document — either as a URL (default) or
       inline (when ≤ 1 MB and the operator has opted in to inline serving).
       The result is discriminated by `kind`.
+
+      When no openapi_url is registered: `kind: not_registered`.
+      When the registered URL is unreachable or oversized: `kind: fetch_failed`
+      (the url is still included so the agent can report it to the operator).
     input_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       type: object
@@ -349,12 +531,19 @@ tools:
       properties:
         service_id:
           $ref: "#/$defs/service_id"
+        inline:
+          type: boolean
+          default: false
+          description: |
+            When true, attempt to fetch the document and return it inline.
+            When false (default), return the URL only.
       required: [service_id]
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"
       oneOf:
         - type: object
           additionalProperties: false
+          description: Registered openapi_url returned as-is (default mode).
           properties:
             kind:
               type: string
@@ -363,11 +552,12 @@ tools:
               type: string
               format: uri
             etag:
-              type: string
-              nullable: true
+              type: [string, "null"]
           required: [kind, openapi_url]
         - type: object
           additionalProperties: false
+          description: |
+            Inline mode: document fetched server-side (≤ 1 MiB, etag-conditional).
           properties:
             kind:
               type: string
@@ -376,13 +566,42 @@ tools:
               type: string
               enum: ["application/json", "application/yaml"]
             etag:
-              type: string
-              nullable: true
+              type: [string, "null"]
             document:
               description: Verbatim OpenAPI document bytes (string-encoded).
               type: string
               maxLength: 1048576
           required: [kind, content_type, document]
+        - type: object
+          additionalProperties: false
+          description: No openapi_url has been registered for this service.
+          properties:
+            kind:
+              type: string
+              enum: [not_registered]
+            hint:
+              type: string
+              description: |
+                Operator-facing hint: how to set openapi_url at service
+                registration.
+          required: [kind]
+        - type: object
+          additionalProperties: false
+          description: |
+            Fetch was attempted but failed (timeout, oversized, or unreachable).
+            The url is included so the agent can report it to the operator.
+          properties:
+            kind:
+              type: string
+              enum: [fetch_failed]
+            openapi_url:
+              type: string
+              format: uri
+              description: The registered URL that could not be fetched.
+            reason:
+              type: string
+              description: Short human-readable failure reason.
+          required: [kind, openapi_url]
       discriminator:
         propertyName: kind
     errors:
@@ -404,11 +623,29 @@ tools:
       - name: "openapi-inline-yaml"
         request:
           service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S2"
+          inline: true
         response:
           kind: "inline"
           content_type: "application/yaml"
           etag: null
           document: "openapi: 3.1.0\ninfo: ...\n"
+      - name: "openapi-not-registered"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S3"
+        response:
+          kind: "not_registered"
+          hint: >
+            The operator has not set an openapi_url for this service.
+            Set it at service registration in the admin UI or via the
+            PATCH /v1/tenants/{tenant_id}/services/{service_id} endpoint.
+      - name: "openapi-fetch-failed"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S4"
+          inline: true
+        response:
+          kind: "fetch_failed"
+          openapi_url: "https://unreachable.example/openapi.json"
+          reason: "connection timeout after 10s"
 
   # =========================================================================
   - name: "request_token"
@@ -1060,6 +1297,234 @@ tools:
       - code: "unavailable"
         message: "IMAP server unreachable."
 
+
+  # =========================================================================
+  # Agent Secret tools (ADR-0025, Phase 1 Postgres backend)
+  # ---------------------------------------------------------------------------
+  # Tool prefix: secret_*
+  #
+  # Permission scopes (MCP-server internal — not brokered JWT scopes):
+  #   write:secrets  — secret_put
+  #   read:secrets   — secret_get, secret_list
+  #   delete:secrets — secret_delete
+  #
+  # Anti-enumeration: secret_get and secret_delete return secret_not_found
+  # for both nonexistent and not-visible secrets (ADR-0025.D5).
+  #
+  # tenant_id and agent identity come from the authenticated agent context,
+  # never from tool input (per multi-tenancy comment at the top of this file).
+  # =========================================================================
+
+  # =========================================================================
+  - name: "secret_put"
+    description: |
+      Store (or overwrite) a named secret owned by the calling agent.
+      The value is envelope-encrypted (AES-256-GCM, fresh DEK per write)
+      before reaching storage. Requires `write:secrets` scope.
+      Storing to an existing name increments the version.
+      REST: POST /v1/tools/secret_put
+      Emits audit event: agent_secret.created (first store) or agent_secret.updated (overwrite).
+    x-mintkey-scope: "write:secrets"
+    x-mintkey-status: "implemented"
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-zA-Z0-9._-]{1,128}$"
+          description: |
+            Secret name, unique per owning agent. Allowed characters:
+            alphanumeric, dot, underscore, hyphen. 1–128 characters.
+        value:
+          type: string
+          maxLength: 65536
+          description: |
+            Secret value (UTF-8 string). Binary material should be
+            base64-encoded by the caller. Max 65536 bytes.
+        content_type:
+          type: string
+          maxLength: 128
+          description: |
+            Optional free-text hint (e.g. "application/json",
+            "text/plain", "application/x-pem-file").
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [secret_id, name, version]
+      properties:
+        secret_id:
+          $ref: "#/$defs/secret_id"
+        name:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+    errors:
+      - code: "invalid_argument"
+        message: "`name` is malformed, or `value` exceeds 65536 bytes."
+      - code: "not_authorized"
+        message: "Agent is not authenticated or has been revoked."
+      - code: "unavailable"
+        message: "Vault Adapter or Postgres unreachable."
+
+  # =========================================================================
+  - name: "secret_get"
+    description: |
+      Read the plaintext value of a secret the calling agent owns or has
+      been granted read access to. Returns the uniform not-found error for
+      both nonexistent and not-visible secrets (anti-enumeration, ADR-0025.D5).
+      Requires `read:secrets` scope.
+      REST: GET /v1/tools/secret_get?secret_id=<sec_…>
+      Emits audit event: agent_secret.read (identifier-only payload, no value).
+    x-mintkey-scope: "read:secrets"
+    x-mintkey-status: "implemented"
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [secret_id]
+      properties:
+        secret_id:
+          $ref: "#/$defs/secret_id"
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [secret_id, name, version, value]
+      properties:
+        secret_id:
+          $ref: "#/$defs/secret_id"
+        name:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        value:
+          type: string
+          x-mintkey-sensitive: true
+          description: |
+            Plaintext secret value. SENSITIVE — do not log or persist.
+            Marked x-mintkey-sensitive: true.
+        content_type:
+          type: [string, "null"]
+        access:
+          type: string
+          enum: [owner, shared]
+          description: Whether the caller owns this secret or holds a share grant.
+    errors:
+      - code: "secret_not_found"
+        message: |
+          Secret does not exist or is not visible to the calling agent
+          (uniform not-found — indistinguishable by design, ADR-0025.D5).
+      - code: "invalid_argument"
+        message: "`secret_id` is malformed."
+      - code: "not_authorized"
+        message: "Agent is not authenticated or has been revoked."
+      - code: "unavailable"
+        message: "Vault Adapter or Postgres unreachable."
+
+  # =========================================================================
+  - name: "secret_list"
+    description: |
+      List metadata for all secrets the calling agent owns plus all secrets
+      shared with it. Never returns secret values. Requires `read:secrets` scope.
+      REST: GET /v1/tools/secret_list
+      Pagination by ULID cursor (after / limit).
+    x-mintkey-scope: "read:secrets"
+    x-mintkey-status: "implemented"
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        after:
+          $ref: "#/$defs/secret_id"
+          description: "Optional pagination cursor — secret_id from the previous page. Exclusive."
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [secrets, next_cursor]
+      properties:
+        secrets:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [secret_id, name, version, size_bytes, access, created_at, updated_at]
+            properties:
+              secret_id:
+                $ref: "#/$defs/secret_id"
+              name:
+                type: string
+              version:
+                type: integer
+                minimum: 1
+              size_bytes:
+                type: integer
+                minimum: 0
+              content_type:
+                type: [string, "null"]
+              access:
+                type: string
+                enum: [owner, shared]
+                description: Whether the calling agent owns this secret or holds a share grant.
+              created_at:
+                $ref: "#/$defs/timestamp"
+              updated_at:
+                $ref: "#/$defs/timestamp"
+        next_cursor:
+          type: [string, "null"]
+    errors:
+      - code: "invalid_argument"
+        message: "`limit` out of range or `after` is malformed."
+      - code: "not_authorized"
+        message: "Agent is not authenticated or has been revoked."
+
+  # =========================================================================
+  - name: "secret_delete"
+    description: |
+      Delete a secret owned by the calling agent. Cascades any share grants.
+      Idempotent: returns success for already-deleted secrets.
+      Returns the uniform not-found error for secrets not owned by the caller
+      (anti-enumeration, ADR-0025.D5). Requires `delete:secrets` scope.
+      REST: DELETE /v1/tools/secret_delete?secret_id=<sec_…>
+      Emits audit event: agent_secret.deleted.
+    x-mintkey-scope: "delete:secrets"
+    x-mintkey-status: "implemented"
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [secret_id]
+      properties:
+        secret_id:
+          $ref: "#/$defs/secret_id"
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties: {}
+    errors:
+      - code: "secret_not_found"
+        message: |
+          Secret does not exist or is not owned by the calling agent
+          (uniform not-found — indistinguishable by design, ADR-0025.D5).
+      - code: "invalid_argument"
+        message: "`secret_id` is malformed."
+      - code: "not_authorized"
+        message: "Agent is not authenticated or has been revoked."
+      - code: "unavailable"
+        message: "Vault Adapter or Postgres unreachable."
 
 # ---------------------------------------------------------------------------
 # Tenant or agent deletion mid-session (per ADR-0016.7)

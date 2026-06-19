@@ -1,0 +1,1 @@
+../01-architecture/adr/0025-agent-stored-secrets.md

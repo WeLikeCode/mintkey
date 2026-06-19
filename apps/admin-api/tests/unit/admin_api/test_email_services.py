@@ -1970,12 +1970,16 @@ class TestGetEmailService:
             "SELECT id, tenant_id": _FakeResult(row),
         })
 
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value=None)
+
         with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
              patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
             result = await get_email_service(
                 tenant_id=tenant_id,
                 service_id=service_id,
                 session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
                 _authz=None,
             )
 
@@ -1996,18 +2000,209 @@ class TestGetEmailService:
             "SELECT id, tenant_id": _FakeResult(None),
         })
 
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value=None)
+
         with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
              patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
             result = await get_email_service(
                 tenant_id=tenant_id,
                 service_id=service_id,
                 session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
                 _authz=None,
             )
 
         assert result.status_code == 404
         body = json.loads(result.body)
         assert body["mintkey:code"] == "not_found"
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_returns_oauth2_authorized_true_when_vault_has_email_oauth2_cred(self) -> None:
+        """
+        oauth2_authorized=True when vault.get_credential returns a current
+        credential with auth_scheme == AUTH_SCHEME_EMAIL_OAUTH2 (15).
+        """
+        from admin_api.api.email_services import _AUTH_SCHEME_EMAIL_OAUTH2
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            provider="gmail", auth_scheme="email_oauth2",
+        )
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+
+        mock_vault = AsyncMock()
+        # NB: we never inspect plaintext below, only the auth_scheme.
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": "REDACTED_REFRESH_TOKEN",
+            "auth_scheme": _AUTH_SCHEME_EMAIL_OAUTH2,
+            "key_version": 1,
+            "header_name": "",
+            "query_param": "",
+            "target_address": "",
+            "ssh_user": "",
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["oauth2_authorized"] is True
+        mock_vault.get_credential.assert_awaited_once_with(
+            tenant_id=str(tenant_id),
+            service_id=service_id,
+        )
+        # NFR-17: no credential material echoed in the response.
+        body_str = result.body.decode("utf-8")
+        for forbidden in (
+            "plaintext", "REDACTED_REFRESH_TOKEN",
+            "header_name", "query_param",
+            "target_address", "ssh_user", "key_version",
+        ):
+            assert forbidden not in body_str, (
+                f"NFR-17 violation: '{forbidden}' must not appear in response body"
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_returns_oauth2_authorized_false_when_vault_returns_none(self) -> None:
+        """oauth2_authorized=False when vault has no credential for this service."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            provider="gmail", auth_scheme="email_oauth2",
+        )
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value=None)
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["oauth2_authorized"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_returns_oauth2_authorized_false_when_vault_returns_non_oauth2_scheme(self) -> None:
+        """
+        Defense-in-depth: vault returns a credential, but auth_scheme != 15
+        (e.g. EMAIL_PASSWORD=14) → oauth2_authorized=False.
+        """
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            provider="gmail", auth_scheme="email_password",
+        )
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": "REDACTED",
+            "auth_scheme": 14,  # EMAIL_PASSWORD — NOT EMAIL_OAUTH2
+            "key_version": 1,
+            "header_name": "",
+            "query_param": "",
+            "target_address": "",
+            "ssh_user": "",
+        })
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["oauth2_authorized"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_email_service_returns_oauth2_authorized_false_and_logs_when_vault_raises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """
+        Fail-closed: vault.get_credential raising must NOT 500 the endpoint.
+        Response must include oauth2_authorized=False and a WARNING must
+        be logged. No credential material should appear in the log record.
+        """
+        import logging
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id),
+            provider="gmail", auth_scheme="email_oauth2",
+        )
+
+        session = _make_session(**{
+            "SELECT id, tenant_id": _FakeResult(row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(
+            side_effect=RuntimeError("vault unreachable")
+        )
+
+        with caplog.at_level(logging.WARNING, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
+            result = await get_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        body = json.loads(result.body)
+        assert body["oauth2_authorized"] is False
+
+        warning_records = [
+            r for r in caplog.records
+            if r.levelno == logging.WARNING
+            and r.name == "admin_api.api.email_services"
+        ]
+        assert any(
+            "vault.get_credential failed" in r.getMessage()
+            for r in warning_records
+        ), (
+            "Expected a WARNING log from admin_api.api.email_services about "
+            "vault.get_credential failure"
+        )
 
 
 class TestPatchEmailService:
@@ -2270,12 +2465,15 @@ class TestNoCredentialInResponse:
         session_single = _make_session(**{
             "SELECT id, tenant_id": _FakeResult(row),
         })
+        mock_vault_single = AsyncMock()
+        mock_vault_single.get_credential = AsyncMock(return_value=None)
         with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
              patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock):
             single_result = await get_email_service(
                 tenant_id=tenant_id,
                 service_id=service_id,
                 session=session_single,  # type: ignore[arg-type]
+                vault=mock_vault_single,  # type: ignore[arg-type]
                 _authz=None,
             )
         single_body_str = single_result.body.decode("utf-8")
@@ -2942,3 +3140,1128 @@ class TestOAuth2PerTenantCallback:
             f"/email-services/ must not appear in state row redirect_uri; "
             f"got: '{stored_redirect_uri}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# C-3: OAuth2 vault payload JSON envelope + Gmail email_address resolution
+# ---------------------------------------------------------------------------
+#
+# The OAuth2 IMAP XOAUTH2 path requires the user's email address as the SASL
+# username. _exchange_oauth2_code_for_refresh_token now (a) fetches the
+# emailAddress from Gmail's profile endpoint after a successful token
+# exchange and (b) stores the vault credential as a JSON envelope
+# {"provider","refresh_token","email_address"} so the email-proxy can
+# extract both fields. oauth2_refresh parses the envelope, with a raw-string
+# fallback for legacy rows.
+#
+# Tests below cover:
+#   - Gmail success: envelope contains email_address from /me profile
+#   - Gmail userinfo failure: still stores, with empty email_address
+#   - Outlook: no userinfo call, empty email_address
+#   - NFR-17: no PII (email/access_token/refresh_token) leaks into logs
+#   - oauth2_refresh parses the JSON envelope
+#   - oauth2_refresh falls back to legacy raw plaintext
+#   - _parse_oauth2_plaintext unit-table
+
+class TestOAuth2VaultEnvelopeC3:
+    """C-3 chunk: OAuth2 vault JSON envelope + email_address resolution."""
+
+    @staticmethod
+    def _fake_token_resp(
+        status_code: int = 200,
+        access_token: str = "at_test",
+        refresh_token: str = "rt_test",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+        return resp
+
+    @staticmethod
+    def _fake_userinfo_resp(
+        status_code: int = 200,
+        email_address: str | None = "foo@example.com",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        body: dict[str, Any] = {}
+        if email_address is not None:
+            body["emailAddress"] = email_address
+        resp.json.return_value = body
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_stores_json_envelope_with_email_address_for_gmail(
+        self,
+    ) -> None:
+        """Gmail success path: vault.put_credential receives a JSON envelope with
+        provider, refresh_token, AND email_address (from the userinfo call).
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        state_value = "valid_state_c3_gmail_ok"
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(access_token="at_test", refresh_token="rt_test")
+        userinfo_resp = self._fake_userinfo_resp(email_address="foo@example.com")
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=userinfo_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code="auth_code",
+                state=state_value,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        assert result.ok is True
+        assert result.email_address == "foo@example.com"
+        assert result.service_id == service_id
+
+        # vault.put_credential called with JSON envelope plaintext
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs.get("auth_scheme") == "email_oauth2"
+        stored_plaintext = call_kwargs.get("plaintext", "")
+        assert isinstance(stored_plaintext, str)
+        envelope = json.loads(stored_plaintext)
+        assert envelope == {
+            "provider": "gmail",
+            "refresh_token": "rt_test",
+            "email_address": "foo@example.com",
+        }
+
+        # Verify the userinfo call used the access_token and the correct URL
+        from admin_api.api.email_services import _GMAIL_USERINFO_URL
+        get_calls = mock_ctx_mgr.get.call_args_list
+        assert len(get_calls) == 1
+        args, kwargs = get_calls[0]
+        assert _GMAIL_USERINFO_URL in args or kwargs.get("url") == _GMAIL_USERINFO_URL or (
+            args and args[0] == _GMAIL_USERINFO_URL
+        )
+        headers = kwargs.get("headers", {})
+        assert headers.get("Authorization") == "Bearer at_test"
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_userinfo_failure_still_stores_with_empty_email(
+        self,
+    ) -> None:
+        """If Gmail's userinfo endpoint fails (HTTP error or non-200), we still
+        store the vault row (so the operator's grant is not lost) with
+        email_address="" and the exchange returns ok=True.
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp()
+        # Userinfo returns 500
+        userinfo_err_resp = MagicMock()
+        userinfo_err_resp.status_code = 500
+        userinfo_err_resp.json.return_value = {"error": "server error"}
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=userinfo_err_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code="auth_code",
+                state="state_c3_userinfo_fail",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        # Exchange still succeeds — operator's authorization is preserved.
+        assert result.ok is True
+        assert result.email_address == ""
+
+        # Vault payload IS still stored, with empty email_address.
+        mock_vault.put_credential.assert_called_once()
+        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope["provider"] == "gmail"
+        assert envelope["refresh_token"] == "rt_test"
+        assert envelope["email_address"] == ""
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_payload_no_pii_leak_in_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """NFR-17: refresh_token, access_token, and email_address MUST NOT
+        appear in any log record from a successful exchange.
+        """
+        import logging as _logging
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(access_token="at_canary", refresh_token="rt_canary")
+        userinfo_resp = self._fake_userinfo_resp(email_address="canary@example.com")
+
+        with caplog.at_level(_logging.DEBUG, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=userinfo_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="gmail",
+                code="auth_code",
+                state="state_c3_pii_canary",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid_canary",
+                client_secret="csecret_canary",
+            )
+
+        assert result.ok is True
+
+        # Build a single concatenated string of every captured log line.
+        all_log_text = "\n".join(
+            (rec.getMessage() + " " + str(rec.args or "")) for rec in caplog.records
+        )
+        for canary in ("rt_canary", "at_canary", "canary@example.com", "csecret_canary"):
+            assert canary not in all_log_text, (
+                f"NFR-17 violation: {canary!r} leaked into a log record"
+            )
+
+    @pytest.mark.asyncio
+    async def test_oauth2_refresh_parses_json_envelope(self) -> None:
+        """oauth2_refresh: vault returns a JSON envelope → outbound POST to the
+        provider must contain refresh_token=<envelope.refresh_token>, NOT the
+        raw JSON string.
+        """
+        service_id = str(uuid.uuid4())
+        tenant_id = str(uuid.uuid4())
+
+        envelope = json.dumps({
+            "provider": "gmail",
+            "refresh_token": "rt_envelope",
+            "email_address": "a@b.com",
+        })
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": envelope,
+            "auth_scheme": "email_oauth2",
+        })
+
+        session = _make_session()
+
+        provider_resp = MagicMock()
+        provider_resp.status_code = 200
+        provider_resp.json.return_value = {
+            "access_token": "new_at",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        env_override = {
+            "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        request = MagicMock()
+        request.headers = {"X-Mintkey-Service-Token": "correct_token"}
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_refresh(
+                provider="gmail",
+                service_id=service_id,
+                tenant_id=tenant_id,
+                request=request,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+
+        # Inspect the outbound POST to Google's /token: data must contain the
+        # PARSED refresh_token, not the JSON envelope.
+        mock_ctx_mgr.post.assert_called_once()
+        post_args, post_kwargs = mock_ctx_mgr.post.call_args
+        sent_data = post_kwargs.get("data") or (post_args[1] if len(post_args) > 1 else None)
+        assert isinstance(sent_data, dict)
+        assert sent_data.get("refresh_token") == "rt_envelope", (
+            f"Expected outbound POST refresh_token='rt_envelope', got: {sent_data.get('refresh_token')!r}"
+        )
+        # Should NOT be the JSON envelope string.
+        assert sent_data["refresh_token"] != envelope
+
+    @pytest.mark.asyncio
+    async def test_oauth2_refresh_falls_back_to_legacy_raw_plaintext(self) -> None:
+        """oauth2_refresh: vault returns a legacy raw refresh_token string
+        (NOT JSON) → outbound POST must use that raw string verbatim.
+        """
+        service_id = str(uuid.uuid4())
+        tenant_id = str(uuid.uuid4())
+
+        mock_vault = AsyncMock()
+        mock_vault.get_credential = AsyncMock(return_value={
+            "plaintext": "rt_legacy_raw",
+            "auth_scheme": "email_oauth2",
+        })
+
+        session = _make_session()
+
+        provider_resp = MagicMock()
+        provider_resp.status_code = 200
+        provider_resp.json.return_value = {
+            "access_token": "new_at",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+
+        env_override = {
+            "MINTKEY_EMAIL_PROXY_SERVICE_TOKEN": "correct_token",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_ID": "cid",
+            "MINTKEY_OAUTH2_GMAIL_CLIENT_SECRET": "csecret",
+        }
+
+        request = MagicMock()
+        request.headers = {"X-Mintkey-Service-Token": "correct_token"}
+
+        with patch.dict(os.environ, env_override), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=provider_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await oauth2_refresh(
+                provider="gmail",
+                service_id=service_id,
+                tenant_id=tenant_id,
+                request=request,
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 200
+        mock_ctx_mgr.post.assert_called_once()
+        _, post_kwargs = mock_ctx_mgr.post.call_args
+        sent_data = post_kwargs.get("data")
+        assert isinstance(sent_data, dict)
+        assert sent_data.get("refresh_token") == "rt_legacy_raw"
+
+    def test__parse_oauth2_plaintext_unit_table(self) -> None:
+        """Direct unit table for the JSON-envelope/legacy parser."""
+        from admin_api.api.email_services import _parse_oauth2_plaintext
+
+        cases: list[tuple[str, str, str]] = [
+            # JSON envelope with refresh_token → returns the refresh_token.
+            (
+                json.dumps({
+                    "provider": "gmail",
+                    "refresh_token": "rt_inside",
+                    "email_address": "x@y.com",
+                }),
+                "rt_inside",
+                "json envelope with refresh_token",
+            ),
+            # JSON dict missing refresh_token → falls back to the raw plaintext.
+            (
+                json.dumps({"provider": "gmail", "email_address": "x@y.com"}),
+                json.dumps({"provider": "gmail", "email_address": "x@y.com"}),
+                "json dict missing refresh_token falls back to raw",
+            ),
+            # Not-JSON string → returned verbatim.
+            ("rt_raw_string", "rt_raw_string", "non-JSON string returned verbatim"),
+            # Empty string → empty.
+            ("", "", "empty string returns empty"),
+            # JSON but not a dict (list) → falls back to raw.
+            ("[]", "[]", "JSON list falls back to raw"),
+            # JSON null → falls back to raw.
+            ("null", "null", "JSON null falls back to raw"),
+            # JSON dict with non-string refresh_token → falls back to raw.
+            (
+                json.dumps({"refresh_token": 123}),
+                json.dumps({"refresh_token": 123}),
+                "non-string refresh_token falls back to raw",
+            ),
+        ]
+        for raw_input, expected, label in cases:
+            assert _parse_oauth2_plaintext(raw_input) == expected, (
+                f"_parse_oauth2_plaintext failure for case: {label}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Outlook userinfo fetch (C-3 parity — Microsoft Graph /me)
+# ---------------------------------------------------------------------------
+
+
+class TestOutlookUserinfo:
+    """Outlook OAuth2 exchange: fetch user's email via Microsoft Graph /me,
+    parallel to the Gmail flow under TestOAuth2VaultEnvelopeC3.
+    """
+
+    @staticmethod
+    def _fake_token_resp(
+        status_code: int = 200,
+        access_token: str = "at_outlook",
+        refresh_token: str = "rt_outlook",
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+        }
+        return resp
+
+    @staticmethod
+    def _fake_graph_me_resp(
+        status_code: int = 200,
+        body: dict[str, Any] | None = None,
+    ) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.json.return_value = body if body is not None else {}
+        return resp
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_stores_json_envelope_with_email_address(
+        self,
+    ) -> None:
+        """Outlook happy path: Graph /me returns both `mail` and
+        `userPrincipalName` → vault envelope must use `mail` (the SMTP
+        address), NOT the UPN.
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(
+            access_token="at_outlook", refresh_token="rt_outlook"
+        )
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "mail": "user@biz.example",
+                "userPrincipalName": "user@tenant.onmicrosoft.com",
+                "displayName": "Test User",
+            }
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_ok",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        assert result.ok is True
+        # `mail` preferred over `userPrincipalName`.
+        assert result.email_address == "user@biz.example"
+        assert result.service_id == service_id
+
+        mock_vault.put_credential.assert_called_once()
+        call_kwargs = mock_vault.put_credential.call_args[1]
+        assert call_kwargs.get("auth_scheme") == "email_oauth2"
+        stored_plaintext = call_kwargs.get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope == {
+            "provider": "outlook",
+            "refresh_token": "rt_outlook",
+            "email_address": "user@biz.example",
+        }
+
+        # Graph /me was called with the access_token.
+        from admin_api.api.email_services import _OUTLOOK_USERINFO_URL
+        get_calls = mock_ctx_mgr.get.call_args_list
+        assert len(get_calls) == 1
+        args, kwargs = get_calls[0]
+        assert (
+            _OUTLOOK_USERINFO_URL in args
+            or kwargs.get("url") == _OUTLOOK_USERINFO_URL
+            or (args and args[0] == _OUTLOOK_USERINFO_URL)
+        )
+        headers = kwargs.get("headers", {})
+        assert headers.get("Authorization") == "Bearer at_outlook"
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_falls_back_to_upn_when_mail_missing(
+        self,
+    ) -> None:
+        """When Graph /me returns userPrincipalName but no `mail` (common for
+        some account types), the envelope must store the UPN as email_address.
+        """
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp()
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "userPrincipalName": "user@biz.example",
+                "displayName": "Test User",
+            }
+        )
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_upn",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        assert result.ok is True
+        assert result.email_address == "user@biz.example"
+
+        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope["provider"] == "outlook"
+        assert envelope["refresh_token"] == "rt_outlook"
+        assert envelope["email_address"] == "user@biz.example"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "failure_mode",
+        ["http_500", "httpx_error"],
+        ids=["graph_returns_500", "graph_raises_httpx_error"],
+    )
+    async def test_exchange_oauth2_code_outlook_userinfo_failure_still_stores_with_empty_email(
+        self,
+        failure_mode: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """If Graph /me fails (HTTP 500 or httpx raises), we still store the
+        vault row with email_address="" and exchange returns ok=True. A
+        WARNING log is emitted.
+        """
+        import logging as _logging
+
+        import httpx as _httpx
+
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp()
+
+        with caplog.at_level(_logging.WARNING, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+
+            if failure_mode == "http_500":
+                err_resp = MagicMock()
+                err_resp.status_code = 500
+                err_resp.json.return_value = {"error": "server error"}
+                mock_ctx_mgr.get = AsyncMock(return_value=err_resp)
+            else:  # httpx_error
+                mock_ctx_mgr.get = AsyncMock(
+                    side_effect=_httpx.ConnectError("graph unreachable")
+                )
+
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state=f"state_outlook_fail_{failure_mode}",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid",
+                client_secret="csecret",
+            )
+
+        # Exchange still succeeds — operator's grant is preserved.
+        assert result.ok is True
+        assert result.email_address == ""
+
+        mock_vault.put_credential.assert_called_once()
+        stored_plaintext = mock_vault.put_credential.call_args[1].get("plaintext", "")
+        envelope = json.loads(stored_plaintext)
+        assert envelope["provider"] == "outlook"
+        assert envelope["refresh_token"] == "rt_outlook"
+        assert envelope["email_address"] == ""
+
+        # A WARNING log was emitted from the outlook code path.
+        warning_records = [
+            r
+            for r in caplog.records
+            if r.levelno == _logging.WARNING and "outlook" in r.getMessage()
+        ]
+        assert warning_records, (
+            f"Expected at least one outlook WARNING log for failure_mode={failure_mode}; "
+            f"got: {[r.getMessage() for r in caplog.records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_exchange_oauth2_code_outlook_payload_no_pii_leak_in_logs(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """NFR-17: refresh_token, access_token, email_address, and
+        client_secret MUST NOT appear in any log record during a successful
+        Outlook exchange.
+        """
+        import logging as _logging
+
+        from admin_api.api.email_services import _exchange_oauth2_code_for_refresh_token
+
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        fake_state_row = _FakeRow(
+            service_id=service_id,
+            redirect_uri="https://example.com/cb",
+            operator_id=str(uuid.uuid4()),
+        )
+        session = _make_session(**{
+            "DELETE FROM oauth2_state": _FakeResult(fake_state_row),
+        })
+
+        mock_vault = AsyncMock()
+        mock_vault.put_credential = AsyncMock(return_value={"key_version": 1})
+
+        token_resp = self._fake_token_resp(
+            access_token="at_outlook_canary",
+            refresh_token="rt_outlook_canary",
+        )
+        graph_resp = self._fake_graph_me_resp(
+            body={
+                "mail": "outlook_canary@example.com",
+                "userPrincipalName": "outlook_canary@example.com",
+                "displayName": "Canary User",
+            }
+        )
+
+        with caplog.at_level(_logging.INFO, logger="admin_api.api.email_services"), \
+             patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("httpx.AsyncClient") as mock_client_cls:
+            mock_ctx_mgr = AsyncMock()
+            mock_ctx_mgr.__aenter__ = AsyncMock(return_value=mock_ctx_mgr)
+            mock_ctx_mgr.__aexit__ = AsyncMock(return_value=None)
+            mock_ctx_mgr.post = AsyncMock(return_value=token_resp)
+            mock_ctx_mgr.get = AsyncMock(return_value=graph_resp)
+            mock_client_cls.return_value = mock_ctx_mgr
+
+            result = await _exchange_oauth2_code_for_refresh_token(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                provider="outlook",
+                code="auth_code",
+                state="state_outlook_pii_canary",
+                session=session,  # type: ignore[arg-type]
+                vault=mock_vault,  # type: ignore[arg-type]
+                client_id="cid_outlook_canary",
+                client_secret="csecret_outlook_canary",
+            )
+
+        assert result.ok is True
+
+        all_log_text = "\n".join(
+            (rec.getMessage() + " " + str(rec.args or "")) for rec in caplog.records
+        )
+        for canary in (
+            "rt_outlook_canary",
+            "at_outlook_canary",
+            "outlook_canary@example.com",
+            "csecret_outlook_canary",
+        ):
+            assert canary not in all_log_text, (
+                f"NFR-17 violation: {canary!r} leaked into a log record"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth: whitespace trimming on POST + PATCH form inputs (#365)
+# ---------------------------------------------------------------------------
+
+
+class TestCreateEmailServiceTrimsWhitespace:
+    """#365: create_email_service strips leading/trailing whitespace from
+    string form fields before INSERT / audit-emit. Enum-validated fields
+    (provider, auth_scheme) are NOT trimmed — Pydantic's field_validator
+    rejects them outright."""
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_trims_leading_trailing_whitespace_from_imap_host(self) -> None:
+        """#365 repro: imap_host=' imap.gmail.com    ' produced DNS failures.
+        After fix the INSERT must store the trimmed value."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="Company Gmail",
+            imap_host=" imap.gmail.com    ",  # the exact #365 input
+            imap_port=993,
+            smtp_host="\tsmtp.gmail.com\n",
+            smtp_port=587,
+            auth_scheme="email_password",
+            allowed_recipient_domains="  example.com, other.com  ",
+        )
+
+        session = _make_session()
+        audit_calls: list[dict[str, Any]] = []
+
+        async def _fake_audit_emit(**kwargs: Any) -> None:
+            audit_calls.append(kwargs)
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", side_effect=_fake_audit_emit):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201, result.body
+
+        insert_params = [
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        ]
+        assert len(insert_params) == 1
+        ip = insert_params[0]
+        assert ip["imap_host"] == "imap.gmail.com", f"imap_host not trimmed: {ip['imap_host']!r}"
+        assert ip["smtp_host"] == "smtp.gmail.com", f"smtp_host not trimmed: {ip['smtp_host']!r}"
+        assert ip["name"] == "Company Gmail"
+        assert ip["allowed_domains"] == "example.com, other.com", (
+            f"allowed_recipient_domains not trimmed: {ip['allowed_domains']!r}"
+        )
+
+        # Audit payload also carries the trimmed values
+        body_content = json.loads(result.body)
+        assert body_content["imap_host"] == "imap.gmail.com"
+        assert body_content["smtp_host"] == "smtp.gmail.com"
+        assert body_content["name"] == "Company Gmail"
+        assert audit_calls[0]["payload"]["imap_host"] == "imap.gmail.com"
+        assert audit_calls[0]["payload"]["smtp_host"] == "smtp.gmail.com"
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_preserves_internal_whitespace_in_name(self) -> None:
+        """#365: only edges are trimmed — internal spaces in name are preserved."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="  Multi  Word  Name  ",  # internal double-spaces
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        ip = next(
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        )
+        assert ip["name"] == "Multi  Word  Name", (
+            "internal whitespace must be preserved; only edges trimmed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_no_whitespace_input_unchanged(self) -> None:
+        """#365: clean input is byte-identical pre/post trim (idempotent)."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="clean-name",
+            imap_host="imap.gmail.com",
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+            allowed_recipient_domains="example.com",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 201
+        ip = next(
+            params for sql, params in session.executed_sql
+            if "INSERT INTO email_services" in sql
+        )
+        assert ip["name"] == "clean-name"
+        assert ip["imap_host"] == "imap.gmail.com"
+        assert ip["smtp_host"] == "smtp.gmail.com"
+        assert ip["allowed_domains"] == "example.com"
+
+    @pytest.mark.asyncio
+    async def test_create_email_service_all_whitespace_imap_host_rejected_422(self) -> None:
+        """#365: all-whitespace imap_host trims → empty → invalid_imap 422."""
+        tenant_id = uuid.uuid4()
+        body = EmailServiceCreate(
+            provider="gmail",
+            name="x",
+            imap_host="    \t\n  ",  # all-whitespace
+            imap_port=993,
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            auth_scheme="email_password",
+        )
+        session = _make_session()
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await create_email_service(
+                tenant_id=tenant_id,
+                body=body,
+                session=session,  # type: ignore[arg-type]
+            )
+
+        assert result.status_code == 422
+        assert json.loads(result.body)["mintkey:code"] == "invalid_imap"
+        # No INSERT executed for a rejected request
+        assert not any(
+            "INSERT INTO email_services" in sql for sql, _ in session.executed_sql
+        )
+
+
+class TestPatchEmailServiceTrimsWhitespace:
+    """#365: patch_email_service strips leading/trailing whitespace from
+    string fields the caller explicitly set. PATCH cannot touch imap_host /
+    smtp_host (immutable) so this only covers name and
+    allowed_recipient_domains."""
+
+    def _make_patch_request(self, body: dict[str, Any]) -> Any:
+        fake_req = MagicMock()
+        fake_req.json = AsyncMock(return_value=body)
+        return fake_req
+
+    @pytest.mark.asyncio
+    async def test_patch_trims_leading_trailing_whitespace_from_name(self) -> None:
+        """#365: PATCH name='  new-name  ' → DB sees 'new-name'."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id), name="old-name",
+        )
+        updated_row = _make_email_svc_row(
+            id=service_id, tenant_id=str(tenant_id), name="new-name",
+        )
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        patch_body = EmailServicePatch(name="  new-name  ")
+        fake_request = self._make_patch_request({"name": "  new-name  "})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert len(captured_update_params) == 1
+        assert captured_update_params[0]["name"] == "new-name", (
+            f"PATCH didn't trim name: {captured_update_params[0]['name']!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_patch_preserves_internal_whitespace_in_allowed_recipient_domains(self) -> None:
+        """#365: only edges are trimmed — internal whitespace in
+        allowed_recipient_domains is preserved (no over-engineering)."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        updated_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        internal = "  example.com,  other.com  "
+        patch_body = EmailServicePatch(allowed_recipient_domains=internal)
+        fake_request = self._make_patch_request({"allowed_recipient_domains": internal})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert len(captured_update_params) == 1
+        # str.strip() only — internal "  " between domains is preserved.
+        assert (
+            captured_update_params[0]["allowed_recipient_domains"]
+            == "example.com,  other.com"
+        )
+
+    @pytest.mark.asyncio
+    async def test_patch_no_whitespace_input_unchanged(self) -> None:
+        """#365: clean input is byte-identical pre/post trim (idempotent)."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+        existing_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        updated_row = _make_email_svc_row(id=service_id, tenant_id=str(tenant_id))
+        call_count: dict[str, int] = {"n": 0}
+        captured_update_params: list[dict[str, Any]] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            call_count["n"] += 1
+            if "UPDATE" in sql:
+                captured_update_params.append(dict(params or {}))
+                return _FakeResult(None)
+            return _FakeResult(updated_row if call_count["n"] > 1 else existing_row)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+        fake_session.executed_sql = []  # type: ignore[assignment]
+
+        patch_body = EmailServicePatch(name="clean-name")
+        fake_request = self._make_patch_request({"name": "clean-name"})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 200
+        assert captured_update_params[0]["name"] == "clean-name"
+
+    @pytest.mark.asyncio
+    async def test_patch_all_whitespace_name_rejected_422(self) -> None:
+        """#365: all-whitespace name trims to empty → 422 invalid_name."""
+        tenant_id = uuid.uuid4()
+        service_id = str(uuid.uuid4())
+
+        # No UPDATE should fire — only the existence-check SELECT
+        executed_sqls: list[str] = []
+
+        async def _fake_execute(stmt: Any, params: Any = None) -> Any:
+            sql = str(stmt)
+            executed_sqls.append(sql)
+            if "SELECT id FROM email_services" in sql:
+                return _FakeResult(_FakeRow(id=service_id))
+            return _FakeResult(None)
+
+        fake_session = _make_session()
+        fake_session.execute = _fake_execute  # type: ignore[method-assign]
+
+        patch_body = EmailServicePatch(name="   \t \n ")
+        fake_request = self._make_patch_request({"name": "   \t \n "})
+
+        with patch("admin_api.api.email_services.set_tenant_context", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.require_tenant_session", new_callable=AsyncMock), \
+             patch("admin_api.api.email_services.audit_emit", new_callable=AsyncMock):
+            result = await patch_email_service(
+                tenant_id=tenant_id,
+                service_id=service_id,
+                body=patch_body,
+                request=fake_request,
+                session=fake_session,  # type: ignore[arg-type]
+                _authz=None,
+            )
+
+        assert result.status_code == 422
+        body = json.loads(result.body)
+        assert body["mintkey:code"] == "invalid_name"
+        # No UPDATE was executed
+        assert not any("UPDATE email_services" in sql for sql in executed_sqls)

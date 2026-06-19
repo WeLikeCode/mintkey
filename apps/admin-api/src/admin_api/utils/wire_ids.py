@@ -98,3 +98,13 @@ def wire_to_db_uuid(wire_id: str, prefix: str) -> str:
                 raise ValueError(f"Invalid wire ID (hex form): {wire_id}")
     # Not a prefixed ID — return as-is (plain UUID string, etc.)
     return wire_id
+
+
+def db_uuid_to_wire_sec(uuid_value: Union[str, _uuid_mod.UUID]) -> str:
+    """Convenience wrapper: encode a DB UUID with the "sec" prefix (agent secrets)."""
+    return db_uuid_to_wire(uuid_value, "sec")
+
+
+def db_uuid_to_wire_secgrant(uuid_value: Union[str, _uuid_mod.UUID]) -> str:
+    """Convenience wrapper: encode a DB UUID with the "secgrant" prefix (secret grants)."""
+    return db_uuid_to_wire(uuid_value, "secgrant")

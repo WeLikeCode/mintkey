@@ -612,3 +612,147 @@ def test_vault_service_id_format() -> None:
     # Different tenant or provider → different UUID.
     assert g1 != o1
     assert g1 != g2
+
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth: whitespace trimming on POST inputs (#358)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_provider_trims_leading_trailing_whitespace_from_client_id() -> None:
+    """#358: leading/trailing whitespace on client_id is stripped before persist."""
+    audit_store: list[dict[str, Any]] = []
+    session = _make_session()
+    vault = _FakeVault()
+    body = OAuth2ProviderConfigBody(
+        client_id="  " + _FAKE_CLIENT_ID + "  ",
+        client_secret=_FAKE_CLIENT_SECRET,
+    )
+
+    async def _fake_audit(**kwargs: Any) -> None:
+        audit_store.append(kwargs)
+
+    with patch("admin_api.api.oauth2_providers.set_tenant_context", new_callable=AsyncMock), \
+         patch("admin_api.api.oauth2_providers.audit_emit", side_effect=_fake_audit):
+        resp = await configure_oauth2_provider(
+            tenant_id=_FAKE_TENANT,
+            provider="gmail",
+            body=body,
+            session=session,
+            vault=vault,
+            _authz=None,
+        )
+
+    assert resp.status_code == 201, resp.body
+
+    # INSERT bound parameter must be the trimmed client_id
+    insert_calls = [
+        params for sql, params in session.executed_sql
+        if "INSERT INTO oauth2_client_configs" in sql
+    ]
+    assert len(insert_calls) == 1
+    assert insert_calls[0]["client_id"] == _FAKE_CLIENT_ID, (
+        f"client_id was not trimmed: stored={insert_calls[0]['client_id']!r}"
+    )
+
+    # Audit payload's client_id_last4 must derive from the trimmed value
+    assert len(audit_store) == 1
+    assert audit_store[0]["payload"]["client_id_last4"] == _client_id_last4(_FAKE_CLIENT_ID)
+
+
+@pytest.mark.asyncio
+async def test_post_provider_trims_leading_trailing_whitespace_from_client_secret() -> None:
+    """#358: leading/trailing whitespace on client_secret is stripped before vault.put."""
+    session = _make_session()
+    vault = _FakeVault()
+    body = OAuth2ProviderConfigBody(
+        client_id=_FAKE_CLIENT_ID,
+        client_secret="\t " + _FAKE_CLIENT_SECRET + " \n",
+    )
+
+    with patch("admin_api.api.oauth2_providers.set_tenant_context", new_callable=AsyncMock), \
+         patch("admin_api.api.oauth2_providers.audit_emit", new_callable=AsyncMock):
+        resp = await configure_oauth2_provider(
+            tenant_id=_FAKE_TENANT,
+            provider="gmail",
+            body=body,
+            session=session,
+            vault=vault,
+            _authz=None,
+        )
+
+    assert resp.status_code == 201, resp.body
+    assert len(vault.put_calls) == 1
+    assert vault.put_calls[0]["plaintext"] == _FAKE_CLIENT_SECRET, (
+        f"client_secret was not trimmed before vault store: "
+        f"plaintext={vault.put_calls[0]['plaintext']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_provider_preserves_internal_whitespace_in_client_id() -> None:
+    """#358: internal whitespace is preserved — only str.strip() of edges."""
+    session = _make_session()
+    vault = _FakeVault()
+    # Construct a synthetic client_id with internal whitespace (real Google IDs
+    # don't have whitespace, but the trim must NOT be aggressive — only edges).
+    internal_id = "abc def-ghi.apps.googleusercontent.com"
+    body = OAuth2ProviderConfigBody(
+        client_id=internal_id, client_secret=_FAKE_CLIENT_SECRET,
+    )
+
+    with patch("admin_api.api.oauth2_providers.set_tenant_context", new_callable=AsyncMock), \
+         patch("admin_api.api.oauth2_providers.audit_emit", new_callable=AsyncMock):
+        resp = await configure_oauth2_provider(
+            tenant_id=_FAKE_TENANT, provider="gmail", body=body,
+            session=session, vault=vault, _authz=None,
+        )
+
+    assert resp.status_code == 201
+    insert_calls = [
+        params for sql, params in session.executed_sql
+        if "INSERT INTO oauth2_client_configs" in sql
+    ]
+    assert insert_calls[0]["client_id"] == internal_id, (
+        "internal whitespace must be preserved — only edges are trimmed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_provider_no_whitespace_input_unchanged() -> None:
+    """#358: clean input is byte-identical pre/post trim (idempotent no-op)."""
+    session = _make_session()
+    vault = _FakeVault()
+    body = OAuth2ProviderConfigBody(
+        client_id=_FAKE_CLIENT_ID, client_secret=_FAKE_CLIENT_SECRET,
+    )
+
+    with patch("admin_api.api.oauth2_providers.set_tenant_context", new_callable=AsyncMock), \
+         patch("admin_api.api.oauth2_providers.audit_emit", new_callable=AsyncMock):
+        resp = await configure_oauth2_provider(
+            tenant_id=_FAKE_TENANT, provider="gmail", body=body,
+            session=session, vault=vault, _authz=None,
+        )
+
+    assert resp.status_code == 201
+
+    insert_calls = [
+        params for sql, params in session.executed_sql
+        if "INSERT INTO oauth2_client_configs" in sql
+    ]
+    assert insert_calls[0]["client_id"] == _FAKE_CLIENT_ID
+    assert vault.put_calls[0]["plaintext"] == _FAKE_CLIENT_SECRET
+
+
+@pytest.mark.asyncio
+async def test_post_provider_all_whitespace_client_id_rejected_422() -> None:
+    """#358: all-whitespace client_id rejected by Pydantic field_validator (422)."""
+    from pydantic import ValidationError
+
+    # The existing Pydantic field_validator already rejects all-whitespace
+    # at body construction — surface the error path here.
+    with pytest.raises(ValidationError):
+        OAuth2ProviderConfigBody(client_id="   ", client_secret=_FAKE_CLIENT_SECRET)
+    with pytest.raises(ValidationError):
+        OAuth2ProviderConfigBody(client_id=_FAKE_CLIENT_ID, client_secret="  \t\n  ")
