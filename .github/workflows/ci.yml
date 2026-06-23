@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "latest"
       - name: Lint admin-api
@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Test admin-api unit
         working-directory: apps/admin-api
         env:
@@ -161,7 +161,7 @@ jobs:
       MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Install deps
         working-directory: apps/admin-api
         run: uv sync
@@ -197,7 +197,7 @@ jobs:
       MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Install deps
         working-directory: apps/admin-api
         run: uv sync
@@ -222,7 +222,7 @@ jobs:
       MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Install deps
         working-directory: apps/admin-api
         run: uv sync
@@ -258,7 +258,7 @@ jobs:
       MINTKEY_AUDIT_HMAC_KEY: ${{ secrets.AUDIT_HMAC_KEY || '0000000000000000000000000000000000000000000000000000000000000000' }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Build stack images
         run: docker compose build
       - name: Prepare ssh-proxy host-key volume (chown to non-root)
