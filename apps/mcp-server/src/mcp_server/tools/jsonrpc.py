@@ -35,6 +35,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from mcp_server.auth.agent_key import validate_agent_key
+from mcp_server.tools.bootstrap import _RESOURCE_URI, _SKILL_MARKDOWN as _BOOTSTRAP_FULL_MD
 
 router = APIRouter()
 
@@ -74,6 +75,7 @@ _SERVER_INFO = {
 
 _CAPABILITIES = {
     "tools": {"listChanged": False},
+    "resources": {"listChanged": False, "subscribe": False},
     "experimental": {
         "mintkey.rest_endpoints": {
             "bootstrap": "/v1/tools/bootstrap",
@@ -90,16 +92,27 @@ _CAPABILITIES = {
 TOOLS: list[dict] = [
     {
         "name": "mintkey_bootstrap",
-        "title": "Mintkey Onboarding",
         "description": (
-            "Returns the agent-bootstrap markdown skill: how to use the credential broker. "
-            "No arguments required."
+            "Onboarding skill for the credential broker. By default returns a compact "
+            "index (section table + resource URI). Pass section to fetch one block: "
+            "index|auth|discover|proxy_call|email|secrets|full. Use 'full' for the entire "
+            "skill, or read the MCP resource mintkey://skill/agent-bootstrap."
         ),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": ["index", "auth", "discover", "proxy_call", "email", "secrets", "full"],
+                    "default": "index",
+                    "description": "Which bootstrap section to return. Default 'index'.",
+                }
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "mintkey_list_services",
-        "title": "List Services",
         "description": (
             "List services the calling agent has permission to call "
             "(with metadata + how_to_call hints)."
@@ -108,7 +121,6 @@ TOOLS: list[dict] = [
     },
     {
         "name": "mintkey_discover",
-        "title": "Discover Services",
         "description": (
             "Same as list_services but with detailed how_to_call hints. "
             "Use this for first-time agent discovery."
@@ -117,7 +129,6 @@ TOOLS: list[dict] = [
     },
     {
         "name": "mintkey_describe_service",
-        "title": "Describe Service",
         "description": "Full metadata for one service.",
         "inputSchema": {
             "type": "object",
@@ -133,7 +144,6 @@ TOOLS: list[dict] = [
     },
     {
         "name": "mintkey_get_openapi",
-        "title": "Get OpenAPI URL",
         "description": "Returns the OpenAPI spec URL for one service (or null if none).",
         "inputSchema": {
             "type": "object",
@@ -144,7 +154,6 @@ TOOLS: list[dict] = [
     },
     {
         "name": "mintkey_request_token",
-        "title": "Request Brokered JWT",
         "description": (
             "Exchange the agent's API key + a service_id for a short-lived brokered JWT "
             "(default 10 minute TTL). Use the JWT as Authorization: Bearer on the proxy URL."
@@ -168,11 +177,7 @@ TOOLS: list[dict] = [
     # Agent secret tools (ADR-0025)
     {
         "name": "secret_put",
-        "title": "Store Agent Secret",
-        "description": (
-            "Store (or overwrite) a named secret owned by the calling agent. "
-            "Name must match ^[a-zA-Z0-9._-]{1,128}$; value must be <= 65536 bytes."
-        ),
+        "description": "Store (or overwrite) a named secret owned by the calling agent.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -189,11 +194,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "secret_get",
-        "title": "Get Agent Secret",
-        "description": (
-            "Read the plaintext value of a secret the calling agent owns or has been granted "
-            "read access to. Returns uniform not-found for nonexistent and not-visible secrets."
-        ),
+        "description": "Read the plaintext value of a secret you own or were granted read access to.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -208,11 +209,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "secret_list",
-        "title": "List Agent Secrets",
-        "description": (
-            "List metadata (ID, name, version, size, access) for all secrets the calling "
-            "agent owns plus all secrets shared with it. Never returns values."
-        ),
+        "description": "List metadata for secrets you own or that are shared with you. Never returns values.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -231,11 +228,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": "secret_delete",
-        "title": "Delete Agent Secret",
-        "description": (
-            "Delete a secret owned by the calling agent. Cascades share grants. Idempotent. "
-            "Returns uniform not-found for nonexistent and not-owned secrets."
-        ),
+        "description": "Delete a secret you own. Cascades share grants. Idempotent.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -249,6 +242,38 @@ TOOLS: list[dict] = [
         },
     },
 ]
+
+# ---------------------------------------------------------------------------
+# MCP Resource descriptors + handlers (FR-7)
+# ---------------------------------------------------------------------------
+
+_RESOURCES: list[dict] = [
+    {
+        "uri": _RESOURCE_URI,
+        "name": "agent-bootstrap",
+        "title": "Mintkey Agent Bootstrap Skill",
+        "description": "Full vendor-agnostic onboarding skill (markdown).",
+        "mimeType": "text/markdown",
+    }
+]
+
+
+def _handle_resources_list(request_id: Any) -> JSONResponse:
+    return _jsonrpc_result(request_id, {"resources": _RESOURCES})
+
+
+def _handle_resources_read(request_id: Any, params: dict) -> JSONResponse:
+    uri = params.get("uri", "")
+    if uri != _RESOURCE_URI:
+        return _jsonrpc_error(
+            request_id, -32602, f"Unknown resource URI: {uri!r}",
+            data={"hint": "Call resources/list for available resources."},
+        )
+    return _jsonrpc_result(
+        request_id,
+        {"contents": [{"uri": _RESOURCE_URI, "mimeType": "text/markdown", "text": _BOOTSTRAP_FULL_MD}]},
+    )
+
 
 # ---------------------------------------------------------------------------
 # JSON-RPC helpers
@@ -431,7 +456,9 @@ async def _dispatch_tool(
     is not recognised.
     """
     if name == "mintkey_bootstrap":
-        return await client.get("/v1/tools/bootstrap")
+        # MCP tool default is 'index' (compact); REST endpoint default is 'full' for compat.
+        section_val: str = str(args.get("section") or "index")
+        return await client.get("/v1/tools/bootstrap", params={"section": section_val})
 
     if name == "mintkey_list_services":
         return await client.get("/v1/tools/list_services", headers=auth_header)
@@ -576,7 +603,7 @@ def _upstream_to_tool_result(resp: httpx.Response | _synthetic_error_response) -
         if reason:
             parts.append(f"reason={reason}")
         if hint:
-            parts.append(f"hint: {hint}")
+            parts.append(f"hint: {hint[:120]}")
         text = " | ".join(parts)
     else:
         text = json.dumps(body, indent=2)
@@ -636,6 +663,12 @@ async def _dispatch(request: Request) -> Response:
             )
         return _handle_tools_list(request_id)
 
+    if method == "resources/list":
+        return _handle_resources_list(request_id)
+
+    if method == "resources/read":
+        return _handle_resources_read(request_id, params)
+
     if method == "tools/call":
         agent_ctx, agent_key = await _require_agent(request)
         if agent_ctx is None:
@@ -654,7 +687,7 @@ async def _dispatch(request: Request) -> Response:
         data={
             "hint": (
                 "Supported methods: initialize, notifications/initialized, "
-                "tools/list, tools/call"
+                "tools/list, tools/call, resources/list, resources/read"
             ),
             "received": method,
         },

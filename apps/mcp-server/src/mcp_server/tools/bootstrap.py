@@ -25,9 +25,11 @@ Source: R6 of action-grid remediation; ADR-0009; ADR-0017.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from mcp_server.config.public_urls import resolve_mcp_public_url, resolve_proxy_public_url
@@ -79,6 +81,77 @@ _MCP_URL: str = resolve_mcp_public_url()
 _VERSION: str = "1.0"
 
 # ---------------------------------------------------------------------------
+# Bootstrap sectioning — XML-tagged blocks parsed once at import (FR-9, INV-5).
+# Section names → XML tag names in agent-bootstrap.md (verified in requirements §1.1).
+# ---------------------------------------------------------------------------
+
+_SECTION_TAGS: dict[str, str] = {
+    "auth": "authentication",
+    "discover": "service_discovery",
+    "proxy_call": "proxy_usage",
+    "email": "email_services",
+    "secrets": "agent_secrets",
+}
+_SECTION_NAMES: list[str] = ["index", "auth", "discover", "proxy_call", "email", "secrets", "full"]
+_RESOURCE_URI = "mintkey://skill/agent-bootstrap"
+_BOOTSTRAP_VERSION = "2.0"
+
+
+def _extract_xml_block(markdown: str, tag: str) -> str:
+    """Return the <tag>...</tag> block including the tags, or '' if absent."""
+    pattern = re.compile(rf"<{tag}>.*?</{tag}>", re.DOTALL)
+    m = pattern.search(markdown)
+    return m.group(0) if m else ""
+
+
+_SECTIONS: dict[str, str] = {
+    name: _extract_xml_block(_SKILL_MARKDOWN, tag) for name, tag in _SECTION_TAGS.items()
+}
+_OVERVIEW: str = _extract_xml_block(_SKILL_MARKDOWN, "overview")
+
+# Fail fast if agent-bootstrap.md is re-sectioned without updating these tags.
+for _section_name, _section_block in _SECTIONS.items():
+    assert _section_block, f"agent-bootstrap.md missing XML section for '{_section_name}'"
+assert _OVERVIEW, "agent-bootstrap.md missing <overview> section"
+
+
+def _bootstrap_payload(section: str | None) -> dict[str, object]:
+    """Build the bootstrap response for the requested section.
+
+    None/empty/unknown → 'index'. 'full' → legacy payload + bootstrap_version.
+    Named section → that XML block only. 'index' → compact TOC + resource pointer.
+    """
+    sel = (section or "index").strip().lower()
+
+    if sel == "full":
+        return {
+            "skill_markdown": _SKILL_MARKDOWN,
+            "proxy_url": _PROXY_URL,
+            "mcp_url": _MCP_URL,
+            "version": _VERSION,
+            "bootstrap_version": _BOOTSTRAP_VERSION,
+        }
+
+    if sel in _SECTIONS:
+        return {
+            "section": sel,
+            "content": _SECTIONS[sel],
+            "resource_uri": _RESOURCE_URI,
+            "bootstrap_version": _BOOTSTRAP_VERSION,
+        }
+
+    # 'index' and any unknown value (FR-6 graceful fallback)
+    return {
+        "sections": _SECTION_NAMES,
+        "resource_uri": _RESOURCE_URI,
+        "overview": _OVERVIEW,
+        "proxy_url": _PROXY_URL,
+        "mcp_url": _MCP_URL,
+        "bootstrap_version": _BOOTSTRAP_VERSION,
+    }
+
+
+# ---------------------------------------------------------------------------
 # OTel — optional; if opentelemetry not installed we emit a structured log instead.
 # ---------------------------------------------------------------------------
 try:
@@ -114,7 +187,9 @@ def _emit_bootstrap_span(request: Request) -> None:
 
 
 @router.get("/bootstrap")
-async def bootstrap(request: Request) -> JSONResponse:
+async def bootstrap(
+    request: Request, section: Optional[str] = Query(default=None)
+) -> JSONResponse:
     """
     Return vendor-agnostic instructions for any AI agent to authenticate to
     Mintkey, discover services, and call the egress proxy.
@@ -122,27 +197,18 @@ async def bootstrap(request: Request) -> JSONResponse:
     **No authentication required.** Call this first; it tells you how to get
     an API key and what to do next.
 
+    Optional ?section= query parameter selects a bootstrap section:
+      index (default when called via MCP tool) | auth | discover | proxy_call |
+      email | secrets | full (returns the entire skill_markdown, backward-compat default).
+
     Tool name: mintkey_bootstrap
     Tool description: Returns vendor-agnostic instructions for any AI agent to
     authenticate to Mintkey, discover services, and call the egress proxy.
     Call first; no auth required.
 
-    Input schema: {} (no body for GET)
-
-    Output:
-      skill_markdown  — full contents of mcp-server/skills/agent-bootstrap.md (verbatim)
-      proxy_url       — Mintkey egress proxy URL (MINTKEY_PROXY_URL env / default)
-      mcp_url         — this MCP server's URL (MINTKEY_MCP_URL env / default)
-      version         — skill version ("1.0")
-
     Source: R6 of action-grid remediation; ADR-0009; ADR-0017.
     """
     _emit_bootstrap_span(request)
-    return JSONResponse(
-        {
-            "skill_markdown": _SKILL_MARKDOWN,
-            "proxy_url": _PROXY_URL,
-            "mcp_url": _MCP_URL,
-            "version": _VERSION,
-        }
-    )
+    # REST default is 'full' for backward compatibility (Decision D-2).
+    # The MCP tool dispatcher sends ?section=index by default (see jsonrpc.py).
+    return JSONResponse(_bootstrap_payload(section or "full"))
