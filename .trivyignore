@@ -1,4 +1,4 @@
-# Mintkey Trivy allow-list — review by 2026-09-01 (3 months from last update)
+# Mintkey Trivy allow-list — review by 2026-09-23 (3 months from last update)
 #
 # ── Secret scanning suppressions ─────────────────────────────────────────────
 # gcp-service-account: Trivy secret scanner was firing on the format hint template
@@ -469,3 +469,87 @@ CVE-2026-6734
 #   Man-in-the-Middle attack via ignored TLS errors in undici.
 #   Same context as CVE-2026-12151; internal connection to trusted services only.
 CVE-2026-9697
+
+# ── New CVEs 2026-06-23 (feat/hashicorp-vault-backend PR #233) — review by 2026-09-23 ──
+#
+# All entries below appear in the oauth2-proxy v7.6.0 binary bundled in jaeger-auth
+# (alpine:3.19 base). oauth2-proxy v7.6.0 was compiled with Go 1.25.9, bundling
+# golang.org/x/crypto v0.50.0, golang.org/x/net v0.53.0. Upgrade to oauth2-proxy
+# v7.16+ is tracked in MINTKEY-412. Jaeger UI is internal-only (cluster-VPN only).
+
+# ── golang.org/x/crypto SSH CVEs (oauth2-proxy v7.6.0, x/crypto v0.50.0) ────
+
+# CVE-2026-39827  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Authenticated SSH client channel flooding causes server-side goroutine/memory
+#   exhaustion. oauth2-proxy v7.6.0 does NOT use golang.org/x/crypto/ssh (it
+#   handles OAuth2 redirects only); the SSH package is a transitive dep from
+#   Go toolchain builds. No exploitable code path in oauth2-proxy.
+CVE-2026-39827
+
+# CVE-2026-39828  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Denial-of-service via malformed SSH packet. Same context as CVE-2026-39827.
+CVE-2026-39828
+
+# CVE-2026-39829  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Denial-of-service via SSH client misbehavior. Same context as CVE-2026-39827.
+CVE-2026-39829
+
+# CVE-2026-39830  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Denial-of-service via SSH client misbehavior. Same context as CVE-2026-39827.
+CVE-2026-39830
+
+# CVE-2026-39835  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   SSH CertChecker public-key callback issue. Same context as CVE-2026-39827.
+CVE-2026-39835
+
+# CVE-2026-42508  golang.org/x/crypto/ssh/knownhosts v0.50.0 HIGH — fixed v0.52.0
+#   Known-hosts parsing issue in SSH client. Same context as CVE-2026-39827.
+CVE-2026-42508
+
+# CVE-2026-46595  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Denial-of-service via SSH client. Same context as CVE-2026-39827.
+CVE-2026-46595
+
+# CVE-2026-46597  golang.org/x/crypto/ssh v0.50.0 HIGH — fixed v0.52.0
+#   Integer cast overflow in SSH packet handling. Same context as CVE-2026-39827.
+CVE-2026-46597
+
+# ── golang.org/x/net HTML-parsing CVEs (oauth2-proxy v7.6.0, x/net v0.53.0) ──
+#   All fixed in golang.org/x/net v0.55.0. Also appear in vault-adapter's
+#   grpc_health_probe; vault-adapter Dockerfile was updated in this same PR to
+#   build grpc_health_probe with x/net@v0.55.0, so these are clean in vault-adapter.
+
+# CVE-2026-25680  golang.org/x/net v0.53.0 HIGH — fixed v0.55.0
+#   Parsing arbitrary HTML can consume excessive CPU (DoS).
+#   oauth2-proxy does not parse untrusted HTML; x/net/html is a transitive dep.
+CVE-2026-25680
+
+# CVE-2026-25681  golang.org/x/net v0.53.0 HIGH — fixed v0.55.0
+#   Rendering parsed HTML via Render() can cause excessive CPU. Same context.
+CVE-2026-25681
+
+# CVE-2026-27136  golang.org/x/net v0.53.0 HIGH — fixed v0.55.0
+#   Rendering parsed HTML via Render() can cause excessive CPU. Same context.
+CVE-2026-27136
+
+# CVE-2026-39821  golang.org/x/net/idna v0.53.0 HIGH — fixed v0.55.0
+#   Privilege escalation via incorrect Punycode label processing.
+#   oauth2-proxy does not process untrusted IDNA/Punycode labels from users.
+CVE-2026-39821
+
+# CVE-2026-42502  golang.org/x/net v0.53.0 HIGH — fixed v0.55.0
+#   Parsing arbitrary HTML via Render() causes excessive CPU. Same context.
+CVE-2026-42502
+
+# CVE-2026-42506  golang.org/x/net v0.53.0 HIGH — fixed v0.55.0
+#   Parsing arbitrary HTML via Render() causes excessive CPU. Same context.
+CVE-2026-42506
+
+# ── stdlib CVE (oauth2-proxy v7.6.0, compiled with Go 1.25.9) ────────────────
+
+# CVE-2026-27145  stdlib v1.25.9 HIGH — fixed v1.25.11, v1.26.4
+#   x509.Certificate.VerifyHostname hostname verification issue.
+#   oauth2-proxy v7.6.0 was compiled with Go 1.25.9; upstream connections are to
+#   trusted internal services only (Keycloak, Jaeger). Not reachable by untrusted
+#   clients. Upgrade blocked on oauth2-proxy v7.16+ compat testing (MINTKEY-412).
+CVE-2026-27145

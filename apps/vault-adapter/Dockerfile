@@ -26,9 +26,12 @@ RUN go build -o /vault-adapter ./cmd/vault-adapter
 
 # Build grpc_health_probe from source so it inherits the same Go stdlib as the
 # builder image (Go 1.26.4), avoiding CVE-2026-42504 in any pre-built binary.
-# Note: `go install` names the binary grpc-health-probe (hyphens, not underscores).
-RUN go install github.com/grpc-ecosystem/grpc-health-probe@v0.4.50 && \
-    cp "$(go env GOPATH)/bin/grpc-health-probe" /grpc_health_probe && \
+# Use a throwaway module to pin golang.org/x/net >= v0.55.0, overriding the
+# v0.53.0 pinned in grpc-health-probe's own go.mod (CVE-2026-25680 et al).
+RUN mkdir -p /tmp/grpc-build && cd /tmp/grpc-build && \
+    printf 'module grpc-build\ngo 1.26\n' > go.mod && \
+    GOWORK=off go get github.com/grpc-ecosystem/grpc-health-probe@v0.4.50 golang.org/x/net@v0.55.0 && \
+    GOWORK=off go build -o /grpc_health_probe github.com/grpc-ecosystem/grpc-health-probe/... && \
     chmod +x /grpc_health_probe
 
 # Pinned 2026-06-19; re-pin every quarter.
