@@ -86,3 +86,34 @@ func TestNewFromEnv_UnknownBackend(t *testing.T) {
 		// wrapped errors are fine, just ensure the message includes the value
 	}
 }
+
+// TestNewFromEnv_HashicorpMissingRoleID verifies that MINTKEY_VAULT_BACKEND=hashicorp
+// without a role ID returns an error mentioning MINTKEY_VAULT_HASHICORP_ROLE_ID.
+func TestNewFromEnv_HashicorpMissingRoleID(t *testing.T) {
+	t.Setenv("MINTKEY_VAULT_BACKEND", "hashicorp")
+	t.Setenv("MINTKEY_VAULT_HASHICORP_ADDR", "http://localhost:8201")
+	t.Setenv("MINTKEY_VAULT_HASHICORP_ROLE_ID", "") // missing
+
+	_, err := NewFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error for missing role ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "MINTKEY_VAULT_HASHICORP_ROLE_ID") {
+		t.Errorf("expected error to mention MINTKEY_VAULT_HASHICORP_ROLE_ID, got: %v", err)
+	}
+}
+
+// TestNewFromEnv_HashicorpMissingAddr verifies that MINTKEY_VAULT_BACKEND=hashicorp
+// without an address returns an error mentioning MINTKEY_VAULT_HASHICORP_ADDR.
+func TestNewFromEnv_HashicorpMissingAddr(t *testing.T) {
+	t.Setenv("MINTKEY_VAULT_BACKEND", "hashicorp")
+	t.Setenv("MINTKEY_VAULT_HASHICORP_ADDR", "") // missing
+
+	_, err := NewFromEnv(context.Background())
+	if err == nil {
+		t.Fatal("expected error for missing addr, got nil")
+	}
+	if !strings.Contains(err.Error(), "MINTKEY_VAULT_HASHICORP_ADDR") {
+		t.Errorf("expected error to mention MINTKEY_VAULT_HASHICORP_ADDR, got: %v", err)
+	}
+}

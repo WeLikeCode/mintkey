@@ -51,7 +51,13 @@ func NewFromEnv(ctx context.Context) (Backend, error) {
 			return nil, fmt.Errorf("MINTKEY_VAULT_BACKEND=sqlite requires MINTKEY_VAULT_FILE_PATH")
 		}
 		return New(path)
+	case "hashicorp":
+		cfg, err := hashiCorpConfigFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		return NewHashiCorp(ctx, cfg)
 	default:
-		return nil, fmt.Errorf("unknown MINTKEY_VAULT_BACKEND=%q (expected 'postgres' or 'sqlite')", backend)
+		return nil, fmt.Errorf("unknown MINTKEY_VAULT_BACKEND=%q (expected 'postgres', 'sqlite', or 'hashicorp')", backend)
 	}
 }
