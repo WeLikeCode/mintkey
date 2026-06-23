@@ -16,8 +16,6 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/googleserviceaccount"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -557,8 +555,12 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	})
 
 	httpSrv := &http.Server{
-		Handler: h2c.NewHandler(mixed, &http2.Server{}),
+		Handler:   mixed,
+		Protocols: new(http.Protocols),
 	}
+	httpSrv.Protocols.SetHTTP1(true)
+	httpSrv.Protocols.SetHTTP2(true)
+	httpSrv.Protocols.SetUnencryptedHTTP2(true)
 
 	errCh := make(chan error, 1)
 	go func() {

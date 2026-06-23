@@ -26,7 +26,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         demo demo-mock \
         create-operator \
         backup restore backup-list \
-        migrate-vault-sqlite-to-pg
+        migrate-vault-sqlite-to-pg migrate-vault-to-hashicorp
 
 help:
 	@echo ""
@@ -68,6 +68,7 @@ help:
 	@echo "                         Example: make restore BACKUP_DIR=~/mintkey-backups/20260531_222854"
 	@echo "  backup-list            List all available backup dirs under ~/mintkey-backups/"
 	@echo "  migrate-vault-sqlite-to-pg  Copy all vault credentials from SQLite to Postgres (idempotent)"
+	@echo "  migrate-vault-to-hashicorp  Copy all vault credentials from Postgres to HashiCorp Vault (idempotent)"
 	@echo ""
 	@echo "Kiro template targets:"
 	@echo "  deps                   Check & install required dependencies"
@@ -689,3 +690,15 @@ migrate-vault-sqlite-to-pg:
 		-e MINTKEY_VAULT_SQLITE_PATH=/var/lib/mintkey/vault.sqlite \
 		-e MINTKEY_VAULT_PG_DSN="postgres://mintkey_migrate:changeme@postgres:5432/mintkey?sslmode=disable" \
 		golang:latest go run ./cmd/vault-migrate-sqlite-to-pg/...
+
+## migrate-vault-to-hashicorp: Copy all vault credentials from Postgres to HashiCorp Vault (idempotent).
+migrate-vault-to-hashicorp:
+	docker run --rm --network=mintkey_mintkey \
+		-v "$(REPO_ROOT)/apps/vault-adapter":/src -w /src \
+		-e MINTKEY_VAULT_PG_DSN="postgres://mintkey_migrate:changeme@postgres:5432/mintkey?sslmode=disable" \
+		-e MINTKEY_VAULT_HASHICORP_ADDR \
+		-e MINTKEY_VAULT_HASHICORP_MOUNT=secret \
+		-e MINTKEY_VAULT_HASHICORP_PREFIX=mintkey \
+		-e MINTKEY_VAULT_HASHICORP_ROLE_ID \
+		-e MINTKEY_VAULT_HASHICORP_SECRET_ID \
+		golang:1.26-alpine go run ./cmd/vault-migrate-pg-to-hashicorp/...

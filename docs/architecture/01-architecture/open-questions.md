@@ -14,7 +14,7 @@ When an open question is resolved, it moves into an ADR (or amendment) and the e
 |----|-------|:--------:|--------|----------------|--------|
 | OQ‑001 | Hash‑chain semantics on tenant deletion | 🟡 | Adversarial pass 2 (#C) | Phase 2, when tenant deletion ships | Open |
 | OQ‑002 | App‑layer tenant filter — concrete CI test | 🟡 | Adversarial pass 2 (#E) | Phase 1 milestone 1.0 + 1.12 | Open |
-| OQ‑003 | Vault Adapter horizontal scaling | 🟢 | Adversarial pass 2 (#F) | Phase 2 | Open |
+| OQ‑003 | Vault Adapter horizontal scaling | 🟢 | Adversarial pass 2 (#F) | Phase 2 | Closed by ADR‑0026 |
 | OQ‑004 | Audit serialization at sustained per‑tenant volume | 🟢 | Adversarial pass 2 (#G) | Phase 1 benchmark; Phase 2 fix if hot | Open |
 | OQ‑005 | Operator tenant‑switch race in AdminJS | 🟢 | Adversarial pass 2 (#H) | Phase 1 implementation | Open |
 | OQ‑006 | Reconciliation endpoint fanout caching | 🟢 | Adversarial pass 2 (#J) | Phase 1 implementation | Open |
@@ -50,7 +50,8 @@ When an open question is resolved, it moves into an ADR (or amendment) and the e
 [ADR‑0014.1](adr/0014-iter-1-2-corrections.md) replaces tenant‑scoped channel names with a global channel + application‑layer filter. The wrapper enforces a mandatory tenant‑scope config; an arch test asserts wrappers are correctly configured. **Open**: write the integration test that fuzzes events across tenants and asserts no leakage to a wrong‑tenant subscriber. Goes into Phase 1 milestone 1.0 (Foundation) and milestone 1.12 (Multi‑tenant smoke test) acceptance criteria.
 
 ### OQ‑003 — Vault Adapter horizontal scaling 🟢
-After [ADR‑0014.4](adr/0014-iter-1-2-corrections.md) drops the proxy‑plugin plaintext cache, every proxy request hits the Vault Adapter. The v1 file backend (SQLite) is single‑writer. Phase 2 production needs a horizontal‑scaling story. Candidates: (a) bring HashiCorp Vault forward as v2 (already on the roadmap), (b) read‑mostly Vault Adapter replicas with file replication, (c) gRPC load balancer in front of stateless Vault Adapter instances sharing storage. **Phase 2** decision.
+**Status: Closed by [ADR‑0026](adr/0026-vault-storage-backend-hashicorp.md).**
+After [ADR‑0014.4](adr/0014-iter-1-2-corrections.md) drops the proxy‑plugin plaintext cache, every proxy request hits the Vault Adapter. The v1 file backend (SQLite) is single‑writer. Phase 2 production needs a horizontal‑scaling story. Candidates: (a) bring HashiCorp Vault forward as v2 (already on the roadmap), (b) read‑mostly Vault Adapter replicas with file replication, (c) gRPC load balancer in front of stateless Vault Adapter instances sharing storage. **Resolved → [ADR‑0026](adr/0026-vault-storage-backend-hashicorp.md):** candidate (a) selected — `MINTKEY_VAULT_BACKEND=hashicorp` adds an opt‑in HashiCorp Vault KV v2 backend (network‑addressable, replicable), removing the single‑writer constraint of the file backend. Candidates (b) and (c) remain available for the Postgres/SQLite backends but are no longer required.
 
 ### OQ‑004 — Audit serialization at sustained per‑tenant volume 🟢
 The mandatory hash chain serializes audit emission per tenant. At low‑hundreds events/sec per tenant, Postgres handles it. **Open**: at what point does it become hot? Plan: benchmark in Phase 1 with synthetic workload; if a tenant ever exceeds a threshold (TBD, likely ~500/sec sustained), shard the chain (per‑category sub‑chains within tenant). Phase 2 fix if a tenant is actually hot.

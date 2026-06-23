@@ -204,6 +204,14 @@ services:
       # secret manager; never commit a real secret here.
       MINTKEY_VAULT_MCP_IDENTITY_ID: ${MINTKEY_VAULT_MCP_IDENTITY_ID:-svcid_mcp}
       MINTKEY_VAULT_MCP_TOKEN: ${MINTKEY_VAULT_MCP_TOKEN:-mk_vault_mcp_dev_shared_secret!}
+      # HashiCorp Vault backend (only effective when MINTKEY_VAULT_BACKEND=hashicorp)
+      MINTKEY_VAULT_HASHICORP_ADDR: ${MINTKEY_VAULT_HASHICORP_ADDR:-http://hashicorp-vault:8201}
+      MINTKEY_VAULT_HASHICORP_MOUNT: ${MINTKEY_VAULT_HASHICORP_MOUNT:-secret}
+      MINTKEY_VAULT_HASHICORP_PREFIX: ${MINTKEY_VAULT_HASHICORP_PREFIX:-mintkey}
+      MINTKEY_VAULT_HASHICORP_ROLE_ID: ${MINTKEY_VAULT_HASHICORP_ROLE_ID:-}
+      MINTKEY_VAULT_HASHICORP_SECRET_ID: ${MINTKEY_VAULT_HASHICORP_SECRET_ID:-}
+      MINTKEY_VAULT_HASHICORP_NAMESPACE: ${MINTKEY_VAULT_HASHICORP_NAMESPACE:-}
+      MINTKEY_VAULT_HASHICORP_CACERT: ${MINTKEY_VAULT_HASHICORP_CACERT:-}
     volumes:
       - vault_data:/var/lib/mintkey
       - vault_kek:/run/secrets
@@ -221,6 +229,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  # ─── 3b. HashiCorp Vault (opt-in; start with --profile hashicorp) ────────
+  hashicorp-vault:
+    image: hashicorp/vault:1.18
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: mk-dev-root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8201
+    ports:
+      - "8201:8201"
+    command: server -dev -dev-listen-address=0.0.0.0:8201
+    profiles: ["hashicorp"]
+    networks:
+      - mintkey
 
   # ─── 4. Admin API ─────────────────────────────────────────────────────────
   # Network-facing URLs (see docs/NETWORK.md):

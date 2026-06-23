@@ -99,3 +99,8 @@ services:
   grafana:
     ports: !override
       - "3103:3000"
+
+  # HashiCorp Vault (opt-in profile): primary maps to 8201, test maps to 8301
+  hashicorp-vault:
+    ports: !override
+      - "8301:8201"

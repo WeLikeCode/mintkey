@@ -1,0 +1,1 @@
+../01-architecture/adr/0026-vault-storage-backend-hashicorp.md
