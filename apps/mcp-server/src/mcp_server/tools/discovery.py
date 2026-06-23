@@ -277,13 +277,8 @@ def _make_how_to_call(service_id: str, base_url: str, auth_scheme: str = "") -> 
 # habit is the service catalog still learn about built-in capabilities
 # (observed: agents re-running discover never see initialize/tools-list).
 _BUILTIN_CAPABILITIES = (
-    "Beyond these operator-registered services, this server has built-in "
-    "tools: agent secret storage (secret_put/secret_get/secret_list/"
-    "secret_delete — store your own credentials encrypted and read them "
-    "back), mintkey_describe_service (full auth details + your "
-    "constraints), mintkey_get_openapi (upstream API specs), and email_* "
-    "tools for granted email services. Full list: MCP tools/list or "
-    "GET /v1/tools/bootstrap."
+    "Built-in tools: secrets (secret_put/secret_get/secret_list/secret_delete), "
+    "mintkey_describe_service, mintkey_get_openapi, email_*. Full list: tools/list."
 )
 
 
