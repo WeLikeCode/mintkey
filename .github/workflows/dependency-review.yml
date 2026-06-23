@@ -45,6 +45,11 @@ jobs:
           # weak file-level copyleft and impose no obligations on this
           # Apache-2.0 codebase when consumed only as test/build/transitive deps:
           #   - pgregory.net/rapid, hypothesis: property-based-testing libs (MPL-2.0, test-only)
+          #   - hashicorp/go-secure-stdlib/{parseutil,strutil}: transitive deps of
+          #     hashicorp/vault/api (MPL-2.0). MPL-2.0 is file-level weak copyleft —
+          #     modifications to these files must be released as MPL but consuming
+          #     application code (Mintkey) is not subject to copyleft. Same rationale
+          #     as pgregory.net/rapid.
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
           #   - golang.org/x/{sync,net,time,text}: BSD-3-Clause + the standard Go patent grant
@@ -81,6 +86,8 @@ jobs:
           allow-dependencies-licenses: >-
             pkg:golang/pgregory.net/rapid,
             pkg:pypi/hypothesis,
+            pkg:golang/github.com/hashicorp/go-secure-stdlib/parseutil,
+            pkg:golang/github.com/hashicorp/go-secure-stdlib/strutil,
             pkg:npm/@csstools/color-helpers,
             pkg:npm/@csstools/css-syntax-patches-for-csstree,
             pkg:npm/lru-cache,
