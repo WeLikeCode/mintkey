@@ -18,19 +18,81 @@ The flow you will follow:
 3. **Call services** — call backend services exclusively through the Mintkey Egress Proxy, which injects the real credential. (§proxy_usage)
 4. **Handle errors / refresh tokens / respect revocation.** (§errors_and_revocation)
 
-Three core MCP tools you will use after authenticating:
+Three core MCP tools you will use:
 
-- `request_token` — exchange a Mintkey API key for a brokered JWT.
-- `list_services` — list services your Agent has permission grants on.
-- `describe_service` — get details about one service (auth scheme, constraints, OpenAPI link).
+- `mintkey_request_token` — exchange a `service_id` for a per-service brokered JWT.
+- `mintkey_list_services` / `mintkey_discover` — list services your Agent has permission grants on.
+- `mintkey_describe_service` — get details about one service (auth scheme, constraints, OpenAPI link).
 
 Optional / situational:
 
-- `get_openapi` — fetch the full upstream OpenAPI spec.
-- `whoami` — confirm which Agent identity / tenant your token resolves to.
+- `mintkey_get_openapi` — fetch the full upstream OpenAPI spec.
 
-This `agent_bootstrap` method (the one you just called to get this text) is **unauthenticated** — every other MCP method requires the brokered JWT in `Authorization: Bearer …`.
+This `agent_bootstrap` method (the one you just called to get this text) is **unauthenticated** — every other MCP method requires `Authorization: Bearer mk_agent_<key>`.
 </overview>
+
+<quick_start>
+Minimal viable Mintkey usage. Send `Authorization: Bearer mk_agent_<your-key>` on every call (the only exception is this bootstrap method). Pick the flow by the service's `connect_type`.
+
+## REST/HTTP call — 3 steps
+```
+# 1. Discover (find the svc_ id; never hardcode it)
+mintkey_discover()  ->  services[].id (e.g. svc_01HX...), connect_type:"http", how_to_call
+
+# 2. Get a per-service token (action defaults to "call")
+mintkey_request_token({ "service_id": "svc_01HX...", "action": "call" })
+#   -> { "token": "<JWT>", "expires_at": <unix>, "service_id": "svc_01HX..." }
+
+# 3. Call the PROXY (NOT the upstream). Path after /v1/call/{id}/ is forwarded verbatim.
+curl -H "Authorization: Bearer <JWT>" \
+     http://localhost:8000/v1/call/svc_01HX.../v1/customers/42
+```
+The proxy injects the real upstream credential. NEVER add the upstream's own Authorization / X-API-Key / api_key — the proxy strips and replaces it.
+
+## Agent secret — 2 steps (no token needed)
+```
+secret_put({ "name": "db-password", "value": "s3cr3t" })  -> { "secret_id": "sec_01HX...", "version": 1 }
+secret_get({ "secret_id": "sec_01HX..." })               -> { "value": "s3cr3t", "access": "owner" }
+```
+Secret tools use your API key directly — do NOT call request_token for them.
+
+## Email — read one message (REST tool; uses your API key)
+```
+GET /v1/tools/email_list_mailboxes?email_service_id=svc_01...   -> { "mailboxes": ["INBOX", ...] }
+GET /v1/tools/email_fetch_message?email_service_id=svc_01...&message_id=42&mailbox=INBOX
+```
+For SSH services: request_token returns an `ssh_connect` block — SSH to the bastion (:2222) using the token as your PASSWORD (see section=ssh). Full guides: section=rest-api | ssh | secrets-guide | email-guide | quick-reference.
+</quick_start>
+
+<use_cases>
+Pick the guide for your task. Each is available as an MCP resource (resources/read) AND inline via mintkey_bootstrap(section=...).
+
+| Task | Resource URI | Section alias | One-liner |
+|---|---|---|---|
+| Call a REST/HTTP API | mintkey://guides/rest-api | rest-api | discover -> request_token -> proxy call; the proxy injects the credential, you never add upstream auth. |
+| Open an SSH session | mintkey://guides/ssh | ssh | SSH services use the SSH bastion (:2222), not the HTTP proxy; the brokered JWT is your SSH PASSWORD; base_url is ssh://host:port. |
+| Store/read your own secret | mintkey://guides/secrets | secrets-guide | secret_put/get/list/delete for AGENT-owned secrets (read-back by design); uses your API key directly, not request_token; distinct from operator-managed service credentials. |
+| Send/read email | mintkey://guides/email | email-guide | 9 email_* REST tools map to IMAP/SMTP via the email-proxy (:8088); grants are read/send/write/delete:email; the proxy holds the mailbox credential. |
+| One-page cheat sheet | mintkey://quick-reference | quick-reference | ID formats, the 3-step flow, top tool signatures, the 5 anti-patterns, section aliases. |
+
+How to choose at runtime: call mintkey_discover, read each service's `connect_type` — `http` -> rest-api guide; `ssh` -> ssh guide; `email` -> email-guide guide. For your own credentials, use the secrets-guide (no service involved).
+</use_cases>
+
+<anti_patterns>
+The canonical mistakes agents make against Mintkey, and the correct approach for each. These are the observed failure modes from real sessions.
+
+1. **Sending your own upstream auth header.** WRONG: adding `Authorization: Bearer <own_key>` / `X-API-Key` / `api_key` for the UPSTREAM on a proxy call. RIGHT: send ONLY the brokered JWT (`Authorization: Bearer <JWT>`) to the proxy; it strips your upstream auth and injects the real credential. You will never see the upstream key. Read `injection_hint` / `auth_scheme_details` for what the proxy does — do not replicate it.
+
+2. **Requesting a token, then bypassing the proxy.** WRONG: calling mintkey_request_token and then HTTP-calling the upstream `base_url` directly. RIGHT: call the PROXY URL `{proxy}/v1/call/{service_id}/{path}` with the JWT. `base_url` is informational; the token is audience-bound and only works at the proxy.
+
+3. **Using secret_put for upstream service config/credentials.** WRONG: storing a service URL or an operator's API key in secret_put to "call it later". RIGHT: secret_put is for secrets the AGENT owns and reads back (your DB password, your service-account JSON). To reach an operator-registered service, use discover -> request_token -> proxy. (Guide: secrets-guide vs. rest-api.)
+
+4. **Hardcoding a svc_ ID from the system prompt.** WRONG: pasting svc_01... from memory. RIGHT: call mintkey_discover every session — service IDs live in Postgres and change when the DB is reseeded. Caching descriptive metadata is fine for <=5 minutes; the change channel can re-grant/revoke within seconds.
+
+5. **Treating SSH/email services like REST.** WRONG: HTTP-GETting an `ssh://host:port` base_url, or routing email through the HTTP proxy. RIGHT: connect_type tells you the path. SSH -> bastion `:2222`, JWT used as the SSH PASSWORD (section=ssh). Email -> the email_* REST tools via the email-proxy `:8088` (section=email-guide). Kong (`:8000`) is HTTP-only and has no route for SSH/email.
+
+6. **Ignoring injection_hint and hand-building the auth header (double-auth).** WRONG: reading auth_scheme and manually constructing the upstream Authorization header the proxy already injects, often sending BOTH the JWT and a fabricated upstream credential. RIGHT: trust the proxy. The only credential you supply is the brokered JWT (or, for SSH, the JWT-as-password; for secrets/email tools, your mk_agent_ key). Everything else is injected.
+</anti_patterns>
 
 ## Discovery URLs (for clients)
 
@@ -60,21 +122,23 @@ In any MCP-aware client, configure the MCP server URL as `http://<host>:8082/mcp
 MCP-spec-aligned clients should send `Authorization: Bearer mk_agent_<your-key>`. The legacy `X-API-Key: mk_agent_<your-key>` is also accepted for backward compatibility, but new clients should prefer Bearer (matches MCP spec 2025-06-18 §authorization).
 
 <authentication>
-Mintkey issues brokered tokens in **JWS-Ed25519 JWT** format with a default **10-minute TTL** (per ADR-0006). You cannot use Mintkey without one.
+Mintkey issues brokered tokens in **JWS-Ed25519 JWT** format with a default **10-minute TTL** (per ADR-0006). Brokered JWTs are per-service and short-lived; they are obtained by calling `mintkey_request_token` with a `service_id`.
 
 **Step 1 — Obtain a Mintkey API key from an operator.**
-A human operator (admin) creates an Agent record representing you and provisions an API key shaped `mk_agentkey_<26-char-Crockford-base32>`. Examples: `mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A`.
+A human operator (admin) creates an Agent record representing you and provisions an API key shaped `mk_agent_<26-char-Crockford-base32>`. Examples: `mk_agent_01HKJ7GZ8N0PQR3STUV4WXYZ2A`.
 
 - This is a long-lived secret. Treat it like a password. Store it in your runtime's secret store (environment variable, secret manager, etc.) — never in conversation context, prompts, or logs.
 - If you do not have one, **stop and ask the operator**. There is no self-service registration in v1.
+- Send it as `Authorization: Bearer mk_agent_<key>` on every authenticated call. The middleware validates it against admin-api `/v1/internal/validate-agent-key`.
 
-**Step 2 — Exchange the API key for a brokered JWT** by calling the MCP tool `request_token`:
+**Step 2 — Request a brokered JWT for a specific service** by calling `mintkey_request_token`:
 
 ```json
 {
-  "tool": "request_token",
+  "tool": "mintkey_request_token",
   "arguments": {
-    "api_key": "mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
+    "service_id": "svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1",
+    "action": "call"
   }
 }
 ```
@@ -84,20 +148,18 @@ Response shape:
 ```json
 {
   "token": "eyJhbGciOiJFZERTQSIsImtpZCI6Ims..............",
-  "expires_at": "2026-05-13T12:34:56Z",
-  "ttl_seconds": 600,
-  "agent_id": "agt_01HKJ7H2X3Y4Z5A6B7C8D9E0F1",
-  "tenant_id": "tnt_01HKJ7H2X3Y4Z5A6B7C8D9E0F1"
+  "expires_at": 1715000600,
+  "service_id": "svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1"
 }
 ```
 
-**Step 3 — Use the token.** Send it as `Authorization: Bearer <token>` on:
-- every other MCP tool call,
-- every egress-proxy request (§proxy_usage).
+For SSH services the response also includes an `ssh_connect` block (see §ssh_services).
 
-**Step 4 — Refresh before expiry.** Track the `expires_at` you got; call `request_token` again before that time. Reusing an expired token returns `401 mintkey:code=token_expired`. A reasonable strategy is to refresh at `expires_at - 60s`.
+**Step 3 — Use the brokered JWT for proxy calls.** Send it as `Authorization: Bearer <token>` on egress-proxy requests (§proxy_usage). The JWT is audience-bound to the specific service — do not reuse it for other services.
 
-**Auth on the bootstrap method itself.** The tool that returned this document is unauthenticated and idempotent — you can re-fetch this content any time without consuming credit. Every *other* MCP tool requires the brokered JWT.
+**Step 4 — Refresh before expiry.** Track the `expires_at` unix timestamp; call `mintkey_request_token` again before that time. Reusing an expired token returns `401 mintkey:code=token_expired`. A reasonable strategy is to refresh at `expires_at - 60s`.
+
+**Auth on the bootstrap method itself.** The tool that returned this document is unauthenticated and idempotent — you can re-fetch this content any time. Every *other* MCP tool requires `Authorization: Bearer mk_agent_<key>`. Secret tools (`secret_put`/`secret_get`/`secret_list`/`secret_delete`) use the API key directly — do NOT call `mintkey_request_token` for them.
 
 **Token binding (optional).** If your runtime supports DPoP / `cnf.jkt` proof-of-possession (ADR-0006), set the appropriate header; otherwise the bearer-token flow works fine for first-party agents.
 </authentication>
@@ -223,13 +285,6 @@ Two modes controlled by the `inline` boolean query parameter (default `false`):
 
 Check `describe_service.openapi.status` first (`available` / `not_registered`) to decide whether `get_openapi` is worth calling.
 
-**`whoami` — confirm token identity (optional).**
-
-```json
-{ "tool": "whoami", "arguments": {} }
-```
-
-Returns `{ "agent_id": "...", "tenant_id": "...", "expires_at": "..." }`. Useful for debugging.
 </service_discovery>
 
 <proxy_usage>
@@ -263,7 +318,7 @@ Both forms support all HTTP methods (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) an
 **Request shape:**
 
 - **Method**, **path**, **query string**: same as the upstream service expects.
-- **Headers**: standard upstream headers (`Content-Type`, `Accept`, custom domain headers) pass through. **DO NOT include the upstream service's credential header (`X-API-Key`, `Authorization` for the upstream, basic-auth etc.)** — Mintkey injects it. If you set one, Mintkey will reject the request with `400 credential_passthrough_forbidden`.
+- **Headers**: standard upstream headers (`Content-Type`, `Accept`, custom domain headers) pass through. **DO NOT include the upstream service's credential header (`X-API-Key`, `Authorization` for the upstream, basic-auth etc.)** — the proxy unconditionally deletes any inbound `Authorization` header (proxy-plugin injector.go) before injecting the real credential, so a header you send is simply dropped, never forwarded.
 - **`Authorization: Bearer {your-brokered-JWT}`** — required (this authenticates *you* to Mintkey, not to the upstream).
 - **Body**: forwarded unmodified.
 
@@ -360,6 +415,12 @@ sshpass -p "$JWT" ssh -p 2222 \
 **Email services** use the `email-proxy` data-plane component (port `:8088`) instead of the
 HTTP egress proxy. You can detect them by `auth_scheme` in `{email_password, email_oauth2,
 email_app_password}` in `list_services` / `describe_service` output.
+
+**IMPORTANT:** The `email_*` tools are exposed as **REST endpoints** under `/v1/tools/email_*`
+and are NOT registered in the MCP JSON-RPC `tools/list`/`tools/call` surface. Call them as HTTP
+requests to the MCP server with `Authorization: Bearer mk_agent_<your-key>` — do NOT use
+MCP `tools/call` for email tools (no dispatcher branch exists). For the full guide see
+`mintkey_bootstrap(section="email-guide")` or resource `mintkey://guides/email`.
 
 **Before authorizing Gmail / Outlook (auth_scheme=email_oauth2):** the operator must first
 configure per-tenant OAuth2 client credentials via Admin UI → **Email → OAuth2 Providers**.
@@ -622,7 +683,6 @@ The proxy and MCP tools return errors with a structured `mintkey:code` field in 
 | 403 | `constraint_violated` | Rate limit / time window / path / source-IP violation. Body has `constraint` field with details. | Wait / change request / ask operator to widen the grant. |
 | 404 | `unknown_service` | `service_id` doesn't exist or isn't visible to your Agent. | Re-list with `list_services`. |
 | 404 | `path_not_allowed` | Path isn't in the service's allowed prefixes (or your grant's). | Check `describe_service` `your_constraints.request_path_prefix`. |
-| 400 | `credential_passthrough_forbidden` | You included the upstream's credential header. | Remove the header; Mintkey injects it. |
 | 5xx | `upstream_error` | Backend service returned 5xx. Body has the upstream's original response. | Retry with backoff if appropriate. Mintkey does NOT auto-retry. |
 
 **Reading denial responses (post-OPS-LL).** Every 403 from request_token now
@@ -642,7 +702,7 @@ means stop and ask the operator).
 </errors_and_revocation>
 
 <conventions>
-- **IDs** are prefixed-ULIDs, case-sensitive: `svc_<26-char-Crockford-base32>` for services, `agt_<...>` for agents, `tnt_<...>` for tenants, `pmg_<...>` for permission grants, `svckey_<...>` for classical service API keys (ADR-0018; agent flavor uses the brokered-JWT flow you read above, not service keys).
+- **IDs** are prefixed-ULIDs, case-sensitive: `svc_<26-char-Crockford-base32>` for services, `agent_<...>` for agents, `tnt_<...>` for tenants, `perm_<...>` for permission grants, `sec_<...>` for agent secrets (ADR-0018; ADR-0025).
 - **Timestamps**: RFC 3339 UTC always. Do not assume your local timezone.
 - **Wire encoding**: JSON for everything. UTF-8.
 - **Secrets hygiene**: never log, never echo to conversation context, never persist in long-term memory: your `mk_agentkey_…`, your brokered JWT, or any retrieved upstream credential value (you shouldn't see those anyway — but if you do, treat them as toxic).
@@ -675,27 +735,26 @@ End-to-end (curl, single agent flow):
 
 ```bash
 # 0. The operator gave you this API key:
-export MK_KEY="mk_agentkey_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
+export MK_KEY="mk_agent_01HKJ7GZ8N0PQR3STUV4WXYZ2A"
 export MK_MCP="http://localhost:8082"  # Replace with bootstrap.mcp_url if running on a different host
 export MINTKEY_PROXY_URL="http://localhost:8000"  # Replace with bootstrap.proxy_url if running on a different host
 
-# 1. Exchange for a brokered token.
-TOKEN=$(curl -s -X POST "$MK_MCP/tools/call" \
+# 1. Find a service (use your API key directly — no token needed for discovery).
+SVC_ID=$(curl -s "$MK_MCP/v1/tools/discover" \
+  -H "Authorization: Bearer $MK_KEY" \
+  | jq -r '.services[0].id')
+
+# 2. Get a brokered JWT for that service.
+TOKEN=$(curl -s -X POST "$MK_MCP/v1/tools/request_token" \
+  -H "Authorization: Bearer $MK_KEY" \
   -H "Content-Type: application/json" \
-  -d "{\"tool\":\"request_token\",\"arguments\":{\"api_key\":\"$MK_KEY\"}}" \
+  -d "{\"service_id\":\"$SVC_ID\",\"action\":\"call\"}" \
   | jq -r '.token')
 
-# 2. Find a service.
-curl -s -X POST "$MK_MCP/tools/call" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"list_services","arguments":{}}'
-# → {"services":[{"service_id":"svc_01HKJ7G...","slug":"demo-crm",...}]}
-
-# 3. Call the service through the proxy.
+# 3. Call the service through the proxy (JWT as Bearer; no upstream auth header).
 curl -X GET \
   -H "Authorization: Bearer $TOKEN" \
-  "$MINTKEY_PROXY_URL/v1/call/svc_01HKJ7G2X3Y4Z5A6B7C8D9E0F1/v1/customers/42"
+  "$MINTKEY_PROXY_URL/v1/call/$SVC_ID/v1/customers/42"
 # → {"customer_id":42,"name":"Acme Corp",...}
 ```
 
