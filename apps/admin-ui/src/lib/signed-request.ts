@@ -21,13 +21,13 @@
  */
 
 import { readFileSync } from "fs";
-import { SignJWT, importPKCS8, type KeyLike } from "jose";
+import { SignJWT, importPKCS8, type CryptoKey } from "jose";
 import { v4 as uuidv4 } from "uuid";
 
 const PRIVATE_KEY_PATH =
   process.env.ADMIN_UI_PRIVATE_KEY_PATH ?? "/run/secrets/admin_ui_private.pem";
 
-let _privateKey: KeyLike | null = null;
+let _privateKey: CryptoKey | null = null;
 
 /**
  * Returns null if the PEM file is absent or unreadable — callers should
@@ -37,7 +37,7 @@ let _privateKey: KeyLike | null = null;
  * no key is loaded — so omitting the JWT is safe in that configuration.
  * In production the key file must be present.
  */
-async function loadPrivateKey(): Promise<KeyLike | null> {
+async function loadPrivateKey(): Promise<CryptoKey | null> {
   if (_privateKey) return _privateKey;
   let pem: string;
   try {
@@ -59,7 +59,7 @@ export interface SignedRequestOptions {
   /** CSRF token for double-submit (X-Mintkey-Csrf header). */
   csrfToken?: string;
   /** Override the private key (useful in tests). */
-  privateKey?: KeyLike;
+  privateKey?: CryptoKey;
 }
 
 /**
