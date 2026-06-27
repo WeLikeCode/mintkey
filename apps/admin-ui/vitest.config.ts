@@ -1,20 +1,54 @@
-// This file is kept as a fallback for tools that expect vitest.config.ts.
-// The actual configuration is split into two workspace projects:
-//   - vitest.node.config.ts  — node environment (existing .ts tests)
-//   - vitest.render.config.ts — jsdom environment (.tsx render tests)
-// The workspace is declared in vitest.workspace.ts.
+// Vitest configuration with two projects (Vitest 4+).
 //
-// If you need to run ALL tests: `pnpm vitest run` (picks up vitest.workspace.ts).
-// If you need to run only render tests: `pnpm vitest run --project render-tests`.
-// If you need to run only node tests:   `pnpm vitest run --project node-tests`.
+//   - node-tests   — node environment, existing .ts tests, real adminjs package.
+//   - render-tests — jsdom environment, .render.test.tsx tests, with aliases that
+//                    stub out @adminjs/design-system, adminjs, and react-router-dom
+//                    so components render without the full AdminJS peer dep tree.
+//
+// Vitest 4 removed `defineWorkspace` and the external `vitest.workspace.ts`
+// mechanism; projects are now declared inline via `test.projects`.
+//
+// Run ALL tests:        `pnpm vitest run`
+// Run only render tests: `pnpm vitest run --project render-tests`
+// Run only node tests:   `pnpm vitest run --project node-tests`
 
+import path from "path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    globals: true,
-    environment: "node",
-    include: ["tests/**/*.test.ts"],
-    exclude: ["e2e/**", "node_modules/**"],
+    projects: [
+      {
+        test: {
+          name: "node-tests",
+          globals: true,
+          environment: "node",
+          include: ["tests/**/*.test.ts"],
+          exclude: ["e2e/**", "node_modules/**"],
+        },
+      },
+      {
+        resolve: {
+          alias: {
+            "@adminjs/design-system": path.resolve(
+              __dirname,
+              "tests/__mocks__/adminjs-design-system.tsx"
+            ),
+            adminjs: path.resolve(__dirname, "tests/__mocks__/adminjs-stub.ts"),
+            "react-router-dom": path.resolve(
+              __dirname,
+              "tests/__mocks__/react-router-dom-stub.ts"
+            ),
+          },
+        },
+        test: {
+          name: "render-tests",
+          globals: true,
+          environment: "jsdom",
+          include: ["tests/**/*.render.test.tsx"],
+          exclude: ["e2e/**", "node_modules/**"],
+        },
+      },
+    ],
   },
 });
