@@ -21,7 +21,7 @@
  */
 
 import { readFileSync } from "fs";
-import { SignJWT, importPKCS8, type CryptoKey } from "jose";
+import { SignJWT, importPKCS8 } from "jose";
 import { v4 as uuidv4 } from "uuid";
 
 const PRIVATE_KEY_PATH =
