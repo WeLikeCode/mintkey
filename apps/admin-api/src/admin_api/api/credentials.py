@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.credential_service import (
@@ -147,6 +148,7 @@ async def create_credential(
     body: CredentialCreate,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Register a new credential for a service.
@@ -689,6 +691,7 @@ async def rotate_credential(
     body: CredentialRotateRequest,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Rotate a credential — ADR-0013 §3.1.
@@ -1225,6 +1228,7 @@ async def delete_credential_version(
     service_id: str,
     key_version: int,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Revoke a specific credential version (soft-delete: sets status to 'revoked').
@@ -1312,6 +1316,7 @@ async def list_credential_versions(
     q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
     vault: VaultAdapterClient = Depends(get_vault_client),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List credential version metadata for a service.

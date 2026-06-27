@@ -93,17 +93,19 @@ def _make_mock_session(agent_exists: bool = True, existing_perm=None):
     return session
 
 
-def create_test_app(agent_exists: bool = True, existing_perm=None):
+def create_test_app(agent_exists: bool = True, existing_perm=None, bypass_authz: bool = True):
     """
     Create a test app with:
       - permissions router included
       - get_db_session overridden to a mock (no real DB)
+      - require_tenant_session bypassed by default (unit tests don't exercise session auth)
       - CSRF paths registered as exempt
       - validation error handler registered
     """
     from fastapi import FastAPI
     from fastapi.exceptions import RequestValidationError
     from admin_api.api.permissions import router as permissions_router, validation_error_handler
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -115,6 +117,8 @@ def create_test_app(agent_exists: bool = True, existing_perm=None):
         yield _make_mock_session(agent_exists=agent_exists, existing_perm=existing_perm)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    if bypass_authz:
+        app.dependency_overrides[require_tenant_session] = lambda: None
 
     csrf_exempt(BASE_URL)
     csrf_exempt(f"{BASE_URL}/{PERM_ID}")
@@ -317,3 +321,58 @@ async def test_cross_tenant_grant_returns_404(mock_audit, mock_notify) -> None:
     assert resp.status_code == 404, resp.text
     body = resp.json()
     assert body.get("mintkey:code") == "not_found"
+
+# ---------------------------------------------------------------------------
+# Cross-tenant authz: require_tenant_session enforces 403 — ADR-SCOPE-A
+# ---------------------------------------------------------------------------
+
+TENANT_A_ID = TENANT_ID    # "00000000-0000-0000-0000-000000000001"
+TENANT_B_ID = OTHER_TENANT_ID  # "00000000-0000-0000-0000-000000000002"
+CROSS_TENANT_URL = f"/v1/tenants/{TENANT_B_ID}/agents/{AGENT_ID}/permissions"
+
+
+@pytest.mark.asyncio
+async def test_grant_permission_cross_tenant_returns_403(mock_audit, mock_notify) -> None:
+    """
+    POST /v1/tenants/{TENANT_B}/agents/.../permissions with a session scoped to
+    TENANT_A must return 403 — require_tenant_session enforcement (ADR-SCOPE-A).
+    Before dep: handler reached (201).  After dep: 403 permission_denied.
+    """
+    from fastapi import FastAPI
+    from fastapi.exceptions import RequestValidationError
+    from admin_api.api.permissions import router as permissions_router, validation_error_handler
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    app = FastAPI()
+    app.include_router(permissions_router)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
+
+    async def mock_db_session():
+        yield _make_mock_session(agent_exists=True)
+
+    app.dependency_overrides[get_db_session] = mock_db_session
+    csrf_exempt(CROSS_TENANT_URL)
+    app.add_middleware(CsrfMiddleware)
+
+    class _FakeCtx:
+        operator_id = "op-uuid-a"
+        tenant_id = TENANT_A_ID
+
+    with (
+        patch("admin_api.auth.sessions.validate_session", new=AsyncMock(return_value=_FakeCtx())),
+        patch("admin_api.auth.sessions._is_operator_platform_admin", new=AsyncMock(return_value=False)),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                CROSS_TENANT_URL,
+                json=VALID_GRANT_BODY,
+                cookies={"mintkey_session": "tok-a"},
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 for cross-tenant POST /permissions, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied"

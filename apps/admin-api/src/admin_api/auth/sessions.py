@@ -115,6 +115,43 @@ async def _is_operator_platform_admin(operator_id: Any) -> bool:
     return bool(result.is_platform_admin) if result is not None else False
 
 
+async def require_platform_admin_session(request: Request) -> None:
+    """
+    FastAPI dependency: enforce that the caller is an authenticated platform-admin.
+
+    Reads the `mintkey_session` cookie → validate_session() → checks
+    _is_operator_platform_admin(ctx.operator_id).
+
+    Raises:
+        HTTPException(401)  — no/invalid session cookie.
+        HTTPException(403)  — operator is not platform-admin.
+
+    Source: ADR-0027 §D2; SCOPE-A chunk D.
+    """
+    session_token = request.cookies.get("mintkey_session")
+    if not session_token:
+        raise HTTPException(
+            status_code=401,
+            detail={"mintkey:code": "unauthenticated", "title": "No session"},
+        )
+
+    ctx = await validate_session(session_token)
+    if ctx is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"mintkey:code": "unauthenticated", "title": "Session not found or expired"},
+        )
+
+    if not await _is_operator_platform_admin(ctx.operator_id):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "mintkey:code": "permission_denied",
+                "title": "Platform admin access required",
+            },
+        )
+
+
 async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
     """
     FastAPI dependency: enforce that the caller's session is scoped to `tenant_id`.

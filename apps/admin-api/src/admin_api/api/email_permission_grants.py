@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import wire_to_db_uuid
@@ -74,6 +75,7 @@ async def create_email_permission_grant(
     tenant_id: UUID,
     body: EmailPermissionGrantCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Grant an agent access to an email service.
@@ -211,6 +213,7 @@ async def create_email_permission_grant(
 async def list_email_permission_grants(
     tenant_id: UUID,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List all email permission grants for a tenant.
@@ -251,6 +254,7 @@ async def get_email_permission_grant(
     tenant_id: UUID,
     grant_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Get a single email permission grant by ID.
@@ -293,6 +297,7 @@ async def delete_email_permission_grant(
     tenant_id: UUID,
     grant_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
     Revoke an email permission grant.

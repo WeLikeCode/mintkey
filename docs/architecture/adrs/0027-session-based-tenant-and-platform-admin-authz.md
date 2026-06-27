@@ -1,0 +1,1 @@
+../01-architecture/adr/0027-session-based-tenant-and-platform-admin-authz.md

@@ -34,6 +34,11 @@ for p in (ADMIN_API_SRC, MODELS_SRC):
 SETTINGS_URL = "/v1/admin/settings"
 
 
+async def _noop_platform_admin():
+    """Dep override: treat all callers as platform-admin."""
+    return None
+
+
 def _make_mock_session(stored_value: str = None):
     """Return an async-capable mock DB session."""
     session = MagicMock()
@@ -56,11 +61,16 @@ def _make_mock_session(stored_value: str = None):
 
 
 def _create_test_app(is_platform_admin: bool = True, stored_value: str = None):
-    """Build a minimal FastAPI app with the settings router and mocked DB."""
+    """Build a minimal FastAPI app with the settings router and mocked DB.
+
+    When is_platform_admin=True, require_platform_admin_session is overridden to a no-op.
+    When is_platform_admin=False, the real dependency runs (no cookie → 401).
+    """
     from fastapi import FastAPI
     from fastapi.exceptions import RequestValidationError
     from admin_api.api.settings import router as settings_router
     from admin_api.api.permissions import validation_error_handler
+    from admin_api.auth.sessions import require_platform_admin_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -72,6 +82,8 @@ def _create_test_app(is_platform_admin: bool = True, stored_value: str = None):
         yield _make_mock_session(stored_value=stored_value)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    if is_platform_admin:
+        app.dependency_overrides[require_platform_admin_session] = _noop_platform_admin
 
     csrf_exempt(SETTINGS_URL)
     app.add_middleware(CsrfMiddleware)
@@ -93,7 +105,7 @@ async def test_get_settings_as_platform_admin() -> None:
     app = _create_test_app(is_platform_admin=True)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get(SETTINGS_URL, headers={"X-Platform-Admin": "true"})
+        resp = await client.get(SETTINGS_URL)
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -106,8 +118,8 @@ async def test_get_settings_as_platform_admin() -> None:
 @pytest.mark.asyncio
 async def test_get_settings_as_non_platform_admin() -> None:
     """
-    GET /v1/admin/settings without platform-admin header returns 403
-    with mintkey:code=permission_denied.
+    GET /v1/admin/settings without a valid platform-admin session returns 401.
+    Session-based authz (ADR-0027 §D2); no session cookie → 401 unauthenticated.
     Source: T-1.13.1.
     """
     app = _create_test_app(is_platform_admin=False)
@@ -115,9 +127,10 @@ async def test_get_settings_as_non_platform_admin() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get(SETTINGS_URL)
 
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 401, resp.text
     body = resp.json()
-    assert body.get("mintkey:code") == "permission_denied"
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "unauthenticated"
 
 
 @pytest.mark.asyncio
@@ -134,8 +147,7 @@ async def test_patch_merges_partial_body() -> None:
             resp = await client.patch(
                 SETTINGS_URL,
                 json={"audit": {"retention_days": 180}},
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -160,7 +172,6 @@ async def test_patch_unknown_key_returns_422() -> None:
         resp = await client.patch(
             SETTINGS_URL,
             json={"unknown_key": "bad"},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 422, resp.text
@@ -175,7 +186,7 @@ async def test_get_settings_has_api_key_section() -> None:
     app = _create_test_app(is_platform_admin=True)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get(SETTINGS_URL, headers={"X-Platform-Admin": "true"})
+        resp = await client.get(SETTINGS_URL)
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -201,8 +212,7 @@ async def test_patch_api_key_settings() -> None:
             resp = await client.patch(
                 SETTINGS_URL,
                 json={"api_key": {"require_expiry": True, "max_expiry_days": 30}},
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -216,8 +226,7 @@ async def test_patch_api_key_settings() -> None:
             resp2 = await client.patch(
                 SETTINGS_URL,
                 json={"api_key": {"unknown_flag": True}},
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
     assert resp2.status_code == 422, resp2.text
 
 
@@ -234,8 +243,7 @@ async def test_patch_emits_settings_updated_audit() -> None:
             resp = await client.patch(
                 SETTINGS_URL,
                 json={"oidc": {"enabled": True}},
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
         assert resp.status_code == 200, resp.text
         mock_audit.assert_called_once()

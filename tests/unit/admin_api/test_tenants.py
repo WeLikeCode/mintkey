@@ -33,6 +33,11 @@ for p in (ADMIN_API_SRC, MODELS_SRC):
 BASE_URL_PATH = "/v1/tenants"
 
 
+async def _noop_platform_admin():
+    """Dep override: treat all callers as platform-admin."""
+    return None
+
+
 def _make_mock_session(conflict_on_insert=False, tenant_rows=None):
     """Return an async-capable mock DB session."""
     session = MagicMock()
@@ -95,10 +100,12 @@ def create_test_app(conflict_on_insert=False, tenant_rows=None):
     Create an app with:
       - tenants router included
       - get_db_session overridden to a mock (no real DB)
+      - require_platform_admin_session overridden to a no-op (platform-admin granted)
       - CSRF middleware present but path registered as exempt
     """
     from fastapi import FastAPI
     from admin_api.api.tenants import router as tenants_router
+    from admin_api.auth.sessions import require_platform_admin_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -109,6 +116,7 @@ def create_test_app(conflict_on_insert=False, tenant_rows=None):
         yield _make_mock_session(conflict_on_insert=conflict_on_insert, tenant_rows=tenant_rows)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_platform_admin_session] = _noop_platform_admin
 
     csrf_exempt(BASE_URL_PATH)
 
@@ -145,7 +153,6 @@ async def test_platform_admin_can_create_tenant(app, mock_audit) -> None:
         resp = await client.post(
             BASE_URL_PATH,
             json={"slug": "t_acme", "name": "Acme Corp"},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 201, resp.text
@@ -163,20 +170,38 @@ async def test_platform_admin_can_create_tenant(app, mock_audit) -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_platform_admin_gets_403(app, mock_audit) -> None:
+async def test_non_platform_admin_gets_401(mock_audit) -> None:
     """
-    POST /v1/tenants without X-Platform-Admin header → 403 permission_denied.
+    POST /v1/tenants without a valid platform-admin session → 401 unauthenticated.
+    Session-based authz (ADR-0027 §D2); no session cookie → 401.
     Source: T-1.12.1; ADR-0017.4.
     """
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    from fastapi import FastAPI
+    from admin_api.api.tenants import router as tenants_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    # No dep override — real require_platform_admin_session; no cookie → 401
+    app_no_auth = FastAPI()
+    app_no_auth.include_router(tenants_router)
+
+    async def mock_db_session():
+        yield _make_mock_session()
+
+    app_no_auth.dependency_overrides[get_db_session] = mock_db_session
+    csrf_exempt(BASE_URL_PATH)
+    app_no_auth.add_middleware(CsrfMiddleware)
+
+    async with AsyncClient(transport=ASGITransport(app=app_no_auth), base_url="http://test") as client:
         resp = await client.post(
             BASE_URL_PATH,
             json={"slug": "t_acme", "name": "Acme Corp"},
         )
 
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 401, resp.text
     body = resp.json()
-    assert body.get("mintkey:code") == "permission_denied"
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "unauthenticated"
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +219,6 @@ async def test_tenant_creation_emits_audit(app, mock_audit) -> None:
         resp = await client.post(
             BASE_URL_PATH,
             json={"slug": "t_beta", "name": "Beta Inc"},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 201, resp.text
@@ -219,7 +243,6 @@ async def test_tenant_creation_initializes_chain_state(app, mock_audit) -> None:
         resp = await client.post(
             BASE_URL_PATH,
             json={"slug": "t_gamma", "name": "Gamma LLC"},
-            headers={"X-Platform-Admin": "true"},
         )
 
     assert resp.status_code == 201, resp.text
@@ -259,8 +282,7 @@ async def test_duplicate_slug_returns_409() -> None:
             resp = await client.post(
                 BASE_URL_PATH,
                 json={"slug": "t_acme", "name": "Acme Corp"},
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
     assert resp.status_code == 409, resp.text
     body = resp.json()
@@ -310,8 +332,7 @@ async def test_list_tenants_response_includes_isolation_mode() -> None:
         ) as client:
             resp = await client.get(
                 BASE_URL_PATH,
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -344,8 +365,7 @@ async def test_get_tenant_response_includes_isolation_mode() -> None:
         ) as client:
             resp = await client.get(
                 f"{BASE_URL_PATH}/{tid}",
-                headers={"X-Platform-Admin": "true"},
-            )
+                )
 
     assert resp.status_code == 200, resp.text
     body = resp.json()

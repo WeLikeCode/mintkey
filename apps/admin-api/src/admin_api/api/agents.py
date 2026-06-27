@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.config.public_urls import resolve_mcp_public_url
 from admin_api.db.deps import get_db_session
@@ -195,6 +196,7 @@ async def create_agent(
     tenant_id: UUID,
     body: AgentCreate,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Register a new agent under a tenant.
@@ -355,6 +357,7 @@ async def list_agents(
     q: Optional[str] = None,
     has_access_to_service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List all agents for a tenant. Never returns plaintext API keys.
@@ -478,6 +481,7 @@ async def get_agent(
     tenant_id: UUID,
     agent_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Get a single agent. Never returns the plaintext API key.
@@ -522,6 +526,7 @@ async def revoke_agent(
     tenant_id: UUID,
     agent_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Set agent status to 'revoked', emit agent.revoked audit event,
@@ -605,6 +610,7 @@ async def rotate_agent_key(
     agent_id: str,
     body: AgentRotateKeyRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """Hard cutover rotation. Mirrors credentials.py rotate_credential pattern.
 
@@ -712,6 +718,7 @@ async def set_agent_ssh_pubkey(
     agent_id: str,
     body: "AgentSetSSHPubKeyRequest",
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Set or rotate the SSH public key for an agent.
@@ -891,6 +898,7 @@ async def delete_agent(
     tenant_id: UUID,
     agent_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
     Delete (hard-delete) an agent.

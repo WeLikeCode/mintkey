@@ -137,6 +137,7 @@ async def test_create_grant_happy_path() -> None:
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 201
@@ -195,6 +196,7 @@ async def test_create_grant_duplicate_returns_409() -> None:
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 409
@@ -228,6 +230,7 @@ async def test_create_grant_nonexistent_agent_returns_422() -> None:
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 422
@@ -262,6 +265,7 @@ async def test_create_grant_nonexistent_email_service_returns_422() -> None:
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 422
@@ -298,6 +302,7 @@ async def test_create_grant_cross_tenant_rejected() -> None:
             tenant_id=TENANT_A,  # context is TENANT_A; email_service is in TENANT_B
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 422
@@ -339,6 +344,7 @@ async def test_list_grants_scoped_to_tenant() -> None:
         response = await list_email_permission_grants(
             tenant_id=TENANT_A,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 200
@@ -384,6 +390,7 @@ async def test_delete_grant() -> None:
             tenant_id=TENANT_A,
             grant_id=str(GRANT_ID),
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 204
@@ -445,6 +452,7 @@ async def test_create_email_permission_grant_emits_notify() -> None:
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 201
@@ -508,6 +516,7 @@ async def test_create_email_permission_grant_notify_payload_no_pii_no_secrets() 
             tenant_id=TENANT_A,
             body=body,
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert len(captured_payloads) == 1
@@ -569,6 +578,7 @@ async def test_delete_email_permission_grant_emits_notify() -> None:
             tenant_id=TENANT_A,
             grant_id=str(GRANT_ID),
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 204
@@ -619,6 +629,7 @@ async def test_delete_email_permission_grant_idempotent_notify_even_when_row_mis
             tenant_id=TENANT_A,
             grant_id=str(GRANT_ID),
             session=session,  # type: ignore[arg-type]
+            _authz=None,
         )
 
     assert response.status_code == 204
@@ -635,3 +646,62 @@ async def test_delete_email_permission_grant_idempotent_notify_even_when_row_mis
     # and "" for esvc_id_val — assert the keys are present, content is best-effort.
     assert "agent_id" in payload
     assert "email_service_id" in payload
+
+
+# ---------------------------------------------------------------------------
+# T-AUTHZ: cross-tenant 403 via require_tenant_session (Chunk C, AC-2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_email_permission_grant_cross_tenant_session_403() -> None:
+    """
+    T-AUTHZ: A session scoped to TENANT_A hitting TENANT_B's
+    email-permission-grants/create endpoint → 403.
+
+    Before fix: no require_tenant_session dep — any operator could POST to any tenant.
+    After fix:  require_tenant_session raises HTTPException(403) before the handler body runs.
+
+    Uses FastAPI TestClient so Depends() is actually resolved.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from unittest.mock import AsyncMock, patch as _patch
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    from admin_api.api.email_permission_grants import router as grants_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.auth.sessions import require_tenant_session
+
+    TENANT_A_ID = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    TENANT_B_ID = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+    test_app = FastAPI()
+    test_app.include_router(grants_router)
+
+    # DB session override — should never be reached (403 fires first)
+    async def _override_session():
+        yield _make_session()
+
+    test_app.dependency_overrides[get_db_session] = _override_session
+
+    # Simulate session belonging to TENANT_A
+    ctx = SimpleNamespace(operator_id=uuid.uuid4(), tenant_id=TENANT_A_ID)
+
+    with _patch("admin_api.auth.sessions.validate_session", new_callable=AsyncMock, return_value=ctx), \
+         _patch("admin_api.auth.sessions._is_operator_platform_admin", new_callable=AsyncMock, return_value=False):
+        with TestClient(test_app, raise_server_exceptions=False) as client:
+            # Cookie present (non-empty triggers the session check)
+            resp = client.post(
+                f"/v1/tenants/{TENANT_B_ID}/email-permission-grants",
+                json={
+                    "agent_id": str(uuid.uuid4()),
+                    "email_service_id": str(uuid.uuid4()),
+                },
+                cookies={"mintkey_session": "tok-tenant-a"},
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 cross-tenant, got {resp.status_code}: {resp.text}"
+    )
