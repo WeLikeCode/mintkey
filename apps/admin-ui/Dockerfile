@@ -1,5 +1,5 @@
 # Pinned 2026-05-18; re-pin every quarter.
-FROM node:26-bookworm-slim@sha256:79723b41edbedf595f62e943a9f8b0ba9af5b1e61045c5f8f59c2c02c1212a16
+FROM node:26-bookworm-slim@sha256:b16ca7b4dcfb20184e1c70f9ee30c6a75ed1da669cfafd6d2add4761b123d79f
 WORKDIR /app
 
 # node:26 images no longer bundle corepack (removed from Node >=25 dists);
