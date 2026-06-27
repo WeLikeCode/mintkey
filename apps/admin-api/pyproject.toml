@@ -38,7 +38,7 @@ dev = [
     "types-protobuf>=6.31",
     "types-authlib>=1.3",
     "types-PyYAML>=6.0",
-    "hypothesis>=6.130",
+    "hypothesis>=6.155.7",
 ]
 
 [tool.uv]
