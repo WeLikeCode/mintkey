@@ -311,3 +311,222 @@ class VaultAdapter(object):
             timeout,
             metadata,
             _registered_method=True)
+
+
+class AgentSecretsVaultStub(object):
+    """AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+
+    Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+    is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+    Multiple secrets per agent are handled by SQL (public.agent_secrets);
+    this service handles only the encrypted blob.
+
+    Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+    Per-transaction set_config('app.current_tenant', …) and
+    pg_advisory_xact_lock are applied identically to VaultAdapter.
+
+    !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PutAgentSecret = channel.unary_unary(
+                '/mintkey.vault.v1.AgentSecretsVault/PutAgentSecret',
+                request_serializer=vault__pb2.PutAgentSecretRequest.SerializeToString,
+                response_deserializer=vault__pb2.PutAgentSecretResponse.FromString,
+                _registered_method=True)
+        self.GetAgentSecret = channel.unary_unary(
+                '/mintkey.vault.v1.AgentSecretsVault/GetAgentSecret',
+                request_serializer=vault__pb2.GetAgentSecretRequest.SerializeToString,
+                response_deserializer=vault__pb2.GetAgentSecretResponse.FromString,
+                _registered_method=True)
+        self.DeleteAgentSecret = channel.unary_unary(
+                '/mintkey.vault.v1.AgentSecretsVault/DeleteAgentSecret',
+                request_serializer=vault__pb2.DeleteAgentSecretRequest.SerializeToString,
+                response_deserializer=vault__pb2.DeleteAgentSecretResponse.FromString,
+                _registered_method=True)
+
+
+class AgentSecretsVaultServicer(object):
+    """AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+
+    Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+    is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+    Multiple secrets per agent are handled by SQL (public.agent_secrets);
+    this service handles only the encrypted blob.
+
+    Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+    Per-transaction set_config('app.current_tenant', …) and
+    pg_advisory_xact_lock are applied identically to VaultAdapter.
+
+    !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+    """
+
+    def PutAgentSecret(self, request, context):
+        """PutAgentSecret seals the plaintext value and stores (or replaces)
+        the encrypted blob keyed by (tenant_id, secret_id).
+
+        On overwrite the previous blob is replaced atomically.
+        The plaintext in the request is discarded after sealing.
+
+        Errors:
+        INVALID_ARGUMENT  — tenant_id or secret_id is empty, or value
+        exceeds 65536 bytes.
+        PERMISSION_DENIED — caller lacks vault.secret.put scope.
+        UNAVAILABLE       — Postgres backend unreachable.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAgentSecret(self, request, context):
+        """GetAgentSecret unseals and returns the plaintext value for one
+        (tenant_id, secret_id). Every call should be accompanied by an
+        agent_secret.read audit event emitted by the MCP server.
+
+        Errors:
+        NOT_FOUND         — no blob exists for (tenant_id, secret_id).
+        PERMISSION_DENIED — caller lacks vault.secret.read scope.
+        UNAVAILABLE       — Postgres backend unreachable.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAgentSecret(self, request, context):
+        """DeleteAgentSecret removes the encrypted blob for (tenant_id, secret_id).
+        Idempotent: returns OK when the row is already absent.
+
+        Errors:
+        PERMISSION_DENIED — caller lacks vault.secret.delete scope.
+        UNAVAILABLE       — Postgres backend unreachable.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_AgentSecretsVaultServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PutAgentSecret': grpc.unary_unary_rpc_method_handler(
+                    servicer.PutAgentSecret,
+                    request_deserializer=vault__pb2.PutAgentSecretRequest.FromString,
+                    response_serializer=vault__pb2.PutAgentSecretResponse.SerializeToString,
+            ),
+            'GetAgentSecret': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAgentSecret,
+                    request_deserializer=vault__pb2.GetAgentSecretRequest.FromString,
+                    response_serializer=vault__pb2.GetAgentSecretResponse.SerializeToString,
+            ),
+            'DeleteAgentSecret': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAgentSecret,
+                    request_deserializer=vault__pb2.DeleteAgentSecretRequest.FromString,
+                    response_serializer=vault__pb2.DeleteAgentSecretResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'mintkey.vault.v1.AgentSecretsVault', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('mintkey.vault.v1.AgentSecretsVault', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class AgentSecretsVault(object):
+    """AgentSecretsVault stores and retrieves agent-owned secrets (ADR-0025).
+
+    Unlike VaultAdapter (keyed by tenant+service+key_version), this service
+    is keyed by (tenant_id, secret_id) — one opaque ULID per secret write.
+    Multiple secrets per agent are handled by SQL (public.agent_secrets);
+    this service handles only the encrypted blob.
+
+    Reuses crypto.Seal/Open and kek.Load from the vault-adapter package.
+    Per-transaction set_config('app.current_tenant', …) and
+    pg_advisory_xact_lock are applied identically to VaultAdapter.
+
+    !! INTERNAL SERVICE !! Same trust boundary as VaultAdapter.
+    """
+
+    @staticmethod
+    def PutAgentSecret(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mintkey.vault.v1.AgentSecretsVault/PutAgentSecret',
+            vault__pb2.PutAgentSecretRequest.SerializeToString,
+            vault__pb2.PutAgentSecretResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAgentSecret(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mintkey.vault.v1.AgentSecretsVault/GetAgentSecret',
+            vault__pb2.GetAgentSecretRequest.SerializeToString,
+            vault__pb2.GetAgentSecretResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAgentSecret(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/mintkey.vault.v1.AgentSecretsVault/DeleteAgentSecret',
+            vault__pb2.DeleteAgentSecretRequest.SerializeToString,
+            vault__pb2.DeleteAgentSecretResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

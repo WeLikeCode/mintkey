@@ -69,6 +69,12 @@ export const Components = {
   EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
   // Email service new form — provider-driven prefill for IMAP/SMTP host+port (Bug-B fix)
   EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
+  // Agent secret create form with reveal-once panel (Chunk C6, D11)
+  AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
+  // Agent secret rotate form with reveal-once panel (Chunk C6b)
+  AgentSecretUpdateForm: componentLoader.add("AgentSecretUpdateForm", "./actions/AgentSecretUpdateForm"),
+  // Agent secret grants panel — list/create/revoke sharing grants (Chunk C6c)
+  AgentSecretGrantsPanel: componentLoader.add("AgentSecretGrantsPanel", "./actions/AgentSecretGrantsPanel"),
 };
 
 // Global override: show-page renderer that inlines property.description below

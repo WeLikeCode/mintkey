@@ -2,7 +2,9 @@
 Unit tests: Agent-secret REST endpoints (operator surface).
 
 GET    /v1/tenants/{tid}/agent-secrets                                   — list (200)
+POST   /v1/tenants/{tid}/agent-secrets                                   — create (201/409/422) [C5]
 GET    /v1/tenants/{tid}/agent-secrets/{secret_id}                       — get (200/404)
+PUT    /v1/tenants/{tid}/agent-secrets/{secret_id}                       — update/rotate (200/404/422) [C5b]
 DELETE /v1/tenants/{tid}/agent-secrets/{secret_id}                       — delete (204)
 POST   /v1/tenants/{tid}/agent-secrets/{secret_id}/grants                — create grant (201/409/422)
 GET    /v1/tenants/{tid}/agent-secrets/{secret_id}/grants                — list grants (200/404)
@@ -46,6 +48,7 @@ SECRET_UUID = "11111111-1111-1111-1111-111111111111"
 AGENT_UUID = "22222222-2222-2222-2222-222222222222"
 OWNER_UUID = "33333333-3333-3333-3333-333333333333"
 GRANT_UUID = "44444444-4444-4444-4444-444444444444"
+OPERATOR_UUID = "55555555-5555-5555-5555-555555555555"
 
 BASE = f"/v1/tenants/{TENANT_ID}/agent-secrets"
 SECRET_PATH = f"{BASE}/{SECRET_UUID}"
@@ -134,12 +137,29 @@ class _MockSession:
         result.fetchall.return_value = list(self._all)
         return result
 
+    async def commit(self) -> None:
+        pass
 
-def _create_app(session: Any) -> Any:
+
+def _make_ctx(operator_id: str = OPERATOR_UUID, tenant_id: str = TENANT_ID) -> Any:
+    """Return a _Ctx-like object with operator_id and tenant_id as UUIDs."""
+
+    class _FakeCtx:
+        pass
+
+    ctx = _FakeCtx()
+    ctx.operator_id = uuid.UUID(operator_id)
+    ctx.tenant_id = uuid.UUID(tenant_id)
+    return ctx
+
+
+def _create_app(session: Any, vault_client: Any = None, session_ctx: Any = None) -> Any:
     from fastapi import FastAPI
     from admin_api.api.agent_secrets import router as agent_secrets_router
+    from admin_api.auth.sessions import get_session_context, require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+    from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
 
     app = FastAPI()
     app.include_router(agent_secrets_router)
@@ -148,6 +168,34 @@ def _create_app(session: Any) -> Any:
         yield session
 
     app.dependency_overrides[get_db_session] = _mock_db
+
+    # Override the vault client dependency so tests stay fully in-process.
+    # When no vault_client is provided, use a no-op AsyncMock so existing tests
+    # that don't care about vault behaviour are unaffected.
+    _vc = vault_client if vault_client is not None else AsyncMock()
+
+    async def _mock_vault_client():
+        return _vc
+
+    app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault_client
+
+    # Override get_session_context so tests can seed a specific operator identity
+    # without hitting the database.  Default: return a ctx with OPERATOR_UUID.
+    _ctx = session_ctx if session_ctx is not None else _make_ctx()
+
+    async def _mock_session_ctx():
+        return _ctx
+
+    app.dependency_overrides[get_session_context] = _mock_session_ctx
+
+    # Override require_tenant_session — unit tests run without a real session
+    # store.  The dependency is bypassed here so requests reach the real handler;
+    # happy-path business logic (validation, audit, vault) is still exercised.
+    # Cross-tenant rejection is tested separately in _create_app_with_real_authz.
+    async def _noop_require_tenant_session() -> None:
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(BASE)
     csrf_exempt(SECRET_PATH)
@@ -169,8 +217,8 @@ async def _get(path: str, session: Any, params: dict | None = None) -> Any:
         return await client.get(path, params=params or {})
 
 
-async def _delete(path: str, session: Any) -> Any:
-    app = _create_app(session)
+async def _delete(path: str, session: Any, vault_client: Any = None) -> Any:
+    app = _create_app(session, vault_client=vault_client)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.delete(path, headers={"X-CSRF-Token": CSRF_TOKEN})
 
@@ -179,6 +227,20 @@ async def _post(path: str, session: Any, body: dict) -> Any:
     app = _create_app(session)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         return await client.post(path, json=body, headers={"X-CSRF-Token": CSRF_TOKEN})
+
+
+async def _put(
+    path: str,
+    session: Any,
+    body: dict,
+    vault_client: Any = None,
+    session_ctx: Any = None,
+) -> Any:
+    from admin_api.middleware.csrf import csrf_exempt
+    csrf_exempt(path)
+    app = _create_app(session, vault_client=vault_client, session_ctx=session_ctx)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.put(path, json=body, headers={"X-CSRF-Token": CSRF_TOKEN})
 
 
 # ===========================================================================
@@ -747,6 +809,509 @@ def _validate_payload(event_type: str, payload: dict) -> None:
             )
 
 
+# ===========================================================================
+# DELETE secret — vault ciphertext purge (C4)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_secret_calls_vault_client_with_correct_args() -> None:
+    """
+    DELETE /{secret_id} when the secret EXISTS must call
+    AgentSecretsVaultClient.delete_agent_secret(tenant_id=<str>, secret_id=<str>)
+    exactly once with the raw UUID strings before deleting the metadata row.
+    Source: C4 acceptance criterion AC-1; ADR-0025.
+    """
+    row = _make_secret_row()
+    session = _MockSession(fetch_once_rows=[row])
+
+    mock_vault_client = AsyncMock()
+    mock_vault_client.delete_agent_secret = AsyncMock(return_value=True)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session, vault_client=mock_vault_client)
+
+    assert resp.status_code == 204, resp.text
+    mock_vault_client.delete_agent_secret.assert_called_once_with(
+        tenant_id=TENANT_ID,
+        secret_id=SECRET_UUID,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_agent_secret_idempotent_skips_vault_call() -> None:
+    """
+    DELETE /{secret_id} when the secret is ALREADY ABSENT returns 204 and
+    does NOT call the vault client (no metadata row → no vault blob to purge).
+    Source: C4 acceptance criterion AC-2; ADR-0025.
+    """
+    session = _MockSession(fetch_once_rows=[None])
+
+    mock_vault_client = AsyncMock()
+    mock_vault_client.delete_agent_secret = AsyncMock(return_value=False)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session, vault_client=mock_vault_client)
+
+    assert resp.status_code == 204, resp.text
+    mock_vault_client.delete_agent_secret.assert_not_called()
+
+
+
+
+# ===========================================================================
+# C4b: operator identity threading — actor_id + created_by from session ctx
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_grant_created_by_is_session_operator_id() -> None:
+    """
+    POST /grants must set created_by from the session context operator_id,
+    NOT the nil-UUID placeholder.  The response body's created_by wire ID
+    must encode the seeded OPERATOR_UUID (operator_<crockford>).
+
+    Source: ADR-0025; C4b acceptance criterion AC-2.
+    """
+    secret_row = _make_secret_row(agent_id=OWNER_UUID)
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[secret_row, agent_row, None])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post(GRANTS_PATH, session, {"recipient_agent_id": AGENT_UUID})
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    # created_by must be an operator_ wire ID encoding OPERATOR_UUID — NOT the nil-UUID
+    assert body["created_by"].startswith("operator_"), f"Expected operator_ prefix: {body['created_by']}"
+    nil_wire = "operator_0000000000000000000000000"
+    assert body["created_by"] != nil_wire, (
+        f"created_by is the nil-UUID placeholder; expected the seeded OPERATOR_UUID"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_grant_audit_actor_id_is_session_operator_id() -> None:
+    """
+    POST /grants must pass actor_id == session operator_id to audit_emit,
+    NOT None.
+
+    Source: ADR-0025; C4b acceptance criterion AC-2.
+    """
+    secret_row = _make_secret_row(agent_id=OWNER_UUID)
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[secret_row, agent_row, None])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post(GRANTS_PATH, session, {"recipient_agent_id": AGENT_UUID})
+
+    assert resp.status_code == 201, resp.text
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_revoke_grant_audit_actor_id_is_session_operator_id() -> None:
+    """
+    DELETE /grants/{grant_id} must pass actor_id == session operator_id to audit_emit.
+
+    Source: ADR-0025; C4b acceptance criterion AC-3.
+    """
+    grant_row = _make_grant_row()
+    session = _MockSession(fetch_once_rows=[grant_row])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(GRANT_PATH, session)
+
+    assert resp.status_code == 204, resp.text
+    mock_audit.assert_called_once()
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_secret_audit_actor_id_is_session_operator_id() -> None:
+    """
+    DELETE /{secret_id} must pass actor_id == session operator_id to audit_emit.
+
+    Source: ADR-0025; C4b acceptance criterion AC-4.
+    """
+    row = _make_secret_row()
+    session = _MockSession(fetch_once_rows=[row])
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _delete(SECRET_PATH, session)
+
+    assert resp.status_code == 204, resp.text
+    mock_audit.assert_called_once()
+    call_kwargs = mock_audit.call_args.kwargs
+    assert call_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID), (
+        f"Expected actor_id={OPERATOR_UUID}, got {call_kwargs['actor_id']}"
+    )
+
+
+# ===========================================================================
+# C5: POST /v1/tenants/{tenant_id}/agent-secrets — operator provision
+# ===========================================================================
+
+# A second AGENT UUID distinct from the owning-agent used in share-grant tests
+TARGET_AGENT_UUID = "66666666-6666-6666-6666-666666666666"
+
+CREATE_SECRET_PATH = BASE  # POST /v1/tenants/{tid}/agent-secrets
+
+
+async def _post_create_secret(
+    session: Any,
+    body: dict,
+    vault_client: Any = None,
+    session_ctx: Any = None,
+) -> Any:
+    """POST to the create-secret endpoint with the test app."""
+    from admin_api.middleware.csrf import csrf_exempt
+    csrf_exempt(CREATE_SECRET_PATH)
+    app = _create_app(session, vault_client=vault_client, session_ctx=session_ctx)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        return await client.post(
+            CREATE_SECRET_PATH,
+            json=body,
+            headers={"X-CSRF-Token": CSRF_TOKEN},
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_happy_path_returns_201() -> None:
+    """
+    POST /agent-secrets with valid body returns 201 with AgentSecret metadata.
+    Verifies: vault put called with bare-UUID secret_id, audit emitted, 201 body
+    is metadata-only (no value field).
+    Source: C5 AC-1, AC-3.
+    """
+    # fetchone calls: (1) agent-exists check → row, (2) dup check → None
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[agent_row, None])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post_create_secret(
+            session,
+            {
+                "agent_id": TARGET_AGENT_UUID,
+                "name": "my-secret",
+                "value": "s3cr3t",
+            },
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+
+    # Metadata-only: must NOT contain value or ciphertext
+    assert "value" not in body, f"Response must not contain 'value': {body}"
+    assert "ciphertext" not in body
+    assert "enc_payload" not in body
+
+    # Wire IDs present
+    assert body["id"].startswith("sec_"), f"Expected sec_ prefix: {body['id']}"
+    assert body["agent_id"].startswith("agent_"), f"Expected agent_ prefix: {body['agent_id']}"
+    assert body["tenant_id"].startswith("tenant_"), f"Expected tenant_ prefix: {body['tenant_id']}"
+    assert body["name"] == "my-secret"
+    assert body["version"] == 1
+
+    # Vault called with bare-UUID secret_id (NOT sec_ wire form)
+    mock_vault.put_agent_secret.assert_called_once()
+    call_kwargs = mock_vault.put_agent_secret.call_args.kwargs
+    secret_id_passed = call_kwargs["secret_id"]
+    assert not secret_id_passed.startswith("sec_"), (
+        f"Vault secret_id must be a bare UUID, not a wire ID; got: {secret_id_passed!r}"
+    )
+    # Must be a valid UUID
+    uuid.UUID(secret_id_passed)
+
+    # Audit emitted with correct event_type, actor_type, and operator actor_id
+    mock_audit.assert_called_once()
+    audit_kwargs = mock_audit.call_args.kwargs
+    assert audit_kwargs["event_type"] == "agent_secret.created"
+    assert audit_kwargs["actor_type"] == "operator"
+    assert audit_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID)
+
+    # Audit payload is identifier-only
+    payload = audit_kwargs["payload"]
+    assert "secret_id" in payload
+    assert "agent_id" in payload
+    assert "name" in payload
+    assert "version" in payload
+    assert "value" not in payload
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_response_is_metadata_only() -> None:
+    """
+    201 response must NOT contain value, ciphertext, enc_payload, or wrapped_dek.
+    Source: C5 AC-3 (core invariant).
+    """
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[agent_row, None])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "tok", "value": "plaintext"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    forbidden = {"value", "ciphertext", "enc_payload", "wrapped_dek", "key", "plaintext"}
+    for field in forbidden:
+        assert field not in body, f"Forbidden field '{field}' found in 201 response body"
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_duplicate_returns_409_and_no_vault_call() -> None:
+    """
+    POST /agent-secrets with a name that already exists for (tenant, agent) returns 409
+    duplicate_resource. The vault client must NOT be called (pre-check must fire first).
+    Source: C5 AC-2b.
+    """
+    existing_row = _make_secret_row(agent_id=TARGET_AGENT_UUID, name="dup-secret")
+    # fetchone (1) agent check → agent row, (2) dup check → returns existing row → handler rejects before vault
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[agent_row, existing_row])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "dup-secret", "value": "x"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 409, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "duplicate_resource", body
+    mock_vault.put_agent_secret.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_value_too_large_returns_422() -> None:
+    """
+    POST /agent-secrets with value > 65536 bytes returns 422 validation_failed.
+    Source: C5 AC-2c.
+    """
+    session = _MockSession()
+    with patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()):
+        resp = await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "big", "value": "x" * 65537},
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "validation_failed", body
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_invalid_name_returns_422() -> None:
+    """
+    POST /agent-secrets with a name that doesn't match ^[A-Za-z0-9._-]{1,128}$ returns 422.
+    Source: C5 AC-2d.
+    """
+    session = _MockSession()
+    with patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()):
+        resp = await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "bad name!", "value": "x"},
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "validation_failed", body
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_missing_agent_returns_422() -> None:
+    """
+    POST /agent-secrets where target agent does not exist in this tenant returns 422.
+    Source: C5 AC-2e (mirror grant-handler convention for cross-tenant/missing agent).
+    """
+    # fetchone (1) agent check → None (not found)
+    session = _MockSession(fetch_once_rows=[None])
+
+    with patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()):
+        resp = await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "tok", "value": "x"},
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "not_found", body
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_vault_called_with_bare_uuid() -> None:
+    """
+    AC-4: The secret_id passed to vault put_agent_secret is the same bare-UUID form
+    used by the read path (secret_get/GetAgentSecret).  NOT the sec_ wire form.
+    Source: C5 AC-4; secret_get.py line 118 calls get_agent_secret(secret_id=meta_secret_id)
+    where meta_secret_id = str(row.id) — a bare UUID string.
+    """
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+    session = _MockSession(fetch_once_rows=[agent_row, None])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        await _post_create_secret(
+            session,
+            {"agent_id": TARGET_AGENT_UUID, "name": "secret-x", "value": "v"},
+            vault_client=mock_vault,
+        )
+
+    call_kwargs = mock_vault.put_agent_secret.call_args.kwargs
+    secret_id_used = call_kwargs["secret_id"]
+    # Must be a valid bare UUID (parseable by uuid.UUID), not a wire-ID string
+    parsed = uuid.UUID(secret_id_used)
+    assert str(parsed) == secret_id_used, (
+        f"secret_id is not in canonical bare-UUID form: {secret_id_used!r}"
+    )
+    assert not secret_id_used.startswith("sec_"), (
+        f"Vault received wire form instead of bare UUID: {secret_id_used!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_agent_secret_race_duplicate_insert_returns_409_and_purges_orphan() -> None:
+    """
+    C10: Concurrent duplicate-name write loses the race at INSERT time.
+
+    Scenario: two identical POSTs arrive; the pre-check passes (no row found yet)
+    for both; vault.put_agent_secret succeeds; then the INSERT raises a unique-
+    constraint violation (uq_agent_secrets_name). The handler must:
+      (a) return 409 duplicate_resource — not 500 / re-raise,
+      (b) call vault_client.delete_agent_secret(secret_db_id) to purge the orphan.
+
+    Source: C10 acceptance criteria 1–3.
+    """
+    agent_row = MagicMock()
+    agent_row.id = uuid.UUID(TARGET_AGENT_UUID)
+
+    # The session executes in this order for create_agent_secret:
+    #   call 1: set_tenant_context (patched — no real call)
+    #   call 1: SELECT agents (agent-exists check) → agent_row found
+    #   call 2: SELECT agent_secrets (dup pre-check)     → None (pre-check passes)
+    #   call 3: INSERT agent_secrets                     → raises unique violation
+    class _RaceSession:
+        _calls: int = 0
+
+        async def execute(self, *args: Any, **kwargs: Any) -> Any:
+            self._calls += 1
+            if self._calls == 1:
+                # agent-exists check
+                result = MagicMock()
+                result.fetchone.return_value = agent_row
+                return result
+            elif self._calls == 2:
+                # dup pre-check — passes (no existing row)
+                result = MagicMock()
+                result.fetchone.return_value = None
+                return result
+            else:
+                # INSERT — unique-constraint violation (the losing concurrent writer)
+                raise Exception("unique constraint uq_agent_secrets_name")
+
+        async def commit(self) -> None:
+            pass
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+    mock_vault.delete_agent_secret = AsyncMock(return_value=True)
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _post_create_secret(
+            _RaceSession(),
+            {"agent_id": TARGET_AGENT_UUID, "name": "race-secret", "value": "v"},
+            vault_client=mock_vault,
+        )
+
+    # (a) Must return 409 duplicate_resource — NOT 500
+    assert resp.status_code == 409, f"Expected 409 on race, got {resp.status_code}: {resp.text}"
+    body = resp.json()
+    assert body["mintkey:code"] == "duplicate_resource", body
+
+    # (b) Vault delete called exactly once with the correct keyword args — matching the
+    # real signature delete_agent_secret(self, tenant_id: str, secret_id: str).
+    # The same bare UUID that was passed to put_agent_secret must be purged, and
+    # tenant_id must be the string form of the path tenant.
+    put_secret_id = mock_vault.put_agent_secret.call_args.kwargs["secret_id"]
+    mock_vault.delete_agent_secret.assert_called_once_with(
+        tenant_id=TENANT_ID,
+        secret_id=put_secret_id,
+    )
+
+
 @pytest.mark.parametrize("event_type,payload", [
     (
         "agent_secret.deleted",
@@ -774,7 +1339,364 @@ def _validate_payload(event_type: str, payload: dict) -> None:
             "recipient_agent_id": "agent_BBBBBBBBBBBBBBBBBBBBBBBBB1",
         },
     ),
+    # C5: operator actor on agent_secret.created — schema must accept actor_type=operator
+    (
+        "agent_secret.created",
+        {
+            "secret_id": "sec_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "agent_id": "agent_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "name": "db-password",
+            "version": 1,
+        },
+    ),
+    # C5b: operator actor on agent_secret.updated — schema must accept actor_type=operator
+    (
+        "agent_secret.updated",
+        {
+            "secret_id": "sec_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "agent_id": "agent_AAAAAAAAAAAAAAAAAAAAAAAAA1",
+            "name": "db-password",
+            "version": 2,
+            "previous_version": 1,
+        },
+    ),
 ])
 def test_admin_api_audit_payload_schema_conformance(event_type, payload) -> None:
     """Each agent_secret* payload must conform to the canonical schema $defs."""
     _validate_payload(event_type, payload)
+
+
+# ===========================================================================
+# C5b: PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id} — operator rotate
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_happy_path_returns_200() -> None:
+    """
+    PUT /{secret_id} with valid body returns 200 metadata-only.
+    Verifies: version incremented, vault put called with str(row.id), audit emitted
+    as agent_secret.updated with operator actor, 200 body has no value field.
+    Source: C5b AC-1.
+    """
+    old_row = _make_secret_row(version=3, size_bytes=5)
+    # fetchone calls: (1) SELECT existing row → old_row
+    session = _MockSession(fetch_once_rows=[old_row])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock(return_value={"kek_version": 0})
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()) as mock_audit,
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "new-secret-value"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # Metadata-only: must NOT contain value or ciphertext
+    assert "value" not in body, f"Response must not contain 'value': {body}"
+    assert "ciphertext" not in body
+    assert "enc_payload" not in body
+
+    # Wire IDs present
+    assert body["id"].startswith("sec_"), f"Expected sec_ prefix: {body['id']}"
+    assert body["agent_id"].startswith("agent_"), f"Expected agent_ prefix: {body['agent_id']}"
+    assert body["tenant_id"].startswith("tenant_"), f"Expected tenant_ prefix: {body['tenant_id']}"
+
+    # version must be old+1
+    assert body["version"] == old_row.version + 1, (
+        f"Expected version={old_row.version + 1}, got {body['version']}"
+    )
+
+    # size_bytes reflects new value
+    assert body["size_bytes"] == len("new-secret-value".encode("utf-8"))
+
+    # Vault called with str(row.id) — bare UUID, not sec_ wire form
+    mock_vault.put_agent_secret.assert_called_once()
+    vault_kwargs = mock_vault.put_agent_secret.call_args.kwargs
+    assert vault_kwargs["tenant_id"] == TENANT_ID
+    secret_id_passed = vault_kwargs["secret_id"]
+    assert not secret_id_passed.startswith("sec_"), (
+        f"Vault secret_id must be bare UUID, not wire ID; got: {secret_id_passed!r}"
+    )
+    # Must equal str(old_row.id) — the bare UUID of the existing row
+    assert secret_id_passed == str(old_row.id), (
+        f"Expected vault secret_id == str(row.id) == {str(old_row.id)!r}, got {secret_id_passed!r}"
+    )
+
+    # Audit emitted with correct event_type + operator actor
+    mock_audit.assert_called_once()
+    audit_kwargs = mock_audit.call_args.kwargs
+    assert audit_kwargs["event_type"] == "agent_secret.updated"
+    assert audit_kwargs["actor_type"] == "operator"
+    assert audit_kwargs["actor_id"] == uuid.UUID(OPERATOR_UUID)
+
+    # Audit payload is identifier-only, no value
+    payload = audit_kwargs["payload"]
+    assert "secret_id" in payload
+    assert "agent_id" in payload
+    assert "name" in payload
+    assert "version" in payload
+    assert "previous_version" in payload
+    assert "value" not in payload
+    assert payload["version"] == old_row.version + 1
+    assert payload["previous_version"] == old_row.version
+
+    # Schema conformance
+    _validate_payload("agent_secret.updated", payload)
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_not_found_returns_404() -> None:
+    """
+    PUT /{secret_id} where the secret does not exist in this tenant returns 404.
+    Vault must NOT be called.
+    Source: C5b AC-b.
+    """
+    session = _MockSession(fetch_once_rows=[None])
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock()
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "whatever"},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 404, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "secret_not_found", body
+    mock_vault.put_agent_secret.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_agent_secret_value_too_large_returns_422() -> None:
+    """
+    PUT /{secret_id} with value > 65536 bytes returns 422 validation_failed.
+    Vault must NOT be called.
+    Source: C5b AC-c.
+    """
+    session = _MockSession()
+
+    mock_vault = AsyncMock()
+    mock_vault.put_agent_secret = AsyncMock()
+
+    with (
+        patch("admin_api.api.agent_secrets.set_tenant_context", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agent_secrets.notify_change", new=AsyncMock()),
+    ):
+        resp = await _put(
+            SECRET_PATH,
+            session,
+            {"value": "x" * 65537},
+            vault_client=mock_vault,
+        )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["mintkey:code"] == "validation_failed", body
+    mock_vault.put_agent_secret.assert_not_called()
+
+
+# ===========================================================================
+# C9: tenant-isolation — require_tenant_session enforced on all handlers
+# ===========================================================================
+
+
+TENANT_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+TENANT_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+
+def _create_app_with_real_authz(session: Any, vault_client: Any = None) -> Any:
+    """
+    Build a test app WITHOUT overriding require_tenant_session.
+
+    validate_session and _is_operator_platform_admin are patched by the
+    caller so no real DB is needed, but the real require_tenant_session
+    dependency is on the wire.  This is used to prove cross-tenant rejection.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agent_secrets import router as agent_secrets_router
+    from admin_api.auth.sessions import get_session_context
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+    from admin_api.services.agent_secrets_vault_client import get_agent_secrets_vault_client
+
+    app = FastAPI()
+    app.include_router(agent_secrets_router)
+
+    async def _mock_db():
+        yield session
+
+    app.dependency_overrides[get_db_session] = _mock_db
+
+    _vc = vault_client if vault_client is not None else AsyncMock()
+
+    async def _mock_vault_client():
+        return _vc
+
+    app.dependency_overrides[get_agent_secrets_vault_client] = _mock_vault_client
+
+    # get_session_context returns a ctx so that audit / created_by fields work.
+    async def _mock_session_ctx():
+        return _make_ctx()
+
+    app.dependency_overrides[get_session_context] = _mock_session_ctx
+
+    # require_tenant_session is intentionally NOT overridden here.
+
+    path_b = f"/v1/tenants/{TENANT_B}/agent-secrets"
+    csrf_exempt(path_b)
+    csrf_exempt(f"{path_b}/{SECRET_UUID}")
+    csrf_exempt(f"{path_b}/{SECRET_UUID}/grants")
+
+    app.add_middleware(CsrfMiddleware)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_post_create_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when POSTing to
+    TENANT_B's agent-secrets path.  The real require_tenant_session dependency
+    is on the wire — the test will FAIL (returning 201 or 422) if the dependency
+    is absent, proving this test guards the fix.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[MagicMock(), None])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                f"/v1/tenants/{TENANT_B}/agent-secrets",
+                json={"agent_id": TARGET_AGENT_UUID, "name": "x", "value": "y"},
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("detail", {}).get("mintkey:code") == "permission_denied", body
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_put_update_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when PUTting to
+    TENANT_B's agent-secrets/{secret_id} path.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[_make_secret_row()])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.put(
+                f"/v1/tenants/{TENANT_B}/agent-secrets/{SECRET_UUID}",
+                json={"value": "new"},
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_delete_secret_rejected_403() -> None:
+    """
+    C9: A session authenticated to TENANT_A must receive 403 when DELETEing
+    TENANT_B's agent-secrets/{secret_id}.
+    """
+    from unittest.mock import patch as _patch
+    import uuid as _uuid
+
+    class _CtxA:
+        operator_id = _uuid.UUID(OPERATOR_UUID)
+        tenant_id = _uuid.UUID(TENANT_A)
+
+    session = _MockSession(fetch_once_rows=[_make_secret_row()])
+    app = _create_app_with_real_authz(session)
+
+    with (
+        _patch(
+            "admin_api.auth.sessions.validate_session",
+            new=AsyncMock(return_value=_CtxA()),
+        ),
+        _patch(
+            "admin_api.auth.sessions._is_operator_platform_admin",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.delete(
+                f"/v1/tenants/{TENANT_B}/agent-secrets/{SECRET_UUID}",
+                headers={
+                    "Cookie": "mintkey_session=fake-session-token",
+                    "X-CSRF-Token": CSRF_TOKEN,
+                },
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
+    )

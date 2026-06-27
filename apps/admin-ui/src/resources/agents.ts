@@ -263,6 +263,23 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         },
       },
 
+      // C6: Manage secrets — navigate to agent-secrets resource filtered by this agent
+      manageSecrets: {
+        actionType: "record",
+        component: Components.RedirectAction,
+        label: "Manage Secrets",
+        icon: "Key",
+        isVisible: true,
+        handler: async (request, _response, context) => {
+          const { record } = context;
+          const agentId = record?.get("id") as string ?? request.params.recordId ?? "";
+          return {
+            record: await recordJSON(context),
+            redirectUrl: `/admin/resources/agent-secrets/actions/new?agent_id=${agentId}`,
+          };
+        },
+      },
+
       // UX-FB-AK-2: Rotate Key action — hard cutover, invalidates old key immediately
       rotateAgentKey: {
         actionType: "record",

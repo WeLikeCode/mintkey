@@ -3919,6 +3919,38 @@ paths:
   ###########################################################################
 
   /v1/tenants/{tenant_id}/agent-secrets:
+    post:
+      operationId: createAgentSecret
+      tags: [AgentSecrets]
+      summary: Operator-provision a named secret into an agent's namespace.
+      description: |
+        Stores an encrypted secret on behalf of a specific agent. The agent can
+        later read the secret via the MCP `secret_get` tool. Response is
+        metadata-only — the secret value is never returned (ADR-0025.D4).
+        Emits audit event: agent_secret.created with actor_type=operator.
+      parameters:
+        - in: path
+          name: tenant_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentSecretRequest"
+      responses:
+        "201":
+          description: Secret created. Returns metadata only — no value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSecret"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
     get:
       operationId: listAgentSecrets
       tags: [AgentSecrets]
@@ -3980,6 +4012,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: updateAgentSecret
+      tags: [AgentSecrets]
+      summary: Operator rotate/overwrite an agent secret value.
+      description: |
+        Overwrites the encrypted secret value for an existing agent secret.
+        Increments the version counter. Response is metadata-only — the secret
+        value is never returned (ADR-0025.D4). Emits audit event:
+        agent_secret.updated with actor_type=operator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentSecretRequest"
+      responses:
+        "200":
+          description: Secret updated. Returns metadata only — no value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSecret"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
     delete:
       operationId: deleteAgentSecretByOperator
       tags: [AgentSecrets]
@@ -6108,6 +6166,50 @@ components:
           type: string
           pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
           description: ULID-prefixed identifier of the agent to receive read access.
+
+    CreateAgentSecretRequest:
+      type: object
+      description: |
+        Request body for POST /v1/tenants/{tenant_id}/agent-secrets.
+        Operator-provisions a named secret into an agent's namespace.
+        The target agent must exist in the path tenant. Response is metadata-only.
+      additionalProperties: false
+      required: [agent_id, name, value]
+      properties:
+        agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID-prefixed identifier of the agent that owns this secret.
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9._-]{1,128}$"
+          description: Secret name, unique per owning agent within the tenant.
+        value:
+          type: string
+          maxLength: 65536
+          x-mintkey-sensitive: true
+          description: Plaintext secret value (UTF-8, max 65536 bytes). Never returned in responses.
+        content_type:
+          type: ["string", "null"]
+          description: Optional free-text content type hint (e.g. "application/json").
+
+    UpdateAgentSecretRequest:
+      type: object
+      description: |
+        Request body for PUT /v1/tenants/{tenant_id}/agent-secrets/{secret_id}.
+        Overwrites the encrypted value of an existing agent secret. Increments
+        the version counter. Response is metadata-only (ADR-0025.D4).
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          maxLength: 65536
+          x-mintkey-sensitive: true
+          description: New plaintext secret value (UTF-8, max 65536 bytes). Never returned in responses.
+        content_type:
+          type: ["string", "null"]
+          description: Optional free-text content type hint (e.g. "application/json"). If omitted, existing value is preserved.
 
     # ----- Email Proxy -----
 
