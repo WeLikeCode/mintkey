@@ -5,6 +5,8 @@
   "audit": "/v1/tenants/{tenant_id}/audit",
   "audit_admin": "/v1/admin/audit",
   "auth": "/v1/auth",
+  "budget_consumers": "/v1/tenants/{tenant_id}/budget-consumers",
+  "budgets": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget",
   "changes": "/v1/changes",
   "credentials": "/v1/tenants/{tenant_id}/services/{service_id}/credentials",
   "email_permission_grants": "/v1/tenants/{tenant_id}/email-permission-grants",

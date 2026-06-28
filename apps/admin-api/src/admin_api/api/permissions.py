@@ -1010,7 +1010,6 @@ async def update_permission(
         new_period = new_budget["period"]
         new_ceiling = new_budget["ceiling"]
         old_period = old_budget.get("period") if old_budget else None
-        old_ceiling = old_budget.get("ceiling") if old_budget else None
 
         period_start, period_end = _budget_period_bounds(new_period, now)
 
