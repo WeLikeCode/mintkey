@@ -1,0 +1,81 @@
+databaseChangeLog:
+  - changeSet:
+      id: "028-budget-counters"
+      author: mintkey
+      changes:
+        - createTable:
+            tableName: budget_counters
+            columns:
+              - column:
+                  name: permission_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_budget_counters_permission
+                    references: permission_grants(id)
+                    deleteCascade: true
+              - column:
+                  name: period_start
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: period_end
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ceiling
+                  type: INTEGER
+                  constraints:
+                    nullable: false
+              - column:
+                  name: used
+                  type: INTEGER
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_budget_counters_tenant
+                    references: tenants(id)
+        - addPrimaryKey:
+            tableName: budget_counters
+            columnNames: permission_id, period_start
+            constraintName: pk_budget_counters
+
+  - changeSet:
+      id: "028-budget-counters-rls"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE budget_counters ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON budget_counters
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON budget_counters;
+              ALTER TABLE budget_counters DISABLE ROW LEVEL SECURITY;
+
+  - changeSet:
+      id: "028-budget-counters-index"
+      author: mintkey
+      changes:
+        - createIndex:
+            indexName: idx_budget_counters_active
+            tableName: budget_counters
+            columns:
+              - column:
+                  name: permission_id
+              - column:
+                  name: period_end
+                  descending: true
+            unique: false

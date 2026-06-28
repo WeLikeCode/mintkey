@@ -20,6 +20,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -35,6 +36,7 @@ import (
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/budget"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
@@ -109,7 +111,14 @@ func main() {
 	agentSet := revocation.NewAgentRevocationSet()
 	jtiSet := revocation.NewJTIRevocationSet(10_000)
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler)
+		var subOpts []changes.SubscriberOption
+		// Wire budget cache invalidation if a resolver is configured (T-BUD-3.4).
+		if handler.budgetResolver != nil {
+			if bc, ok := handler.budgetResolver.(changes.BudgetCacheInvalidator); ok {
+				subOpts = append(subOpts, changes.WithBudgetCache(bc))
+			}
+		}
+		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler, subOpts...)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("proxy-plugin: changes subscriber error: %v", err)
@@ -198,6 +207,19 @@ type proxyHandler struct {
 	// coalescing of concurrent token-cache-miss exchanges.  Initialised once at
 	// startup and reused across all requests (Req 20/21 thundering-herd protection).
 	sfGroup *singleflight.Group
+
+	// budgetMetrics holds Prometheus gauges/counters for budget enforcement.
+	// Source: NFR-5, design §9; T-BUD-3.5.
+	budgetMetrics *budget.BudgetMetrics
+	// budgetThresholds tracks which alert thresholds have fired per period.
+	// Source: FR-7, design §7; T-BUD-3.3.
+	budgetThresholds *budget.ThresholdTracker
+	// budgetDB is the database interface for budget checks. May be nil when
+	// budget enforcement is not active.
+	budgetDB budget.DB
+	// budgetResolver resolves budget config for a given (agent, service, tenant).
+	// May be nil when budget enforcement is not active.
+	budgetResolver budget.ConfigResolver
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
@@ -209,17 +231,19 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		m = metrics.New()
 	}
 	return &proxyHandler{
-		cfg:            cfg,
-		vaultClient:    vaultClient,
-		jwksLimiter:    limiter,
-		ckHandler:      ck,
-		audit:          ae,
-		auditQ:         aq,
-		metrics:        m,
-		pubKeys:        make(map[string]ed25519.PublicKey),
-		tokenCache:     cache.NewTokenCache(),
-		tokenExchanger: credential.NewTokenExchanger(),
-		sfGroup:        new(singleflight.Group),
+		cfg:              cfg,
+		vaultClient:      vaultClient,
+		jwksLimiter:      limiter,
+		ckHandler:        ck,
+		audit:            ae,
+		auditQ:           aq,
+		metrics:          m,
+		pubKeys:          make(map[string]ed25519.PublicKey),
+		tokenCache:       cache.NewTokenCache(),
+		tokenExchanger:   credential.NewTokenExchanger(),
+		sfGroup:          new(singleflight.Group),
+		budgetMetrics:    budget.NewBudgetMetrics(),
+		budgetThresholds: budget.NewThresholdTracker(),
 	}
 }
 
@@ -235,6 +259,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Write proxy-plugin hit/denied/latency metrics (OPS-P).
 		if err := h.metrics.WriteTo(w); err != nil {
 			log.Printf("proxy-plugin: metrics WriteTo error: %v", err)
+		}
+		// Write budget enforcement metrics (T-BUD-3.5).
+		if h.budgetMetrics != nil {
+			if err := h.budgetMetrics.WriteTo(w); err != nil {
+				log.Printf("proxy-plugin: budget metrics WriteTo error: %v", err)
+			}
 		}
 		// Write auditq WAL and dead-letter metrics (#27).
 		if h.auditQ != nil {
@@ -331,6 +361,111 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Permissive: log warning, proceed.
+	}
+
+	// Step 10 — Budget check (FR-2, FR-3; design §4).
+	// If the resolved grant has a budget constraint, atomically increment and
+	// check. On ceiling hit: return 429 budget_exceeded without calling upstream.
+	if h.budgetResolver != nil && h.budgetDB != nil {
+		if resolved := h.budgetResolver.Resolve(agentID, serviceID, tenantID); resolved != nil {
+			budgetLabels := budget.MetricLabels{
+				PermissionID: resolved.PermissionID,
+				AgentID:      agentID,
+				ServiceID:    serviceID,
+				TenantID:     tenantID,
+			}
+
+			// Set ceiling gauge when budget config is loaded (T-BUD-3.5).
+			h.budgetMetrics.SetCeiling(budgetLabels, resolved.Config.Ceiling)
+
+			used, _, budgetErr := budget.Check(r.Context(), h.budgetDB, resolved.PermissionID, tenantID, resolved.Config)
+			if budgetErr != nil {
+				var exceeded *budget.ErrBudgetExceeded
+				if errors.As(budgetErr, &exceeded) {
+					// 429 budget_exceeded — design §10.
+					h.budgetMetrics.IncDenied(budgetLabels)
+
+					// Emit budget.exceeded audit event (async, non-blocking).
+					if h.audit != nil {
+						jtiDenied, _ := claims["jti"].(string)
+						h.audit.Enqueue(auditq.Event{
+							EventType:  "budget.exceeded",
+							TenantID:   tenantID,
+							ActorID:    agentID,
+							ActorType:  "agent",
+							TargetID:   resolved.PermissionID,
+							TargetType: "permission",
+							Payload: map[string]any{
+								"permission_id": resolved.PermissionID,
+								"used":          exceeded.Used,
+								"ceiling":       exceeded.Ceiling,
+								"period_end":    exceeded.PeriodEnd.Format(time.RFC3339),
+								"denied_jti":    jtiDenied,
+							},
+						})
+					}
+
+					// Retry-After header: RFC 7231 HTTP-date format.
+					w.Header().Set("Retry-After", exceeded.PeriodEnd.UTC().Format(http.TimeFormat))
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+
+					respBody, _ := json.Marshal(map[string]any{
+						"error":         "budget_exceeded",
+						"detail":        "Call budget exhausted for this period.",
+						"permission_id": resolved.PermissionID,
+						"budget": map[string]any{
+							"ceiling":    exceeded.Ceiling,
+							"used":       exceeded.Used,
+							"period":     resolved.Config.Period,
+							"period_end": exceeded.PeriodEnd.Format(time.RFC3339),
+						},
+						"retry_after": exceeded.PeriodEnd.Format(time.RFC3339),
+					})
+					_, _ = w.Write(respBody)
+					return
+				}
+				// Non-budget-exceeded error (DB issue) — log and continue
+				// (fail open; budget check should not block on transient errors).
+				log.Printf("proxy-plugin: budget check error (perm=%s): %v",
+					safeID(resolved.PermissionID), budgetErr)
+			} else {
+				// Successful increment — update used gauge (T-BUD-3.5).
+				h.budgetMetrics.SetUsed(budgetLabels, used)
+
+				// Threshold audit emission (T-BUD-3.3).
+				now := time.Now().UTC()
+				periodStart, _ := budget.PeriodBounds(resolved.Config.Period, now)
+				thresholds := resolved.Config.AlertThresholds
+				if len(thresholds) == 0 {
+					thresholds = []int{50, 80, 100}
+				}
+				crossed := h.budgetThresholds.CheckThresholds(
+					resolved.PermissionID, periodStart, used, resolved.Config.Ceiling, thresholds,
+				)
+				for _, pct := range crossed {
+					if h.audit != nil {
+						_, periodEnd := budget.PeriodBounds(resolved.Config.Period, now)
+						h.audit.Enqueue(auditq.Event{
+							EventType:  "budget.threshold_reached",
+							TenantID:   tenantID,
+							ActorID:    "system",
+							ActorType:  "system",
+							TargetID:   resolved.PermissionID,
+							TargetType: "permission",
+							Payload: map[string]any{
+								"permission_id": resolved.PermissionID,
+								"used":          used,
+								"ceiling":       resolved.Config.Ceiling,
+								"threshold_pct": pct,
+								"period_start":  periodStart.Format(time.RFC3339),
+								"period_end":    periodEnd.Format(time.RFC3339),
+							},
+						})
+					}
+				}
+			}
+		}
 	}
 
 	// Fetch credential from Vault Adapter.

@@ -360,3 +360,32 @@ class AgentSecretGrant(Base):
     recipient_agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     created_by: Mapped[UUID] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 028-budget-counters.yaml  (P-011; agent-budgets T-BUD-2.1)
+# ---------------------------------------------------------------------------
+
+
+class BudgetCounter(Base):
+    """
+    Mirror of the budget_counters table. Source: 028-budget-counters.yaml.
+    P-011 (agent budgets); composite PK (permission_id, period_start).
+    FK: permission_id → permission_grants(id) ON DELETE CASCADE.
+    FK: tenant_id → tenants(id).
+    """
+
+    __tablename__ = "budget_counters"
+
+    permission_id: Mapped[UUID] = mapped_column(
+        ForeignKey("permission_grants.id", ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True,
+    )
+    period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, primary_key=True
+    )
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ceiling: Mapped[int] = mapped_column(Integer, nullable=False)
+    used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)

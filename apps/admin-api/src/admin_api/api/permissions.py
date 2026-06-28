@@ -3,6 +3,7 @@ Permission grant/revoke endpoints.
 
 POST   /v1/tenants/{tenant_id}/agents/{agent_id}/permissions        — grant permission (201)
 DELETE /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{pid}  — revoke permission (204)
+PATCH  /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{pid}  — update constraints (200)
 
 Architecture constraints:
   - Constraints schema is CLOSED (additionalProperties=false) — ADR-0016.4.
@@ -12,8 +13,9 @@ Architecture constraints:
   - Global channel "mintkey:agent" — ADR-0014.1.
   - Cross-tenant access returns 404 (RLS + explicit check) — ADR-0008.
   - Idempotent re-grant: same params → 200; different constraints → 409.
+  - Budget config: validate, persist, upsert counter — FR-6, T-BUD-2.2.
 
-Source: T-1.4.2; ADR-0008; ADR-0014.7; ADR-0016.4; ADR-0017.11.
+Source: T-1.4.2; T-BUD-2.2; ADR-0008; ADR-0014.7; ADR-0016.4; ADR-0017.11.
 """
 from __future__ import annotations
 
@@ -40,6 +42,7 @@ from admin_api.db.tables import (
 )
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
+from mintkey_models.schemas import BudgetConfig
 from mintkey_models.tenant_ctx import set_tenant_context
 
 router = APIRouter(prefix="/v1/tenants/{tenant_id}/agents/{agent_id}/permissions")
@@ -114,6 +117,7 @@ class Constraints(BaseModel):
     time_window: Optional[TimeWindowConstraint] = None
     request_path_prefix: Optional[RequestPathPrefixConstraint] = None
     source_ip_allowlist: Optional[SourceIpAllowlistConstraint] = None
+    budget: Optional[BudgetConfig] = None
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +130,11 @@ class PermissionGrantRequest(BaseModel):
     action: str
     constraints: Optional[Constraints] = None
     granted_by: Optional[str] = None
+
+
+class PermissionPatchRequest(BaseModel):
+    """PATCH body for updating permission grant constraints (specifically budget)."""
+    constraints: Constraints
 
 
 # ---------------------------------------------------------------------------
@@ -550,7 +559,30 @@ async def grant_permission(
         },
     )
 
-    # 9. Emit audit event — ADR-0014.7
+    # 9. Upsert budget counter if budget constraint provided — T-BUD-2.2
+    if constraints_dict.get("budget"):
+        budget_cfg = constraints_dict["budget"]
+        period_start, period_end = _budget_period_bounds(
+            budget_cfg["period"], now
+        )
+        await session.execute(
+            text(
+                "INSERT INTO budget_counters"
+                " (permission_id, period_start, period_end, ceiling, used, tenant_id)"
+                " VALUES (:pid, :ps, :pe, :ceiling, 0, :tid)"
+                " ON CONFLICT (permission_id, period_start) DO UPDATE"
+                " SET ceiling = :ceiling, period_end = :pe"
+            ),
+            {
+                "pid": str(internal_id),
+                "ps": period_start,
+                "pe": period_end,
+                "ceiling": budget_cfg["ceiling"],
+                "tid": str(tenant_id),
+            },
+        )
+
+    # 10. Emit audit event — ADR-0014.7
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
@@ -568,7 +600,7 @@ async def grant_permission(
         },
     )
 
-    # 10. Return 201
+    # 11. Return 201
     return JSONResponse(
         status_code=201,
         content={
@@ -643,3 +675,229 @@ async def revoke_permission(
     )
 
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Budget period boundary helper — design §3; T-BUD-2.2
+# ---------------------------------------------------------------------------
+
+
+def _budget_period_bounds(
+    period: str, now: datetime
+) -> tuple[datetime, datetime]:
+    """
+    Compute UTC-aligned (start, end) for the given period containing `now`.
+
+    | Period   | Start                   | End                          |
+    |----------|-------------------------|------------------------------|
+    | hourly   | Top of the hour         | +1 hour                      |
+    | daily    | 00:00:00Z               | +24 hours                    |
+    | weekly   | Monday 00:00:00Z        | +7 days                      |
+    | monthly  | 1st of month 00:00:00Z  | 1st of next month 00:00:00Z  |
+
+    Source: design §3; T-BUD-2.5.
+    """
+    from calendar import monthrange
+    from datetime import timedelta
+
+    if period == "hourly":
+        start = now.replace(minute=0, second=0, microsecond=0)
+        end = start + timedelta(hours=1)
+    elif period == "daily":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+    elif period == "weekly":
+        # Monday 00:00:00Z of the current week
+        days_since_monday = now.weekday()  # Monday=0
+        start = (now - timedelta(days=days_since_monday)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        end = start + timedelta(days=7)
+    elif period == "monthly":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        _, days_in_month = monthrange(now.year, now.month)
+        end = start + timedelta(days=days_in_month)
+    else:
+        raise ValueError(f"Unknown budget period: {period}")
+
+    return start, end
+
+
+# ---------------------------------------------------------------------------
+# PATCH endpoint — update permission grant constraints (budget config)
+# Source: T-BUD-2.2; FR-6; design §5.
+# ---------------------------------------------------------------------------
+
+
+@router.patch("/{permission_id}", status_code=200)
+async def update_permission(
+    tenant_id: UUID,
+    agent_id: str,
+    permission_id: str,
+    body: PermissionPatchRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    Update permission grant constraints (budget configuration).
+
+    - Validates constraints.budget against the closed schema (BudgetConfig).
+    - Persists updated constraints on the grant row.
+    - If ceiling changed: updates the current counter row's ceiling.
+    - If period changed: closes current counter row and creates new one.
+    - Emits budget.config_updated audit event.
+    - Fires change-channel NOTIFY mintkey:agent.
+
+    Source: T-BUD-2.2; FR-6; design §5, §6.
+    """
+    # 1. Decode wire-form IDs — ADR-0017.11
+    from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+    try:
+        perm_db_id = _decode_wire(permission_id, "perm")
+        _decode_agent_wire_id(agent_id, "agent_") if agent_id.startswith("agent_") else agent_id
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid ID format"},
+        )
+
+    # 2. Set tenant context — ADR-0008
+    await set_tenant_context(session, tenant_id)
+
+    # 3. Fetch existing grant
+    result = await session.execute(
+        text(
+            "SELECT id, constraints, tenant_id FROM permission_grants"
+            " WHERE id = :pid AND tenant_id = :tid"
+        ),
+        {"pid": perm_db_id, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Permission grant not found"},
+        )
+
+    # 4. Parse old constraints
+    old_constraints_raw = row.constraints
+    if isinstance(old_constraints_raw, str):
+        old_constraints = json.loads(old_constraints_raw)
+    elif old_constraints_raw is None:
+        old_constraints = {}
+    else:
+        old_constraints = old_constraints_raw
+
+    old_budget = old_constraints.get("budget")
+
+    # 5. Build new constraints (merge incoming with existing)
+    new_constraints = {**old_constraints}
+    new_constraints_from_body = body.constraints.model_dump(exclude_none=True)
+    new_constraints.update(new_constraints_from_body)
+
+    new_budget = new_constraints.get("budget")
+
+    # 6. Persist updated constraints on the grant
+    await session.execute(
+        text(
+            "UPDATE permission_grants SET constraints = CAST(:constraints AS jsonb)"
+            " WHERE id = :pid AND tenant_id = :tid"
+        ),
+        {
+            "constraints": json.dumps(new_constraints),
+            "pid": perm_db_id,
+            "tid": str(tenant_id),
+        },
+    )
+
+    # 7. Handle budget counter upsert/update — T-BUD-2.2
+    now = datetime.now(timezone.utc)
+    if new_budget:
+        new_period = new_budget["period"]
+        new_ceiling = new_budget["ceiling"]
+        old_period = old_budget.get("period") if old_budget else None
+        old_ceiling = old_budget.get("ceiling") if old_budget else None
+
+        period_start, period_end = _budget_period_bounds(new_period, now)
+
+        if old_period and old_period != new_period:
+            # Period changed: close current row (leave as-is), create new row
+            # for the new period alignment
+            await session.execute(
+                text(
+                    "INSERT INTO budget_counters"
+                    " (permission_id, period_start, period_end, ceiling, used, tenant_id)"
+                    " VALUES (:pid, :ps, :pe, :ceiling, 0, :tid)"
+                    " ON CONFLICT (permission_id, period_start) DO UPDATE"
+                    " SET ceiling = :ceiling, period_end = :pe, used = 0"
+                ),
+                {
+                    "pid": perm_db_id,
+                    "ps": period_start,
+                    "pe": period_end,
+                    "ceiling": new_ceiling,
+                    "tid": str(tenant_id),
+                },
+            )
+        else:
+            # Same period (or new budget): upsert/update ceiling on current row
+            await session.execute(
+                text(
+                    "INSERT INTO budget_counters"
+                    " (permission_id, period_start, period_end, ceiling, used, tenant_id)"
+                    " VALUES (:pid, :ps, :pe, :ceiling, 0, :tid)"
+                    " ON CONFLICT (permission_id, period_start) DO UPDATE"
+                    " SET ceiling = :ceiling"
+                ),
+                {
+                    "pid": perm_db_id,
+                    "ps": period_start,
+                    "pe": period_end,
+                    "ceiling": new_ceiling,
+                    "tid": str(tenant_id),
+                },
+            )
+
+    # 8. Emit budget.config_updated audit event — ADR-0014.7; FR-7
+    perm_uuid = uuid.UUID(perm_db_id) if isinstance(perm_db_id, str) else perm_db_id
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="budget.config_updated",
+        actor_id=None,
+        actor_type="operator",
+        target_id=perm_uuid,
+        target_type="permission",
+        payload={
+            "permission_id": permission_id,
+            "old_ceiling": old_budget.get("ceiling") if old_budget else None,
+            "new_ceiling": new_budget["ceiling"] if new_budget else None,
+            "old_period": old_budget.get("period") if old_budget else None,
+            "new_period": new_budget["period"] if new_budget else None,
+        },
+    )
+
+    # 9. Fire change-channel NOTIFY — ADR-0014.1; design §6
+    await notify_change(
+        session,
+        "mintkey:agent",
+        {
+            "event_type": "budget.config_updated",
+            "tenant_id": str(tenant_id),
+            "target_id": permission_id,
+            "payload": {
+                "ceiling": new_budget["ceiling"] if new_budget else None,
+                "period": new_budget["period"] if new_budget else None,
+            },
+            "at": now.isoformat(),
+        },
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "id": permission_id,
+            "tenant_id": str(tenant_id),
+            "constraints": new_constraints,
+            "updated_at": now.isoformat(),
+        },
+    )
