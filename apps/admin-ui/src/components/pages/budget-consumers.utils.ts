@@ -10,10 +10,10 @@ export interface BudgetConsumerRecord {
   agent_name: string;
   service_id: string;
   service_name: string;
-  consumption_percentage: number;
-  used: number;
-  ceiling: number;
-  period: "hourly" | "daily" | "weekly" | "monthly";
+  consumption_percentage: number | null;
+  used: number | null;
+  ceiling: number | null;
+  period: "hourly" | "daily" | "weekly" | "monthly" | null;
   period_start: string | null;
   period_end: string | null;
   requests_last_30_min: number;
@@ -38,7 +38,8 @@ export function filterConsumers(
   filters: FilterState,
 ): BudgetConsumerRecord[] {
   return records.filter((r) => {
-    if (filters.threshold != null && r.consumption_percentage <= filters.threshold) return false;
+    const pct = r.consumption_percentage ?? 0;
+    if (filters.threshold != null && pct <= filters.threshold) return false;
     if (filters.agentName && !r.agent_name.toLowerCase().includes(filters.agentName.toLowerCase()))
       return false;
     if (
@@ -54,5 +55,6 @@ export function filterConsumers(
  * Returns true if the budget is exhausted (used >= ceiling).
  */
 export function isExhausted(record: BudgetConsumerRecord): boolean {
+  if (record.ceiling == null || record.used == null) return false;
   return record.used >= record.ceiling;
 }

@@ -124,7 +124,7 @@ const BudgetConsumersPage: React.FC = () => {
         <input
           data-testid="filter-threshold"
           type="number"
-          placeholder="Threshold %"
+          placeholder="Min consumption %"
           value={filters.threshold ?? ""}
           onChange={handleThresholdChange}
           style={{ padding: "6px 8px", borderRadius: 4, border: "1px solid #ccc" }}
@@ -163,7 +163,7 @@ const BudgetConsumersPage: React.FC = () => {
       {filteredRecords.length === 0 ? (
         <Box p="xl" style={{ textAlign: "center" }}>
           <Text style={{ color: "#6c757d", fontStyle: "italic" }}>
-            No budget-configured grants found
+            No permission grants found
           </Text>
         </Box>
       ) : (
@@ -196,10 +196,10 @@ const BudgetConsumersPage: React.FC = () => {
                   >
                     <td style={tdStyle}>{record.agent_name}</td>
                     <td style={tdStyle}>{record.service_name}</td>
-                    <td style={tdStyle}>{record.consumption_percentage}%</td>
-                    <td style={tdStyle}>{record.used}</td>
-                    <td style={tdStyle}>{record.ceiling}</td>
-                    <td style={tdStyle}>{record.period}</td>
+                    <td style={tdStyle}>{record.consumption_percentage == null ? "—" : `${record.consumption_percentage}%`}</td>
+                    <td style={tdStyle}>{record.used ?? "—"}</td>
+                    <td style={tdStyle}>{record.ceiling ?? "Unlimited"}</td>
+                    <td style={tdStyle}>{record.period ?? "Unlimited"}</td>
                     <td style={tdStyle}>{record.requests_last_30_min}</td>
                     <td style={tdStyle}>
                       {exhausted && (

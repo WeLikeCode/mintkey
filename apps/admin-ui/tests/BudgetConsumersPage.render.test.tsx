@@ -148,7 +148,7 @@ describe("BudgetConsumersPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("No budget-configured grants found")
+        screen.getByText("No permission grants found")
       ).toBeInTheDocument();
     });
   });
