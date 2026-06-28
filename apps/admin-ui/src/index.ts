@@ -37,6 +37,7 @@ import { PermissionsResource } from "./resources/permissions.js";
 import { AuditResource } from "./resources/audit.js";
 import { TenantsResource } from "./resources/tenants.js";
 import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
+import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
@@ -296,6 +297,15 @@ async function main() {
 
   // PlatformAdmin view flag middleware (reads from req.adminSession via session shim).
   app.use(platformAdminMiddleware);
+
+  // ── BFF: Budget management routes ──────────────────────────────────────────
+  // Mounted BEFORE the AdminJS router so they are session-protected via
+  // requireSession above. All routes proxy to admin-api via apiWrite/fetch.
+  // Source: budget-management-ui spec, Task 8.2.
+  app.get("/admin/api/budget/:permId", budgetGetHandler);
+  app.post("/admin/api/budget/:permId/edit", express.json(), budgetEditHandler);
+  app.post("/admin/api/budget/:permId/remove", budgetRemoveHandler);
+  app.post("/admin/api/budget/:permId/reset", budgetResetHandler);
 
   // ── AdminJS unauthenticated router ──────────────────────────────────────────
   // buildRouter(admin, predefinedRouter?, formidableOptions?) — we own auth above.

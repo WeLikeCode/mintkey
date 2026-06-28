@@ -69,6 +69,9 @@ export const Components = {
   EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
   // Email service new form — provider-driven prefill for IMAP/SMTP host+port (Bug-B fix)
   EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
+  // Budget management components (budget-management-ui spec, Tasks 8.2)
+  BudgetStatusPanel: componentLoader.add("BudgetStatusPanel", "./sections/BudgetStatusPanel"),
+  BudgetForm: componentLoader.add("BudgetForm", "./actions/BudgetForm"),
 };
 
 // Global override: show-page renderer that inlines property.description below

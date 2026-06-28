@@ -789,6 +789,84 @@ async def update_permission(
 
     old_budget = old_constraints.get("budget")
 
+    # 4b. Detect explicit budget removal — design §5; T-BUD-2.2
+    # Distinguish "field not sent" (keep existing) vs "field sent as null" (remove).
+    budget_explicitly_removed = (
+        "budget" in body.constraints.model_fields_set
+        and body.constraints.budget is None
+    )
+
+    if budget_explicitly_removed:
+        # --- Explicit budget removal path ---
+        new_constraints = {**old_constraints}
+        new_constraints.pop("budget", None)
+
+        # Apply non-budget fields from body
+        non_budget = body.constraints.model_dump(exclude_none=True)
+        non_budget.pop("budget", None)
+        new_constraints.update(non_budget)
+
+        # Persist updated constraints (budget key removed)
+        await session.execute(
+            text(
+                "UPDATE permission_grants SET constraints = CAST(:constraints AS jsonb)"
+                " WHERE id = :pid AND tenant_id = :tid"
+            ),
+            {
+                "constraints": json.dumps(new_constraints),
+                "pid": perm_db_id,
+                "tid": str(tenant_id),
+            },
+        )
+
+        # Clean up budget_counters rows
+        await session.execute(
+            text("DELETE FROM budget_counters WHERE permission_id = :pid"),
+            {"pid": perm_db_id},
+        )
+
+        # Emit audit with action: "removed"
+        now = datetime.now(timezone.utc)
+        perm_uuid = uuid.UUID(perm_db_id) if isinstance(perm_db_id, str) else perm_db_id
+        await audit_emit(
+            session=session,
+            tenant_id=tenant_id,
+            event_type="budget.config_updated",
+            actor_id=None,
+            actor_type="operator",
+            target_id=perm_uuid,
+            target_type="permission",
+            payload={
+                "permission_id": permission_id,
+                "action": "removed",
+                "old_ceiling": old_budget.get("ceiling") if old_budget else None,
+                "old_period": old_budget.get("period") if old_budget else None,
+            },
+        )
+
+        # Fire change-channel NOTIFY
+        await notify_change(
+            session,
+            "mintkey:agent",
+            {
+                "event_type": "budget.config_updated",
+                "tenant_id": str(tenant_id),
+                "target_id": permission_id,
+                "payload": {"action": "removed"},
+                "at": now.isoformat(),
+            },
+        )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "id": permission_id,
+                "tenant_id": str(tenant_id),
+                "constraints": new_constraints,
+                "updated_at": now.isoformat(),
+            },
+        )
+
     # 5. Build new constraints (merge incoming with existing)
     new_constraints = {**old_constraints}
     new_constraints_from_body = body.constraints.model_dump(exclude_none=True)
