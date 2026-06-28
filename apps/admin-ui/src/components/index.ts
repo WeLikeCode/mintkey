@@ -72,6 +72,8 @@ export const Components = {
   // Budget management components (budget-management-ui spec, Tasks 8.2)
   BudgetStatusPanel: componentLoader.add("BudgetStatusPanel", "./sections/BudgetStatusPanel"),
   BudgetForm: componentLoader.add("BudgetForm", "./actions/BudgetForm"),
+  // Budget consumers dashboard page (budget-consumers-dashboard spec, Task 7.1)
+  BudgetConsumersPage: componentLoader.add("BudgetConsumersPage", "./pages/BudgetConsumersPage"),
 };
 
 // Global override: show-page renderer that inlines property.description below
