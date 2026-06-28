@@ -418,6 +418,118 @@ async def list_tenant_permissions(
     return JSONResponse({"permissions": permissions})
 
 
+@tenant_permissions_router.get("/{permission_id}/budget")
+async def get_permission_budget(
+    tenant_id: UUID,
+    permission_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    GET /v1/tenants/{tenant_id}/permissions/{permission_id}/budget
+
+    Returns current budget status: ceiling, used, period, period bounds.
+    404 if permission not found or no budget configured.
+
+    Source: budget-management-ui spec R6.1; ADR-0029.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+    try:
+        perm_uuid = _decode_wire(permission_id, "perm")
+    except ValueError:
+        return JSONResponse(status_code=422, content={"title": "Invalid permission_id"})
+
+    result = await session.execute(
+        select(pg_table.c.constraints).where(
+            pg_table.c.id == perm_uuid,
+            pg_table.c.tenant_id == tenant_id,
+        )
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(status_code=404, content={"title": "Permission not found"})
+
+    constraints = (
+        row.constraints
+        if isinstance(row.constraints, dict)
+        else (json.loads(row.constraints) if row.constraints else {})
+    )
+    budget = constraints.get("budget")
+    if not budget:
+        return JSONResponse(status_code=404, content={"title": "No budget configured"})
+
+    counter = (
+        await session.execute(
+            text(
+                "SELECT used, period_start, period_end FROM budget_counters"
+                " WHERE permission_id = :pid ORDER BY period_start DESC LIMIT 1"
+            ),
+            {"pid": perm_uuid},
+        )
+    ).fetchone()
+
+    return JSONResponse({
+        "ceiling": budget["ceiling"],
+        "period": budget["period"],
+        "used": counter.used if counter else 0,
+        "alert_thresholds": budget.get("alert_thresholds", []),
+        "period_start": counter.period_start.isoformat() if counter else None,
+        "period_end": counter.period_end.isoformat() if counter else None,
+    })
+
+
+@tenant_permissions_router.get("/{permission_id}")
+async def get_permission(
+    tenant_id: UUID,
+    permission_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    GET /v1/tenants/{tenant_id}/permissions/{permission_id}
+
+    Returns a single permission grant. Used by the admin-ui BFF to resolve
+    agent_id for write operations (edit/remove/reset budget).
+
+    Source: budget-management-ui spec; ADR-0019 (BFF pattern).
+    """
+    await set_tenant_context(session, tenant_id)
+
+    from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+    try:
+        perm_uuid = _decode_wire(permission_id, "perm")
+    except ValueError:
+        return JSONResponse(status_code=422, content={"title": "Invalid permission_id"})
+
+    result = await session.execute(
+        select(
+            pg_table.c.id,
+            pg_table.c.agent_id,
+            pg_table.c.service_id,
+            pg_table.c.action,
+            pg_table.c.constraints,
+        ).where(
+            pg_table.c.id == perm_uuid,
+            pg_table.c.tenant_id == tenant_id,
+        )
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(status_code=404, content={"title": "Permission not found"})
+
+    return JSONResponse({
+        "id": db_uuid_to_wire(row.id, "perm"),
+        "agent_id": db_uuid_to_wire(row.agent_id, "agent"),
+        "service_id": db_uuid_to_wire(row.service_id, "svc") if row.service_id else None,
+        "action": row.action,
+        "constraints": (
+            row.constraints
+            if isinstance(row.constraints, dict)
+            else (json.loads(row.constraints) if row.constraints else None)
+        ),
+    })
+
+
 @router.post("", status_code=201)
 async def grant_permission(
     tenant_id: UUID,
@@ -979,3 +1091,68 @@ async def update_permission(
             "updated_at": now.isoformat(),
         },
     )
+
+
+@router.post("/{permission_id}/budget/reset", status_code=200)
+async def reset_budget_counter(
+    tenant_id: UUID,
+    agent_id: str,
+    permission_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """
+    POST /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget/reset
+
+    Resets the current-period budget counter to 0 so the agent can resume
+    operations immediately.  Returns the updated used count (always 0).
+
+    Source: budget-management-ui spec R6.4; ADR-0029.
+    """
+    await set_tenant_context(session, tenant_id)
+
+    from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
+    try:
+        perm_uuid = _decode_wire(permission_id, "perm")
+    except ValueError:
+        return JSONResponse(status_code=422, content={"title": "Invalid permission_id"})
+
+    # Verify the permission exists and belongs to this tenant/agent
+    perm_row = (
+        await session.execute(
+            select(pg_table.c.id).where(
+                pg_table.c.id == perm_uuid,
+                pg_table.c.tenant_id == tenant_id,
+            )
+        )
+    ).fetchone()
+    if perm_row is None:
+        return JSONResponse(status_code=404, content={"title": "Permission not found"})
+
+    now = datetime.now(timezone.utc)
+
+    # Reset the most recent counter row to 0
+    await session.execute(
+        text(
+            "UPDATE budget_counters SET used = 0"
+            " WHERE permission_id = :pid"
+            " AND period_start = ("
+            "   SELECT period_start FROM budget_counters"
+            "   WHERE permission_id = :pid ORDER BY period_start DESC LIMIT 1"
+            " )"
+        ),
+        {"pid": perm_uuid},
+    )
+
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="budget.reset",
+        actor_id=None,
+        actor_type="operator",
+        target_id=perm_uuid,
+        target_type="permission",
+        payload={"permission_id": permission_id, "at": now.isoformat()},
+    )
+    await session.commit()
+
+    return JSONResponse({"permission_id": permission_id, "used": 0, "reset_at": now.isoformat()})

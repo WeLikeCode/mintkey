@@ -61,26 +61,12 @@ export async function budgetGetHandler(req: Request, res: Response): Promise<voi
   const cookie = req.headers.cookie ?? "";
 
   try {
-    // Step 1: Look up permission to resolve agent_id
-    const perm = await lookupPermission(tenantId, permId, cookie);
-    if (!perm) {
-      res
-        .status(502)
-        .json({ title: "BFF proxy error", detail: "Failed to resolve permission record" });
-      return;
-    }
-
-    // Step 2: Proxy the budget endpoint
     const upstream = await fetch(
-      `${ADMIN_API_URL}/v1/tenants/${tenantId}/agents/${perm.agent_id}/permissions/${permId}/budget`,
+      `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permId}/budget`,
       { headers: { Cookie: cookie } }
     );
-
     const body = await upstream.text();
-    res
-      .status(upstream.status)
-      .type("application/json")
-      .send(body);
+    res.status(upstream.status).type("application/json").send(body);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Upstream error";
     res.status(502).json({ title: "BFF proxy error", detail: message });
@@ -126,7 +112,7 @@ export async function budgetEditHandler(req: Request, res: Response): Promise<vo
 
     const opts = operatorOptsFromAdmin(adminUser);
     const upstream = await apiWrite(
-      `/v1/tenants/${tenantId}/permissions/${permId}`,
+      `/v1/tenants/${tenantId}/agents/${perm.agent_id}/permissions/${permId}`,
       "PATCH",
       { constraints: { budget: { ceiling, period, alert_thresholds } } },
       opts
@@ -173,7 +159,7 @@ export async function budgetRemoveHandler(req: Request, res: Response): Promise<
 
     const opts = operatorOptsFromAdmin(adminUser);
     const upstream = await apiWrite(
-      `/v1/tenants/${tenantId}/permissions/${permId}`,
+      `/v1/tenants/${tenantId}/agents/${perm.agent_id}/permissions/${permId}`,
       "PATCH",
       { constraints: { budget: null } },
       opts
@@ -220,7 +206,7 @@ export async function budgetResetHandler(req: Request, res: Response): Promise<v
 
     const opts = operatorOptsFromAdmin(adminUser);
     const upstream = await apiWrite(
-      `/v1/tenants/${tenantId}/permissions/${permId}/budget/reset`,
+      `/v1/tenants/${tenantId}/agents/${perm.agent_id}/permissions/${permId}/budget/reset`,
       "POST",
       undefined,
       opts
