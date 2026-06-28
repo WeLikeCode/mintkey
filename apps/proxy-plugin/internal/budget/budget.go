@@ -36,6 +36,12 @@ type BudgetConfig struct {
 	AlertThresholds []int  `json:"alert_thresholds"`
 }
 
+// ErrCodeBudgetExceeded is the JSON error code in 429 responses (design §10).
+const ErrCodeBudgetExceeded = "budget_exceeded"
+
+// AuditEventExceeded is the audit event type emitted on budget exhaustion (FR-7, design §7).
+const AuditEventExceeded = "budget.exceeded"
+
 // ErrBudgetExceeded is returned when the budget ceiling has been reached for
 // the current period. It carries the current state for the 429 response body.
 type ErrBudgetExceeded struct {

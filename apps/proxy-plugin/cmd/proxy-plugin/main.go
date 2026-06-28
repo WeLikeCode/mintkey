@@ -389,7 +389,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					if h.audit != nil {
 						jtiDenied, _ := claims["jti"].(string)
 						h.audit.Enqueue(auditq.Event{
-							EventType:  "budget.exceeded",
+							EventType:  budget.AuditEventExceeded,
 							TenantID:   tenantID,
 							ActorID:    agentID,
 							ActorType:  "agent",
@@ -411,7 +411,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusTooManyRequests)
 
 					respBody, _ := json.Marshal(map[string]any{
-						"error":         "budget_exceeded",
+						"error":         budget.ErrCodeBudgetExceeded,
 						"detail":        "Call budget exhausted for this period.",
 						"permission_id": resolved.PermissionID,
 						"budget": map[string]any{
