@@ -4,24 +4,27 @@ Unit tests: PlatformAdmin cross-tenant access audit emission.
 Tests that platform_admin.access audit events are emitted on PlatformAdmin reads.
 
 Test cases:
-  1. test_platform_admin_audit_emitted_on_read: GET /v1/tenants/{id}/audit with
-     X-Platform-Admin: true → audit_emit called with event_type="platform_admin.access"
+  1. test_platform_admin_audit_emitted_on_read: caller with a valid platform-admin session
+     → audit_emit called with event_type="platform_admin.access" and real actor_id
   2. test_platform_admin_audit_has_resource_type: payload contains resource_type
      and viewed_tenant_id
-  3. test_non_platform_admin_no_audit: regular operator GET → NO platform_admin.access emitted
+  3. test_non_platform_admin_no_audit: no session cookie → NO platform_admin.access emitted
+
+Session-based authz per ADR-0027 §D2 — X-Platform-Admin header is no longer trusted.
 
 Sources:
   - ADR-0014.7 (audit emit on every state change)
   - T-1.13.4
+  - ADR-0027 §D2
 """
 from __future__ import annotations
 
 import sys
 import os
-from unittest.mock import AsyncMock, MagicMock, patch, call
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 ADMIN_API_SRC = os.path.join(REPO_ROOT, "apps/admin-api", "src")
@@ -32,9 +35,10 @@ for p in (ADMIN_API_SRC, MODELS_SRC):
 
 TENANT_ID = "00000000-0000-0000-0000-000000000001"
 AUDIT_URL = f"/v1/tenants/{TENANT_ID}/audit"
+OPERATOR_ID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
 
-def _make_mock_session(rows=None):
+def _make_mock_db_session(rows=None):
     session = MagicMock()
 
     async def _execute(*args, **kwargs):
@@ -47,23 +51,13 @@ def _make_mock_session(rows=None):
     return session
 
 
-def _create_audit_app(rows=None):
-    """Build a test app with the audit router (tenant-scoped read)."""
-    from fastapi import FastAPI
-    from admin_api.api.audit import router as audit_router
-    from admin_api.db.deps import get_db_session
-    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
-
-    app = FastAPI()
-    app.include_router(audit_router)
-
-    async def mock_db_session():
-        yield _make_mock_session(rows=rows)
-
-    app.dependency_overrides[get_db_session] = mock_db_session
-    csrf_exempt(AUDIT_URL)
-    app.add_middleware(CsrfMiddleware)
-    return app
+def _make_platform_admin_session_ctx(operator_id=OPERATOR_ID):
+    """Return a fake session ctx object."""
+    class _Ctx:
+        pass
+    ctx = _Ctx()
+    ctx.operator_id = operator_id
+    return ctx
 
 
 # ---------------------------------------------------------------------------
@@ -74,19 +68,24 @@ def _create_audit_app(rows=None):
 @pytest.mark.asyncio
 async def test_platform_admin_audit_emitted_on_read() -> None:
     """
-    GET /v1/tenants/{id}/audit with X-Platform-Admin: true must call audit_emit
-    with event_type="platform_admin.access".
-    Source: T-1.13.4; ADR-0014.7.
+    emit_platform_admin_access with a valid platform-admin session calls audit_emit
+    with event_type="platform_admin.access" and actor_id from the session.
+    Source: T-1.13.4; ADR-0014.7; ADR-0027 §D2.
     """
     from admin_api.middleware.platform_admin_audit import emit_platform_admin_access
 
-    session = _make_mock_session(rows=[])
+    session = _make_mock_db_session(rows=[])
+    ctx = _make_platform_admin_session_ctx()
 
-    with patch("admin_api.middleware.platform_admin_audit.audit_emit", new=AsyncMock()) as mock_emit:
+    with patch("admin_api.middleware.platform_admin_audit.audit_emit", new=AsyncMock()) as mock_emit, \
+         patch("admin_api.middleware.platform_admin_audit.validate_session", new=AsyncMock(return_value=ctx)), \
+         patch("admin_api.middleware.platform_admin_audit._is_operator_platform_admin", new=AsyncMock(return_value=True)):
+
         from fastapi import Request
         mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"X-Platform-Admin": "true"}
+        mock_request.cookies = {"mintkey_session": "some-session-token"}
         mock_request.url.path = AUDIT_URL
+        mock_request.method = "GET"
 
         await emit_platform_admin_access(
             request=mock_request,
@@ -98,6 +97,7 @@ async def test_platform_admin_audit_emitted_on_read() -> None:
     mock_emit.assert_called_once()
     call_kwargs = mock_emit.call_args.kwargs
     assert call_kwargs["event_type"] == "platform_admin.access"
+    assert call_kwargs["actor_id"] == OPERATOR_ID
 
 
 @pytest.mark.asyncio
@@ -109,13 +109,18 @@ async def test_platform_admin_audit_has_resource_type() -> None:
     """
     from admin_api.middleware.platform_admin_audit import emit_platform_admin_access
 
-    session = _make_mock_session(rows=[])
+    session = _make_mock_db_session(rows=[])
+    ctx = _make_platform_admin_session_ctx()
 
-    with patch("admin_api.middleware.platform_admin_audit.audit_emit", new=AsyncMock()) as mock_emit:
+    with patch("admin_api.middleware.platform_admin_audit.audit_emit", new=AsyncMock()) as mock_emit, \
+         patch("admin_api.middleware.platform_admin_audit.validate_session", new=AsyncMock(return_value=ctx)), \
+         patch("admin_api.middleware.platform_admin_audit._is_operator_platform_admin", new=AsyncMock(return_value=True)):
+
         from fastapi import Request
         mock_request = MagicMock(spec=Request)
-        mock_request.headers = {"X-Platform-Admin": "true"}
+        mock_request.cookies = {"mintkey_session": "some-session-token"}
         mock_request.url.path = AUDIT_URL
+        mock_request.method = "GET"
 
         await emit_platform_admin_access(
             request=mock_request,
@@ -135,19 +140,19 @@ async def test_platform_admin_audit_has_resource_type() -> None:
 @pytest.mark.asyncio
 async def test_non_platform_admin_no_audit() -> None:
     """
-    A regular operator GET (no X-Platform-Admin header) must NOT emit
-    platform_admin.access.
-    Source: T-1.13.4.
+    A caller with no session cookie must NOT emit platform_admin.access.
+    Source: T-1.13.4; ADR-0027 §D2.
     """
     from admin_api.middleware.platform_admin_audit import emit_platform_admin_access
 
-    session = _make_mock_session(rows=[])
+    session = _make_mock_db_session(rows=[])
 
     with patch("admin_api.middleware.platform_admin_audit.audit_emit", new=AsyncMock()) as mock_emit:
         from fastapi import Request
         mock_request = MagicMock(spec=Request)
-        mock_request.headers = {}  # No X-Platform-Admin header
+        mock_request.cookies = {}  # No mintkey_session cookie
         mock_request.url.path = AUDIT_URL
+        mock_request.method = "GET"
 
         await emit_platform_admin_access(
             request=mock_request,

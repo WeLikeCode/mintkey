@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.db.deps import get_db_session
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -100,6 +101,7 @@ async def list_audit_events(
     after: Optional[str] = None,
     limit: int = 50,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List audit events for a tenant with optional filters and cursor pagination.

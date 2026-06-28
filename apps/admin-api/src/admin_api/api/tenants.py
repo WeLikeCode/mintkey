@@ -3,21 +3,22 @@ Tenant management endpoints.
 
 POST   /v1/tenants              — create a new tenant (PlatformAdmin only, 201)
 GET    /v1/tenants              — list all tenants (PlatformAdmin only, 200)
-GET    /v1/tenants/{tenant_id}  — get single tenant (200)
+GET    /v1/tenants/{tenant_id}  — get single tenant (PlatformAdmin only, 200)
 PATCH  /v1/tenants/{tenant_id}  — update tenant metadata (PlatformAdmin only, 200)
 DELETE /v1/tenants/{tenant_id}  — soft-delete tenant (PlatformAdmin only, 204)
 
 Architecture constraints:
-  - PlatformAdmin only for create/list/patch/delete — ADR-0017.4; Req 13 AC1.
+  - PlatformAdmin only for all endpoints — ADR-0017.4; Req 13 AC1; ADR-0027 §D2.
+  - Session-based authz via require_platform_admin_session (no header trust).
   - ULID ID with "tenant_" prefix — ADR-0017.11.
   - audit_chain_state row initialised with genesis hash on creation — ADR-0014.7.
   - Audit event "tenant.created" emitted — ADR-0014.7; Req AUD-3.
   - Audit event "tenant.updated" / "tenant.deleted" emitted on changes — ADR-0014.7.
   - Duplicate slug → 409 mintkey:code=tenant_already_exists.
-  - Non-PlatformAdmin → 403 mintkey:code=permission_denied.
+  - Non-PlatformAdmin → 401/403.
   - No f-string SQL — ADR-0008; T-1.0.15.
 
-Source: T-1.12.1; ADR-0008; ADR-0014.7; ADR-0017.11; Req 13 AC1.
+Source: T-1.12.1; ADR-0008; ADR-0014.7; ADR-0017.11; Req 13 AC1; ADR-0027 §D2.
 """
 from __future__ import annotations
 
@@ -27,13 +28,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import exc as sa_exc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_platform_admin_session
 from admin_api.db.deps import get_db_session
 from mintkey_models.audit import audit_emit
 
@@ -109,18 +111,6 @@ class UpdateTenantRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _is_platform_admin(request: Request) -> bool:
-    """
-    Check whether the caller is a PlatformAdmin.
-
-    In unit tests this is signalled via the X-Platform-Admin: true header.
-    Production will use the session operator's is_platform_admin flag; this
-    header-based check keeps unit tests simple without requiring a full auth
-    stack. The pattern mirrors the admin-settings stub used elsewhere.
-    """
-    return request.headers.get("X-Platform-Admin", "").lower() == "true"
-
-
 async def _set_platform_admin_rls(session: AsyncSession) -> None:
     """
     Set the per-connection GUCs required for platform-admin queries on the
@@ -147,14 +137,14 @@ async def _set_platform_admin_rls(session: AsyncSession) -> None:
 @router.post("", status_code=201)
 async def create_tenant(
     body: CreateTenantRequest,
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     Create a new tenant. PlatformAdmin only.
 
     Steps:
-      1. Check is_platform_admin → 403 if not.
+      1. Check is_platform_admin via session → 401/403 if not (Depends gate).
       2. Generate tenant_id = ULID with "tenant_" prefix.
       3. INSERT tenant row (ON CONFLICT slug → 409).
       4. Compute genesis hash = sha256("mintkey-audit-genesis-v1:" + tenant_id).
@@ -162,18 +152,8 @@ async def create_tenant(
       6. Emit audit event "tenant.created".
       7. Return {"tenant_id": tenant_id, "slug": body.slug}.
 
-    Source: T-1.12.1; ADR-0008; ADR-0014.7; ADR-0017.11; Req 13 AC1.
+    Source: T-1.12.1; ADR-0008; ADR-0014.7; ADR-0017.11; Req 13 AC1; ADR-0027 §D2.
     """
-    # Step 1: PlatformAdmin gate — ADR-0017.4
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "mintkey:code": "permission_denied",
-                "title": "PlatformAdmin access required",
-            },
-        )
-
     await _set_platform_admin_rls(session)
 
     # Step 2: Generate ULID ID with tenant_ prefix — ADR-0017.11
@@ -256,8 +236,8 @@ def _escape_like(value: str) -> str:
 
 @router.get("")
 async def list_tenants(
-    request: Request,
     q: Optional[str] = None,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
@@ -266,14 +246,8 @@ async def list_tenants(
     Optional query parameters:
       q — case-insensitive substring search on slug or display_name.
 
-    Source: OpenAPI listTenants; ADR-0017.4.
+    Source: OpenAPI listTenants; ADR-0017.4; ADR-0027 §D2.
     """
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
-        )
-
     await _set_platform_admin_rls(session)
 
     if q is not None:
@@ -313,24 +287,20 @@ async def list_tenants(
 
 
 # ---------------------------------------------------------------------------
-# GET /v1/tenants/{tid} — get single tenant
+# GET /v1/tenants/{tid} — get single tenant (PlatformAdmin only)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/{tid}")
 async def get_tenant(
     tid: str,
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
-    Get a single tenant by id (UUID string).
+    Get a single tenant by id (UUID string). PlatformAdmin only.
 
-    Accessible by PlatformAdmin or any operator with membership.
-    For now the auth stub allows the call if header present; the real
-    session check is deferred to the auth integration task.
-
-    Source: OpenAPI getTenant; ADR-0017.4.
+    Source: OpenAPI getTenant; ADR-0017.4; ADR-0027 §D2.
     """
     await _set_platform_admin_rls(session)
     result = await session.execute(
@@ -369,21 +339,15 @@ async def get_tenant(
 async def update_tenant(
     tid: str,
     body: UpdateTenantRequest,
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     Update tenant metadata. PlatformAdmin only. Slug is immutable.
 
     Emits audit event "tenant.updated" — ADR-0014.7.
-    Source: OpenAPI updateTenant; ADR-0017.4.
+    Source: OpenAPI updateTenant; ADR-0017.4; ADR-0027 §D2.
     """
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
-        )
-
     await _set_platform_admin_rls(session)
     # Fetch current row to verify existence
     result = await session.execute(
@@ -472,21 +436,15 @@ async def update_tenant(
 @router.delete("/{tid}", status_code=204)
 async def delete_tenant(
     tid: str,
-    request: Request,
+    _authz: None = Depends(require_platform_admin_session),
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """
     Soft-delete a tenant by moving it to status="deleted". PlatformAdmin only.
 
     Emits audit event "tenant.deleted" — ADR-0016.7.
-    Source: OpenAPI deleteTenant; ADR-0017.4; OQ-001.
+    Source: OpenAPI deleteTenant; ADR-0017.4; OQ-001; ADR-0027 §D2.
     """
-    if not _is_platform_admin(request):
-        return JSONResponse(
-            status_code=403,
-            content={"mintkey:code": "permission_denied", "title": "PlatformAdmin access required"},
-        )
-
     await _set_platform_admin_rls(session)
     result = await session.execute(
         text("SELECT id, status FROM tenants WHERE id = :tid"),

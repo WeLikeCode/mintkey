@@ -68,6 +68,7 @@ def _make_session_without_agent():
 def _create_revoke_app(session_factory):
     from fastapi import FastAPI
     from admin_api.api.agents import router as agents_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -78,6 +79,7 @@ def _create_revoke_app(session_factory):
         yield session_factory()
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_tenant_session] = lambda: None
     csrf_exempt(REVOKE_PATH)
     app.add_middleware(CsrfMiddleware)
     return app
@@ -147,7 +149,9 @@ async def test_revoke_agent_sets_status_revoked(app_with_agent, mock_audit, mock
         captured_session = session
         yield session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db_session
+    local_app.dependency_overrides[_rts] = lambda: None
     csrf_exempt(REVOKE_PATH)
     local_app.add_middleware(CsrfMiddleware)
 

@@ -57,11 +57,13 @@ def create_test_app():
     Create an app with:
       - agents router included
       - get_db_session overridden to a mock (no real DB)
+      - require_tenant_session bypassed (unit tests don't exercise session auth)
       - CSRF middleware present but agents paths registered as exempt
     """
     from fastapi import FastAPI
     from admin_api.api.health import router as health_router
     from admin_api.api.agents import router as agents_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -73,7 +75,11 @@ def create_test_app():
     async def mock_db_session():
         yield _make_mock_session()
 
+    async def _no_authz() -> None:
+        return None
+
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_tenant_session] = _no_authz
 
     # Register agent paths as CSRF-exempt for unit tests
     csrf_exempt(BASE_URL_PATH)
@@ -160,7 +166,9 @@ async def test_create_agent_api_key_not_stored_plaintext(app, mock_audit, mock_n
         session.execute = _execute
         yield session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db_session
+    local_app.dependency_overrides[_rts] = lambda: None
     csrf_exempt(BASE_URL_PATH)
     local_app.add_middleware(CsrfMiddleware)
 
@@ -229,7 +237,9 @@ async def test_get_agent_does_not_return_api_key(app, mock_audit, mock_notify) -
         session.execute = _execute
         yield session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db_session
+    local_app.dependency_overrides[_rts] = lambda: None
     csrf_exempt(f"{BASE_URL_PATH}/{AGENT_ID}")
     local_app.add_middleware(CsrfMiddleware)
 
@@ -431,7 +441,9 @@ async def test_rotate_key_hard_cutover(mock_audit, mock_notify) -> None:
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -469,7 +481,9 @@ async def test_rotate_key_bumps_version(mock_audit, mock_notify) -> None:
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -512,7 +526,9 @@ async def test_rotate_key_preserves_expiry_policy_when_omitted(mock_audit, mock_
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -560,7 +576,9 @@ async def test_rotate_key_explicit_empty_string_removes_expiry(mock_audit, mock_
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -598,7 +616,9 @@ async def test_rotate_key_audit_emitted_with_no_plaintext(mock_notify) -> None:
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -653,7 +673,9 @@ async def test_rotate_key_invalid_expires_in_title_is_generic(mock_audit, mock_n
     async def mock_db():
         yield mock_session
 
+    from admin_api.auth.sessions import require_tenant_session as _rts
     local_app.dependency_overrides[get_db_session] = mock_db
+    local_app.dependency_overrides[_rts] = lambda: None
     rotate_path = f"{BASE_URL_PATH}/{wire_id}/rotate-key"
     csrf_exempt(rotate_path)
     local_app.add_middleware(CsrfMiddleware)
@@ -671,3 +693,68 @@ async def test_rotate_key_invalid_expires_in_title_is_generic(mock_audit, mock_n
     assert malicious_input not in title, (
         f"Stack-trace exposure: user input echoed back in error title: {title!r}"
     )
+
+# ---------------------------------------------------------------------------
+# Cross-tenant authz: require_tenant_session enforces 403 — ADR-SCOPE-A
+# ---------------------------------------------------------------------------
+
+TENANT_A = "00000000-0000-0000-0000-000000000001"
+TENANT_B = "00000000-0000-0000-0000-000000000002"
+
+
+def _make_cross_tenant_app():
+    """
+    Build a FastAPI app that includes the agents router WITHOUT the
+    require_tenant_session bypass, so the dep runs for real.
+    validate_session / _is_operator_platform_admin are patched per-test.
+    """
+    from fastapi import FastAPI
+    from admin_api.api.agents import router as agents_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    app = FastAPI()
+    app.include_router(agents_router)
+
+    async def mock_db_session():
+        yield _make_mock_session()
+
+    app.dependency_overrides[get_db_session] = mock_db_session
+
+    csrf_exempt(f"/v1/tenants/{TENANT_B}/agents")
+    app.add_middleware(CsrfMiddleware)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_create_agent_cross_tenant_returns_403() -> None:
+    """
+    POST /v1/tenants/{TENANT_B}/agents with a session scoped to TENANT_A
+    must return 403 — require_tenant_session enforcement (ADR-SCOPE-A).
+    Before dep: handler reached (201/4xx).  After dep: 403 permission_denied.
+    """
+    app = _make_cross_tenant_app()
+
+    class _FakeCtx:
+        operator_id = "op-uuid-a"
+        tenant_id = TENANT_A
+
+    with (
+        patch("admin_api.auth.sessions.validate_session", new=AsyncMock(return_value=_FakeCtx())),
+        patch("admin_api.auth.sessions._is_operator_platform_admin", new=AsyncMock(return_value=False)),
+        patch("admin_api.api.agents.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.agents.notify_change", new=AsyncMock()),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                f"/v1/tenants/{TENANT_B}/agents",
+                json={"name": "stolen-agent"},
+                cookies={"mintkey_session": "tok-a"},
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 for cross-tenant POST /agents, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied"

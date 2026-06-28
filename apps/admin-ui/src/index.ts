@@ -39,6 +39,7 @@ import { TenantsResource } from "./resources/tenants.js";
 import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
 import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 import { budgetConsumersHandler } from "./routes/budget-consumers.js";
+import { AgentSecretsResource } from "./resources/agent-secrets.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
@@ -159,6 +160,7 @@ async function main() {
       { resource: OAuth2ProvidersResource.adminResource, options: OAuth2ProvidersResource.options },
       { resource: EmailPermissionGrantsResource.adminResource, options: EmailPermissionGrantsResource.options },
       { resource: AgentsResource.adminResource, options: AgentsResource.options },
+      { resource: AgentSecretsResource.adminResource, options: AgentSecretsResource.options },
       { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
       { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
       { resource: CredentialsResource.adminResource, options: CredentialsResource.options },

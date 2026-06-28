@@ -81,10 +81,11 @@ def _make_mock_session(rows=None):
     return session
 
 
-def _create_test_app(rows=None):
+def _create_test_app(rows=None, bypass_authz: bool = True):
     """Build a minimal FastAPI app with the audit router and mocked DB."""
     from fastapi import FastAPI
     from admin_api.api.audit import router as audit_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -95,6 +96,8 @@ def _create_test_app(rows=None):
         yield _make_mock_session(rows=rows)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    if bypass_authz:
+        app.dependency_overrides[require_tenant_session] = lambda: None
 
     csrf_exempt(BASE_URL_PATH)
     app.add_middleware(CsrfMiddleware)
@@ -309,3 +312,41 @@ async def test_empty_for_wrong_tenant() -> None:
     body = resp.json()
     assert body["events"] == []
     assert body["next_cursor"] is None
+
+# ---------------------------------------------------------------------------
+# Cross-tenant authz: require_tenant_session enforces 403 — ADR-SCOPE-A
+# ---------------------------------------------------------------------------
+
+OTHER_TENANT_A = TENANT_ID    # "00000000-0000-0000-0000-000000000001"
+OTHER_TENANT_B = OTHER_TENANT_ID  # "00000000-0000-0000-0000-000000000002"
+
+
+@pytest.mark.asyncio
+async def test_list_audit_cross_tenant_returns_403() -> None:
+    """
+    GET /v1/tenants/{TENANT_B}/audit with a session scoped to TENANT_A
+    must return 403 — require_tenant_session enforcement (ADR-SCOPE-A).
+    Before dep: handler reached (200 empty).  After dep: 403 permission_denied.
+    """
+    app = _create_test_app(rows=[], bypass_authz=False)
+
+    class _FakeCtx:
+        operator_id = "op-uuid-a"
+        tenant_id = OTHER_TENANT_A
+
+    with (
+        patch("admin_api.auth.sessions.validate_session", new=AsyncMock(return_value=_FakeCtx())),
+        patch("admin_api.auth.sessions._is_operator_platform_admin", new=AsyncMock(return_value=False)),
+    ):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get(
+                f"/v1/tenants/{OTHER_TENANT_B}/audit",
+                cookies={"mintkey_session": "tok-a"},
+            )
+
+    assert resp.status_code == 403, (
+        f"Expected 403 for cross-tenant GET /audit, got {resp.status_code}: {resp.text}"
+    )
+    body = resp.json()
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "permission_denied"

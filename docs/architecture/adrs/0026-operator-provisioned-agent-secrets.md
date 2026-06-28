@@ -1,0 +1,1 @@
+../01-architecture/adr/0026-operator-provisioned-agent-secrets.md

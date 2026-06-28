@@ -84,7 +84,10 @@ func main() {
 	}
 
 	// Register the admin-api service identity so the scopeInterceptor allows
-	// it to call GetCredential (vault.read) and PutCredential (vault.put).
+	// it to call GetCredential (vault.read), PutCredential (vault.put),
+	// PutAgentSecret (vault.secret.put), and DeleteAgentSecret (vault.secret.delete).
+	// vault.secret.read is NOT granted — admin-api never reads agent-secret plaintext
+	// (least privilege; operators provision secrets but agents own the read path).
 	// MINTKEY_VAULT_ADMIN_IDENTITY_ID defaults to "svcid_admin_api"; must match
 	// admin-api's MINTKEY_VAULT_ADMIN_IDENTITY_ID env var.
 	// MINTKEY_VAULT_ADMIN_TOKEN must be a shared secret (≥ 32 bytes) provisioned
@@ -97,11 +100,11 @@ func main() {
 	if len(adminToken) == 0 {
 		log.Printf("vault-adapter: WARNING: MINTKEY_VAULT_ADMIN_TOKEN is not set; admin-api credential operations WILL fail with PERMISSION_DENIED")
 	} else {
-		if err := svc.RegisterServiceIdentity(adminIdentityID, adminToken, []string{"vault.read", "vault.put"}); err != nil {
+		if err := svc.RegisterServiceIdentity(adminIdentityID, adminToken, []string{"vault.read", "vault.put", "vault.secret.put", "vault.secret.delete"}); err != nil {
 			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", adminIdentityID, err)
 			os.Exit(1)
 		}
-		log.Printf("vault-adapter: registered admin-api service identity %q with scopes [vault.read vault.put]", adminIdentityID)
+		log.Printf("vault-adapter: registered admin-api service identity %q with scopes [vault.read vault.put vault.secret.put vault.secret.delete]", adminIdentityID)
 	}
 
 	// Register the SSH-proxy service identity so the scopeInterceptor allows

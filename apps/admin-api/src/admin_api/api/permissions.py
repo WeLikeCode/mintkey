@@ -33,6 +33,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.db.tables import (
@@ -235,6 +236,7 @@ async def list_permissions(
     agent_id: str,
     service_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List permission grants for an agent.
@@ -321,6 +323,7 @@ async def list_tenant_permissions(
     agent_id: Optional[str] = None,
     q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     List all permission grants for a tenant.
@@ -536,6 +539,7 @@ async def grant_permission(
     agent_id: str,
     body: PermissionGrantRequest,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Grant a permission from an agent to a service action.
@@ -734,6 +738,7 @@ async def revoke_permission(
     agent_id: str,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session),
+    _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
     Revoke a permission grant.

@@ -32,6 +32,11 @@ TENANT_ID = "tenant_00000000000000000000000001"
 EVENT_ID = "audit_00000000000000000000000042"
 
 
+async def _noop_platform_admin():
+    """Dep override: treat all callers as platform-admin."""
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -55,6 +60,7 @@ def _make_mock_session(tenant_exists: bool = True):
 def _create_test_app(tenant_exists: bool = True):
     from fastapi import FastAPI
     from admin_api.api.audit_admin import router as audit_admin_router
+    from admin_api.auth.sessions import require_platform_admin_session
     from admin_api.db.deps import get_db_session
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 
@@ -65,6 +71,7 @@ def _create_test_app(tenant_exists: bool = True):
         yield _make_mock_session(tenant_exists=tenant_exists)
 
     app.dependency_overrides[get_db_session] = mock_db_session
+    app.dependency_overrides[require_platform_admin_session] = _noop_platform_admin
 
     csrf_exempt(ACK_URL)
     app.add_middleware(CsrfMiddleware)
@@ -79,21 +86,37 @@ def _create_test_app(tenant_exists: bool = True):
 @pytest.mark.asyncio
 async def test_acknowledge_requires_platform_admin() -> None:
     """
-    POST /v1/admin/audit/acknowledge-tamper without X-Platform-Admin header returns 403.
+    POST /v1/admin/audit/acknowledge-tamper without a valid platform-admin session → 401.
+    Session-based authz (ADR-0027 §D2); no session cookie → 401 unauthenticated.
     Source: T-1.13.5.
     """
-    app = _create_test_app()
+    from fastapi import FastAPI
+    from admin_api.api.audit_admin import router as audit_admin_router
+    from admin_api.db.deps import get_db_session
+    from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
+
+    # No dep override — real require_platform_admin_session; no cookie → 401
+    app_no_auth = FastAPI()
+    app_no_auth.include_router(audit_admin_router)
+
+    async def mock_db_session():
+        yield _make_mock_session(tenant_exists=True)
+
+    app_no_auth.dependency_overrides[get_db_session] = mock_db_session
+    csrf_exempt(ACK_URL)
+    app_no_auth.add_middleware(CsrfMiddleware)
 
     with patch("mintkey_models.audit.audit_emit", new_callable=AsyncMock):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        async with AsyncClient(transport=ASGITransport(app=app_no_auth), base_url="http://test") as client:
             resp = await client.post(
                 ACK_URL,
                 params={"tenant_id": TENANT_ID, "event_id": EVENT_ID},
             )
 
-    assert resp.status_code == 403, resp.text
+    assert resp.status_code == 401, resp.text
     body = resp.json()
-    assert body.get("mintkey:code") == "permission_denied"
+    detail = body.get("detail", body)
+    assert detail.get("mintkey:code") == "unauthenticated"
 
 
 @pytest.mark.asyncio
@@ -110,7 +133,6 @@ async def test_acknowledge_records_event() -> None:
             resp = await client.post(
                 ACK_URL,
                 params={"tenant_id": TENANT_ID, "event_id": EVENT_ID},
-                headers={"X-Platform-Admin": "true"},
             )
 
     assert resp.status_code == 201, resp.text
@@ -137,7 +159,6 @@ async def test_acknowledge_audit_payload() -> None:
             await client.post(
                 ACK_URL,
                 params={"tenant_id": TENANT_ID, "event_id": EVENT_ID},
-                headers={"X-Platform-Admin": "true"},
             )
 
     call_kwargs = mock_emit.call_args.kwargs
@@ -161,7 +182,6 @@ async def test_unknown_tenant_returns_404() -> None:
             resp = await client.post(
                 ACK_URL,
                 params={"tenant_id": "tenant_nonexistent0000000000001", "event_id": EVENT_ID},
-                headers={"X-Platform-Admin": "true"},
             )
 
     assert resp.status_code == 404, resp.text

@@ -94,11 +94,13 @@ def create_test_app():
       - credentials router included
       - get_db_session overridden to a mock (no real DB)
       - get_vault_client overridden to a mock (no real gRPC)
+      - require_tenant_session overridden to a no-op (session→tenant authz satisfied)
       - CSRF middleware present but credentials paths registered as exempt
     """
     from fastapi import FastAPI
     from admin_api.api.health import router as health_router
     from admin_api.api.credentials import router as credentials_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.services.vault_client import get_vault_client, VaultAdapterClient
     from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
@@ -134,6 +136,12 @@ def create_test_app():
         return _mock_vault
 
     app.dependency_overrides[get_vault_client] = mock_vault_client
+
+    # Override session→tenant authz — unit tests run without a real session store.
+    async def _noop_require_tenant_session():
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     # Register credentials paths as CSRF-exempt for unit tests
     csrf_exempt(BASE_URL_PATH)
@@ -370,6 +378,7 @@ def create_rotate_test_app():
     """
     from fastapi import FastAPI
     from admin_api.api.credentials import router as credentials_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.services.vault_client import get_vault_client, VaultAdapterClient
     from admin_api.middleware.csrf import csrf_exempt
@@ -398,6 +407,11 @@ def create_rotate_test_app():
         return _mock_vault
 
     app.dependency_overrides[get_vault_client] = mock_vault_client
+
+    async def _noop_require_tenant_session():
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
 
     csrf_exempt(BASE_URL_PATH)
     csrf_exempt(ROTATE_URL_PATH)
@@ -564,6 +578,7 @@ def create_rotate_no_cred_app():
     """App whose credential lookup returns None — simulates rotate_from not found."""
     from fastapi import FastAPI
     from admin_api.api.credentials import router as credentials_router
+    from admin_api.auth.sessions import require_tenant_session
     from admin_api.db.deps import get_db_session
     from admin_api.services.vault_client import get_vault_client, VaultAdapterClient
     from admin_api.middleware.csrf import csrf_exempt
@@ -587,6 +602,12 @@ def create_rotate_no_cred_app():
             return []
 
     app.dependency_overrides[get_vault_client] = lambda: _MockVaultClient()
+
+    async def _noop_require_tenant_session():
+        return None
+
+    app.dependency_overrides[require_tenant_session] = _noop_require_tenant_session
+
     csrf_exempt(BASE_URL_PATH)
     csrf_exempt(ROTATE_URL_PATH)
     return app

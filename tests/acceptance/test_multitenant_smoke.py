@@ -186,6 +186,13 @@ def _make_test_app():
 
     app = FastAPI()
     app.include_router(services_router)
+
+    # SCOPE-A (ADR-0027) added require_tenant_session; this test verifies RLS
+    # per-tenant data isolation (set_tenant_context), not auth — no-op the auth
+    # dependency so the TestClient reaches the handler.
+    from admin_api.auth.sessions import require_tenant_session
+
+    app.dependency_overrides[require_tenant_session] = lambda: None
     return app, get_db_session
 
 
