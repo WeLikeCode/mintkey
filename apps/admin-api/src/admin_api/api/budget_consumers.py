@@ -51,12 +51,12 @@ async def list_budget_consumers(
                 s.name AS service_name,
                 (pg.constraints->'budget'->>'ceiling')::int AS ceiling,
                 pg.constraints->'budget'->>'period' AS period,
-                COALESCE(bc.used, 0) AS used,
+                bc.used AS used,
                 COALESCE(
                     (SELECT COUNT(*) FROM audit_events ae
                      WHERE ae.event_type = 'token.issued'
                        AND ae.payload->>'permission_id' = pg.id::text
-                       AND ae.created_at > NOW() - INTERVAL '30 minutes'
+                       AND ae.at > NOW() - INTERVAL '30 minutes'
                        AND ae.tenant_id = :tid),
                     0
                 ) AS requests_last_30_min,
@@ -68,10 +68,8 @@ async def list_budget_consumers(
             LEFT JOIN budget_counters bc ON bc.permission_id = pg.id
                 AND NOW() BETWEEN bc.period_start AND bc.period_end
             WHERE pg.tenant_id = :tid
-              AND pg.constraints->'budget' IS NOT NULL
-              AND (pg.constraints->'budget'->>'ceiling') IS NOT NULL
             ORDER BY
-                CASE WHEN COALESCE(bc.used, 0) >= (pg.constraints->'budget'->>'ceiling')::int
+                CASE WHEN COALESCE(bc.used, 0) >= COALESCE((pg.constraints->'budget'->>'ceiling')::int, 2147483647)
                      THEN 0 ELSE 1 END,
                 COALESCE(bc.used, 0)::float
                     / NULLIF((pg.constraints->'budget'->>'ceiling')::int, 0) DESC NULLS LAST
@@ -85,7 +83,7 @@ async def list_budget_consumers(
     for row in rows:
         ceiling = row.ceiling
         used = row.used
-        consumption_percentage = round((used / ceiling) * 100) if ceiling > 0 else 0
+        consumption_percentage = round((used / ceiling) * 100) if (ceiling is not None and used is not None and ceiling > 0) else None
 
         period_start = row.period_start
         period_end = row.period_end
