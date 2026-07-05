@@ -237,10 +237,30 @@ func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*E
 		}
 	}
 
-	// Marshal credential_fields as JSON body.
-	body, err := json.Marshal(req.CredentialFields)
-	if err != nil {
-		return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, err)
+	// Encode credential_fields: form-encoded when Content-Type header requests it,
+	// JSON otherwise (backward-compatible).
+	var body []byte
+	defaultContentType := "application/json"
+	useForm := false
+	for k, v := range req.TokenRequestHeaders {
+		if strings.EqualFold(k, "content-type") && strings.EqualFold(v, "application/x-www-form-urlencoded") {
+			useForm = true
+			break
+		}
+	}
+	if useForm {
+		vals := url.Values{}
+		for k, v := range req.CredentialFields {
+			vals.Set(k, v)
+		}
+		body = []byte(vals.Encode())
+		defaultContentType = "application/x-www-form-urlencoded"
+	} else {
+		var jsonErr error
+		body, jsonErr = json.Marshal(req.CredentialFields)
+		if jsonErr != nil {
+			return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, jsonErr)
+		}
 	}
 
 	// Build the HTTP request.
@@ -250,7 +270,7 @@ func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*E
 	}
 
 	// Set Content-Type default; can be overridden by token_request_headers.
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Content-Type", defaultContentType)
 
 	// Apply configured token_request_headers.
 	for name, value := range req.TokenRequestHeaders {

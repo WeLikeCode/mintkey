@@ -115,6 +115,7 @@ PLATFORM_SCOPED_TABLES: frozenset[str] = frozenset(
         "admin_request_jti",   # replay-protection JTIs (ADR-0016.1)
         "service_identities",  # per-service boot secrets (ADR-0014.2)
         "audit_chain_state",   # per-tenant chain head pointer (ADR-0014.7)
+        "oidc_login_state",    # PKCE login state — not tenant-scoped (login happens before tenant is known)
     ]
 )
 

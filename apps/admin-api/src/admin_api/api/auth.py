@@ -27,6 +27,7 @@ from admin_api.auth.oidc import (
     lookup_operator_by_oidc_sub,
     oidc_token_exchange,
 )
+from admin_api.auth.oidc_state import OidcStateRepository
 from admin_api.auth.sessions import create_session, validate_session
 from admin_api.middleware.csrf import no_csrf
 
@@ -235,7 +236,12 @@ async def oidc_login() -> RedirectResponse:
     Uses MINTKEY_KEYCLOAK_PUBLIC_URL for browser-facing redirect.
     Source: Req 2 AC6.
     """
-    auth_url, state, _ = generate_authorization_url()
+    from admin_api.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            state_repo = OidcStateRepository(db)
+            auth_url, _state, _ = await generate_authorization_url(state_repo)
     return RedirectResponse(url=auth_url, status_code=302)
 
 
@@ -270,7 +276,12 @@ async def oidc_callback(code: str, state: str, request: Request) -> Response:
     )
 
     try:
-        claims = await oidc_token_exchange(code, state)
+        from admin_api.db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            async with db.begin():
+                state_repo = OidcStateRepository(db)
+                claims = await oidc_token_exchange(code, state, state_repo)
     except ValueError as exc:
         if "state_mismatch" in str(exc):
             return JSONResponse(

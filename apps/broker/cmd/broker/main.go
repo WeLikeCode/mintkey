@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,11 +17,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
-	"github.com/mintkey/mintkey/packages/go/ulid"
 	"github.com/mintkey/mintkey/services/broker/internal/api/issue"
 	"github.com/mintkey/mintkey/services/broker/internal/api/resolve"
 	"github.com/mintkey/mintkey/services/broker/internal/config"
 	"github.com/mintkey/mintkey/services/broker/internal/issuer"
+	"github.com/mintkey/mintkey/services/broker/internal/keyloader"
 	"github.com/mintkey/mintkey/services/broker/internal/keys"
 	"github.com/mintkey/mintkey/services/broker/internal/metrics"
 )
@@ -42,15 +41,12 @@ func main() {
 		defer func() { _ = otelShutdown(context.Background()) }()
 	}
 
-	// Key ring: generate an ephemeral Ed25519 key pair for dev.
-	// In T-1.0.8+ the private key is fetched from Vault Adapter using svcid_broker.
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	priv, activeKID, err := keyloader.LoadKey(cfg.Env, cfg.SigningKeyFile)
 	if err != nil {
-		log.Fatalf("broker: keygen: %v", err)
+		log.Fatalf("broker: signing key: %v", err)
 	}
-	activeKID := ulid.New("kid_")
 	ring := keys.NewKeyRing()
-	ring.Add(activeKID, pub)
+	ring.Add(activeKID, priv.Public().(ed25519.PublicKey))
 	iss := issuer.New(priv, activeKID, ring)
 	log.Printf("broker: starting (env=%s, port=%d)", cfg.Env, cfg.HTTPPort)
 

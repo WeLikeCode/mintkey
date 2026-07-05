@@ -93,6 +93,8 @@ services:
       - --username=mintkey_migrate
       - --password=changeme
       - --changeLogFile=changelog/db.changelog-master.yaml
+      - -Ddb_app_password=${MINTKEY_DB_APP_PASSWORD:-mintkey_app_password}
+      - -Ddb_subscriber_password=${MINTKEY_DB_SUBSCRIBER_PASSWORD:-mintkey_subscriber_password}
       - update
     volumes:
       - ./config/apps/admin-api/db/changelog:/liquibase/changelog:ro

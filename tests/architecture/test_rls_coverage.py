@@ -52,6 +52,7 @@ TENANT_SCOPED: frozenset[str] = frozenset(
         "service_api_keys",    # long-lived-api-keys task 1.1; Req 7.4, ADR-0014.8
         "agent_secrets",       # ADR-0025; agent-stored-secrets
         "agent_secret_grants", # ADR-0025; operator-managed read grants
+        "budget_counters",     # T-BUD-1.1; NFR-3; design §1
     ]
 )
 

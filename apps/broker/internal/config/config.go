@@ -15,6 +15,7 @@ type Config struct {
 	Env               string
 	HTTPPort          int
 	VaultGRPCAddr     string // host:port of the Vault Adapter
+	SigningKeyFile    string // path to 32-byte seed file (MINTKEY_BROKER_SIGNING_KEY_FILE)
 	ServiceToken      string // svcid_broker boot secret (from /run/secrets/mintkey_service_token)
 	ProxyServiceToken string // shared secret the Egress Proxy must supply for /v1/api-keys/resolve
 	MCPServiceToken   string // shared secret the MCP Server must supply for /v1/issue
@@ -33,6 +34,7 @@ func Load() *Config {
 		Env:               getEnv("MINTKEY_ENV", "dev"),
 		HTTPPort:          getEnvInt("BROKER_HTTP_PORT", 8083),
 		VaultGRPCAddr:     getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
+		SigningKeyFile:    os.Getenv("MINTKEY_BROKER_SIGNING_KEY_FILE"),
 		ServiceToken:      os.Getenv("MINTKEY_SERVICE_TOKEN"),        // /run/secrets/ in compose
 		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"),  // /run/secrets/ in compose
 		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),    // shared with MCP Server

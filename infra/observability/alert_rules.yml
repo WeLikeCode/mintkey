@@ -111,3 +111,13 @@ groups:
         annotations:
           summary: "Container {{ $labels.name }} memory usage >85% of limit"
           description: "Working set is {{ $value | humanizePercentage }} of the container memory limit."
+
+  - name: mintkey.budget
+    rules:
+      - alert: BudgetNearExhaustion
+        expr: mintkey_budget_used / mintkey_budget_ceiling > 0.9
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent budget > 90% for {{ $labels.agent_id }} on {{ $labels.service_id }}"

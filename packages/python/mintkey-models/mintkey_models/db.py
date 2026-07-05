@@ -363,3 +363,53 @@ class AgentSecretGrant(Base):
     recipient_agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     created_by: Mapped[UUID] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 028-budget-counters.yaml  (P-011; agent-budgets T-BUD-2.1)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 030-oidc-login-state.yaml  (kubernetes-readiness A2)
+# ---------------------------------------------------------------------------
+
+
+class OidcLoginState(Base):
+    """
+    Mirror of the oidc_login_state table. Source: 030-oidc-login-state.yaml.
+    Replaces in-process dict; single-use pop() with TTL expiry. No tenant_id
+    (state tokens are short-lived and not tenant-scoped). No RLS (per ADR-0030).
+    """
+
+    __tablename__ = "oidc_login_state"
+
+    state: Mapped[str] = mapped_column(primary_key=True)
+    code_verifier: Mapped[str] = mapped_column(nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class BudgetCounter(Base):
+    """
+    Mirror of the budget_counters table. Source: 028-budget-counters.yaml.
+    P-011 (agent budgets); composite PK (permission_id, period_start).
+    FK: permission_id → permission_grants(id) ON DELETE CASCADE.
+    FK: tenant_id → tenants(id).
+    """
+
+    __tablename__ = "budget_counters"
+
+    permission_id: Mapped[UUID] = mapped_column(
+        ForeignKey("permission_grants.id", ondelete="CASCADE"),
+        nullable=False,
+        primary_key=True,
+    )
+    period_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, primary_key=True
+    )
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ceiling: Mapped[int] = mapped_column(Integer, nullable=False)
+    used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)

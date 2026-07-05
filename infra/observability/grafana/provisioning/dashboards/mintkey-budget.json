@@ -1,0 +1,91 @@
+{
+  "id": null,
+  "uid": "mintkey-budget",
+  "title": "Mintkey — Budget Consumption",
+  "tags": ["mintkey", "budget"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "bargauge",
+      "title": "Budget Usage (used / ceiling) per Agent × Service",
+      "description": "Shows current budget consumption as a percentage. Green < 50%, Yellow 50-80%, Red > 80%.",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "mintkey_budget_used / mintkey_budget_ceiling",
+          "legendFormat": "{{ agent_id }} → {{ service_id }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Budget Denied Requests (rate)",
+      "description": "Rate of requests denied due to budget exhaustion.",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(mintkey_budget_denied_total[5m])) by (agent_id, service_id)",
+          "legendFormat": "{{ agent_id }} → {{ service_id }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Budget Denials (24h)",
+      "description": "Total requests denied due to budget exhaustion in the last 24 hours.",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(increase(mintkey_budget_denied_total[24h]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 }
+    }
+  ]
+}

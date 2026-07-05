@@ -20,6 +20,15 @@ type mockCache struct {
 func (m *mockCache) EvictByFingerprint(fp string) { m.evictedFPs = append(m.evictedFPs, fp) }
 func (m *mockCache) EvictByAgentID(id string)     { m.evictedAgents = append(m.evictedAgents, id) }
 
+// mockBudgetCache implements changes.BudgetCacheInvalidator for testing.
+type mockBudgetCache struct {
+	invalidated []string
+}
+
+func (m *mockBudgetCache) InvalidateBudget(permissionID string) {
+	m.invalidated = append(m.invalidated, permissionID)
+}
+
 // newTestSubscriber creates a Subscriber wired to fresh revocation sets and no cache.
 func newTestSubscriber() (*changes.Subscriber, *revocation.AgentRevocationSet, *revocation.JTIRevocationSet) {
 	agents := revocation.NewAgentRevocationSet()
@@ -35,6 +44,15 @@ func newTestSubscriberWithCache() (*changes.Subscriber, *revocation.AgentRevocat
 	mc := &mockCache{}
 	sub := changes.NewSubscriber("", agents, jtis, mc)
 	return sub, agents, mc
+}
+
+// newTestSubscriberWithBudgetCache creates a Subscriber with a mockBudgetCache attached.
+func newTestSubscriberWithBudgetCache() (*changes.Subscriber, *mockBudgetCache) {
+	agents := revocation.NewAgentRevocationSet()
+	jtis := revocation.NewJTIRevocationSet(100_000)
+	bc := &mockBudgetCache{}
+	sub := changes.NewSubscriber("", agents, jtis, nil, changes.WithBudgetCache(bc))
+	return sub, bc
 }
 
 // TestHandleAgentRevoked verifies that an agent.revoked payload adds the
@@ -146,4 +164,49 @@ func TestSubscriberDoesNotSubscribeToCredentialChannel(t *testing.T) {
 	// subscribe to mintkey:credential. Since it doesn't, this compiles only if
 	// the type has no such method.
 	_ = sub // compiler confirms no Subscribe/Listen method exists on *Subscriber
+}
+
+
+// ---------------------------------------------------------------------------
+// T-BUD-3.4: budget.config_updated event handling
+// ---------------------------------------------------------------------------
+
+// TestHandleBudgetConfigUpdated verifies that a budget.config_updated event
+// invalidates cached budget state for the affected permission_id.
+func TestHandleBudgetConfigUpdated(t *testing.T) {
+	sub, bc := newTestSubscriberWithBudgetCache()
+
+	payload := `{"event_type":"budget.config_updated","target_id":"perm_01BUDGET"}`
+	if err := sub.HandleNotification(payload); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(bc.invalidated) != 1 || bc.invalidated[0] != "perm_01BUDGET" {
+		t.Fatalf("expected InvalidateBudget(perm_01BUDGET), got %v", bc.invalidated)
+	}
+}
+
+// TestHandleBudgetConfigUpdated_NilBudgetCache verifies that budget.config_updated
+// is a no-op when no budget cache is wired (no panic).
+func TestHandleBudgetConfigUpdated_NilBudgetCache(t *testing.T) {
+	sub, _, _ := newTestSubscriber() // nil budget cache
+	payload := `{"event_type":"budget.config_updated","target_id":"perm_01BUDGET"}`
+	if err := sub.HandleNotification(payload); err != nil {
+		t.Fatalf("unexpected error with nil budget cache: %v", err)
+	}
+}
+
+// TestHandleBudgetConfigUpdated_EmptyTargetID verifies that budget.config_updated
+// with an empty target_id does not call InvalidateBudget.
+func TestHandleBudgetConfigUpdated_EmptyTargetID(t *testing.T) {
+	sub, bc := newTestSubscriberWithBudgetCache()
+
+	payload := `{"event_type":"budget.config_updated","target_id":""}`
+	if err := sub.HandleNotification(payload); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(bc.invalidated) != 0 {
+		t.Fatalf("expected no invalidation for empty target_id, got %v", bc.invalidated)
+	}
 }

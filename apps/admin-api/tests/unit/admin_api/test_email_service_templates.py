@@ -79,6 +79,32 @@ class TestEmailTemplateYamlLoading:
         assert t.auth_scheme == "email_password"
         assert t.provider == "generic"
 
+    def test_tailscale_template_fields(self) -> None:
+        t = self.by_id.get("tailscale")
+        assert t is not None, "tailscale template must be present"
+        assert t.kind == "http_service"
+        assert t.auth_type == "bearer_token"
+        assert t.base_url == "https://api.tailscale.com"
+        assert t.test_path == "/api/v2/tailnet/-/devices"
+        assert t.category == "networking"
+
+    def test_contabo_template_fields(self) -> None:
+        t = self.by_id.get("contabo")
+        assert t is not None, "contabo template must be present"
+        assert t.kind == "http_service"
+        assert t.auth_type == "oauth2_password_grant"
+        assert t.base_url == "https://api.contabo.com"
+        assert t.test_path == "/v1/users/client"
+        assert t.category == "cloud"
+        assert t.credential_hint is not None
+        token_url = t.credential_hint.token_url or ""
+        assert token_url.startswith("https://auth.contabo.com/")
+        # The form Content-Type header must be present so the proxy uses form encoding.
+        assert t.credential_hint.token_request_headers is not None
+        assert t.credential_hint.token_request_headers.get("Content-Type") == "application/x-www-form-urlencoded"
+        # grant_type=password must be in credential_fields so the exchanger POSTs it.
+        assert (t.credential_hint.credential_fields or {}).get("grant_type") == "password"
+
     def test_existing_http_templates_default_to_http_service_kind(self) -> None:
         """Legacy HTTP templates must have kind=http_service (backward compat)."""
         http_tpls = [t for t in self.templates if t.kind == "http_service"]
@@ -88,6 +114,8 @@ class TestEmailTemplateYamlLoading:
         assert "stripe" in http_ids
         assert "gitlab" in http_ids
         assert "slack" in http_ids
+        assert "tailscale" in http_ids
+        assert "contabo" in http_ids
 
     def test_no_http_template_has_email_kind(self) -> None:
         """None of the HTTP templates should accidentally get kind=email_service."""

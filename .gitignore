@@ -35,3 +35,7 @@ apps/admin-ui/screenshots-*/
 # Mintkey local developer state backups — MUST never be committed (may contain secrets)
 # EvidenceRef: EV-ENV-002, EV-ENV-003, EV-ENV-005, EV-BOOTSTRAP-001..006, EV-VOL-001..004
 .mintkey-backups/
+
+# Claude Code internal session state — local only, not project content
+.claire/
+

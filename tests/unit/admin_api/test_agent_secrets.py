@@ -1700,3 +1700,45 @@ async def test_cross_tenant_delete_secret_rejected_403() -> None:
     assert resp.status_code == 403, (
         f"Expected 403 (cross-tenant rejection) but got {resp.status_code}: {resp.text}"
     )
+
+
+# ===========================================================================
+# OTel regression — _IncludedRouter AttributeError (no .path on PARTIAL match)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_post_create_secret_no_500_under_otel() -> None:
+    """Regression: OTel _get_route_details crashed on _IncludedRouter in PARTIAL match.
+
+    include_router() creates _IncludedRouter objects that lack a .path attribute.
+    The upstream PARTIAL branch raised AttributeError, turning every POST into a 500.
+    configure_otel() monkey-patches _get_route_details; this test verifies the fix
+    survives a full ASGI request cycle with OTel middleware active.
+
+    Status 422 (agent not found via empty mock session) is acceptable — we only
+    assert the crash is gone (not 500).
+    """
+    from admin_api.middleware.otel import configure_otel
+
+    session = _MockSession(fetch_once_rows=[])  # agent lookup → None → 422, not 500
+    app = _create_app(session)
+
+    with (
+        patch("admin_api.middleware.otel.OTLPSpanExporter"),
+        patch("admin_api.middleware.otel.BatchSpanProcessor"),
+        patch("admin_api.middleware.otel.RedactingSpanProcessor"),
+        patch("opentelemetry.trace.set_tracer_provider"),
+    ):
+        configure_otel(app)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        r = await client.post(
+            BASE,
+            json={"agent_id": AGENT_UUID, "name": "otel-regression", "value": "x"},
+            headers={"X-CSRF-Token": CSRF_TOKEN},
+        )
+
+    assert r.status_code != 500, (
+        f"OTel middleware crash: expected non-500 but got {r.status_code}: {r.text}"
+    )

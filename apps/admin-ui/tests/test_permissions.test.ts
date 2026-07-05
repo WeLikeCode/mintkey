@@ -64,6 +64,32 @@ describe("PermissionsResource — UX-CLARITY field descriptions (Chunk D)", () =
   });
 });
 
+describe("PermissionsResource — Budget management (Tasks 8.1-8.3)", () => {
+  it("editBudget action is registered as a record action", () => {
+    const actions = PermissionsResource.options?.actions ?? {};
+    const editBudget = (actions as any).editBudget;
+    expect(editBudget).toBeDefined();
+    expect(editBudget.actionType).toBe("record");
+    expect(editBudget.isVisible).toBe(true);
+  });
+
+  it("_budgetPanel virtual property has show component", () => {
+    const props = PermissionsResource.options?.properties ?? {};
+    expect((props as any)._budgetPanel).toBeDefined();
+    expect((props as any)._budgetPanel.components.show).toBeDefined();
+  });
+
+  it("generic edit action remains disabled", () => {
+    const actions = PermissionsResource.options?.actions ?? {};
+    expect((actions as any).edit.isVisible).toBe(false);
+  });
+
+  it("_budgetPanel is in showProperties", () => {
+    const showProps = PermissionsResource.options?.showProperties ?? [];
+    expect(showProps).toContain("_budgetPanel");
+  });
+});
+
 describe("PermissionsResource — new action handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,5 +180,41 @@ describe("PermissionsResource — new action handler", () => {
     );
 
     expect(capturedBody.constraints).toEqual({});
+  });
+
+  it("includes budget fields in constraints when budget_ceiling and budget_period are provided", async () => {
+    let capturedBody = {} as Record<string, unknown>;
+    mockFetch.mockImplementation(async (_url: string, opts: { body: string }) => {
+      capturedBody = JSON.parse(opts.body);
+      return { ok: true, json: async () => ({ id: "perm_abc" }) };
+    });
+
+    const actions = PermissionsResource.options?.actions ?? {};
+    const handler = (actions as Record<string, { handler?: Function }>).new?.handler;
+
+    await handler!(
+      {
+        payload: {
+          agent_id: "agent_abc",
+          service_id: "svc_xyz",
+          action: "call",
+          constraints: "",
+          budget_ceiling: "500",
+          budget_period: "daily",
+          budget_alert_thresholds: "50, 80, 100",
+        },
+      },
+      {},
+      {
+        currentAdmin: { operatorId: "op_123", tenantId: "tenant_abc" },
+        record: { toJSON: () => ({}) },
+      }
+    );
+
+    expect((capturedBody.constraints as any).budget).toEqual({
+      ceiling: 500,
+      period: "daily",
+      alert_thresholds: [50, 80, 100],
+    });
   });
 });
