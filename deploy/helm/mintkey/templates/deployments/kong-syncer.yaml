@@ -48,7 +48,7 @@ spec:
             - name: MINTKEY_ENV
               value: {{ .Values.global.env }}
             - name: KONG_ADMIN_URL
-              value: http://{{ include "mintkey.fullname" . }}-kong:8001
+              value: http://{{ include "mintkey.fullname" . }}-kong-admin:8001
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
