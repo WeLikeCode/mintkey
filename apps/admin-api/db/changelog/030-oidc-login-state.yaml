@@ -1,0 +1,76 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 030-oidc-login-state.yaml
+  #
+  # Creates the oidc_login_state table for shared PKCE login state.
+  #
+  # No RLS policy: auth-flow state is not tenant-scoped (design §3 decision).
+  #
+  # Idempotent: MARK_RAN preConditions guard each changeset.
+  # Source: openspec/changes/kubernetes-readiness/specs/oidc-state-store/spec.md.
+  # -----------------------------------------------------------------------
+
+  - changeSet:
+      id: "030-oidc-login-state"
+      author: kubernetes-readiness
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: oidc_login_state
+      changes:
+        - createTable:
+            schemaName: public
+            tableName: oidc_login_state
+            remarks: "PKCE OIDC login state persisted across replicas/restarts."
+            columns:
+              - column:
+                  name: state
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                    primaryKey: true
+              - column:
+                  name: code_verifier
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: redirect_uri
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropTable:
+            tableName: oidc_login_state
+
+  - changeSet:
+      id: "030-oidc-login-state-grant"
+      author: kubernetes-readiness
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oidc_login_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.oidc_login_state TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.oidc_login_state FROM mintkey_app;
