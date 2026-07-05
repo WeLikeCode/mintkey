@@ -368,3 +368,19 @@ templates:
       help: "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token"
       format: "xoxb-..."
     test_path: /api.test
+
+  - template_id: tailscale
+    name: tailscale
+    display_name: Tailscale
+    description: "Tailscale mesh-VPN control API — list/authorize/remove devices, manage ACL tags, inspect DNS settings, and manage tailnet auth keys. Uses a Tailscale API access token as a bearer credential."
+    base_url: https://api.tailscale.com
+    auth_type: bearer_token
+    openapi_spec_url: https://tailscale.com/api
+    category: networking
+    version: "1.0.0"
+    config_notes: "Paste a Tailscale API access token (admin console → Settings → Keys → Generate access token). Tokens expire in 1–90 days — rotate the vault credential before expiry. Alternatively an OAuth2 client-credentials access token works as a bearer, but Mintkey does not yet perform the token exchange (OAuth support is a follow-up); for now supply a personal access token. The - in test_path resolves to the token's default tailnet."
+    credential_hint:
+      field: token
+      help: "Tailscale API access token from the admin console Keys page. Needs at least device-read scope (e.g. devices:core) for the validation check to pass."
+      format: "tskey-api-... (personal access token) or an OAuth2 access token"
+    test_path: /api/v2/tailnet/-/devices

@@ -79,6 +79,15 @@ class TestEmailTemplateYamlLoading:
         assert t.auth_scheme == "email_password"
         assert t.provider == "generic"
 
+    def test_tailscale_template_fields(self) -> None:
+        t = self.by_id.get("tailscale")
+        assert t is not None, "tailscale template must be present"
+        assert t.kind == "http_service"
+        assert t.auth_type == "bearer_token"
+        assert t.base_url == "https://api.tailscale.com"
+        assert t.test_path == "/api/v2/tailnet/-/devices"
+        assert t.category == "networking"
+
     def test_existing_http_templates_default_to_http_service_kind(self) -> None:
         """Legacy HTTP templates must have kind=http_service (backward compat)."""
         http_tpls = [t for t in self.templates if t.kind == "http_service"]
@@ -88,6 +97,7 @@ class TestEmailTemplateYamlLoading:
         assert "stripe" in http_ids
         assert "gitlab" in http_ids
         assert "slack" in http_ids
+        assert "tailscale" in http_ids
 
     def test_no_http_template_has_email_kind(self) -> None:
         """None of the HTTP templates should accidentally get kind=email_service."""
