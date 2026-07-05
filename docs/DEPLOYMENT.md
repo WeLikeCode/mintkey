@@ -55,7 +55,7 @@ is no tested procedure, no documented failure mode, and no support commitment fo
 
 | Path | Status | Notes |
 |---|---|---|
-| Production HA (multiple replicas of admin-api / broker / proxy) | NOT validated | The OIDC `_state_store` is in-process — single-replica only. Tracked in ADR-0020 open follow-ups. |
+| Production HA (multiple replicas of admin-api / broker / proxy) | Partially validated | Broker and admin-api are restart-safe and multi-replica-capable for the core auth flows (see ADR-0030). Remaining single-replica caveats apply to Kong/proxy-plugin in their current configuration. |
 | Managed secrets (Vault, AWS Secrets Manager, GCP Secret Manager) | NOT integrated | `data/bootstrap-secrets/` is the only supported secret source today. |
 | TLS ingress to the stack | NOT documented | Compose exposes plain HTTP; operators must front the stack with a reverse proxy (Caddy, nginx, cloud LB). See [`docs/NETWORK.md`](NETWORK.md) for the URL contracts. |
 | Database backup / restore / DR | NOT documented | Postgres data lives in the `postgres_data` Docker volume; no point-in-time recovery, no off-host backup automation. |
