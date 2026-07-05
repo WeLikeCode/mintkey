@@ -202,9 +202,8 @@ async function main() {
   // NOTE: MemoryStore is intentional for dev/single-process. For production,
   // replace with a durable store (e.g. connect-redis or connect-pg-simple) to
   // survive restarts and support horizontal scaling.
-  // codeql[js/missing-token-validation] CSRF is mitigated by sameSite:"strict" cookie attribute (see below); state-changing routes additionally require a signed Ed25519 AdminUiSignedRequest JWT per ADR-0019.
   app.use(
-    session({
+    session({ // codeql[js/missing-token-validation] CSRF mitigated by sameSite:"strict" + signed Ed25519 AdminUiSignedRequest JWT per ADR-0019
       name: "adminjs.sid",
       secret: process.env.SESSION_SECRET ?? "mintkey-dev-secret",
       resave: false,
