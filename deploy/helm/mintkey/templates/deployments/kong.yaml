@@ -31,7 +31,7 @@ spec:
             - name: KONG_PROXY_LISTEN
               value: "0.0.0.0:8000"
             - name: KONG_ADMIN_LISTEN
-              value: "127.0.0.1:8001"
+              value: "0.0.0.0:8001"
             - name: KONG_PROXY_ACCESS_LOG
               value: /dev/stdout
             - name: KONG_ADMIN_ACCESS_LOG
@@ -77,3 +77,21 @@ spec:
     - name: proxy
       port: 8000
       targetPort: 8000
+---
+# Kong admin API — ClusterIP only (internal; accessed by kong-syncer). No Ingress, no LoadBalancer.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong-admin
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+  ports:
+    - name: admin
+      port: 8001
+      targetPort: 8001

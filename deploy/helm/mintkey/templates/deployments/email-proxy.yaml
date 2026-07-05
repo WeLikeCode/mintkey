@@ -102,8 +102,8 @@ spec:
     app.kubernetes.io/component: email-proxy
   ports:
     - name: http
-      port: 8091
-      targetPort: 8091
+      port: 8088
+      targetPort: 8088
     - name: metrics
-      port: 8092
-      targetPort: 8092
+      port: 8090
+      targetPort: 8090
