@@ -38,7 +38,7 @@ type OAuth2ClientCredentialsCredential struct {
 }
 
 // HTTPDigestCredential is the JSON structure stored in the Vault for
-// auth_scheme=17 (http_digest) credentials. The Proxy Plugin parses this from
+// auth_scheme=18 (http_digest) credentials. The Proxy Plugin parses this from
 // the GetCredential response value and uses PublicKey as the RFC 2617 username
 // and PrivateKey as the password for a per-request Digest challenge-response
 // (e.g. MongoDB Atlas Programmatic API Keys).

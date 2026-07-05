@@ -2,9 +2,9 @@
 
 Executed orchestrator-style: one IMPLEMENTER per chunk (test-first, surgical), a fresh REVIEWER per chunk, 3-strike hard-stop. Chunks C2–C4 (Go proxy) and C5–C6 (admin-api) are independent and can run in parallel worktrees; C1 (contracts/enums) lands first because C2–C8 reference the new enum.
 
-## C1 — Contracts & enums (http_digest = 17)
+## C1 — Contracts & enums (http_digest = 18; 17 reserved)
 
-- [ ] 1.1 `docs/architecture/contracts/vault-adapter/vault.proto`: add `AUTH_SCHEME_HTTP_DIGEST = 17`; `protoc --descriptor_set_out=/dev/null` passes
+- [ ] 1.1 `docs/architecture/contracts/vault-adapter/vault.proto`: add `AUTH_SCHEME_HTTP_DIGEST = 18` and `reserved 17` (17 is held by the admin-api-only `email_oauth2_client` synthetic); `protoc --descriptor_set_out=/dev/null` passes
 - [ ] 1.2 `docs/architecture/contracts/rest/openapi.yaml`: add `http_digest` to the `AuthScheme` enum (confirm `oauth2_client_credentials` already present); `openapi-spec-validator` + Redocly lint pass
 - [ ] 1.3 `docs/architecture/contracts/mcp/tools.yaml`: add `http_digest`; `yaml.safe_load` passes
 - [ ] 1.4 Regenerate `openapi_snapshot.json` (admin-api emits OpenAPI; CI diff green); update audit/change event schemas only if they enumerate auth schemes
@@ -21,7 +21,7 @@ Executed orchestrator-style: one IMPLEMENTER per chunk (test-first, surgical), a
 ## C3 — Go proxy: HTTP Digest
 
 - [ ] 3.1 `apps/proxy-plugin/go.mod` + `go.work`: add `github.com/icholy/digest`; `go mod tidy`; record license in the dependency-bump stub
-- [ ] 3.2 `apps/proxy-plugin/internal/credential/types.go` (+ const in the credential pkg): `HTTPDigestCredential` struct; `AuthSchemeHTTPDigest AuthScheme = 17`
+- [ ] 3.2 `apps/proxy-plugin/internal/credential/types.go` (+ const in the credential pkg): `HTTPDigestCredential` struct; `AuthSchemeHTTPDigest AuthScheme = 18`
 - [ ] 3.3 `apps/proxy-plugin/internal/credential/digest.go`: build a per-request `*digest.Transport{Username, Password, Transport: base}`
 - [ ] 3.4 `apps/proxy-plugin/cmd/proxy-plugin/main.go`: dispatch `http_digest` — set `proxy.Transport` to the digest transport, strip agent `Authorization` in the Director, inject no auth header
 - [ ] 3.5 Tests: 401-challenge handled against an httptest digest server; agent `Authorization` stripped; `go test ./...` green

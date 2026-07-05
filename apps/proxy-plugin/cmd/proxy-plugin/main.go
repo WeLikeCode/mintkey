@@ -378,7 +378,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// HTTP Digest (auth_scheme=17): the credential is not a static header — the
+	// HTTP Digest (auth_scheme=18): the credential is not a static header — the
 	// proxy attaches a per-request digest.Transport that performs the RFC 2617
 	// challenge-response handshake against the upstream (e.g. Atlas API keys).
 	if credential.AuthScheme(credResp.AuthScheme) == credential.AuthSchemeHTTPDigest {
@@ -658,7 +658,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 	}
 }
 
-// handleHTTPDigest handles the HTTP Digest (auth_scheme=17) egress flow. Unlike
+// handleHTTPDigest handles the HTTP Digest (auth_scheme=18) egress flow. Unlike
 // the header-injecting schemes, Digest is a 401→challenge→retry handshake, so the
 // proxy attaches a per-request digest.Transport (built from the stored key pair)
 // to the reverse proxy and strips the agent's Authorization in the Director

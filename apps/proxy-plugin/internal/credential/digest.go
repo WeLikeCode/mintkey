@@ -1,4 +1,4 @@
-// Package credential — HTTP Digest (auth_scheme=17) support.
+// Package credential — HTTP Digest (auth_scheme=18) support.
 //
 // Digest is a 401→challenge→retry handshake, so a static Authorization header
 // cannot express it. Instead the proxy attaches a per-request digest.Transport
@@ -6,7 +6,7 @@
 // challenge-response using the stored public_key as the username and private_key
 // as the password.
 //
-// Source: ADR-0029; design.md Component 2; vault.proto AUTH_SCHEME_HTTP_DIGEST = 17.
+// Source: ADR-0029; design.md Component 2; vault.proto AUTH_SCHEME_HTTP_DIGEST = 18.
 package credential
 
 import (

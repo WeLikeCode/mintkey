@@ -373,7 +373,7 @@ INJECTION_HINTS: dict[str, dict[str, str]] = {
     },
 
     # ------------------------------------------------------------------
-    # AUTH_SCHEME_HTTP_DIGEST = 17
+    # AUTH_SCHEME_HTTP_DIGEST = 18
     # digest.go: the proxy attaches an RFC 2617 Digest transport built from
     # the stored public_key (username) / private_key (password) and performs
     # the 401-challenge → response handshake per request; no static header.

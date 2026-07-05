@@ -50,9 +50,9 @@ def _marker() -> str:
 # ===========================================================================
 
 
-def test_http_digest_credential_scheme_maps_to_17() -> None:
-    """http_digest must map to AUTH_SCHEME_HTTP_DIGEST = 17 (vault.proto)."""
-    assert _AUTH_SCHEME_MAP["http_digest"] == 17
+def test_http_digest_credential_scheme_maps_to_18() -> None:
+    """http_digest must map to AUTH_SCHEME_HTTP_DIGEST = 18 (vault.proto; 17 reserved)."""
+    assert _AUTH_SCHEME_MAP["http_digest"] == 18
 
 
 def test_oauth2_client_credentials_scheme_maps_to_5() -> None:

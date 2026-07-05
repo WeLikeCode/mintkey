@@ -57,8 +57,9 @@ _AUTH_SCHEME_MAP: dict[str, int] = {
     "email_app_password": 16,  # ADR-0024: Email app-password credential
     "email_oauth2_client": 17,  # feat/oauth2-providers-per-tenant-vault: per-tenant OAuth2 client secret
     # ADR-0029: HTTP Digest (RFC 2617) key pair — MongoDB Atlas Programmatic API Keys.
-    # Canonical vault.proto value AUTH_SCHEME_HTTP_DIGEST = 17.
-    "http_digest": 17,
+    # Canonical vault.proto value AUTH_SCHEME_HTTP_DIGEST = 18 (17 is reserved: the
+    # admin-api-only email_oauth2_client synthetic above already occupies 17).
+    "http_digest": 18,
 }
 
 _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")

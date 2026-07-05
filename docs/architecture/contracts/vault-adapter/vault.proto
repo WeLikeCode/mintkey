@@ -114,9 +114,14 @@ enum AuthScheme {
   // EMAIL_APP_PASSWORD: Vault stores an app-password credential (e.g. Google App Password) (ADR-0024).
   // Payload JSON: {"username","app_password","imap_host","imap_port","smtp_host","smtp_port"}.
   AUTH_SCHEME_EMAIL_APP_PASSWORD = 16;
+  // 17 is RESERVED: the admin-api-only synthetic scheme `email_oauth2_client`
+  // (feat/oauth2-providers-per-tenant-vault) stores per-tenant OAuth2 client
+  // secrets in the vault at integer 17 without a canonical proto entry. Do not
+  // assign 17 to a canonical scheme without reconciling that first (ADR-0029).
+  reserved 17;
   // HTTP_DIGEST: Vault stores an HTTP Digest (RFC 2617) key pair for challenge-response auth (ADR-0029).
   // Payload JSON: {"public_key","private_key"}. Used by MongoDB Atlas Programmatic API Keys.
-  AUTH_SCHEME_HTTP_DIGEST = 17;
+  AUTH_SCHEME_HTTP_DIGEST = 18;
 }
 
 // CredentialStatus reflects the lifecycle of one (tenant_id, service_id,

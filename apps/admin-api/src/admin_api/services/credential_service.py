@@ -667,7 +667,7 @@ class OAuth2ClientCredentialsPayload(BaseModel):
 
 # ---------------------------------------------------------------------------
 # HTTP Digest credential payload model — ADR-0029
-# (MongoDB Atlas Programmatic API Keys; auth_scheme=http_digest, enum 17)
+# (MongoDB Atlas Programmatic API Keys; auth_scheme=http_digest, enum 18)
 # ---------------------------------------------------------------------------
 
 

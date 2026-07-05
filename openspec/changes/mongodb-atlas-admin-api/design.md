@@ -49,7 +49,7 @@ Password-grant marshals a JSON body and applies caller-supplied `token_request_h
 
 ## Component 2 — HTTP Digest (Programmatic API Keys)
 
-**New scheme** `AUTH_SCHEME_HTTP_DIGEST = 17` (proto), `http_digest` (OpenAPI + MCP enums), `AuthSchemeHTTPDigest AuthScheme = 17` (Go const).
+**New scheme** `AUTH_SCHEME_HTTP_DIGEST = 18` (proto; 17 is `reserved` for the pre-existing admin-api-only `email_oauth2_client` synthetic), `http_digest` (OpenAPI + MCP enums), `AuthSchemeHTTPDigest AuthScheme = 18` (Go const).
 
 **New credential payload** (`internal/credential/types.go`):
 ```go

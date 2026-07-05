@@ -40,9 +40,11 @@ The proxy performs the client-credentials exchange on demand, reusing — withou
 
 The exchanged token is injected as `Authorization: Bearer <token>` (the injector's existing scheme-5 case). A scheme-5 payload that is not exchange-shaped falls through to the existing pre-fetched-bearer behavior (backward-compatible).
 
-### D3: New `http_digest` auth scheme (enum 17)
+### D3: New `http_digest` auth scheme (enum 18; 17 reserved)
 
-Add `AUTH_SCHEME_HTTP_DIGEST = 17` to `vault.proto`, mirrored as `http_digest` in the OpenAPI and MCP enums and a Go `AuthScheme` constant. Credential payload `{public_key, private_key}`. The proxy performs RFC 2617 Digest via a **per-request Digest transport** on the reverse proxy (vetted `github.com/icholy/digest`), not a static header: the agent's `Authorization` is stripped and the Digest handshake supplies the upstream `Authorization`.
+Add `AUTH_SCHEME_HTTP_DIGEST = 18` to `vault.proto`, mirrored as `http_digest` in the OpenAPI and MCP enums and a Go `AuthScheme` constant. Credential payload `{public_key, private_key}`. The proxy performs RFC 2617 Digest via a **per-request Digest transport** on the reverse proxy (vetted `github.com/icholy/digest`), not a static header: the agent's `Authorization` is stripped and the Digest handshake supplies the upstream `Authorization`.
+
+Integer **17 is reserved**, not assigned: the admin-api-only synthetic scheme `email_oauth2_client` (from feat/oauth2-providers-per-tenant-vault) already stores per-tenant OAuth2 client secrets in the vault at integer 17 without a canonical `vault.proto` entry. Rather than disturb that live feature (and risk its stored credentials), `http_digest` takes the next free canonical value 18, and `vault.proto` marks 17 `reserved` so no future canonical scheme collides. Regularizing `email_oauth2_client` into the canonical enum is a separate follow-up.
 
 ### D4: Read-scoped proxy actions — `read:atlas` and `admin:atlas`
 
