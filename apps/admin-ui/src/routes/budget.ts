@@ -29,7 +29,7 @@ async function lookupPermission(
   permId: string,
   cookie: string
 ): Promise<{ agent_id: string } | null> {
-  const resp = await fetch( // codeql[js/server-side-request-forgery] ADMIN_API_URL is a fixed env var; permId is path-only, validated by admin-api
+  const resp = await fetch( // codeql[js/request-forgery] ADMIN_API_URL is a fixed env var; permId is path-only, validated by admin-api
     `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permId}`,
     { headers: { Cookie: cookie } }
   );
@@ -61,7 +61,7 @@ export async function budgetGetHandler(req: Request, res: Response): Promise<voi
   const cookie = req.headers.cookie ?? "";
 
   try {
-    const upstream = await fetch( // codeql[js/server-side-request-forgery] ADMIN_API_URL is a fixed env var; permId is path-only, validated by admin-api
+    const upstream = await fetch( // codeql[js/request-forgery] ADMIN_API_URL is a fixed env var; permId is path-only, validated by admin-api
       `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permId}/budget`,
       { headers: { Cookie: cookie } }
     );
