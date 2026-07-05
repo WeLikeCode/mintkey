@@ -366,6 +366,28 @@ def seed_mock_backend_demo(conn: psycopg2.extensions.connection, tenant_id: str)
 
 
 # ---------------------------------------------------------------------------
+# Admin-UI Ed25519 keypair bootstrap
+# ---------------------------------------------------------------------------
+
+
+def generate_admin_ui_keypair(secrets_dir: Path) -> None:
+    priv_path = secrets_dir / "admin_ui_private.pem"
+    pub_path  = secrets_dir / "admin_ui_public.pem"
+    if priv_path.exists() and pub_path.exists():
+        return
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, PrivateFormat, PublicFormat, NoEncryption,
+    )
+    key = Ed25519PrivateKey.generate()
+    priv_bytes = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
+    pub_bytes  = key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo)
+    priv_path.write_bytes(priv_bytes)
+    priv_path.chmod(0o400)
+    pub_path.write_bytes(pub_bytes)
+
+
+# ---------------------------------------------------------------------------
 # Secret-file helper — content-validating idempotent write
 # ---------------------------------------------------------------------------
 
@@ -1082,6 +1104,8 @@ def main(argv: list[str] | None = None) -> int:
 
         print("Seed: running step 9 — Keycloak realm bootstrap…")
         seed_keycloak_realm_and_admin(conn, tenant_id)
+
+        generate_admin_ui_keypair(BOOTSTRAP_SECRETS_DIR)
 
         if os.getenv("MINTKEY_SEED_DEMO", "").lower() in ("1", "true", "yes"):
             print("Seed: MINTKEY_SEED_DEMO=true — registering mock backend…")
