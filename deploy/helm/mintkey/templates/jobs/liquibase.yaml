@@ -31,7 +31,7 @@ spec:
               done
       containers:
         - name: liquibase
-          image: liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e662c4212e834468df959983
+          image: {{ .Values.global.imageRegistry }}/mintkey-liquibase:{{ .Values.global.imageTag }}
           args:
             - --url=jdbc:postgresql://{{ include "mintkey.fullname" . }}-postgres:5432/mintkey
             - --username=mintkey_migrate
@@ -57,10 +57,3 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: MINTKEY_DB_SUBSCRIBER_PASSWORD
-          volumeMounts:
-            - name: changelog
-              mountPath: /liquibase/changelog
-      volumes:
-        - name: changelog
-          configMap:
-            name: {{ include "mintkey.fullname" . }}-liquibase-changelog

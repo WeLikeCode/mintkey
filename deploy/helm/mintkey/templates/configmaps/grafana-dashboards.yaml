@@ -1,0 +1,681 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana-dashboards
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  provider.yaml: |
+    apiVersion: 1
+
+    providers:
+      - name: Mintkey Dashboards
+        folder: Mintkey
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /etc/grafana/provisioning/dashboards
+  mintkey-audit.json: |
+    {
+      "id": null,
+      "uid": "mintkey-audit",
+      "title": "mintkey-audit",
+      "tags": ["mintkey"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "60s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Audit Events per Second",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_audit_events_total[5m])",
+              "legendFormat": "events/s"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Audit Events by Type",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_audit_events_total[5m])",
+              "legendFormat": "{{`{{event_type}}`}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Chain Verification Status",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "mintkey_audit_chain_ok"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "PlatformAdmin Cross-Tenant Access",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_audit_events_total{event_type=\"platform_admin.access\"}[5m])",
+              "legendFormat": "platform_admin.access/s"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12}
+        }
+      ]
+    }
+  mintkey-budget.json: |
+    {
+      "id": null,
+      "uid": "mintkey-budget",
+      "title": "Mintkey — Budget Consumption",
+      "tags": ["mintkey", "budget"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "bargauge",
+          "title": "Budget Usage (used / ceiling) per Agent x Service",
+          "description": "Shows current budget consumption as a percentage. Green < 50%, Yellow 50-80%, Red > 80%.",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "mintkey_budget_used / mintkey_budget_ceiling",
+              "legendFormat": "{{`{{ agent_id }}`}} -> {{`{{ service_id }}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "red", "value": 0.8 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "gradient",
+            "showUnfilled": true,
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            }
+          },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Budget Denied Requests (rate)",
+          "description": "Rate of requests denied due to budget exhaustion.",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(mintkey_budget_denied_total[5m])) by (agent_id, service_id)",
+              "legendFormat": "{{`{{ agent_id }}`}} -> {{`{{ service_id }}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Total Budget Denials (24h)",
+          "description": "Total requests denied due to budget exhaustion in the last 24 hours.",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(increase(mintkey_budget_denied_total[24h]))"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 }
+        }
+      ]
+    }
+  mintkey-credential-cache.json: |
+    {
+      "id": null,
+      "uid": "mintkey-credential-cache",
+      "title": "mintkey-credential-cache",
+      "tags": ["mintkey"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "gauge",
+          "title": "DEK Cache Hit Rate",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_vault_dek_cache_hit_total[5m]) / (rate(mintkey_vault_dek_cache_hit_total[5m]) + rate(mintkey_vault_dek_cache_miss_total[5m]))",
+              "legendFormat": "hit rate"
+            }
+          ],
+          "options": {
+            "minValue": 0,
+            "maxValue": 1
+          },
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "DEK Cache Hits vs Misses",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_vault_dek_cache_hit_total[5m])",
+              "legendFormat": "hits"
+            },
+            {
+              "expr": "rate(mintkey_vault_dek_cache_miss_total[5m])",
+              "legendFormat": "misses"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 16, "x": 8, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Change Channel Subscriber Lag",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "mintkey_changes_subscriber_lag_seconds",
+              "legendFormat": "{{`{{service}}`}} lag"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Credential Rotations (1h)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "increase(mintkey_vault_dek_cache_miss_total[1h])"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16}
+        }
+      ]
+    }
+  mintkey-memory.json: |
+    {
+      "id": null,
+      "uid": "mintkey-memory",
+      "title": "Mintkey memory by container (working set vs. limit)",
+      "tags": ["mintkey", "memory"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Working set vs. limit (bytes)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "container_memory_working_set_bytes{name=~\"mintkey.*\"}",
+              "legendFormat": "{{`{{name}}`}} working-set"
+            },
+            {
+              "expr": "container_spec_memory_limit_bytes{name=~\"mintkey.*\"}",
+              "legendFormat": "{{`{{name}}`}} limit"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            }
+          },
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Memory utilisation % of limit",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "100 * container_memory_working_set_bytes{name=~\"mintkey.*\"} / container_spec_memory_limit_bytes{name=~\"mintkey.*\"}",
+              "legendFormat": "{{`{{name}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 70},
+                  {"color": "red", "value": 85}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 9}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Process RSS (FastAPI services)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "process_resident_memory_bytes{job=~\"admin-api|mcp-server\"}",
+              "legendFormat": "{{`{{job}}`}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {"unit": "bytes"}
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Containers over 85% memory",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "count(container_memory_working_set_bytes{name=~\"mintkey.*\"} / container_spec_memory_limit_bytes{name=~\"mintkey.*\"} > 0.85) or vector(0)",
+              "legendFormat": "containers >85%"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              }
+            }
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18}
+        }
+      ]
+    }
+  mintkey-overview.json: |
+    {
+      "id": null,
+      "uid": "mintkey-overview",
+      "title": "mintkey-overview",
+      "tags": ["mintkey"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request Rate (all services)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(mintkey_requests_total[5m])) by (service)",
+              "legendFormat": "{{`{{service}}`}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Request Latency p99 (ms)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(mintkey_request_duration_seconds_bucket[5m])) by (le, service)) * 1000",
+              "legendFormat": "{{`{{service}}`}} p99"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Tokens Issued (5m rate)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(mintkey_token_issued_total[5m]))"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8}
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Proxy Hits (5m rate)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(mintkey_proxy_hit_total[5m]))"
+            }
+          ],
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8}
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Error Rate",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "sum(rate(mintkey_requests_total{status_code=~\"5..\"}[5m])) by (service)",
+              "legendFormat": "{{`{{service}}`}} errors"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12}
+        }
+      ]
+    }
+  mintkey-per-service.json: |
+    {
+      "id": null,
+      "uid": "mintkey-per-service",
+      "title": "mintkey-per-service",
+      "tags": ["mintkey"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "templating": {
+        "list": [
+          {
+            "name": "service_id",
+            "type": "query",
+            "datasource": "Prometheus",
+            "query": "label_values(mintkey_proxy_hit_total, service_id)"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Proxy Hits by Service",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_proxy_hit_total{service_id=~\"$service_id\"}[5m])",
+              "legendFormat": "{{`{{service_id}}`}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Proxy Added Latency p99 (ms)",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(mintkey_proxy_added_latency_seconds_bucket{service_id=~\"$service_id\"}[5m])) by (le, service_id)) * 1000",
+              "legendFormat": "{{`{{service_id}}`}} p99"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Token Issuance Rate",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_token_issued_total[5m])",
+              "legendFormat": "tokens/s"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Proxy Denied Requests",
+          "datasource": "Prometheus",
+          "targets": [
+            {
+              "expr": "rate(mintkey_proxy_denied_total{service_id=~\"$service_id\"}[5m])",
+              "legendFormat": "{{`{{reason}}`}} {{`{{service_id}}`}}"
+            }
+          ],
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+        }
+      ]
+    }
+  request-monitoring.json: |
+    {
+      "__inputs": [],
+      "uid": "mintkey-request-monitoring",
+      "title": "Request Monitoring",
+      "tags": ["mintkey", "proxy"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "templating": {
+        "list": [
+          {
+            "name": "agent",
+            "type": "query",
+            "query": "label_values(mintkey_proxy_calls_total, mintkey_actor_id)",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "includeAll": true,
+            "allValue": ".*",
+            "current": { "text": "All", "value": "$__all" },
+            "refresh": 2,
+            "multi": false
+          },
+          {
+            "name": "service",
+            "type": "query",
+            "query": "label_values(mintkey_proxy_calls_total, mintkey_service_id)",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "includeAll": true,
+            "allValue": ".*",
+            "current": { "text": "All", "value": "$__all" },
+            "refresh": 2,
+            "multi": false
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request Rate",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "expr": "rate(mintkey_proxy_calls_total{mintkey_actor_id=~\"$agent\", mintkey_service_id=~\"$service\"}[$__rate_interval])",
+              "legendFormat": "{{`{{mintkey_service_id}}`}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "drawStyle": "line",
+                "lineInterpolation": "smooth",
+                "fillOpacity": 10,
+                "showPoints": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Request Count",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "expr": "increase(mintkey_proxy_calls_total{mintkey_actor_id=~\"$agent\", mintkey_service_id=~\"$service\"}[$__range])",
+              "legendFormat": "{{`{{mintkey_service_id}}`}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": { "defaults": { "noValue": "0" }, "overrides": [] },
+          "options": {}
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Outcome Breakdown",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "expr": "sum by (mintkey_outcome) (rate(mintkey_proxy_calls_total{mintkey_actor_id=~\"$agent\", mintkey_service_id=~\"$service\"}[$__rate_interval]))",
+              "legendFormat": "{{`{{mintkey_outcome}}`}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 100,
+                "stacking": { "mode": "normal", "group": "A" },
+                "showPoints": "never"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "success" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#73BF69" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "client_error" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FADE2A" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "server_error" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#F2495C" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "denied" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#FF9830" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "error" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#C4162A" } }]
+              }
+            ]
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          }
+        },
+        {
+          "id": 4,
+          "type": "table",
+          "title": "Agent-Service Matrix",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "expr": "topk(50, sum by (mintkey_actor_id, mintkey_service_id) (increase(mintkey_proxy_calls_total{mintkey_actor_id=~\"$agent\", mintkey_service_id=~\"$service\"}[$__range])))",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "mintkey_actor_id": "Agent",
+                  "mintkey_service_id": "Service",
+                  "Value": "Requests"
+                },
+                "excludeByName": { "Time": true }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": { "custom": { "align": "auto", "filterable": true } },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Requests" },
+                "properties": [{ "id": "custom.width", "value": 120 }]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "sortBy": [{ "displayName": "Requests", "desc": true }],
+            "footer": { "show": false }
+          }
+        }
+      ]
+    }
+{{- end }}
