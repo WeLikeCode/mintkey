@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 
+import opentelemetry.instrumentation.fastapi as _otel_fastapi
 from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -17,8 +18,38 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from starlette.routing import Match, Route
 
 from mintkey_models.otel_redaction import RedactingSpanProcessor
+
+
+def _safe_get_route_details(scope: dict) -> str | None:
+    """Replacement for OTel's _get_route_details that handles _IncludedRouter.
+
+    The upstream Match.PARTIAL branch lacks the try/except AttributeError guard
+    present in the Match.FULL branch, crashing when FastAPI's include_router()
+    produces _IncludedRouter objects which have no .path attribute.
+    """
+    _app = scope["app"]
+    route = None
+    for starlette_route in _app.routes:
+        match, _ = (
+            Route.matches(starlette_route, scope)
+            if isinstance(starlette_route, Route)
+            else starlette_route.matches(scope)
+        )
+        if match == Match.FULL:
+            try:
+                route = starlette_route.path
+            except AttributeError:
+                route = scope.get("path")
+            break
+        if match == Match.PARTIAL:
+            try:
+                route = starlette_route.path
+            except AttributeError:
+                route = scope.get("path")
+    return route
 
 
 def configure_otel(app: FastAPI, service_name: str = "admin-api") -> None:
@@ -31,34 +62,8 @@ def configure_otel(app: FastAPI, service_name: str = "admin-api") -> None:
     )
     trace.set_tracer_provider(provider)
 
-    # Patch OTel's _get_route_details: the Match.PARTIAL branch lacks the
-    # try/except AttributeError guard that Match.FULL has, so _IncludedRouter
-    # objects (produced by FastAPI's include_router) crash span creation.
-    import opentelemetry.instrumentation.fastapi as _otel_fastapi  # noqa: PLC0415
-    from starlette.routing import Match, Route  # noqa: PLC0415
-
-    def _safe_get_route_details(scope: dict) -> str | None:  # type: ignore[return]
-        _app = scope["app"]
-        route = None
-        for starlette_route in _app.routes:
-            match, _ = (
-                Route.matches(starlette_route, scope)
-                if isinstance(starlette_route, Route)
-                else starlette_route.matches(scope)
-            )
-            if match == Match.FULL:
-                try:
-                    route = starlette_route.path
-                except AttributeError:
-                    route = scope.get("path")
-                break
-            if match == Match.PARTIAL:
-                try:
-                    route = starlette_route.path
-                except AttributeError:
-                    route = scope.get("path")
-        return route
-
+    # Monkey-patch _get_route_details before instrumenting so _IncludedRouter
+    # objects (from include_router) don't crash span creation on PARTIAL match.
     _otel_fastapi._get_route_details = _safe_get_route_details
 
     FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
