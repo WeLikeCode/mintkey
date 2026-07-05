@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+spec:
+  replicas: {{ .Values.kong.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kong
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: kong
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: kong
+          image: {{ .Values.kong.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /etc/kong/kong.yml
+            - name: KONG_PROXY_LISTEN
+              value: "0.0.0.0:8000"
+            - name: KONG_ADMIN_LISTEN
+              value: "127.0.0.1:8001"
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_NGINX_WORKER_PROCESSES
+              value: "2"
+          volumeMounts:
+            - name: kong-config
+              mountPath: /etc/kong/kong.yml
+              subPath: kong.yml
+          readinessProbe:
+            exec:
+              command:
+                - kong
+                - health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.kong.resources | nindent 12 }}
+      volumes:
+        - name: kong-config
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-kong-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: 8000

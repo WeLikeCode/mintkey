@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-ssh-proxy
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+spec:
+  replicas: {{ .Values.sshProxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ssh-proxy
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ssh-proxy
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: ssh-proxy
+          image: {{ include "mintkey.image" (dict "image" .Values.sshProxy.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SSH_PROXY_SSH_ADDR
+              value: ":2222"
+            - name: SSH_PROXY_HTTP_ADDR
+              value: ":8087"
+            - name: SSH_PROXY_HOST_KEY_PATH
+              value: /var/lib/mintkey/ssh_host_ed25519_key
+            - name: SSH_PROXY_HOST_KEY_GENERATE
+              value: "false"
+            - name: SSH_PROXY_RECORDING_DIR
+              value: /var/lib/mintkey/ssh-recordings
+            - name: SSH_PROXY_RECORDING_ENABLED
+              value: "true"
+            - name: VAULT_ADAPTER_ADDR
+              value: {{ include "mintkey.fullname" . }}-vault-adapter:8084
+            - name: BROKER_ADDR
+              value: {{ include "mintkey.fullname" . }}-broker:8083
+            - name: MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID
+            - name: MINTKEY_VAULT_SSH_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_SSH_PROXY_TOKEN
+            - name: LOG_LEVEL
+              value: info
+          volumeMounts:
+            - name: ssh-proxy-hostkey
+              mountPath: /var/lib/mintkey
+              readOnly: true
+            - name: ssh-proxy-recordings
+              mountPath: /var/lib/mintkey/ssh-recordings
+          readinessProbe:
+            exec:
+              command:
+                - /ssh-proxy
+                - -health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.sshProxy.resources | nindent 12 }}
+      volumes:
+        - name: ssh-proxy-hostkey
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-ssh-proxy-hostkey
+        - name: ssh-proxy-recordings
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-ssh-proxy-recordings
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-ssh-proxy-tcp
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+spec:
+  type: {{ .Values.sshProxy.serviceType }}
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+  ports:
+    - name: ssh
+      port: 2222
+      targetPort: 2222
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-ssh-proxy
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+  ports:
+    - name: health
+      port: 8089
+      targetPort: 8087
