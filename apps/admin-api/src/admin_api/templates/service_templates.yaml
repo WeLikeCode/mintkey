@@ -368,3 +368,35 @@ templates:
       help: "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token"
       format: "xoxb-..."
     test_path: /api.test
+
+  - template_id: mongodb-atlas-service-account
+    name: mongodb-atlas-service-account
+    display_name: MongoDB Atlas Administration API (Service Account)
+    description: "MongoDB Atlas Administration API (control plane) via a Service Account. Mintkey exchanges your client_id/client_secret for a 1-hour Bearer access token and injects it as Authorization: Bearer — never send your own auth. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Admin API only — reading collection documents is not supported."
+    base_url: https://cloud.mongodb.com/api/atlas/v2
+    auth_type: oauth2_client_credentials
+    openapi_spec_url: https://mongodb.com/docs/atlas/reference/api-resources-spec/v2
+    category: database
+    version: "1.0.0"
+    config_notes: "Create a Service Account in Atlas (Organization Settings → Access Manager → Applications → Service Accounts) and paste its client_id and client_secret. Mintkey exchanges them for a 1-hour Bearer token at https://cloud.mongodb.com/api/oauth/token (token_response_path $.access_token) and injects it per request. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Grant read:atlas and/or admin:atlas per agent."
+    credential_hint:
+      token_url: https://cloud.mongodb.com/api/oauth/token
+      client_id: "(your Service Account client ID)"
+      client_secret: "(your Service Account client secret)"
+      token_response_path: "$.access_token"
+    test_path: /groups
+
+  - template_id: mongodb-atlas-api-key
+    name: mongodb-atlas-api-key
+    display_name: MongoDB Atlas Administration API (Programmatic API Key)
+    description: "MongoDB Atlas Administration API (control plane) via a Programmatic API Key. Mintkey performs the RFC 2617 HTTP Digest challenge-response with your public/private key pair — never send your own auth. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Admin API only — reading collection documents is not supported."
+    base_url: https://cloud.mongodb.com/api/atlas/v2
+    auth_type: http_digest
+    openapi_spec_url: https://mongodb.com/docs/atlas/reference/api-resources-spec/v2
+    category: database
+    version: "1.0.0"
+    config_notes: "Create a Programmatic API Key in Atlas (Organization/Project → Access Manager → API Keys) and paste its public key and private key. Mintkey authenticates via HTTP Digest per request — no token to rotate manually. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Grant read:atlas and/or admin:atlas per agent."
+    credential_hint:
+      public_key: "(your Programmatic API Key public key)"
+      private_key: "(your Programmatic API Key private key)"
+    test_path: /groups

@@ -572,3 +572,152 @@ class SSHPasswordPayload(BaseModel):
         bytes are passed directly to PutCredential and NEVER logged.
         """
         return self.password.encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# OAuth2 Client-Credentials credential payload model — ADR-0029
+# (MongoDB Atlas Service Accounts; auth_scheme=oauth2_client_credentials, enum 5)
+# ---------------------------------------------------------------------------
+
+
+class OAuth2ClientCredentialsPayload(BaseModel):
+    """Structured credential payload for auth_scheme=oauth2_client_credentials.
+
+    Validated at registration time. The Vault Adapter stores the canonical JSON
+    envelope the Go proxy parses (design.md Component 1 — a bare object, NOT a
+    {"scheme": ...} wrapper): the proxy discriminates a live-exchange scheme-5
+    credential from a pre-fetched bearer by the presence of a non-empty token_url.
+
+    Fields:
+      - token_url: HTTPS endpoint that mints the access token via
+        grant_type=client_credentials. Must pass SSRF allowlist (S-SEC-1).
+      - client_id: OAuth2 client identifier (non-empty; sent as HTTP Basic user).
+      - client_secret: OAuth2 client secret (non-empty). NEVER logged, echoed in a
+        response, or included in an audit payload — ADR-0014.4, ADR-0014.7, S-SEC-1.
+      - scope: Optional space-delimited scopes; omitted from the envelope when unset.
+      - token_response_path: JSONPath for extracting the access token. Default
+        "$.access_token".
+
+    Source: design.md Component 1; ADR-0029; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: client_secret is intentionally NOT repr'd or logged anywhere.
+    token_url: str
+    client_id: str
+    client_secret: str
+    scope: str | None = None
+    token_response_path: str = "$.access_token"
+
+    @field_validator("token_url")
+    @classmethod
+    def validate_https(cls, v: str) -> str:
+        """Require HTTPS scheme — ADR-0029."""
+        parts = urlsplit(v)
+        if parts.scheme != "https":
+            raise ValueError("token_url must use HTTPS")
+        if not parts.hostname:
+            raise ValueError("token_url must have a valid hostname")
+        return v
+
+    @field_validator("token_url")
+    @classmethod
+    def validate_ssrf(cls, v: str) -> str:
+        """Reject private/loopback destinations — S-SEC-1 (shared SSRF resolver)."""
+        is_safe, reason = validate_token_url_ssrf(v)
+        if not is_safe:
+            raise ValueError(f"token_url blocked by SSRF policy: {reason}")
+        return v
+
+    @field_validator("client_id")
+    @classmethod
+    def validate_client_id_non_empty(cls, v: str) -> str:
+        """client_id must be non-empty — ADR-0029."""
+        if not v.strip():
+            raise ValueError("client_id must be a non-empty string")
+        return v
+
+    @field_validator("client_secret")
+    @classmethod
+    def validate_client_secret_non_empty(cls, v: str) -> str:
+        """client_secret must be non-empty — ADR-0029."""
+        if not v.strip():
+            raise ValueError("client_secret must be a non-empty string")
+        return v
+
+    def to_vault_envelope(self) -> str:
+        """Serialise to the canonical JSON the Go proxy parses (design.md Component 1).
+
+        Emits {token_url, client_id, client_secret, token_response_path[, scope]};
+        scope is omitted when unset (Go `omitempty` parity). This is the ONLY place
+        client_secret is written into a string after validation; the result is passed
+        directly to StoreCredential and NEVER logged or returned.
+        """
+        import json as _json
+
+        envelope: dict[str, str] = {
+            "token_url": self.token_url,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "token_response_path": self.token_response_path,
+        }
+        if self.scope:
+            envelope["scope"] = self.scope
+        return _json.dumps(envelope, separators=(",", ":"))
+
+
+# ---------------------------------------------------------------------------
+# HTTP Digest credential payload model — ADR-0029
+# (MongoDB Atlas Programmatic API Keys; auth_scheme=http_digest, enum 17)
+# ---------------------------------------------------------------------------
+
+
+class HTTPDigestPayload(BaseModel):
+    """Structured credential payload for auth_scheme=http_digest.
+
+    Validated at registration time. The Vault Adapter stores the canonical JSON
+    envelope {"public_key","private_key"} the Go digest transport parses
+    (design.md Component 2). RFC 2617 Digest uses public_key as the username and
+    private_key as the password.
+
+    Fields:
+      - public_key: Atlas public key — RFC 2617 username (non-empty).
+      - private_key: Atlas private key — RFC 2617 password (non-empty). NEVER
+        logged, echoed in a response, or included in an audit payload —
+        ADR-0014.4, ADR-0014.7, S-SEC-1.
+
+    Source: design.md Component 2; ADR-0029; ADR-0014.4; ADR-0014.7.
+    """
+
+    # NOTE: private_key is intentionally NOT repr'd or logged anywhere.
+    public_key: str
+    private_key: str
+
+    @field_validator("public_key")
+    @classmethod
+    def validate_public_key_non_empty(cls, v: str) -> str:
+        """public_key must be non-empty — ADR-0029."""
+        if not v.strip():
+            raise ValueError("public_key must be a non-empty string")
+        return v
+
+    @field_validator("private_key")
+    @classmethod
+    def validate_private_key_non_empty(cls, v: str) -> str:
+        """private_key must be non-empty — ADR-0029."""
+        if not v.strip():
+            raise ValueError("private_key must be a non-empty string")
+        return v
+
+    def to_vault_envelope(self) -> str:
+        """Serialise to the canonical {"public_key","private_key"} JSON (design.md Component 2).
+
+        This is the ONLY place private_key is written into a string after
+        validation; the result is passed directly to StoreCredential and NEVER
+        logged or returned.
+        """
+        import json as _json
+
+        return _json.dumps(
+            {"public_key": self.public_key, "private_key": self.private_key},
+            separators=(",", ":"),
+        )
