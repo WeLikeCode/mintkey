@@ -384,3 +384,26 @@ templates:
       help: "Tailscale API access token from the admin console Keys page. Needs at least device-read scope (e.g. devices:core) for the validation check to pass."
       format: "tskey-api-... (personal access token) or an OAuth2 access token"
     test_path: /api/v2/tailnet/-/devices
+
+  - template_id: contabo
+    name: contabo
+    display_name: Contabo Cloud API
+    description: "Contabo cloud control API — manage VPS/VDS instances (create, start, stop, restart, snapshot), object storage, private networks, DNS zones, firewalls, and floating IPs. Uses OAuth2 ROPC (Keycloak) to exchange four operator credentials for a short-lived bearer token; the proxy handles token exchange and caching automatically."
+    base_url: https://api.contabo.com
+    auth_type: oauth2_password_grant
+    openapi_spec_url: https://api.contabo.com/
+    category: cloud
+    version: "1.0.0"
+    config_notes: "Credentials come from the Contabo Customer Control Panel → API section (https://my.contabo.com/api/details). Fill in client_id, client_secret, username (your email), password (API password — not your web login), and leave grant_type as 'password'. IMPORTANT: Every Contabo API call requires an 'x-request-id' header with a unique UUID4 value. Your agent must generate and include this header on each request; the proxy forwards it to Contabo. Example: x-request-id: 04e0f898-37b4-48bc-a794-1a57abe6aa31"
+    credential_hint:
+      token_url: https://auth.contabo.com/auth/realms/contabo/protocol/openid-connect/token
+      credential_fields:
+        client_id: "(clientId from my.contabo.com/api/details)"
+        client_secret: "(clientSecret from my.contabo.com/api/details)"
+        username: "(your Contabo account email)"
+        password: "(API Password from my.contabo.com/api/details)"
+        grant_type: password
+      token_response_path: "$.access_token"
+      token_request_headers:
+        Content-Type: "application/x-www-form-urlencoded"
+    test_path: /v1/users/client
