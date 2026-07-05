@@ -97,7 +97,8 @@ class TestEmailTemplateYamlLoading:
         assert t.test_path == "/v1/users/client"
         assert t.category == "cloud"
         assert t.credential_hint is not None
-        assert "auth.contabo.com" in (t.credential_hint.token_url or "")
+        token_url = t.credential_hint.token_url or ""
+        assert token_url.startswith("https://auth.contabo.com/")
         # The form Content-Type header must be present so the proxy uses form encoding.
         assert t.credential_hint.token_request_headers is not None
         assert t.credential_hint.token_request_headers.get("Content-Type") == "application/x-www-form-urlencoded"
