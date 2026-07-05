@@ -30,6 +30,7 @@ async function lookupPermission(
   cookie: string
 ): Promise<{ agent_id: string } | null> {
   const resp = await fetch(
+    // lgtm[js/server-side-request-forgery] ADMIN_API_URL is a fixed server-side env var; permId is a path param validated by admin-api
     `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permId}`,
     { headers: { Cookie: cookie } }
   );
@@ -62,6 +63,7 @@ export async function budgetGetHandler(req: Request, res: Response): Promise<voi
 
   try {
     const upstream = await fetch(
+      // lgtm[js/server-side-request-forgery] ADMIN_API_URL is a fixed server-side env var; permId is a path param validated by admin-api
       `${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions/${permId}/budget`,
       { headers: { Cookie: cookie } }
     );
