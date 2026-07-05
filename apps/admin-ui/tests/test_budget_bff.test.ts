@@ -63,7 +63,7 @@ function createApp() {
   const app = express();
 
   app.use(
-    session({ // codeql[js/missing-token-validation] codeql[js/clear-text-cookie] test harness only
+    session({ // codeql[js/missing-csrf-middleware] codeql[js/clear-text-cookie] test harness only
       secret: "test-secret",
       resave: false,
       saveUninitialized: true,
