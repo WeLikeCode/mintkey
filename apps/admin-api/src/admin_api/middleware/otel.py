@@ -9,6 +9,7 @@ Source: design §4 middleware/otel.py; ADR-0017.6; T-1.0.14; T-1.3.3.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import opentelemetry.instrumentation.fastapi as _otel_fastapi
 from fastapi import FastAPI
@@ -23,7 +24,7 @@ from starlette.routing import Match, Route
 from mintkey_models.otel_redaction import RedactingSpanProcessor
 
 
-def _safe_get_route_details(scope: dict) -> str | None:
+def _safe_get_route_details(scope: dict[str, Any]) -> str | None:
     """Replacement for OTel's _get_route_details that handles _IncludedRouter.
 
     The upstream Match.PARTIAL branch lacks the try/except AttributeError guard

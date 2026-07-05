@@ -95,7 +95,7 @@ async def test_oidc_callback_success_creates_session(app) -> None:
 async def test_oidc_callback_tampered_state_returns_401(app) -> None:
     """Tampered state → 401 with state_mismatch reason (Req 2 AC6)."""
 
-    async def _raise_state_mismatch(code: str, state: str) -> dict:
+    async def _raise_state_mismatch(code: str, state: str, state_repo: object) -> dict:
         raise ValueError("state_mismatch")
 
     with patch("admin_api.api.auth.oidc_token_exchange", new=_raise_state_mismatch):
@@ -119,7 +119,7 @@ async def test_oidc_callback_tampered_state_returns_401(app) -> None:
 async def test_oidc_callback_signature_failure_returns_401(app) -> None:
     """ID token signature failure → 401 with id_token_invalid reason (Req 2 AC6)."""
 
-    async def _raise_signature_error(code: str, state: str) -> dict:
+    async def _raise_signature_error(code: str, state: str, state_repo: object) -> dict:
         raise Exception("signature verification failed")
 
     with patch("admin_api.api.auth.oidc_token_exchange", new=_raise_signature_error):

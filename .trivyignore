@@ -553,3 +553,17 @@ CVE-2026-42506
 #   trusted internal services only (Keycloak, Jaeger). Not reachable by untrusted
 #   clients. Upgrade blocked on oauth2-proxy v7.16+ compat testing (MINTKEY-412).
 CVE-2026-27145
+
+# CVE-2026-41992  gzip 1.12-1 HIGH — global buffer overflow in LZH decompressor
+#   Affects all Debian-based images. No fixed version available (2026-07-05).
+#   gzip is only used by system tooling (apt, dpkg-db maintenance); Mintkey
+#   services do not decompress untrusted LZH archives at runtime.
+#   Review by: 2026-10-05
+CVE-2026-41992
+
+# CVE-2026-54369  libacl1 2.3.1-3 HIGH — symlink traversal privilege escalation
+#   Affects all Debian-based images. No fixed version available (2026-07-05).
+#   libacl is a low-level POSIX ACL library; Mintkey services do not call setacl
+#   or getacl on user-provided paths.
+#   Review by: 2026-10-05
+CVE-2026-54369
