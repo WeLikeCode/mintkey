@@ -2,6 +2,12 @@ databaseChangeLog:
   - changeSet:
       id: "029-budget-counters"
       author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            tableExists:
+              tableName: budget_counters
+              schemaName: public
       changes:
         - createTable:
             tableName: budget_counters
@@ -48,7 +54,7 @@ databaseChangeLog:
             constraintName: pk_budget_counters
 
   - changeSet:
-      id: "028-budget-counters-rls"
+      id: "029-budget-counters-rls"
       author: mintkey
       changes:
         - sql:
@@ -66,7 +72,7 @@ databaseChangeLog:
               ALTER TABLE budget_counters DISABLE ROW LEVEL SECURITY;
 
   - changeSet:
-      id: "028-budget-counters-index"
+      id: "029-budget-counters-index"
       author: mintkey
       changes:
         - createIndex:
