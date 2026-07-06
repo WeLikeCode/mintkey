@@ -35,7 +35,11 @@ spec:
         - name: keycloak
           image: {{ .Values.keycloak.image }}
           args:
+            {{- if .Values.ingress.keycloak.host }}
+            - start          # production mode — required for a fixed public hostname
+            {{- else }}
             - start-dev
+            {{- end }}
             - --db=postgres
             - --db-url=jdbc:postgresql://{{ include "mintkey.fullname" . }}-postgres:5432/mintkey
             - --db-username=mintkey_migrate
@@ -59,6 +63,27 @@ spec:
                   key: POSTGRES_MIGRATE_PASSWORD
             - name: KC_HTTP_PORT
               value: "8443"
+            {{- if .Values.ingress.keycloak.host }}
+            # Behind the cloudflared tunnel (TLS terminated at the edge): pin the
+            # frontend URL so every issued token carries a stable public https
+            # `iss` — the admin-api validates iss === <public keycloak>/realms/mintkey
+            # (apps/admin-api/src/admin_api/auth/oidc.py). Without this, start-dev
+            # derives iss from the request → http:// → OIDC login fails id_token_invalid.
+            - name: KC_HOSTNAME_URL
+              value: {{ printf "%s://%s" (ternary "https" "http" .Values.ingress.keycloak.tls) .Values.ingress.keycloak.host | quote }}
+            - name: KC_HOSTNAME_ADMIN_URL
+              value: {{ printf "%s://%s" (ternary "https" "http" .Values.ingress.keycloak.tls) .Values.ingress.keycloak.host | quote }}
+            - name: KC_HOSTNAME_STRICT
+              value: "false"                # allow in-cluster access via the Service name
+            - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+              value: "false"
+            - name: KC_HTTP_ENABLED
+              value: "true"                 # TLS is at cloudflared, Keycloak serves http
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            {{- end }}
             - name: KEYCLOAK_ADMIN
               value: admin
             - name: KEYCLOAK_ADMIN_PASSWORD
