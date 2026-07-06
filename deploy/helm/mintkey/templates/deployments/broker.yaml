@@ -73,7 +73,9 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: DATABASE_URL
+                  # Go (pgx) can't parse the SQLAlchemy `postgresql+asyncpg://` DSN
+                  # the Python services use — needs a plain `postgres://` DSN.
+                  key: BROKER_DATABASE_URL
             - name: MINTKEY_MCP_SERVICE_TOKEN
               valueFrom:
                 secretKeyRef:
