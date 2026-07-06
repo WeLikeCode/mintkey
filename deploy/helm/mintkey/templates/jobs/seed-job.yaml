@@ -26,7 +26,7 @@ spec:
       restartPolicy: OnFailure
       initContainers:
         - name: wait-for-liquibase
-          image: bitnami/postgresql:16
+          image: postgres:16
           command:
             - sh
             - -c
