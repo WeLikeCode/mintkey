@@ -22,6 +22,7 @@ Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5; long-lived-api-keys task 7.5;
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from datetime import datetime
@@ -141,16 +142,24 @@ async def validate_agent_key(
     row = result.fetchone()
 
     if row is None:
-        # Equalize timing against DUMMY_HASH — ADR-0017.5
+        # Equalize timing against DUMMY_HASH — ADR-0017.5.
+        # Offload the Argon2id verify to a worker thread: the hash is
+        # CPU-bound (~0.6-0.9s at time_cost=3/64MB) and argon2-cffi releases
+        # the GIL while hashing, so running it inline on the event loop would
+        # serialise all concurrent validations and blow the callers' timeouts
+        # under a startup burst (validations serialise on the event loop). asyncio.to_thread keeps the
+        # loop free so validations run concurrently across the thread pool.
         try:
-            _ph.verify(DUMMY_HASH, api_key)
+            await asyncio.to_thread(_ph.verify, DUMMY_HASH, api_key)
         except Exception:
             pass
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
 
-    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5
+    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5.
+    # Offloaded to a worker thread (see the DUMMY_HASH branch above) so the
+    # event loop stays free and concurrent validations do not serialise.
     try:
-        _ph.verify(row.api_key_hash, api_key)
+        await asyncio.to_thread(_ph.verify, row.api_key_hash, api_key)
     except VerifyMismatchError:
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
     except Exception:
