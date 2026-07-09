@@ -126,17 +126,24 @@ async def generate_authorization_url(state_repo: OidcStateRepository) -> tuple[s
     return auth_url, state, code_verifier
 
 
-async def oidc_token_exchange(
-    code: str, state: str, state_repo: OidcStateRepository
-) -> dict[str, Any]:
+async def oidc_token_exchange(code: str, state: str) -> dict[str, Any]:
     """Exchange authorization code for verified ID token claims.
 
     Raises ValueError("state_mismatch") if the state is unknown or tampered.
     Raises Exception on token exchange or signature verification failure.
 
+    Opens its own DB session to pop the PKCE state (Postgres-backed;
+    see admin_api.auth.oidc_state) in its own committed transaction before
+    proceeding to the HTTP token exchange, so the state gate stays strictly
+    before token exchange while keeping single-use semantics.
+
     Source: Req 2 AC6; ADR-0016.2.
     """
-    stored = await state_repo.pop(state)
+    from admin_api.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            stored = await OidcStateRepository(db).pop(state)
     if stored is None:
         raise ValueError("state_mismatch")
 

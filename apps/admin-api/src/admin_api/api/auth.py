@@ -276,12 +276,7 @@ async def oidc_callback(code: str, state: str, request: Request) -> Response:
     )
 
     try:
-        from admin_api.db.session import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as db:
-            async with db.begin():
-                state_repo = OidcStateRepository(db)
-                claims = await oidc_token_exchange(code, state, state_repo)
+        claims = await oidc_token_exchange(code, state)
     except ValueError as exc:
         if "state_mismatch" in str(exc):
             return JSONResponse(
