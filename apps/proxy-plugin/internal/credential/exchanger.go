@@ -237,10 +237,34 @@ func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*E
 		}
 	}
 
-	// Marshal credential_fields as JSON body.
-	body, err := json.Marshal(req.CredentialFields)
-	if err != nil {
-		return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, err)
+	// Determine the effective Content-Type. Default is application/json, but
+	// token_request_headers may override it (case-insensitive header match).
+	// The body encoding MUST match the declared Content-Type — an OAuth2
+	// password-grant endpoint (e.g. Contabo/Keycloak) requires the fields to be
+	// form-encoded, in which case a JSON body with a form Content-Type is
+	// rejected with token_exchange_failed.
+	contentType := "application/json"
+	for name, value := range req.TokenRequestHeaders {
+		if strings.EqualFold(name, "Content-Type") {
+			contentType = value
+			break
+		}
+	}
+
+	// Encode credential_fields to match the declared Content-Type.
+	var body []byte
+	if mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]); strings.EqualFold(mediaType, "application/x-www-form-urlencoded") {
+		form := url.Values{}
+		for k, v := range req.CredentialFields {
+			form.Set(k, v)
+		}
+		body = []byte(form.Encode())
+	} else {
+		b, err := json.Marshal(req.CredentialFields)
+		if err != nil {
+			return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, err)
+		}
+		body = b
 	}
 
 	// Build the HTTP request.
