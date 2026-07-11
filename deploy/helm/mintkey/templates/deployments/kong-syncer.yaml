@@ -53,7 +53,13 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: DATABASE_URL
+                  # Go (lib/pq) can't parse the SQLAlchemy `postgresql+asyncpg://`
+                  # DSN the Python services use — it needs a plain `postgres://`
+                  # DSN, same as the broker. Using DATABASE_URL (the asyncpg form)
+                  # broke the pq.Listener ('missing "=" in connection info string'),
+                  # so the syncer never processed the service.registered NOTIFY and
+                  # never published Kong routes for newly-registered services.
+                  key: BROKER_DATABASE_URL
             - name: KONG_SYNCER_HTTP_PORT
               value: "8085"
           readinessProbe:
