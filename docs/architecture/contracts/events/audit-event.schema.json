@@ -126,7 +126,8 @@
         "ssh_password",
         "email_password",
         "email_oauth2",
-        "email_app_password"
+        "email_app_password",
+        "http_digest"
       ]
     },
     "envelope": {

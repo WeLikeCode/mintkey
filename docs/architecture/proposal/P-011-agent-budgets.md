@@ -185,7 +185,7 @@ This lets agents self-throttle or request budget increases.
 - Four new audit event types.
 - `describe_service` MCP output gains budget fields.
 - Grafana dashboard gains budget panel.
-- ADR-0029 formalizes this decision.
+- ADR-0030 formalizes this decision.
 
 ## Related
 

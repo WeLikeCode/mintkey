@@ -433,7 +433,7 @@ async def get_permission_budget(
     Returns current budget status: ceiling, used, period, period bounds.
     404 if permission not found or no budget configured.
 
-    Source: budget-management-ui spec R6.1; ADR-0029.
+    Source: budget-management-ui spec R6.1; ADR-0030.
     """
     await set_tenant_context(session, tenant_id)
 
@@ -1110,7 +1110,7 @@ async def reset_budget_counter(
     Resets the current-period budget counter to 0 so the agent can resume
     operations immediately.  Returns the updated used count (always 0).
 
-    Source: budget-management-ui spec R6.4; ADR-0029.
+    Source: budget-management-ui spec R6.4; ADR-0030.
     """
     await set_tenant_context(session, tenant_id)
 

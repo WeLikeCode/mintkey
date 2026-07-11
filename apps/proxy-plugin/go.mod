@@ -3,6 +3,7 @@ module github.com/mintkey/mintkey/services/proxy-plugin
 go 1.26.2
 
 require (
+	github.com/icholy/digest v1.1.0
 	github.com/lib/pq v1.12.3
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.44.0

@@ -1,0 +1,22 @@
+----- [.] go vet -----
+   vet-exit=0
+----- [.] go test -short -----
+   (failures above; empty=pass)
+----- [apps/broker] go vet -----
+internal/metrics/metrics.go:53:19: method WriteTo(w io.Writer) error should have signature WriteTo(io.Writer) (int64, error)
+   vet-exit=0
+----- [apps/broker] go test -short -----
+   (failures above; empty=pass)
+----- [apps/email-proxy] go vet -----
+   vet-exit=0
+----- [apps/email-proxy] go test -short -----
+   (failures above; empty=pass)
+----- [apps/kong-syncer] go vet -----
+   vet-exit=0
+----- [apps/kong-syncer] go test -short -----
+   (failures above; empty=pass)
+----- [apps/proxy-plugin] go vet -----
+internal/metrics/metrics.go:110:19: method WriteTo(w io.Writer) error should have signature WriteTo(io.Writer) (int64, error)
+   vet-exit=0
+----- [apps/proxy-plugin] go test -short -----
+   (failures above; empty=pass)

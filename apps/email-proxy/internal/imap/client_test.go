@@ -93,23 +93,6 @@ func appendMsg(t *testing.T, raw *imapclient.Client, mailbox, msg string) goiMAP
 	return data.UID
 }
 
-// dialWrapped opens a raw connection to addr, pre-authenticates the
-// underlying imapclient with LOGIN, then wraps it in our Client via
-// DialFromConn. Returns the wrapper + the raw client for setup helpers.
-func dialWrapped(t *testing.T, conn net.Conn) (*imapwrap.Client, *imapclient.Client) {
-	t.Helper()
-
-	// Open a raw imapclient over the connection for setup only.
-	rawSetup := imapclient.New(conn, nil)
-	if err := rawSetup.Login(testUser, testPass).Wait(); err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	// Logout and close so we can re-dial through our wrapper on the same addr.
-	_ = rawSetup.Logout().Wait()
-	_ = rawSetup.Close()
-	return nil, rawSetup
-}
-
 // helper: creates a fresh wrapped client backed by a new in-process server.
 func newTestClient(t *testing.T) (*imapwrap.Client, io.Closer) {
 	t.Helper()

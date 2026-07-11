@@ -86,3 +86,6 @@ databaseChangeLog:
   - include:
       file: 029-budget-counters.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 029-oidc-login-state.yaml
+      relativeToChangelogFile: true

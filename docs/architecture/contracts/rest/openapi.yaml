@@ -4739,6 +4739,7 @@ components:
         - email_password
         - email_oauth2
         - email_app_password
+        - http_digest
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -4757,6 +4758,7 @@ components:
         - `email_password`: IMAP/SMTP password credential for the email proxy (ADR-0024).
         - `email_oauth2`: OAuth2 refresh token (Gmail or Outlook) for the email proxy (ADR-0024).
         - `email_app_password`: App-password credential (e.g. Google App Password) for the email proxy (ADR-0024).
+        - `http_digest`: HTTP Digest (RFC 2617) challenge-response with a public/private key pair (ADR-0029).
 
     Service:
       type: object
@@ -5974,7 +5976,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password, email_password, email_oauth2, email_app_password]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password, email_password, email_oauth2, email_app_password, http_digest]
 
     TransientCredentialCandidate:
       type: object

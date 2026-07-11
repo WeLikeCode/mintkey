@@ -1,4 +1,4 @@
-# ADR-0029: Agent Budgets — Call-count ceilings per grant with proxy circuit-breaking
+# ADR-0030: Agent Budgets — Call-count ceilings per grant with proxy circuit-breaking
 
 ## Status
 Accepted — 2026-06-27

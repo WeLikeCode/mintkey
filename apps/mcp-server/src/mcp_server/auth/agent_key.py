@@ -23,8 +23,17 @@ async def validate_agent_key(api_key: str) -> tuple[dict | None, str | None]:
     Validate an agent API key by calling admin-api's internal endpoint.
 
     Returns (agent_context, None) on success where agent_context contains
-    {agent_id, tenant_id, status}.  Returns (None, failure_reason) on any
-    failure — the caller must NOT distinguish failure reasons in the response.
+    {agent_id, tenant_id, status}.  Returns (None, failure_reason) on failure.
+
+    failure_reason distinguishes a genuine key rejection from a transient
+    infrastructure fault so callers can respond differently:
+      - "invalid_key"        — admin-api returned 4xx: the key is genuinely
+                               bad/unknown/revoked. NOT retryable.
+      - "service_unavailable" — timeout / connection error / admin-api 5xx:
+                               the key was never actually judged. Retryable.
+    Callers MUST NOT leak which failure_reason occurred into a response body
+    that an untrusted agent can observe (agent-enumeration guard, Req 6 AC2),
+    but MAY use it to pick the JSON-RPC error code (transient vs auth).
 
     Source: ADR-0009; Req 6 AC1, AC2.
     """
@@ -37,6 +46,10 @@ async def validate_agent_key(api_key: str) -> tuple[dict | None, str | None]:
             )
             if resp.status_code == 200:
                 return resp.json(), None
+            # 5xx means admin-api failed to render a verdict (overload, crash,
+            # dependency outage) — treat as transient, not as a key rejection.
+            if resp.status_code >= 500:
+                return None, "service_unavailable"
             return None, "invalid_key"
     except Exception:
         return None, "service_unavailable"
