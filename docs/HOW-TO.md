@@ -1218,3 +1218,144 @@ curl -s -X DELETE \
 All payloads carry **identifiers only** — the plaintext value never appears in any audit row.
 
 ---
+
+## 13. MongoDB Atlas Administration API
+
+Mintkey can broker the **MongoDB Atlas Administration API**
+(`https://cloud.mongodb.com/api/atlas/v2`) so agents perform Atlas administrative operations —
+create/scale clusters, manage projects, database users, network access, backups, alerts — without
+ever holding the Atlas credential. The architecture decision is
+[ADR-0029](architecture/01-architecture/adr/0029-mongodb-atlas-admin-api-support.md), which records the two new
+auth schemes and the read-scoped method-gating semantic.
+
+> **Control-plane only — reading collection documents is out of scope.** The Atlas Administration
+> API manages Atlas resources; it **cannot read documents from your collections**. The former Atlas
+> Data API (HTTP document access) has been **retired** by MongoDB, and reading collection data
+> requires the MongoDB wire protocol, which Mintkey's HTTP proxy does not speak. Mintkey brokers
+> Atlas *administration* only — there is no data-plane / document-read path.
+
+### 13.1 Two ways to register — pick your credential type
+
+Atlas authenticates via exactly two schemes, and Mintkey ships a template for each:
+
+| Template | Auth scheme | Credential you supply | When to use |
+|---|---|---|---|
+| `mongodb-atlas-service-account` | `oauth2_client_credentials` | `client_id` + `client_secret` | Atlas **Service Account** (OAuth2 client-credentials; the proxy exchanges the pair for a 1-hour Bearer token and refreshes it automatically) |
+| `mongodb-atlas-api-key` | `http_digest` | `public_key` + `private_key` | Atlas **Programmatic API Key** (HTTP Digest challenge-response; the proxy performs the RFC 2617 handshake per request) |
+
+Both templates create a service with `base_url: https://cloud.mongodb.com/api/atlas/v2`,
+`test_path: /groups`, and the Atlas v2 OpenAPI spec URL. In either case the agent never sees the
+credential — the proxy injects it in-flight.
+
+**Via Admin UI:** Services → New → **From Template** → choose **MongoDB Atlas (Service Account)** or
+**MongoDB Atlas (Programmatic API Key)** → supply the credential fields → Create.
+
+**Via curl (Service Account):**
+
+```bash
+# Step 1 — create the service from the template's shape
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "Atlas Admin (Service Account)",
+    "slug":        "atlas-admin-sa",
+    "display_name":"MongoDB Atlas Administration API",
+    "auth_scheme": "oauth2_client_credentials",
+    "base_url":    "https://cloud.mongodb.com/api/atlas/v2"
+  }')
+SID=$(echo "$SVC" | jq -r '.id')
+
+# Step 2 — store the credential (client_id/client_secret; never echoed back)
+curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services/$SID/credentials" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "auth_scheme": "oauth2_client_credentials",
+    "value": {
+      "token_url":           "https://cloud.mongodb.com/api/oauth/token",
+      "client_id":           "CLIENT_ID_HERE",
+      "client_secret":       "CLIENT_SECRET_HERE",
+      "token_response_path": "$.access_token"
+    }
+  }' | jq .
+```
+
+**Via curl (Programmatic API Key):** identical, but with `"auth_scheme": "http_digest"` and a
+credential value of `{"public_key": "PUBLIC_KEY_HERE", "private_key": "PRIVATE_KEY_HERE"}`.
+
+### 13.2 REQUIRED: the agent must send the dated Atlas version header
+
+Atlas v2 **requires** a dated `Accept` version header on **every** request:
+
+```
+Accept: application/vnd.atlas.<yyyy-mm-dd>+json      # e.g. application/vnd.atlas.2025-03-12+json
+```
+
+**Without it, Atlas returns `406 Not Acceptable`.** Mintkey forwards your request headers to MongoDB
+**unchanged** — it strips/replaces only `Authorization` and `X-Mintkey-*`, and it does **not** add
+the version header for you. The agent must set `Accept` itself on the proxy call. Both templates
+carry this instruction verbatim in the service `description` (surfaced to agents via
+`list_services` / `describe_service`) and in operator `config_notes`.
+
+### 13.3 Grant the agent `read:atlas` and/or `admin:atlas`
+
+Two actions bound what an agent can do. Grant either, both, or neither per agent:
+
+| Action / scope | HTTP methods allowed at the proxy | Use for |
+|---|---|---|
+| `read:atlas` | `GET`, `HEAD`, `OPTIONS` only (any other method → `403`) | Read-only inventory: list projects, clusters, DB users, alerts |
+| `admin:atlas` | all methods (`POST`, `PATCH`, `DELETE`, …) | Full administration: create/scale/delete clusters, manage users |
+
+The proxy enforces the `read:atlas` method gate from the JWT `scope`; a `read:atlas` token that
+attempts a `DELETE` is rejected with `403` before the upstream is contacted. `admin:atlas` and all
+pre-existing actions (`call`, the email scopes, …) are unaffected. Full power is still additionally
+bounded by the Service Account's / API Key's own roles on MongoDB's side.
+
+**Via Admin UI:** Permission Grants → New → select Agent, Service, and `read:atlas` or `admin:atlas`.
+
+**Via curl:**
+
+```bash
+# Read-only grant
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"read:atlas\"}" | jq .
+
+# Full-admin grant (separate call — each action is a separate grant)
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"admin:atlas\"}" | jq .
+```
+
+### 13.4 Agent calling Atlas through the proxy
+
+```bash
+# Step 1 — request a token with the granted action
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"read:atlas\"}" | jq -r '.token')
+
+# Step 2 — call the Atlas API through the proxy, sending the dated Accept header yourself.
+# URL pattern: http://localhost:8000/v1/call/<service_id>/<atlas_path>
+curl -s "http://localhost:8000/v1/call/$SID/groups" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.atlas.2025-03-12+json" | jq .
+```
+
+The proxy injects the Atlas credential (exchanged Bearer token for a Service Account, Digest
+challenge-response for an API Key) and forwards your `Accept` header unchanged. Your agent never
+sees the raw credential value.
+
+**What could go wrong:**
+- `406 Not Acceptable` → you omitted (or misspelled) the dated `Accept: application/vnd.atlas.<date>+json` header. Mintkey does not add it for you (§13.2).
+- `403 forbidden: read:atlas grants read-only access` → a `read:atlas` token attempted a write method; request an `admin:atlas` token instead (and hold the matching grant).
+- `403 permission_not_found` → no active grant for this agent + service + action; create one (§13.3).
+- `401` → token expired; call `request_token` again.
+
+---

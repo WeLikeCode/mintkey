@@ -41,6 +41,8 @@ from admin_api.db.deps import get_db_session
 from admin_api.services.credential_service import (
     AppleJWTPayload,
     GoogleServiceAccountPayload,
+    HTTPDigestPayload,
+    OAuth2ClientCredentialsPayload,
     OAuth2PasswordGrantPayload,
     SSHPasswordPayload,
     SSHPrivateKeyPayload,
@@ -481,6 +483,110 @@ async def create_credential(
         _ssh_pwd_target_address = _ssh_pwd_validated.target_address
         _ssh_pwd_user = _ssh_pwd_validated.username
 
+    # Step 1h: For oauth2_client_credentials, validate the structured payload — ADR-0029.
+    # body.value is expected to be a JSON object:
+    #   { "token_url": ..., "client_id": ..., "client_secret": ..., "scope"?, "token_response_path"? }
+    # Validation: HTTPS token_url that passes the shared SSRF check, non-empty
+    # client_id / client_secret. client_secret is scrubbed from all log calls and
+    # NEVER echoed in the response — ADR-0014.4, ADR-0014.7, S-SEC-1.
+    # On success: re-serialise the validated payload as the canonical envelope so the
+    # Vault Adapter receives EXACTLY the JSON shape the Go proxy parses (design.md §1).
+    _oauth2_cc_envelope: str | None = None
+    if body.auth_scheme == "oauth2_client_credentials":
+        import json as _json_mod
+        import pydantic as _pydantic
+        try:
+            raw_cc = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_cc, dict):
+                raise TypeError("oauth2_client_credentials value must be a JSON object")
+            raw_cc.pop("scheme", None)
+            _oauth2_cc_validated = OAuth2ClientCredentialsPayload(**raw_cc)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_client_credentials_payload",
+                    "title": "oauth2_client_credentials value must be a valid JSON object",
+                },
+            )
+        except _pydantic.ValidationError as exc:
+            # Structured field errors for the UI — C-2; include_input=False prevents
+            # client_secret bytes from leaking into the response — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("oauth2_client_credentials credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — pydantic ValidationError is a ValueError subclass
+            # and str(exc) echoes input_value=... containing client_secret bytes.
+            logger.warning("oauth2_client_credentials credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_oauth2_client_credentials_payload",
+                    "title": "oauth2_client_credentials payload failed validation",
+                },
+            )
+        # Serialise the validated envelope for the vault — client_secret is in this
+        # string but is passed directly to StoreCredential and never logged.
+        _oauth2_cc_envelope = _oauth2_cc_validated.to_vault_envelope()
+
+    # Step 1i: For http_digest, validate the structured payload — ADR-0029.
+    # body.value is expected to be a JSON object: { "public_key": ..., "private_key": ... }
+    # Validation: non-empty public_key / private_key. private_key is scrubbed from all
+    # log calls and NEVER echoed in the response — ADR-0014.4, ADR-0014.7, S-SEC-1.
+    # On success: re-serialise as the canonical {"public_key","private_key"} envelope so
+    # the Vault Adapter receives EXACTLY the JSON shape the Go digest transport parses (design.md §2).
+    _http_digest_envelope: str | None = None
+    if body.auth_scheme == "http_digest":
+        import json as _json_mod
+        import pydantic as _pydantic
+        try:
+            raw_hd = _json_mod.loads(body.value) if isinstance(body.value, str) else body.value
+            if not isinstance(raw_hd, dict):
+                raise TypeError("http_digest value must be a JSON object")
+            raw_hd.pop("scheme", None)
+            _http_digest_validated = HTTPDigestPayload(**raw_hd)
+        except (_json_mod.JSONDecodeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_http_digest_payload",
+                    "title": "http_digest value must be a valid JSON object",
+                },
+            )
+        except _pydantic.ValidationError as exc:
+            # include_input=False prevents private_key bytes from leaking — ADR-0014.7, S-SEC-1.
+            _field_errors = exc.errors(include_url=False, include_context=False, include_input=False)
+            logger.warning("http_digest credential validation failed: %s", type(exc).__name__)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "type": "about:blank",
+                    "title": "validation error",
+                    "detail": _field_errors,
+                },
+            )
+        except ValueError:
+            # NEVER include str(exc) — echoes input_value=... containing private_key bytes.
+            logger.warning("http_digest credential malformed (non-pydantic): non-pydantic error")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_http_digest_payload",
+                    "title": "http_digest payload failed validation",
+                },
+            )
+        # Serialise the validated envelope for the vault — private_key is in this
+        # string but is passed directly to StoreCredential and never logged.
+        _http_digest_envelope = _http_digest_validated.to_vault_envelope()
+
     # Step 2: Call Vault Adapter — plaintext is passed only within this request scope
     # and is NOT stored, logged, or returned. ADR-0014.4.
     # For apple_jwt: pass the canonical JSON envelope as plaintext.
@@ -506,6 +612,16 @@ async def create_credential(
         vault_plaintext = _ssh_pwd_envelope.decode("utf-8")
         vault_target_address = _ssh_pwd_target_address
         vault_ssh_user = _ssh_pwd_user
+    elif _oauth2_cc_envelope is not None:
+        # oauth2_client_credentials — canonical envelope; no SSH routing metadata.
+        vault_plaintext = _oauth2_cc_envelope
+        vault_target_address = ""
+        vault_ssh_user = ""
+    elif _http_digest_envelope is not None:
+        # http_digest — canonical {"public_key","private_key"} envelope; no SSH routing.
+        vault_plaintext = _http_digest_envelope
+        vault_target_address = ""
+        vault_ssh_user = ""
     else:
         vault_plaintext = body.value
         vault_target_address = ""
