@@ -50,7 +50,11 @@ func main() {
 		slog.Error("failed to initialize OTel", "error", err)
 		os.Exit(1)
 	}
-	defer shutdown(context.Background())
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel", "error", err)
+		}
+	}()
 
 	// Create SSH server
 	srv, err := server.New(cfg)

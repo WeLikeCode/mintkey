@@ -233,8 +233,8 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		// Write proxy-plugin hit/denied/latency metrics (OPS-P).
-		if err := h.metrics.WriteTo(w); err != nil {
-			log.Printf("proxy-plugin: metrics WriteTo error: %v", err)
+		if err := h.metrics.WriteMetricsTo(w); err != nil {
+			log.Printf("proxy-plugin: metrics WriteMetricsTo error: %v", err)
 		}
 		// Write auditq WAL and dead-letter metrics (#27).
 		if h.auditQ != nil {
