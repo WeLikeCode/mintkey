@@ -83,6 +83,7 @@ func HandleOAuth2ClientCredentials(
 		ClientID:          cred.ClientID,
 		ClientSecret:      cred.ClientSecret,
 		Scope:             cred.Scope,
+		Audience:          cred.Audience,
 		TokenResponsePath: cred.TokenResponsePath,
 		Timeout:           clampExchangeTimeoutSeconds(cred.ExchangeTimeoutSeconds),
 	}

@@ -29,6 +29,10 @@ type OAuth2ClientCredentialsCredential struct {
 	ClientSecret string `json:"client_secret"`
 	// Scope is optional space-delimited scopes; omitted from the request when empty.
 	Scope string `json:"scope,omitempty"`
+	// Audience is the optional OAuth2 token-request audience (e.g. the Auth0
+	// Management API identifier https://YOUR_TENANT.auth0.com/api/v2/).
+	// Omitted from the token-request form body when empty.
+	Audience string `json:"audience,omitempty"`
 	// TokenResponsePath is the JSONPath to the access token; default "$.access_token".
 	TokenResponsePath string `json:"token_response_path,omitempty"`
 	// ExchangeTimeoutSeconds is the whole-request timeout for the token exchange

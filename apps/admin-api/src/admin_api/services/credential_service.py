@@ -606,6 +606,7 @@ class OAuth2ClientCredentialsPayload(BaseModel):
     client_id: str
     client_secret: str
     scope: str | None = None
+    audience: str | None = None
     token_response_path: str = "$.access_token"
 
     @field_validator("token_url")
@@ -644,13 +645,36 @@ class OAuth2ClientCredentialsPayload(BaseModel):
             raise ValueError("client_secret must be a non-empty string")
         return v
 
+    @field_validator("audience")
+    @classmethod
+    def validate_audience(cls, v: str | None) -> str | None:
+        """audience, when present, must be a non-empty absolute URI with no
+        surrounding whitespace — design.md §audience extension.
+
+        Deliberately NOT SSRF-checked and NOT restricted to HTTPS: audience is
+        an opaque token-request identifier, never dereferenced as a network
+        destination.  token_url keeps its own HTTPS + SSRF validators.
+        """
+        if v is None:
+            return v
+        if v != v.strip():
+            raise ValueError(
+                "audience must not have surrounding whitespace"
+            )
+        if not urlsplit(v).scheme:
+            raise ValueError(
+                "audience must be an absolute URI with a non-empty scheme "
+                "(e.g. https://YOUR_TENANT.auth0.com/api/v2/ or urn:my-api)"
+            )
+        return v
+
     def to_vault_envelope(self) -> str:
         """Serialise to the canonical JSON the Go proxy parses (design.md Component 1).
 
-        Emits {token_url, client_id, client_secret, token_response_path[, scope]};
-        scope is omitted when unset (Go `omitempty` parity). This is the ONLY place
-        client_secret is written into a string after validation; the result is passed
-        directly to StoreCredential and NEVER logged or returned.
+        Emits {token_url, client_id, client_secret, token_response_path[, scope][, audience]};
+        scope and audience are omitted when unset (Go `omitempty` parity). This is
+        the ONLY place client_secret is written into a string after validation; the
+        result is passed directly to StoreCredential and NEVER logged or returned.
         """
         import json as _json
 
@@ -662,6 +686,8 @@ class OAuth2ClientCredentialsPayload(BaseModel):
         }
         if self.scope:
             envelope["scope"] = self.scope
+        if self.audience:
+            envelope["audience"] = self.audience
         return _json.dumps(envelope, separators=(",", ":"))
 
 
