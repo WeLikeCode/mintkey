@@ -23,7 +23,7 @@ func TestBudgetMetrics_SetUsed(t *testing.T) {
 	m.SetUsed(labels, 42)
 
 	var buf bytes.Buffer
-	err := m.WriteTo(&buf)
+	err := m.WriteMetricsTo(&buf)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -47,7 +47,7 @@ func TestBudgetMetrics_SetCeiling(t *testing.T) {
 	m.SetCeiling(labels, 1000)
 
 	var buf bytes.Buffer
-	err := m.WriteTo(&buf)
+	err := m.WriteMetricsTo(&buf)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -68,7 +68,7 @@ func TestBudgetMetrics_IncDenied(t *testing.T) {
 	m.IncDenied(labels)
 
 	var buf bytes.Buffer
-	err := m.WriteTo(&buf)
+	err := m.WriteMetricsTo(&buf)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -100,7 +100,7 @@ func TestBudgetMetrics_AllThreeAfterBudgetCheckedRequest(t *testing.T) {
 	m.IncDenied(labels)
 
 	var buf bytes.Buffer
-	err := m.WriteTo(&buf)
+	err := m.WriteMetricsTo(&buf)
 	require.NoError(t, err)
 
 	output := buf.String()

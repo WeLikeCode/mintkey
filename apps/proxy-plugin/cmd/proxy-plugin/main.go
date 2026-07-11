@@ -262,8 +262,8 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// Write budget enforcement metrics (T-BUD-3.5).
 		if h.budgetMetrics != nil {
-			if err := h.budgetMetrics.WriteTo(w); err != nil {
-				log.Printf("proxy-plugin: budget metrics WriteTo error: %v", err)
+			if err := h.budgetMetrics.WriteMetricsTo(w); err != nil {
+				log.Printf("proxy-plugin: budget metrics WriteMetricsTo error: %v", err)
 			}
 		}
 		// Write auditq WAL and dead-letter metrics (#27).

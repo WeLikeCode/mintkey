@@ -12,7 +12,6 @@ package budget
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -55,9 +54,6 @@ func (e *ErrBudgetExceeded) Error() string {
 		e.Used, e.Ceiling, e.PeriodEnd.Format(time.RFC3339))
 }
 
-// errNoRows is a sentinel used internally when the upsert returns no rows.
-var errNoRows = errors.New("no rows")
-
 // Check atomically increments the budget counter for the given permission and
 // returns the current (used, ceiling) after increment. If the ceiling has been
 // reached, it returns ErrBudgetExceeded.
@@ -88,7 +84,7 @@ func Check(ctx context.Context, db DB, permissionID, tenantID string, cfg Budget
 		return used, ceiling, nil
 	}
 
-	// If scan failed, it means 0 rows returned (ceiling hit or errNoRows).
+	// If scan failed, it means 0 rows returned (ceiling hit).
 	// Query the existing counter to populate ErrBudgetExceeded.
 	const selectSQL = `
 		SELECT used, ceiling, period_end FROM budget_counters
