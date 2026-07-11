@@ -523,26 +523,3 @@ func extractExpiresIn(body []byte) int64 {
 		return 0
 	}
 }
-
-// isNetworkError checks if an error is a network-level error (timeout, DNS, connection refused).
-func isNetworkError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for net.Error (includes timeouts).
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-	// Check for DNS errors.
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return true
-	}
-	// Check for connection refused / reset.
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-	return false
-}
