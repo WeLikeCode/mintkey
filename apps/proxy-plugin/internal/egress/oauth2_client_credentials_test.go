@@ -31,6 +31,17 @@ func (c *countingCCExchanger) ExchangeClientCredentials(_ context.Context, _ cre
 	return c.result, c.err
 }
 
+// capturingCCExchanger is a test-only exchanger that records the last request.
+type capturingCCExchanger struct {
+	lastReq credential.ClientCredentialsRequest
+	result  *credential.ExchangeResult
+}
+
+func (c *capturingCCExchanger) ExchangeClientCredentials(_ context.Context, req credential.ClientCredentialsRequest) (*credential.ExchangeResult, error) {
+	c.lastReq = req
+	return c.result, nil
+}
+
 func newCountingCCExchanger(token string) *countingCCExchanger {
 	return &countingCCExchanger{result: &credential.ExchangeResult{Token: token}}
 }
@@ -152,4 +163,25 @@ func TestHandleOAuth2ClientCredentials_Singleflight_CoalescesOnMiss(t *testing.T
 	}
 	assert.Equal(t, int32(1), atomic.LoadInt32(&ex.calls),
 		"expected exactly 1 exchange call, got %d", atomic.LoadInt32(&ex.calls))
+}
+
+// TestHandleOAuth2ClientCredentials_AudiencePropagated verifies that the Audience
+// field from the credential payload is mapped into the ClientCredentialsRequest.
+func TestHandleOAuth2ClientCredentials_AudiencePropagated(t *testing.T) {
+	tc := cache.NewTokenCache()
+	ex := &capturingCCExchanger{result: &credential.ExchangeResult{Token: "auth0-token"}}
+	deps := OAuth2ClientCredentialsDeps{Cache: tc, Exchanger: ex}
+
+	payload := mustMarshal(t, credential.OAuth2ClientCredentialsCredential{
+		TokenURL:     "https://my-tenant.auth0.com/oauth/token",
+		ClientID:     "auth0-client-id",
+		ClientSecret: "auth0-client-secret",
+		Audience:     "https://my-tenant.auth0.com/api/v2/",
+	})
+
+	result, err := HandleOAuth2ClientCredentials(context.Background(), deps, "tenant1", "svc1", payload)
+	require.NoError(t, err)
+	assert.Equal(t, "auth0-token", result.Token)
+	assert.Equal(t, "https://my-tenant.auth0.com/api/v2/", ex.lastReq.Audience,
+		"Audience must be propagated from credential payload to ClientCredentialsRequest")
 }

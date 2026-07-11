@@ -35,7 +35,7 @@ The proxy performs the client-credentials exchange on demand, reusing — withou
 ```json
 { "token_url": "https://cloud.mongodb.com/api/oauth/token",
   "client_id": "...", "client_secret": "...",
-  "scope": "(optional)", "token_response_path": "$.access_token" }
+  "scope": "(optional)", "audience": "(optional)", "token_response_path": "$.access_token" }
 ```
 
 The exchanged token is injected as `Authorization: Bearer <token>` (the injector's existing scheme-5 case). A scheme-5 payload that is not exchange-shaped falls through to the existing pre-fetched-bearer behavior (backward-compatible).

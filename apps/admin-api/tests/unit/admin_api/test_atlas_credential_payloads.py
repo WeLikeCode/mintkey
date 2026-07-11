@@ -109,6 +109,83 @@ def test_oauth2_client_credentials_envelope_omits_absent_scope() -> None:
 
 
 # ===========================================================================
+# OAuth2ClientCredentialsPayload — audience field (Auth0 path)
+# ===========================================================================
+
+
+def test_oauth2_client_credentials_audience_accepted_in_envelope() -> None:
+    """audience present → envelope contains the audience key (Auth0 path)."""
+    payload = OAuth2ClientCredentialsPayload(
+        token_url="https://my-tenant.auth0.com/oauth/token",
+        client_id="auth0-client-id",
+        client_secret="auth0-client-secret",
+        audience="https://my-tenant.auth0.com/api/v2/",
+    )
+    envelope = _json.loads(payload.to_vault_envelope())
+    assert envelope["audience"] == "https://my-tenant.auth0.com/api/v2/"
+    # Other required fields still present.
+    assert envelope["token_url"] == "https://my-tenant.auth0.com/oauth/token"
+    assert envelope["client_id"] == "auth0-client-id"
+    assert envelope["client_secret"] == "auth0-client-secret"
+
+
+def test_oauth2_client_credentials_audience_absent_omitted_from_envelope() -> None:
+    """audience absent → envelope has no 'audience' key (Atlas byte-parity, Go omitempty parity)."""
+    payload = OAuth2ClientCredentialsPayload(
+        token_url="https://cloud.mongodb.com/api/oauth/token",
+        client_id="mdb_sa_id_abc",
+        client_secret="mdb_sa_secret_xyz",
+    )
+    envelope = _json.loads(payload.to_vault_envelope())
+    assert "audience" not in envelope
+    # The overall envelope matches the pre-change Atlas shape exactly.
+    assert set(envelope.keys()) == {"token_url", "client_id", "client_secret", "token_response_path"}
+
+
+def test_oauth2_client_credentials_audience_whitespace_only_rejected() -> None:
+    """Whitespace-only audience is rejected (non-empty absolute URI required)."""
+    with pytest.raises(pydantic.ValidationError, match="audience"):
+        OAuth2ClientCredentialsPayload(
+            token_url="https://my-tenant.auth0.com/oauth/token",
+            client_id="cid",
+            client_secret="csec",
+            audience="   ",
+        )
+
+
+def test_oauth2_client_credentials_audience_scheme_less_rejected() -> None:
+    """Audience without a URI scheme is rejected."""
+    with pytest.raises(pydantic.ValidationError, match="audience"):
+        OAuth2ClientCredentialsPayload(
+            token_url="https://my-tenant.auth0.com/oauth/token",
+            client_id="cid",
+            client_secret="csec",
+            audience="my-tenant.auth0.com/api/v2/",
+        )
+
+
+def test_oauth2_client_credentials_audience_validation_no_secret_leak() -> None:
+    """Invalid audience rejection must not echo the client_secret value (S-SEC-1)."""
+    marker = _marker()
+    with pytest.raises(pydantic.ValidationError) as exc_info:
+        OAuth2ClientCredentialsPayload(
+            token_url="https://my-tenant.auth0.com/oauth/token",
+            client_id="cid",
+            client_secret=marker,
+            audience="not-a-uri",  # triggers audience validation error
+        )
+    errors = exc_info.value.errors(
+        include_url=False, include_context=False, include_input=False
+    )
+    body = _json.dumps(
+        {"type": "about:blank", "title": "validation error", "detail": errors}
+    )
+    assert marker not in body, (
+        f"LEAK: client_secret marker appeared in audience rejection body:\n{body}"
+    )
+
+
+# ===========================================================================
 # OAuth2ClientCredentialsPayload — rejection
 # ===========================================================================
 

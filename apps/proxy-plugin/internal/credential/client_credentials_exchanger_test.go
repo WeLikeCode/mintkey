@@ -214,6 +214,80 @@ func TestExchangeClientCredentials_SSRFBlocked(t *testing.T) {
 	}
 }
 
+// TestExchangeClientCredentials_AudiencePresent verifies that when Audience is
+// set, the form body contains "audience=<value>" alongside grant_type and scope.
+func TestExchangeClientCredentials_AudiencePresent(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"access_token":"auth0-token","expires_in":86400}`)
+	}))
+	defer srv.Close()
+
+	te := NewTokenExchangerAllowPrivate()
+	result, err := te.ExchangeClientCredentials(context.Background(), ClientCredentialsRequest{
+		TokenURL:     srv.URL + "/oauth/token",
+		ClientID:     "auth0-client-id",
+		ClientSecret: "auth0-client-secret",
+		Audience:     "https://my-tenant.auth0.com/api/v2/",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Token != "auth0-token" {
+		t.Errorf("token = %q, want %q", result.Token, "auth0-token")
+	}
+	vals, perr := url.ParseQuery(gotBody)
+	if perr != nil {
+		t.Fatalf("body is not form-encoded: %v (body=%q)", perr, gotBody)
+	}
+	if got := vals.Get("grant_type"); got != "client_credentials" {
+		t.Errorf("grant_type = %q, want client_credentials", got)
+	}
+	if got := vals.Get("audience"); got != "https://my-tenant.auth0.com/api/v2/" {
+		t.Errorf("audience = %q, want %q", got, "https://my-tenant.auth0.com/api/v2/")
+	}
+}
+
+// TestExchangeClientCredentials_AtlasNoAudience_ByteIdentical verifies that when
+// Audience is absent the urlencoded form body is byte-identical to the pre-change
+// Atlas body (grant_type=client_credentials only; no "audience" key).
+func TestExchangeClientCredentials_AtlasNoAudience_ByteIdentical(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"access_token":"atlas-token","expires_in":3600}`)
+	}))
+	defer srv.Close()
+
+	te := NewTokenExchangerAllowPrivate()
+	_, err := te.ExchangeClientCredentials(context.Background(), ClientCredentialsRequest{
+		TokenURL:     srv.URL + "/api/oauth/token",
+		ClientID:     "mdb_sa_id",
+		ClientSecret: "mdb_sa_secret",
+		// Audience deliberately absent (Atlas path).
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Byte-identical to the pre-change Atlas body: just grant_type=client_credentials.
+	wantBody := "grant_type=client_credentials"
+	if gotBody != wantBody {
+		t.Errorf("body = %q, want %q (Atlas backward-compat regression)", gotBody, wantBody)
+	}
+
+	// Parsed form must have no "audience" key.
+	vals, _ := url.ParseQuery(gotBody)
+	if _, ok := vals["audience"]; ok {
+		t.Errorf("audience key must be absent from the Atlas form body; body=%q", gotBody)
+	}
+}
+
 // TestExchangeClientCredentials_HonorsPerCredentialTimeout verifies that a
 // server slower than the request timeout returns ErrTokenEndpointUnreachable.
 func TestExchangeClientCredentials_HonorsPerCredentialTimeout(t *testing.T) {

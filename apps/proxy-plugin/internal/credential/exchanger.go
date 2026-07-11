@@ -307,6 +307,7 @@ type ClientCredentialsRequest struct {
 	ClientID          string // HTTP Basic username
 	ClientSecret      string // HTTP Basic password
 	Scope             string // optional space-delimited scopes
+	Audience          string // optional token-request audience; omitted when empty
 	TokenResponsePath string // JSONPath, default "$.access_token"
 	// Timeout is the per-credential whole-request timeout. Zero → default (10s);
 	// clamped ≤0 → 10s, >120s → 120s (via effectiveTimeout).
@@ -343,11 +344,14 @@ func (te *TokenExchanger) ExchangeClientCredentials(ctx context.Context, req Cli
 		}
 	}
 
-	// Build the form-encoded body: grant_type=client_credentials (+ scope).
+	// Build the form-encoded body: grant_type=client_credentials (+ scope + audience).
 	vals := url.Values{}
 	vals.Set("grant_type", "client_credentials")
 	if req.Scope != "" {
 		vals.Set("scope", req.Scope)
+	}
+	if req.Audience != "" {
+		vals.Set("audience", req.Audience)
 	}
 	body := []byte(vals.Encode())
 

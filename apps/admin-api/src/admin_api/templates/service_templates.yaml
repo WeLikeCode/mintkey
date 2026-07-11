@@ -400,3 +400,22 @@ templates:
       public_key: "(your Programmatic API Key public key)"
       private_key: "(your Programmatic API Key private key)"
     test_path: /groups
+
+  - template_id: auth0-management
+    name: auth0-management
+    display_name: Auth0 Management API
+    description: "Auth0 Management API (tenant administration — applications, users, connections, roles, actions, logs). Mintkey exchanges your M2M client_id/client_secret for a 24-hour Bearer access token at your tenant's /oauth/token endpoint (audience required) and injects it as Authorization: Bearer — never send your own auth. No versioned Accept header is required. Operations are bounded by the Management API scopes granted to the M2M application in Auth0."
+    base_url: https://YOUR_TENANT.auth0.com/api/v2
+    auth_type: oauth2_client_credentials
+    openapi_spec_url: https://auth0.com/docs/oas/management/v2/management-api-oas.json
+    category: identity
+    version: "1.0.0"
+    config_notes: "Replace YOUR_TENANT with your Auth0 tenant domain EVERYWHERE (base_url, token_url, audience), including any region suffix (e.g. my-tenant.us.auth0.com) or your custom domain. In Auth0: Applications → create or select a Machine-to-Machine application authorized for the Auth0 Management API, granting the scopes your agents need (the test_path /clients needs read:clients). Credential JSON: {token_url: https://YOUR_TENANT.auth0.com/oauth/token, client_id, client_secret, audience: https://YOUR_TENANT.auth0.com/api/v2/}. The audience MUST match your tenant's Management API identifier exactly, INCLUDING the trailing slash. Mintkey authenticates to the token endpoint with HTTP Basic (client_secret_basic); if the exchange fails with 401 invalid_client, set the application's Authentication Method to Client Secret (Basic) (Applications → your app → Credentials). Tokens last 24 hours (expires_in 86400) and are cached and auto-refreshed by the proxy. Grant agents the call action per service."
+    credential_hint:
+      token_url: https://YOUR_TENANT.auth0.com/oauth/token
+      credential_fields:
+        client_id: "(your M2M application Client ID)"
+        client_secret: "(your M2M application Client Secret)"
+        audience: "https://YOUR_TENANT.auth0.com/api/v2/"
+      token_response_path: "$.access_token"
+    test_path: /clients

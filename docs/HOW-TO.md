@@ -1359,3 +1359,147 @@ sees the raw credential value.
 - `401` → token expired; call `request_token` again.
 
 ---
+
+## 14. Auth0 Management API
+
+Mintkey can broker the **Auth0 Management API** (`https://{tenantDomain}/api/v2`) so agents
+perform Auth0 tenant administration — manage applications/clients, users, connections, roles,
+actions, logs — without ever holding the M2M credential. The proxy exchanges your
+`client_id`/`client_secret` for a **24-hour Bearer access token** at your tenant's
+`/oauth/token` endpoint (with the required `audience` parameter) and injects it
+automatically.
+
+> **No versioned `Accept` header required.** Unlike MongoDB Atlas (§13.2), the Auth0
+> Management API uses plain `Authorization: Bearer <token>` with no dated `Accept` version
+> header. Mintkey forwards your request headers unchanged — you do not need to set a
+> version header as you would with Atlas.
+
+### 14.1 Prerequisites — create and authorize an M2M application in Auth0
+
+Perform these steps once in the [Auth0 Dashboard](https://manage.auth0.com) before
+registering the service in Mintkey:
+
+1. **Applications → Create Application** → choose **Machine to Machine Application**.
+2. **Authorize it for the Auth0 Management API**: on the authorization screen select the
+   **Auth0 Management API** and grant the least-privilege scopes your agents need. The
+   template's `test_path` is `/clients`, which requires **`read:clients`** at minimum. Add
+   other scopes (e.g. `read:users`, `update:users`, `create:clients`) as your use case
+   requires.
+3. Open the application's **Settings** tab — note the **Domain**, **Client ID**, and
+   **Client Secret**. These three values map to `YOUR_TENANT`, `client_id`, and
+   `client_secret` in the steps below.
+4. **Confirm the Token Endpoint Authentication Method.** Mintkey authenticates to
+   `/oauth/token` with HTTP Basic (`client_secret_basic`). Open the application's
+   **Credentials** tab (Applications → your app → Credentials) and confirm the
+   authentication method is **Client Secret (Basic)**. If it shows **Client Secret
+   (Post)**, change it to **Basic** — otherwise the token exchange will fail with
+   `401 invalid_client`.
+
+### 14.2 Instantiate the auth0-management template
+
+**Via Admin UI:** Services → New → **From Template** → choose **Auth0 Management API** →
+fill in a name → Create. Then edit the service and replace the `YOUR_TENANT` placeholder
+in `base_url` with your Auth0 domain.
+
+**Via curl:**
+
+```bash
+# Step 1 — create the service from the template's shape
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "Auth0 Management API",
+    "slug":        "auth0-mgmt",
+    "display_name":"Auth0 Management API",
+    "auth_scheme": "oauth2_client_credentials",
+    "base_url":    "https://YOUR_TENANT.auth0.com/api/v2"
+  }')
+SID=$(echo "$SVC" | jq -r '.id')
+```
+
+> **Replace `YOUR_TENANT` everywhere** — in `base_url`, `token_url`, and `audience`. Auth0
+> supports regional domains (e.g. `my-tenant.us.auth0.com`) and custom domains
+> (e.g. `auth.mycompany.com`). Use whichever domain appears in your Auth0 application's
+> **Domain** field.
+
+### 14.3 Store the credential
+
+```bash
+# Step 2 — store the M2M credential (token_url, client_id, client_secret, audience)
+# client_secret is never echoed back in any response, audit event, or log
+curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services/$SID/credentials" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "auth_scheme": "oauth2_client_credentials",
+    "value": {
+      "token_url":           "https://YOUR_TENANT.auth0.com/oauth/token",
+      "client_id":           "CLIENT_ID_HERE",
+      "client_secret":       "CLIENT_SECRET_HERE",
+      "audience":            "https://YOUR_TENANT.auth0.com/api/v2/",
+      "token_response_path": "$.access_token"
+    }
+  }' | jq .
+```
+
+> **Trailing slash on `audience` is mandatory.** Auth0's Management API identifier is
+> `https://{tenantDomain}/api/v2/` — the trailing slash is part of the identifier. A
+> slash-less value (e.g. `https://my-tenant.auth0.com/api/v2`) will not match, causing
+> Auth0 to reject the token request with an audience-mismatch error.
+
+The proxy exchanges the credential at `token_url` using form-encoded
+`grant_type=client_credentials` with HTTP Basic authentication, caches the returned
+24-hour access token (`expires_in 86400`), and auto-refreshes before expiry. Your agent
+never sees the token or the `client_secret`.
+
+**Via Admin UI:** service show page → **Set Credential** → fill `token_url`, `client_id`,
+`client_secret`, `audience` → Save.
+
+### 14.4 Grant the agent the `call` action
+
+```bash
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"call\"}" | jq .
+# Expected: {"id":"perm_01...","action":"call"}
+```
+
+**Via Admin UI:** Permission Grants → New → select Agent, Service (`auth0-mgmt`), Action
+(`call`) → Create.
+
+### 14.5 Agent calling the Auth0 Management API through the proxy
+
+```bash
+# Step 1 — request a token
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"call\"}" | jq -r '.token')
+
+# Step 2 — call the Management API through the proxy.
+# No dated Accept header needed — Auth0 uses plain Bearer auth (contrast §13.2).
+# URL pattern: http://localhost:8000/v1/call/<service_id>/<management_path>
+curl -s "http://localhost:8000/v1/call/$SID/clients" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+The proxy injects the cached Auth0 Bearer token and forwards your request headers
+unchanged. The `Authorization` header you send carries the short-lived Mintkey JWT; the
+proxy replaces it with the Auth0 access token before the request reaches `base_url`.
+
+**What could go wrong:**
+- `401 invalid_client` on token exchange → the M2M application's token-endpoint
+  authentication method is not **Client Secret (Basic)** — see §14.1 step 4.
+- `401 Unauthorized` from Auth0 on API calls → the audience may not match the Management
+  API identifier exactly, including the trailing slash (§14.3). Verify the stored
+  credential's `audience` field.
+- `403 Forbidden` from Auth0 → the Management API scope was not granted to the M2M
+  application (§14.1 step 2). Add the required scope in the Auth0 Dashboard.
+- `403 permission_not_found` → no active Mintkey grant for this agent + service + `call`;
+  create one (§14.4).
+- `401` with Mintkey → Mintkey JWT expired; call `request_token` again.
+
+---
