@@ -103,6 +103,14 @@ func WithPeriodicInterval(d time.Duration) Option {
 	}
 }
 
+// WithProxyPluginURL sets the upstream URL every generated Kong service routes
+// to (the proxy-plugin). Defaults to http://proxy-plugin:8086 when unset.
+func WithProxyPluginURL(url string) Option {
+	return func(c *Client) {
+		c.proxyPluginURL = url
+	}
+}
+
 // WithReconcileFn overrides the reconcile function (for testing).
 func WithReconcileFn(fn func() error) Option {
 	return func(c *Client) {
@@ -161,12 +169,13 @@ func (s *PushStats) LastPushFailed() bool { return s.lastFailed.Load() }
 // Client is a LISTEN/NOTIFY subscriber that reconciles Kong routes with the
 // active services list whenever a mintkey:service notification arrives.
 type Client struct {
-	db           string // DSN string (DATABASE_URL)
-	tenantScope  interface{}
-	scopeSet     bool
-	kongAdminURL string
-	httpClient   *http.Client
-	Stats        *PushStats
+	db             string // DSN string (DATABASE_URL)
+	tenantScope    interface{}
+	scopeSet       bool
+	kongAdminURL   string
+	proxyPluginURL string // upstream every generated Kong service routes to
+	httpClient     *http.Client
+	Stats          *PushStats
 
 	// Retry / periodic config knobs.
 	initialRetryMaxDuration time.Duration
@@ -207,6 +216,10 @@ func NewClient(db interface{}, opts ...Option) *Client {
 	// reconcileFn defaults to c.reconcile after options are applied.
 	if c.reconcileFn == nil {
 		c.reconcileFn = c.reconcile
+	}
+	// proxyPluginURL falls back to the docker-compose service name.
+	if c.proxyPluginURL == "" {
+		c.proxyPluginURL = "http://proxy-plugin:8086"
 	}
 	return c
 }
@@ -444,7 +457,7 @@ func (c *Client) reconcile() error {
 	}
 
 	// --- generate declarative YAML ---------------------------------------
-	yamlStr, err := kong.GenerateDeclarativeYAML(entries)
+	yamlStr, err := kong.GenerateDeclarativeYAML(entries, c.proxyPluginURL)
 	if err != nil {
 		c.Stats.MarkFailed()
 		return fmt.Errorf("GenerateDeclarativeYAML: %w", err)
