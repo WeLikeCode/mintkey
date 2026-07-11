@@ -30,6 +30,8 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agent_secrets import router as agent_secrets_router
+from admin_api.api.budget_consumers import router as budget_consumers_router
+from admin_api.api.budgets import router as budgets_router
 from admin_api.api.agents import router as agents_router
 from admin_api.api.email_permission_grants import router as email_permission_grants_router
 from admin_api.api.email_services import router as email_services_router
@@ -96,6 +98,8 @@ def create_app() -> FastAPI:
     app.include_router(internal_router)
     app.include_router(permissions_router)
     app.include_router(tenant_permissions_router)
+    app.include_router(budget_consumers_router)
+    app.include_router(budgets_router)
     app.include_router(audit_router)
     app.include_router(audit_admin_router)
     app.include_router(settings_router)

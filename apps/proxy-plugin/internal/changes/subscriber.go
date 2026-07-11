@@ -29,24 +29,50 @@ type ClassicalKeyCache interface {
 	EvictByAgentID(agentID string)
 }
 
+// BudgetCacheInvalidator is called when a budget.config_updated event arrives.
+// It invalidates any locally cached budget state for the affected permission_id.
+// Accepts nil — calls are no-ops when budget tracking is not wired.
+//
+// Source: FR-10, design §6; T-BUD-3.4.
+type BudgetCacheInvalidator interface {
+	InvalidateBudget(permissionID string)
+}
+
 // Subscriber listens on the mintkey:agent PostgreSQL NOTIFY channel.
 // It does NOT listen to mintkey:credential (Vault Adapter owns that).
 type Subscriber struct {
-	dsn    string
-	agents *revocation.AgentRevocationSet
-	jtis   *revocation.JTIRevocationSet
-	cache  ClassicalKeyCache // nil when classical-key branch is not wired
+	dsn         string
+	agents      *revocation.AgentRevocationSet
+	jtis        *revocation.JTIRevocationSet
+	cache       ClassicalKeyCache      // nil when classical-key branch is not wired
+	budgetCache BudgetCacheInvalidator // nil when budget tracking is not wired
 }
 
 // NewSubscriber constructs a Subscriber with the provided revocation sets.
 // cache may be nil when the classical-key branch is not active.
+// budgetCache may be nil when budget tracking is not active.
 func NewSubscriber(
 	dsn string,
 	agents *revocation.AgentRevocationSet,
 	jtis *revocation.JTIRevocationSet,
 	cache ClassicalKeyCache,
+	opts ...SubscriberOption,
 ) *Subscriber {
-	return &Subscriber{dsn: dsn, agents: agents, jtis: jtis, cache: cache}
+	s := &Subscriber{dsn: dsn, agents: agents, jtis: jtis, cache: cache}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// SubscriberOption is a functional option for NewSubscriber.
+type SubscriberOption func(*Subscriber)
+
+// WithBudgetCache wires a BudgetCacheInvalidator into the subscriber.
+func WithBudgetCache(bc BudgetCacheInvalidator) SubscriberOption {
+	return func(s *Subscriber) {
+		s.budgetCache = bc
+	}
 }
 
 // Start opens a pq.Listener on listenChannel and blocks dispatching
@@ -100,6 +126,7 @@ func (s *Subscriber) HandleNotification(payload string) error {
 		AgentID        string `json:"agent_id"`
 		JTI            string `json:"jti"`
 		KeyFingerprint string `json:"key_fingerprint"`
+		TargetID       string `json:"target_id"`
 	}
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return fmt.Errorf("parse notification payload: %w", err)
@@ -116,6 +143,10 @@ func (s *Subscriber) HandleNotification(payload string) error {
 	case "api_key.revoked":
 		if s.cache != nil {
 			s.cache.EvictByFingerprint(evt.KeyFingerprint)
+		}
+	case "budget.config_updated":
+		if s.budgetCache != nil && evt.TargetID != "" {
+			s.budgetCache.InvalidateBudget(evt.TargetID)
 		}
 	// Unknown event types are silently ignored — forward compatibility.
 	}

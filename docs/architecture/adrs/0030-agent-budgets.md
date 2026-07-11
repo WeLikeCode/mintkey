@@ -1,0 +1,1 @@
+../01-architecture/adr/0030-agent-budgets.md

@@ -1,0 +1,18 @@
+{
+  "pbtResults": {
+    "2.2 Write property test for validateBudgetInput (fast-check)": {
+      "status": "failed",
+      "failingExample": "Cannot run test: fast-check is not installed as a devDependency yet. The test file is correctly written and will fail against the stub (which returns { valid: true, errors: [] }) because the property asserts { valid: false } with non-empty errors for all invalid inputs. Once fast-check is installed (pnpm add -D fast-check) and the implementation in task 2.3 is complete, the test should pass. Expected counterexample from stub: validateBudgetInput(0, \"daily\", []) => { valid: true, errors: [] } (should be { valid: false, errors: [...] })",
+      "lastRunTimestamp": 1782645024417
+    },
+    "4.3 Write property test for BFF URL construction (fast-check)": {
+      "status": "passed",
+      "lastRunTimestamp": 1782651990998
+    },
+    "4.2 Write property test for BFF proxy fidelity (fast-check)": {
+      "status": "passed",
+      "lastRunTimestamp": 1782652460981
+    }
+  },
+  "executionHistory": {}
+}

@@ -27,11 +27,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email auth schemes to vault.proto.
 
 **Acceptance Criteria**:
-- [ ] Add `AUTH_SCHEME_EMAIL_PASSWORD = 14`
-- [ ] Add `AUTH_SCHEME_EMAIL_OAUTH2 = 15`
-- [ ] Add `AUTH_SCHEME_EMAIL_APP_PASSWORD = 16`
-- [ ] Update comments with email-specific metadata
-- [ ] Proto compiles without errors
+- [x] Add `AUTH_SCHEME_EMAIL_PASSWORD = 14`
+- [x] Add `AUTH_SCHEME_EMAIL_OAUTH2 = 15`
+- [x] Add `AUTH_SCHEME_EMAIL_APP_PASSWORD = 16`
+- [x] Update comments with email-specific metadata
+- [x] Proto compiles without errors
 
 **Files**:
 - `docs/architecture/contracts/vault-adapter/vault.proto`
@@ -44,13 +44,13 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email service endpoints and schemas to OpenAPI.
 
 **Acceptance Criteria**:
-- [ ] Add email auth schemes to AuthScheme enum
-- [ ] Add EmailService schema
-- [ ] Add EmailMessage schema with body_type field
-- [ ] Add Mailbox schema
-- [ ] Add Attachment schema
-- [ ] Add endpoints: GET /v1/email/mailboxes, GET /v1/email/messages, GET /v1/email/messages/{id}, POST /v1/email/send, DELETE /v1/email/messages/{id}, POST /v1/email/messages/{id}/move, POST /v1/email/messages/{id}/flags, POST /v1/email/search, GET /v1/email/attachments/{id}
-- [ ] OpenAPI validates without errors
+- [x] Add email auth schemes to AuthScheme enum
+- [x] Add EmailService schema
+- [x] Add EmailMessage schema with body_type field
+- [x] Add Mailbox schema
+- [x] Add Attachment schema
+- [x] Add endpoints: GET /v1/email/mailboxes, GET /v1/email/messages, GET /v1/email/messages/{id}, POST /v1/email/send, DELETE /v1/email/messages/{id}, POST /v1/email/messages/{id}/move, POST /v1/email/messages/{id}/flags, POST /v1/email/search, GET /v1/email/attachments/{id}
+- [x] OpenAPI validates without errors
 
 **Files**:
 - `docs/architecture/contracts/rest/openapi.yaml`
@@ -63,17 +63,17 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email MCP tools to tools.yaml.
 
 **Acceptance Criteria**:
-- [ ] Add email auth schemes to auth_scheme enum
-- [ ] Add list_mailboxes tool (requires read:email)
-- [ ] Add list_emails tool (requires read:email)
-- [ ] Add read_email tool (requires read:email)
-- [ ] Add send_email tool (requires send:email)
-- [ ] Add search_emails tool (requires read:email)
-- [ ] Add delete_email tool (requires delete:email)
-- [ ] Add move_email tool (requires write:email)
-- [ ] Add download_attachment tool (requires read:email)
-- [ ] Add mark_email tool (requires write:email)
-- [ ] YAML validates without errors
+- [x] Add email auth schemes to auth_scheme enum
+- [x] Add list_mailboxes tool (requires read:email)
+- [x] Add list_emails tool (requires read:email)
+- [x] Add read_email tool (requires read:email)
+- [x] Add send_email tool (requires send:email)
+- [x] Add search_emails tool (requires read:email)
+- [x] Add delete_email tool (requires delete:email)
+- [x] Add move_email tool (requires write:email)
+- [x] Add download_attachment tool (requires read:email)
+- [x] Add mark_email tool (requires write:email)
+- [x] YAML validates without errors
 
 **Files**:
 - `docs/architecture/contracts/mcp/tools.yaml`
@@ -86,10 +86,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email audit events to schema.
 
 **Acceptance Criteria**:
-- [ ] Add target_type enum values: `email_service`, `email_message`, `email_attachment`
-- [ ] Add auth_scheme enum values: `email_password`, `email_oauth2`, `email_app_password`
-- [ ] Add email event types: `email.mailboxes.listed`, `email.messages.listed`, `email.message.read`, `email.sent`, `email.messages.searched`, `email.message.deleted`, `email.message.moved`, `email.attachment.downloaded`, `email.service.registered`, `email.service.auth_expired`, `email.message.flags_updated`, `email.rate_limit.exceeded`, `email.domain.blocked`
-- [ ] JSON schema validates without errors
+- [x] Add target_type enum values: `email_service`, `email_message`, `email_attachment`
+- [x] Add auth_scheme enum values: `email_password`, `email_oauth2`, `email_app_password`
+- [x] Add email event types: `email.mailboxes.listed`, `email.messages.listed`, `email.message.read`, `email.sent`, `email.messages.searched`, `email.message.deleted`, `email.message.moved`, `email.attachment.downloaded`, `email.service.registered`, `email.service.auth_expired`, `email.message.flags_updated`, `email.rate_limit.exceeded`, `email.domain.blocked`
+- [x] JSON schema validates without errors
 
 **Files**:
 - `docs/architecture/contracts/events/audit-event.schema.json`
@@ -102,12 +102,12 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email change events to schema.
 
 **Acceptance Criteria**:
-- [ ] Add `email.service.registered` event
-- [ ] Add `email.service.updated` event
-- [ ] Add `email.service.deleted` event
-- [ ] Add events to `oneOf` array and `discriminator.mapping`
-- [ ] Add to `x-mintkey-channels` section
-- [ ] JSON schema validates without errors
+- [x] Add `email.service.registered` event
+- [x] Add `email.service.updated` event
+- [x] Add `email.service.deleted` event
+- [x] Add events to `oneOf` array and `discriminator.mapping`
+- [x] Add to `x-mintkey-channels` section
+- [x] JSON schema validates without errors
 
 **Files**:
 - `docs/architecture/contracts/events/change-event.schema.json`
@@ -120,11 +120,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email proxy span attributes.
 
 **Acceptance Criteria**:
-- [ ] Add span names: `mintkey.email.handle_request`, `mintkey.email.fetch_credential`, `mintkey.email.imap_operation`, `mintkey.email.smtp_send`
-- [ ] Add allowed attributes: `mintkey.email.operation`, `mintkey.email.provider`, `mintkey.email.mailbox`, `mintkey.email.message_count`, `mintkey.email.attachment_count`, `mintkey.email.attachment_size`
-- [ ] Update `mintkey/internal/otel/allowlist.go`
-- [ ] Update `mintkey_otel/allowlist.py`
-- [ ] Documentation updated
+- [x] Add span names: `mintkey.email.handle_request`, `mintkey.email.fetch_credential`, `mintkey.email.imap_operation`, `mintkey.email.smtp_send`
+- [x] Add allowed attributes: `mintkey.email.operation`, `mintkey.email.provider`, `mintkey.email.mailbox`, `mintkey.email.message_count`, `mintkey.email.attachment_count`, `mintkey.email.attachment_size`
+- [x] Update `mintkey/internal/otel/allowlist.go`
+- [x] Update `mintkey_otel/allowlist.py`
+- [x] Documentation updated
 
 **Files**:
 - `docs/architecture/contracts/events/span-attributes.md`
@@ -158,21 +158,21 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create directory structure for email-proxy service.
 
 **Acceptance Criteria**:
-- [ ] Create `apps/email-proxy/` directory
-- [ ] Create `cmd/email-proxy/main.go`
-- [ ] Create `internal/config/config.go`
-- [ ] Create `internal/pool/` directory (IMAP connection pool)
-- [ ] Create `internal/imap/` directory
-- [ ] Create `internal/smtp/` directory
-- [ ] Create `internal/oauth2/` directory
-- [ ] Create `internal/api/` directory (REST API)
-- [ ] Create `internal/auth/` directory (JWT validation)
-- [ ] Create `internal/security/` directory (injection prevention, domain filtering, rate limiting)
-- [ ] Create `internal/audit/` directory
-- [ ] Create `internal/metrics/` directory
-- [ ] Create `internal/trace/` directory
-- [ ] Create `go.mod` with correct module path (`github.com/mintkey/mintkey/services/email-proxy`)
-- [ ] Create `Dockerfile`
+- [x] Create `apps/email-proxy/` directory
+- [x] Create `cmd/email-proxy/main.go`
+- [x] Create `internal/config/config.go`
+- [x] Create `internal/pool/` directory (IMAP connection pool)
+- [x] Create `internal/imap/` directory
+- [x] Create `internal/smtp/` directory
+- [x] Create `internal/oauth2/` directory
+- [x] Create `internal/api/` directory (REST API)
+- [x] Create `internal/auth/` directory (JWT validation)
+- [x] Create `internal/security/` directory (injection prevention, domain filtering, rate limiting)
+- [x] Create `internal/audit/` directory
+- [x] Create `internal/metrics/` directory
+- [x] Create `internal/trace/` directory
+- [x] Create `go.mod` with correct module path (`github.com/mintkey/mintkey/services/email-proxy`)
+- [x] Create `Dockerfile`
 
 **Files**:
 - `apps/email-proxy/**`
@@ -185,11 +185,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement configuration loading.
 
 **Acceptance Criteria**:
-- [ ] Config struct defined with all fields (VaultIdentityID, VaultIdentityToken, OTelEndpoint, AuditWALPath)
-- [ ] Load from environment variables
-- [ ] Validate required fields
-- [ ] Set sensible defaults
-- [ ] Unit tests pass
+- [x] Config struct defined with all fields (VaultIdentityID, VaultIdentityToken, OTelEndpoint, AuditWALPath)
+- [x] Load from environment variables
+- [x] Validate required fields
+- [x] Set sensible defaults
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/config/config.go`
@@ -203,19 +203,19 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement IMAP client wrapper.
 
 **Acceptance Criteria**:
-- [ ] Connect to IMAP server with password
-- [ ] Connect to IMAP server with OAuth2 token
-- [ ] List mailboxes
-- [ ] Select mailbox
-- [ ] Fetch message summaries (ENVELOPE)
-- [ ] Fetch full message with attachments
-- [ ] Search messages (parameterized, no injection)
-- [ ] Delete message (move to Trash)
-- [ ] Move message to mailbox
-- [ ] Mark message flags (read/unread/flagged)
-- [ ] Handle connection errors
-- [ ] Handle authentication errors
-- [ ] Unit tests pass with mock IMAP server
+- [x] Connect to IMAP server with password
+- [x] Connect to IMAP server with OAuth2 token
+- [x] List mailboxes
+- [x] Select mailbox
+- [x] Fetch message summaries (ENVELOPE)
+- [x] Fetch full message with attachments
+- [x] Search messages (parameterized, no injection)
+- [x] Delete message (move to Trash)
+- [x] Move message to mailbox
+- [x] Mark message flags (read/unread/flagged)
+- [x] Handle connection errors
+- [x] Handle authentication errors
+- [x] Unit tests pass with mock IMAP server
 
 **Files**:
 - `apps/email-proxy/internal/imap/client.go`
@@ -231,18 +231,18 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement SMTP client wrapper.
 
 **Acceptance Criteria**:
-- [ ] Connect to SMTP server with password
-- [ ] Connect to SMTP server with OAuth2 token
-- [ ] Send email with text body
-- [ ] Send email with HTML body
-- [ ] Send email with attachments
-- [ ] Support multiple recipients (to, cc, bcc)
-- [ ] Validate recipient addresses with RFC 5322 parser
-- [ ] Sanitize headers (reject \r\n injection)
-- [ ] Handle connection errors
-- [ ] Handle authentication errors
-- [ ] Handle send errors
-- [ ] Unit tests pass with mock SMTP server
+- [x] Connect to SMTP server with password
+- [x] Connect to SMTP server with OAuth2 token
+- [x] Send email with text body
+- [x] Send email with HTML body
+- [x] Send email with attachments
+- [x] Support multiple recipients (to, cc, bcc)
+- [x] Validate recipient addresses with RFC 5322 parser
+- [x] Sanitize headers (reject \r\n injection)
+- [x] Handle connection errors
+- [x] Handle authentication errors
+- [x] Handle send errors
+- [x] Unit tests pass with mock SMTP server
 
 **Files**:
 - `apps/email-proxy/internal/smtp/client.go`
@@ -257,14 +257,14 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement OAuth2 flows for Gmail and Outlook.
 
 **Acceptance Criteria**:
-- [ ] Gmail OAuth2 flow (authorization URL, token exchange, refresh)
-- [ ] Outlook OAuth2 flow (authorization URL, token exchange, refresh)
-- [ ] Provider interface for extensibility
-- [ ] Singleflight to prevent concurrent token refresh storms
-- [ ] Handle token refresh failures
-- [ ] Handle token expiration (emit `email.service.auth_expired` audit event)
-- [ ] Update service status to `error` on expiration
-- [ ] Unit tests pass with mock OAuth2 server
+- [x] Gmail OAuth2 flow (authorization URL, token exchange, refresh)
+- [x] Outlook OAuth2 flow (authorization URL, token exchange, refresh)
+- [x] Provider interface for extensibility
+- [x] Singleflight to prevent concurrent token refresh storms
+- [x] Handle token refresh failures
+- [x] Handle token expiration (emit `email.service.auth_expired` audit event)
+- [x] Update service status to `error` on expiration
+- [x] Unit tests pass with mock OAuth2 server
 
 **Files**:
 - `apps/email-proxy/internal/oauth2/provider.go`
@@ -281,13 +281,13 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement IMAP connection pool.
 
 **Acceptance Criteria**:
-- [ ] Per-service connection pool with configurable size (default: 5)
-- [ ] Idle timeout: 5 minutes (configurable)
-- [ ] Credentials fetched once per pool connection
-- [ ] UIDVALIDITY tracking (invalidate cached UIDs on change)
-- [ ] Thread-safe (concurrent access from multiple requests)
-- [ ] Connection health checks
-- [ ] Unit tests pass
+- [x] Per-service connection pool with configurable size (default: 5)
+- [x] Idle timeout: 5 minutes (configurable)
+- [x] Credentials fetched once per pool connection
+- [x] UIDVALIDITY tracking (invalidate cached UIDs on change)
+- [x] Thread-safe (concurrent access from multiple requests)
+- [x] Connection health checks
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/pool/pool.go`
@@ -301,12 +301,12 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement security measures for injection prevention, domain filtering, and rate limiting.
 
 **Acceptance Criteria**:
-- [ ] IMAP/SMTP injection prevention (parameterized queries, header sanitization)
-- [ ] RFC 5322 address parsing and validation
-- [ ] Domain filtering (configurable allowlist per service)
-- [ ] Rate limiting (per-agent, per-service, shared via Postgres advisory locks)
-- [ ] Search query sanitization (log length/mailbox, not query text)
-- [ ] Unit tests for injection prevention, address parsing, domain filtering, rate limiting
+- [x] IMAP/SMTP injection prevention (parameterized queries, header sanitization)
+- [x] RFC 5322 address parsing and validation
+- [x] Domain filtering (configurable allowlist per service)
+- [x] Rate limiting (per-agent, per-service, shared via Postgres advisory locks)
+- [x] Search query sanitization (log length/mailbox, not query text)
+- [x] Unit tests for injection prevention, address parsing, domain filtering, rate limiting
 
 **Files**:
 - `apps/email-proxy/internal/security/injection.go`
@@ -324,12 +324,12 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement brokered JWT validation via JWKS.
 
 **Acceptance Criteria**:
-- [ ] Validate JWT against broker JWKS (Ed25519)
-- [ ] Force-refresh JWKS on unknown `kid` (per ADR-0016.2)
-- [ ] Check JWT scope against required permission
-- [ ] Check JWT audience matches service_id
-- [ ] Handle JWKS fetch failures
-- [ ] Unit tests pass
+- [x] Validate JWT against broker JWKS (Ed25519)
+- [x] Force-refresh JWKS on unknown `kid` (per ADR-0016.2)
+- [x] Check JWT scope against required permission
+- [x] Check JWT audience matches service_id
+- [x] Handle JWKS fetch failures
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/auth/jwt.go`
@@ -344,22 +344,22 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement REST API server with all endpoints.
 
 **Acceptance Criteria**:
-- [ ] HTTP server with chi router
-- [ ] JWT validation middleware
-- [ ] Logging middleware
-- [ ] GET /v1/email/mailboxes endpoint
-- [ ] GET /v1/email/messages endpoint
-- [ ] GET /v1/email/messages/{id} endpoint
-- [ ] POST /v1/email/send endpoint
-- [ ] DELETE /v1/email/messages/{id} endpoint
-- [ ] POST /v1/email/messages/{id}/move endpoint
-- [ ] POST /v1/email/messages/{id}/flags endpoint
-- [ ] POST /v1/email/search endpoint
-- [ ] GET /v1/email/attachments/{id} endpoint
-- [ ] POST /v1/health endpoint
-- [ ] POST /v1/ready endpoint
-- [ ] Error handling with JSON responses (sanitized)
-- [ ] Unit tests pass
+- [x] HTTP server with chi router
+- [x] JWT validation middleware
+- [x] Logging middleware
+- [x] GET /v1/email/mailboxes endpoint
+- [x] GET /v1/email/messages endpoint
+- [x] GET /v1/email/messages/{id} endpoint
+- [x] POST /v1/email/send endpoint
+- [x] DELETE /v1/email/messages/{id} endpoint
+- [x] POST /v1/email/messages/{id}/move endpoint
+- [x] POST /v1/email/messages/{id}/flags endpoint
+- [x] POST /v1/email/search endpoint
+- [x] GET /v1/email/attachments/{id} endpoint
+- [x] POST /v1/health endpoint
+- [x] POST /v1/ready endpoint
+- [x] Error handling with JSON responses (sanitized)
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/api/server.go`
@@ -376,22 +376,22 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement audit event emission via auditq.Queue.
 
 **Acceptance Criteria**:
-- [ ] Emit email.mailboxes.listed event
-- [ ] Emit email.messages.listed event
-- [ ] Emit email.message.read event
-- [ ] Emit email.sent event
-- [ ] Emit email.messages.searched event
-- [ ] Emit email.message.deleted event
-- [ ] Emit email.message.moved event
-- [ ] Emit email.message.flags_updated event
-- [ ] Emit email.attachment.downloaded event
-- [ ] Emit email.service.auth_expired event
-- [ ] Sanitize search queries (log length/mailbox, not query text)
-- [ ] Sanitize recipients (log count, not addresses)
-- [ ] Truncate subject to 100 chars
-- [ ] Integrate with auditq.Queue (use auditq.Event struct)
-- [ ] Include prev_hash + hash for audit chain
-- [ ] Unit tests pass
+- [x] Emit email.mailboxes.listed event
+- [x] Emit email.messages.listed event
+- [x] Emit email.message.read event
+- [x] Emit email.sent event
+- [x] Emit email.messages.searched event
+- [x] Emit email.message.deleted event
+- [x] Emit email.message.moved event
+- [x] Emit email.message.flags_updated event
+- [x] Emit email.attachment.downloaded event
+- [x] Emit email.service.auth_expired event
+- [x] Sanitize search queries (log length/mailbox, not query text)
+- [x] Sanitize recipients (log count, not addresses)
+- [x] Truncate subject to 100 chars
+- [x] Integrate with auditq.Queue (use auditq.Event struct)
+- [x] Include prev_hash + hash for audit chain
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/audit/emit.go`
@@ -405,15 +405,15 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement Prometheus metrics.
 
 **Acceptance Criteria**:
-- [ ] Track email operations by type
-- [ ] Track email operations by provider
-- [ ] Track operation duration
-- [ ] Track error rates
-- [ ] Track attachment sizes
-- [ ] Track rate limit violations
-- [ ] Track domain blocks
-- [ ] Expose /metrics endpoint
-- [ ] Unit tests pass
+- [x] Track email operations by type
+- [x] Track email operations by provider
+- [x] Track operation duration
+- [x] Track error rates
+- [x] Track attachment sizes
+- [x] Track rate limit violations
+- [x] Track domain blocks
+- [x] Expose /metrics endpoint
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/metrics/metrics.go`
@@ -427,10 +427,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Implement OpenTelemetry tracing.
 
 **Acceptance Criteria**:
-- [ ] Create spans for all email operations
-- [ ] Add span attributes (operation, provider, mailbox, message_count)
-- [ ] Integrate with OTel SDK
-- [ ] Unit tests pass
+- [x] Create spans for all email operations
+- [x] Add span attributes (operation, provider, mailbox, message_count)
+- [x] Integrate with OTel SDK
+- [x] Unit tests pass
 
 **Files**:
 - `apps/email-proxy/internal/trace/trace.go`
@@ -444,19 +444,19 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Wire all components in main.go.
 
 **Acceptance Criteria**:
-- [ ] Load configuration
-- [ ] Initialize Vault client with service identity
-- [ ] Initialize IMAP connection pool
-- [ ] Initialize SMTP client
-- [ ] Initialize OAuth2 handlers
-- [ ] Initialize JWT validation
-- [ ] Initialize security measures
-- [ ] Initialize audit emitter
-- [ ] Initialize metrics
-- [ ] Initialize tracing
-- [ ] Start HTTP server
-- [ ] Handle graceful shutdown
-- [ ] Integration test passes
+- [x] Load configuration
+- [x] Initialize Vault client with service identity
+- [x] Initialize IMAP connection pool
+- [x] Initialize SMTP client
+- [x] Initialize OAuth2 handlers
+- [x] Initialize JWT validation
+- [x] Initialize security measures
+- [x] Initialize audit emitter
+- [x] Initialize metrics
+- [x] Initialize tracing
+- [x] Start HTTP server
+- [x] Handle graceful shutdown
+- [x] Integration test passes
 
 **Files**:
 - `apps/email-proxy/cmd/email-proxy/main.go`
@@ -471,12 +471,12 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create AdminJS resource for email services.
 
 **Acceptance Criteria**:
-- [ ] Email service list view
-- [ ] Email service detail view
-- [ ] Email service create form
-- [ ] Email service edit form
-- [ ] Email service delete action
-- [ ] Resource registered in AdminJS
+- [x] Email service list view
+- [x] Email service detail view
+- [x] Email service create form
+- [x] Email service edit form
+- [x] Email service delete action
+- [x] Resource registered in AdminJS
 
 **Files**:
 - `apps/admin-ui/src/resources/email_services.ts`
@@ -489,17 +489,17 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create form for registering email services.
 
 **Acceptance Criteria**:
-- [ ] Provider selection (Gmail, Outlook, Custom)
-- [ ] For Gmail/Outlook: OAuth2 setup button
-- [ ] For Custom: IMAP/SMTP server fields
-- [ ] Username/password fields
-- [ ] Connection pool size configuration
-- [ ] Rate limit configuration
-- [ ] Domain restrictions configuration
-- [ ] Test connection button
-- [ ] Form validation
-- [ ] Success/error messages
-- [ ] Unit tests pass
+- [x] Provider selection (Gmail, Outlook, Custom)
+- [x] For Gmail/Outlook: OAuth2 setup button
+- [x] For Custom: IMAP/SMTP server fields
+- [x] Username/password fields
+- [x] Connection pool size configuration
+- [x] Rate limit configuration
+- [x] Domain restrictions configuration
+- [x] Test connection button
+- [x] Form validation
+- [x] Success/error messages
+- [x] Unit tests pass
 
 **Files**:
 - `apps/admin-ui/src/components/actions/EmailServiceCreateForm.tsx`
@@ -513,16 +513,16 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create OAuth2 setup flow component with CSRF protection.
 
 **Acceptance Criteria**:
-- [ ] Generate cryptographic state parameter
-- [ ] Store state in session
-- [ ] Display authorization URL
-- [ ] Handle OAuth2 callback with state validation
-- [ ] Exchange code for tokens
-- [ ] Store refresh token in Vault
-- [ ] Handle token expiration
-- [ ] Display success/error messages
-- [ ] Re-authorize button for expired tokens
-- [ ] Unit tests pass
+- [x] Generate cryptographic state parameter
+- [x] Store state in session
+- [x] Display authorization URL
+- [x] Handle OAuth2 callback with state validation
+- [x] Exchange code for tokens
+- [x] Store refresh token in Vault
+- [x] Handle token expiration
+- [x] Display success/error messages
+- [x] Re-authorize button for expired tokens
+- [x] Unit tests pass
 
 **Files**:
 - `apps/admin-ui/src/components/actions/EmailServiceOAuth2Setup.tsx`
@@ -536,10 +536,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create intro section for email services.
 
 **Acceptance Criteria**:
-- [ ] Display overview of email proxy
-- [ ] Display setup instructions
-- [ ] Link to documentation
-- [ ] Unit tests pass
+- [x] Display overview of email proxy
+- [x] Display setup instructions
+- [x] Link to documentation
+- [x] Unit tests pass
 
 **Files**:
 - `apps/admin-ui/src/components/sections/EmailServicesIntro.tsx`
@@ -553,17 +553,17 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email service CRUD endpoints to admin-api.
 
 **Acceptance Criteria**:
-- [ ] GET /v1/email/services endpoint
-- [ ] GET /v1/email/services/{id} endpoint
-- [ ] POST /v1/email/services endpoint
-- [ ] PATCH /v1/email/services/{id} endpoint
-- [ ] DELETE /v1/email/services/{id} endpoint
-- [ ] POST /v1/email/services/{id}/test endpoint
-- [ ] POST /v1/email/services/oauth2/authorize endpoint
-- [ ] POST /v1/email/services/oauth2/callback endpoint
-- [ ] Permission checks
-- [ ] Audit event emission
-- [ ] Unit tests pass
+- [x] GET /v1/email/services endpoint
+- [x] GET /v1/email/services/{id} endpoint
+- [x] POST /v1/email/services endpoint
+- [x] PATCH /v1/email/services/{id} endpoint
+- [x] DELETE /v1/email/services/{id} endpoint
+- [x] POST /v1/email/services/{id}/test endpoint
+- [x] POST /v1/email/services/oauth2/authorize endpoint
+- [x] POST /v1/email/services/oauth2/callback endpoint
+- [x] Permission checks
+- [x] Audit event emission
+- [x] Unit tests pass
 
 **Files**:
 - `apps/admin-api/src/admin_api/api/email_services.py`
@@ -577,12 +577,12 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email_services table to database.
 
 **Acceptance Criteria**:
-- [ ] Create email_services table with foreign key to services table
-- [ ] Add indexes
-- [ ] Add RLS policies
-- [ ] Single transaction for services + email_services inserts
-- [ ] Create migration
-- [ ] Migration runs without errors
+- [x] Create email_services table with foreign key to services table
+- [x] Add indexes
+- [x] Add RLS policies
+- [x] Single transaction for services + email_services inserts
+- [x] Create migration
+- [x] Migration runs without errors
 
 **Files**:
 - `apps/admin-api/db/changelog/XXX-email-services.yaml`
@@ -597,17 +597,17 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write comprehensive unit tests.
 
 **Acceptance Criteria**:
-- [ ] IMAP client tests (80% coverage)
-- [ ] SMTP client tests (80% coverage)
-- [ ] OAuth2 handler tests (80% coverage)
-- [ ] Connection pool tests (80% coverage)
-- [ ] Security tests (injection prevention, domain filtering, rate limiting) (80% coverage)
-- [ ] JWT validation tests (80% coverage)
-- [ ] API handler tests (80% coverage)
-- [ ] Audit emitter tests (80% coverage)
-- [ ] Metrics tests (80% coverage)
-- [ ] Trace tests (80% coverage)
-- [ ] All tests pass
+- [x] IMAP client tests (80% coverage)
+- [x] SMTP client tests (80% coverage)
+- [x] OAuth2 handler tests (80% coverage)
+- [x] Connection pool tests (80% coverage)
+- [x] Security tests (injection prevention, domain filtering, rate limiting) (80% coverage)
+- [x] JWT validation tests (80% coverage)
+- [x] API handler tests (80% coverage)
+- [x] Audit emitter tests (80% coverage)
+- [x] Metrics tests (80% coverage)
+- [x] Trace tests (80% coverage)
+- [x] All tests pass
 
 **Files**:
 - `apps/email-proxy/**/*_test.go`
@@ -620,16 +620,16 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write integration tests with mock email providers.
 
 **Acceptance Criteria**:
-- [ ] Test email send flow
-- [ ] Test email receive flow
-- [ ] Test email search flow
-- [ ] Test OAuth2 flow with mock provider
-- [ ] Test attachment handling
-- [ ] Test connection pooling
-- [ ] Test error handling
-- [ ] Test OAuth2 token refresh with singleflight
-- [ ] Test UIDVALIDITY change detection
-- [ ] All tests pass
+- [x] Test email send flow
+- [x] Test email receive flow
+- [x] Test email search flow
+- [x] Test OAuth2 flow with mock provider
+- [x] Test attachment handling
+- [x] Test connection pooling
+- [x] Test error handling
+- [x] Test OAuth2 token refresh with singleflight
+- [x] Test UIDVALIDITY change detection
+- [x] All tests pass
 
 **Files**:
 - `tests/integration/email_proxy/test_email_flow.py`
@@ -642,16 +642,16 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write acceptance tests with full docker-compose stack.
 
 **Acceptance Criteria**:
-- [ ] Test with real Gmail account (test account)
-- [ ] Test with real Outlook account (test account)
-- [ ] Test with custom IMAP/SMTP server
-- [ ] Test OAuth2 flows
-- [ ] Test attachment handling
-- [ ] Test rate limiting
-- [ ] Test domain filtering
-- [ ] Test audit hash chain
-- [ ] Test TLS termination
-- [ ] All tests pass
+- [x] Test with real Gmail account (test account)
+- [x] Test with real Outlook account (test account)
+- [x] Test with custom IMAP/SMTP server
+- [x] Test OAuth2 flows
+- [x] Test attachment handling
+- [x] Test rate limiting
+- [x] Test domain filtering
+- [x] Test audit hash chain
+- [x] Test TLS termination
+- [x] All tests pass
 
 **Files**:
 - `tests/acceptance/test_email_proxy.py`
@@ -664,13 +664,13 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write architecture tests to enforce security invariants.
 
 **Acceptance Criteria**:
-- [ ] No plaintext credentials in logs
-- [ ] Audit events emitted for all operations
-- [ ] Rate limiting enforced via Postgres advisory locks
-- [ ] Domain filtering enforced via RFC 5322 parser
-- [ ] JWT validation via JWKS (not shared secret)
-- [ ] Search query sanitization in audit events
-- [ ] All tests pass
+- [x] No plaintext credentials in logs
+- [x] Audit events emitted for all operations
+- [x] Rate limiting enforced via Postgres advisory locks
+- [x] Domain filtering enforced via RFC 5322 parser
+- [x] JWT validation via JWKS (not shared secret)
+- [x] Search query sanitization in audit events
+- [x] All tests pass
 
 **Files**:
 - `tests/architecture/test_email_proxy_security.py`
@@ -683,13 +683,13 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write red team tests for security vulnerabilities.
 
 **Acceptance Criteria**:
-- [ ] Send email containing known credential fingerprint, verify it doesn't appear in logs, audit events, or span attributes
-- [ ] Attempt IMAP/SMTP injection via malformed search queries
-- [ ] Attempt IMAP/SMTP injection via malformed email headers
-- [ ] Attempt domain filtering bypass via malformed addresses
-- [ ] Attempt rate limiting bypass by distributing requests across instances
-- [ ] Concurrent OAuth2 token refresh (10 goroutines), verify singleflight prevents storms
-- [ ] All tests pass
+- [x] Send email containing known credential fingerprint, verify it doesn't appear in logs, audit events, or span attributes
+- [x] Attempt IMAP/SMTP injection via malformed search queries
+- [x] Attempt IMAP/SMTP injection via malformed email headers
+- [x] Attempt domain filtering bypass via malformed addresses
+- [x] Attempt rate limiting bypass by distributing requests across instances
+- [x] Concurrent OAuth2 token refresh (10 goroutines), verify singleflight prevents storms
+- [x] All tests pass
 
 **Files**:
 - `tests/security/test_email_proxy_redteam.py`
@@ -702,11 +702,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write performance tests.
 
 **Acceptance Criteria**:
-- [ ] Load test with 100 concurrent operations
-- [ ] Measure latency percentiles (p50, p95, p99)
-- [ ] Verify connection pooling reduces overhead by 80%
-- [ ] Verify rate limiting works under load
-- [ ] Document performance characteristics
+- [x] Load test with 100 concurrent operations
+- [x] Measure latency percentiles (p50, p95, p99)
+- [x] Verify connection pooling reduces overhead by 80%
+- [x] Verify rate limiting works under load
+- [x] Document performance characteristics
 
 **Files**:
 - `tests/performance/test_email_proxy_load.py`
@@ -721,11 +721,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write user-facing documentation.
 
 **Acceptance Criteria**:
-- [ ] How to configure email services
-- [ ] How to use email MCP tools
-- [ ] OAuth2 setup guide
-- [ ] Troubleshooting guide
-- [ ] Examples
+- [x] How to configure email services
+- [x] How to use email MCP tools
+- [x] OAuth2 setup guide
+- [x] Troubleshooting guide
+- [x] Examples
 
 **Files**:
 - `docs/user-guide/email-proxy.md`
@@ -738,10 +738,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Write API reference documentation.
 
 **Acceptance Criteria**:
-- [ ] REST API reference
-- [ ] MCP tools reference
-- [ ] Error codes reference
-- [ ] Examples
+- [x] REST API reference
+- [x] MCP tools reference
+- [x] Error codes reference
+- [x] Examples
 
 **Files**:
 - `docs/api-reference/email-proxy.md`
@@ -754,13 +754,13 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create Grafana dashboard for email proxy metrics.
 
 **Acceptance Criteria**:
-- [ ] Email operations per minute panel
-- [ ] OAuth2 token refresh rate panel
-- [ ] Error rates by provider panel
-- [ ] Attachment upload/download rates panel
-- [ ] Rate limit violations panel
-- [ ] Domain blocks panel
-- [ ] Dashboard imports without errors
+- [x] Email operations per minute panel
+- [x] OAuth2 token refresh rate panel
+- [x] Error rates by provider panel
+- [x] Attachment upload/download rates panel
+- [x] Rate limit violations panel
+- [x] Domain blocks panel
+- [x] Dashboard imports without errors
 
 **Files**:
 - `grafana/dashboards/email-proxy.json`
@@ -773,14 +773,14 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email-proxy to docker-compose.yml.
 
 **Acceptance Criteria**:
-- [ ] email-proxy service defined
-- [ ] Environment variables configured
-- [ ] Health checks configured
-- [ ] Port 993 exposed (IMAP)
-- [ ] Port 587 exposed (SMTP)
-- [ ] Port 8088 exposed (REST API + health/metrics)
-- [ ] Depends on vault-adapter and admin-api
-- [ ] docker-compose up starts email-proxy
+- [x] email-proxy service defined
+- [x] Environment variables configured
+- [x] Health checks configured
+- [x] Port 993 exposed (IMAP)
+- [x] Port 587 exposed (SMTP)
+- [x] Port 8088 exposed (REST API + health/metrics)
+- [x] Depends on vault-adapter and admin-api
+- [x] docker-compose up starts email-proxy
 
 **Files**:
 - `docker-compose.yml`
@@ -793,11 +793,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Add email-proxy to CI/CD pipeline.
 
 **Acceptance Criteria**:
-- [ ] Build email-proxy in CI
-- [ ] Run unit tests in CI
-- [ ] Run integration tests in CI
-- [ ] Run acceptance tests in nightly
-- [ ] Deploy email-proxy on merge to main
+- [x] Build email-proxy in CI
+- [x] Run unit tests in CI
+- [x] Run integration tests in CI
+- [x] Run acceptance tests in nightly
+- [x] Deploy email-proxy on merge to main
 
 **Files**:
 - `.github/workflows/ci.yml`
@@ -812,11 +812,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Conduct adversarial review of email proxy implementation.
 
 **Acceptance Criteria**:
-- [ ] Security review completed
-- [ ] Architecture review completed
-- [ ] Performance review completed
-- [ ] Findings documented
-- [ ] Critical findings addressed
+- [x] Security review completed
+- [x] Architecture review completed
+- [x] Performance review completed
+- [x] Findings documented
+- [x] Critical findings addressed
 
 **Files**:
 - `docs/architecture/contracts/_review-email-proxy.md`
@@ -829,10 +829,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Address findings from adversarial review.
 
 **Acceptance Criteria**:
-- [ ] All critical findings fixed
-- [ ] All high findings fixed or documented
-- [ ] Tests updated
-- [ ] Documentation updated
+- [x] All critical findings fixed
+- [x] All high findings fixed or documented
+- [x] Tests updated
+- [x] Documentation updated
 
 **Files**:
 - Various based on findings
@@ -845,11 +845,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Conduct performance testing.
 
 **Acceptance Criteria**:
-- [ ] Load test with 100 concurrent operations
-- [ ] Measure latency percentiles (p50, p95, p99)
-- [ ] Identify bottlenecks
-- [ ] Optimize critical paths
-- [ ] Document performance characteristics
+- [x] Load test with 100 concurrent operations
+- [x] Measure latency percentiles (p50, p95, p99)
+- [x] Identify bottlenecks
+- [x] Optimize critical paths
+- [x] Document performance characteristics
 
 **Files**:
 - `tests/performance/test_email_proxy_load.py`
@@ -864,11 +864,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Create release notes for email proxy feature.
 
 **Acceptance Criteria**:
-- [ ] Feature overview
-- [ ] Breaking changes (if any)
-- [ ] Migration guide (if needed)
-- [ ] Known issues
-- [ ] Changelog
+- [x] Feature overview
+- [x] Breaking changes (if any)
+- [x] Migration guide (if needed)
+- [x] Known issues
+- [x] Changelog
 
 **Files**:
 - `RELEASE_NOTES.md`
@@ -881,10 +881,10 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Update main documentation to reference email proxy.
 
 **Acceptance Criteria**:
-- [ ] Update README.md
-- [ ] Update architecture overview
-- [ ] Update deployment guide
-- [ ] Update user guide
+- [x] Update README.md
+- [x] Update architecture overview
+- [x] Update deployment guide
+- [x] Update user guide
 
 **Files**:
 - `README.md`
@@ -899,11 +899,11 @@ This document breaks down the email proxy implementation into concrete tasks org
 **Description**: Merge email proxy feature to main branch.
 
 **Acceptance Criteria**:
-- [ ] All tests pass
-- [ ] All documentation updated
-- [ ] Code review approved
-- [ ] Merge to main
-- [ ] Tag release
+- [x] All tests pass
+- [x] All documentation updated
+- [x] Code review approved
+- [x] Merge to main
+- [x] Tag release
 
 **Files**:
 - None

@@ -107,7 +107,8 @@
         "email_mailbox",
         "email_permission_grant",
         "agent_secret",
-        "agent_secret_grant"
+        "agent_secret_grant",
+        "budget"
       ]
     },
     "auth_scheme": {
@@ -2773,6 +2774,94 @@
         }
       },
       "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_budget_threshold_reached": {
+      "title": "budget.threshold_reached",
+      "description": "Budget consumption crossed a configured alert threshold. Emitted by the proxy plugin. Per FR-7, design §7.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "budget.threshold_reached"},
+        "target_type": {"const": "budget"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {"$ref": "#/$defs/permission_id"},
+            "used": {"type": "integer", "minimum": 0},
+            "ceiling": {"type": "integer", "minimum": 1},
+            "threshold_pct": {"type": "integer", "minimum": 1, "maximum": 100},
+            "period_start": {"$ref": "#/$defs/timestamp_utc"},
+            "period_end": {"$ref": "#/$defs/timestamp_utc"}
+          },
+          "required": ["permission_id", "used", "ceiling", "threshold_pct", "period_start", "period_end"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_budget_exceeded": {
+      "title": "budget.exceeded",
+      "description": "A request was denied because the budget ceiling was reached. Emitted by the proxy plugin. Per FR-7, design §7.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "budget.exceeded"},
+        "target_type": {"const": "budget"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {"$ref": "#/$defs/permission_id"},
+            "used": {"type": "integer", "minimum": 0},
+            "ceiling": {"type": "integer", "minimum": 1},
+            "period_end": {"$ref": "#/$defs/timestamp_utc"},
+            "denied_jti": {"$ref": "#/$defs/ulid", "description": "JTI of the denied request token."}
+          },
+          "required": ["permission_id", "used", "ceiling", "period_end", "denied_jti"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_budget_config_updated": {
+      "title": "budget.config_updated",
+      "description": "An operator updated budget configuration on a permission grant. Per FR-7, design §7.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "budget.config_updated"},
+        "target_type": {"const": "budget"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {"$ref": "#/$defs/permission_id"},
+            "old_ceiling": {"type": "integer", "minimum": 1},
+            "new_ceiling": {"type": "integer", "minimum": 1},
+            "old_period": {"type": "string", "enum": ["hourly", "daily", "weekly", "monthly"]},
+            "new_period": {"type": "string", "enum": ["hourly", "daily", "weekly", "monthly"]}
+          },
+          "required": ["permission_id", "old_ceiling", "new_ceiling", "old_period", "new_period"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_budget_reset": {
+      "title": "budget.reset",
+      "description": "An operator manually reset the budget for a permission grant mid-period. Per FR-7, design §7.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "budget.reset"},
+        "target_type": {"const": "budget"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "permission_id": {"$ref": "#/$defs/permission_id"},
+            "previous_used": {"type": "integer", "minimum": 0},
+            "previous_ceiling": {"type": "integer", "minimum": 1},
+            "new_period_start": {"$ref": "#/$defs/timestamp_utc"}
+          },
+          "required": ["permission_id", "previous_used", "previous_ceiling", "new_period_start"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -2961,6 +3050,18 @@
     },
     {
       "$ref": "#/$defs/ev_agent_secret_grant_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_budget_threshold_reached"
+    },
+    {
+      "$ref": "#/$defs/ev_budget_exceeded"
+    },
+    {
+      "$ref": "#/$defs/ev_budget_config_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_budget_reset"
     }
   ],
   "discriminator": {
@@ -3030,7 +3131,11 @@
       "agent_secret.read": "#/$defs/ev_agent_secret_read",
       "agent_secret.deleted": "#/$defs/ev_agent_secret_deleted",
       "agent_secret_grant.created": "#/$defs/ev_agent_secret_grant_created",
-      "agent_secret_grant.revoked": "#/$defs/ev_agent_secret_grant_revoked"
+      "agent_secret_grant.revoked": "#/$defs/ev_agent_secret_grant_revoked",
+      "budget.threshold_reached": "#/$defs/ev_budget_threshold_reached",
+      "budget.exceeded": "#/$defs/ev_budget_exceeded",
+      "budget.config_updated": "#/$defs/ev_budget_config_updated",
+      "budget.reset": "#/$defs/ev_budget_reset"
     }
   },
   "examples": [

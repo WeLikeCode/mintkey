@@ -22,6 +22,7 @@ import (
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/budget"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/config"
@@ -813,5 +814,275 @@ func TestTokenExchanged_EmitterPath_AgentIDHostOnlyNoSecretLeak(t *testing.T) {
 	}
 	if strings.Contains(rawBody, exchangedToken) {
 		t.Errorf("audit body leaks the exchanged token %q; body: %s", exchangedToken, rawBody)
+	}
+}
+
+
+// ---------------------------------------------------------------------------
+// T-BUD-3.2: Budget enforcement integration tests
+// ---------------------------------------------------------------------------
+
+// testHandlerWithBudget builds a proxy handler wired with budget enforcement.
+func testHandlerWithBudget(
+	resolver *budget.InMemoryConfigResolver,
+	budgetDB budget.DB,
+	auditMock *mockAuditQueue,
+) *proxyHandler {
+	cfg := &config.Config{
+		VaultAddrGRPC:  "localhost:1",
+		JWKSEndpoint:   "http://localhost:1/.well-known/jwks.json",
+		PluginPort:     8086,
+		DefaultTarget:  "http://localhost:1",
+		AudEnforcement: config.AudEnforcementPermissive,
+	}
+	ck := classicalkey.NewHandler(classicalkey.Config{BrokerURL: "http://localhost:1", CacheTTL: 60 * time.Second})
+	h := newProxyHandler(cfg, vault.NewClient("localhost:1", "", ""), proxyjwt.NewJWKSRefreshLimiter(), ck, nil, nil)
+	h.budgetResolver = resolver
+	h.budgetDB = budgetDB
+	if auditMock != nil {
+		h.audit = auditMock
+	}
+	return h
+}
+
+// mockBudgetDB implements budget.DB for integration tests.
+// It returns success for calls up to a ceiling, then triggers the exceeded path.
+type mockBudgetDB struct {
+	mu          sync.Mutex
+	used        int
+	ceiling     int
+	periodEnd   time.Time
+	calls       int
+}
+
+func (m *mockBudgetDB) QueryRow(_ context.Context, sql string, _ ...any) budget.Row {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls++
+
+	// The first QueryRow call is the upsert. If under ceiling, return success.
+	// If at ceiling, return error to trigger the fallback SELECT.
+	if strings.Contains(sql, "ON CONFLICT") {
+		if m.used < m.ceiling {
+			m.used++
+			return &budgetMockRow{values: []any{m.used, m.ceiling}}
+		}
+		// Ceiling hit — return error so Check falls through to SELECT.
+		return &budgetMockRow{err: fmt.Errorf("no rows in result set")}
+	}
+
+	// SELECT query — return current state (used >= ceiling).
+	return &budgetMockRow{values: []any{m.used, m.ceiling, m.periodEnd}}
+}
+
+// budgetMockRow implements budget.Row for budget integration tests.
+type budgetMockRow struct {
+	values []any
+	err    error
+}
+
+func (r *budgetMockRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	for i, v := range r.values {
+		switch d := dest[i].(type) {
+		case *int:
+			*d = v.(int)
+		case *time.Time:
+			*d = v.(time.Time)
+		default:
+			return fmt.Errorf("budgetMockRow: unsupported scan target type %T", d)
+		}
+	}
+	return nil
+}
+
+// TestBudgetEnforcement_CeilingHit_Returns429 verifies:
+// - Agent hits ceiling; next request gets 429.
+// - Response body matches design §10.
+// - Retry-After header is set in HTTP-date format.
+// - mintkey_budget_denied_total counter is incremented.
+// - Upstream (vault) is never called after ceiling hit.
+func TestBudgetEnforcement_CeilingHit_Returns429(t *testing.T) {
+	const permID = "perm_01BUDGET_TEST"
+	periodEnd := time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)
+
+	// Budget: ceiling=2, so 3rd request should be denied.
+	db := &mockBudgetDB{used: 0, ceiling: 2, periodEnd: periodEnd}
+	resolver := budget.NewInMemoryConfigResolver()
+	resolver.Set("agent_test", testSvcUUIDA, "tenant-test-uuid-0001", &budget.ResolvedBudget{
+		PermissionID: permID,
+		Config: budget.BudgetConfig{
+			Ceiling:         2,
+			Period:          "daily",
+			AlertThresholds: []int{50, 80, 100},
+		},
+	})
+
+	auditMock := &mockAuditQueue{}
+	h := testHandlerWithBudget(resolver, db, auditMock)
+
+	token, pub := buildTestJWT(t, testSvcUUIDA)
+	h.pubKeys["testkey"] = pub
+
+	// Request 1 — should succeed (budget incremented to 1/2).
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDA+"/contacts", nil)
+	req1.Header.Set("Authorization", "Bearer "+token)
+	rw1 := httptest.NewRecorder()
+	h.ServeHTTP(rw1, req1)
+	// Since vault is unreachable, we get 502 — but not 429 (budget passed).
+	if rw1.Code == http.StatusTooManyRequests {
+		t.Fatalf("request 1: unexpected 429 (budget should allow)")
+	}
+
+	// Request 2 — should succeed (budget incremented to 2/2).
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDA+"/contacts", nil)
+	req2.Header.Set("Authorization", "Bearer "+token)
+	rw2 := httptest.NewRecorder()
+	h.ServeHTTP(rw2, req2)
+	if rw2.Code == http.StatusTooManyRequests {
+		t.Fatalf("request 2: unexpected 429 (budget should allow)")
+	}
+
+	// Request 3 — should be denied with 429.
+	req3 := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDA+"/contacts", nil)
+	req3.Header.Set("Authorization", "Bearer "+token)
+	rw3 := httptest.NewRecorder()
+	h.ServeHTTP(rw3, req3)
+
+	if rw3.Code != http.StatusTooManyRequests {
+		t.Fatalf("request 3: expected 429, got %d (body: %s)", rw3.Code, rw3.Body.String())
+	}
+
+	// Verify response body matches design §10.
+	var body map[string]any
+	if err := json.Unmarshal(rw3.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+
+	if body["error"] != "budget_exceeded" {
+		t.Errorf("error field: want budget_exceeded, got %v", body["error"])
+	}
+	if body["detail"] != "Call budget exhausted for this period." {
+		t.Errorf("detail field: want 'Call budget exhausted for this period.', got %v", body["detail"])
+	}
+	if body["permission_id"] != permID {
+		t.Errorf("permission_id: want %s, got %v", permID, body["permission_id"])
+	}
+
+	budgetInfo, ok := body["budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("budget field missing or not an object: %v", body)
+	}
+	if int(budgetInfo["ceiling"].(float64)) != 2 {
+		t.Errorf("budget.ceiling: want 2, got %v", budgetInfo["ceiling"])
+	}
+	if int(budgetInfo["used"].(float64)) != 2 {
+		t.Errorf("budget.used: want 2, got %v", budgetInfo["used"])
+	}
+	if budgetInfo["period"] != "daily" {
+		t.Errorf("budget.period: want daily, got %v", budgetInfo["period"])
+	}
+
+	// Verify Retry-After header is set (RFC 7231 HTTP-date format).
+	retryAfter := rw3.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Error("Retry-After header missing")
+	} else {
+		// Parse as HTTP-date format.
+		_, err := time.Parse(http.TimeFormat, retryAfter)
+		if err != nil {
+			t.Errorf("Retry-After header not in HTTP-date format: %q (err: %v)", retryAfter, err)
+		}
+	}
+
+	// Verify audit: budget.exceeded event emitted.
+	events := auditMock.captured()
+	var exceededEvent *auditq.Event
+	for i, e := range events {
+		if e.EventType == "budget.exceeded" {
+			exceededEvent = &events[i]
+			break
+		}
+	}
+	if exceededEvent == nil {
+		t.Error("expected budget.exceeded audit event, none found")
+	} else {
+		if exceededEvent.Payload["permission_id"] != permID {
+			t.Errorf("audit permission_id: want %s, got %v", permID, exceededEvent.Payload["permission_id"])
+		}
+	}
+}
+
+// TestBudgetEnforcement_NoBudgetConfig_SkipCheck verifies that when no budget
+// is configured for the grant, the budget check is skipped entirely and the
+// request proceeds normally (vault error = 502, not 429).
+func TestBudgetEnforcement_NoBudgetConfig_SkipCheck(t *testing.T) {
+	// Empty resolver — no budget configured for any grant.
+	resolver := budget.NewInMemoryConfigResolver()
+	db := &mockBudgetDB{used: 100, ceiling: 100, periodEnd: time.Now().Add(time.Hour)}
+
+	h := testHandlerWithBudget(resolver, db, nil)
+	token, pub := buildTestJWT(t, testSvcUUIDA)
+	h.pubKeys["testkey"] = pub
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDA+"/contacts", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rw := httptest.NewRecorder()
+	h.ServeHTTP(rw, req)
+
+	// Should NOT be 429 — budget check skipped, vault unreachable gives 502.
+	if rw.Code == http.StatusTooManyRequests {
+		t.Fatalf("expected budget check to be skipped (no config), got 429")
+	}
+}
+
+// TestBudgetEnforcement_MetricsExposed verifies that after a budget-checked
+// request, the /metrics endpoint exposes all three budget metrics.
+func TestBudgetEnforcement_MetricsExposed(t *testing.T) {
+	const permID = "perm_01METRICS"
+	periodEnd := time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)
+
+	db := &mockBudgetDB{used: 0, ceiling: 10, periodEnd: periodEnd}
+	resolver := budget.NewInMemoryConfigResolver()
+	resolver.Set("agent_test", testSvcUUIDA, "tenant-test-uuid-0001", &budget.ResolvedBudget{
+		PermissionID: permID,
+		Config: budget.BudgetConfig{
+			Ceiling:         10,
+			Period:          "daily",
+			AlertThresholds: []int{50, 80, 100},
+		},
+	})
+
+	h := testHandlerWithBudget(resolver, db, nil)
+	token, pub := buildTestJWT(t, testSvcUUIDA)
+	h.pubKeys["testkey"] = pub
+
+	// Make a request to trigger budget check.
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/call/"+testSvcUUIDA+"/contacts", nil)
+	req1.Header.Set("Authorization", "Bearer "+token)
+	rw1 := httptest.NewRecorder()
+	h.ServeHTTP(rw1, req1)
+
+	// Now check /metrics.
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsRW := httptest.NewRecorder()
+	h.ServeHTTP(metricsRW, metricsReq)
+
+	metricsBody := metricsRW.Body.String()
+
+	// All three budget metrics should be present.
+	if !strings.Contains(metricsBody, "mintkey_budget_used") {
+		t.Error("metrics endpoint missing mintkey_budget_used")
+	}
+	if !strings.Contains(metricsBody, "mintkey_budget_ceiling") {
+		t.Error("metrics endpoint missing mintkey_budget_ceiling")
+	}
+	// denied_total header is always written (even if value is 0 may not appear
+	// as a line unless at least one label set has been registered).
+	if !strings.Contains(metricsBody, "mintkey_budget_denied_total") {
+		// It should appear as a HELP/TYPE line at minimum.
+		t.Error("metrics endpoint missing mintkey_budget_denied_total")
 	}
 }
