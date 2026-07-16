@@ -393,6 +393,90 @@
         "payload"
       ]
     },
+    "ev_operator_updated": {
+      "type": "object",
+      "description": "An Operator's metadata was updated.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "operator.updated"
+        },
+        "target_type": {
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "fields_changed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "display_name",
+                  "is_platform_admin",
+                  "status"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "operator_id",
+            "fields_changed"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_operator_deleted": {
+      "type": "object",
+      "description": "An Operator was soft-deleted (status = disabled). The row is retained for audit history.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "operator.deleted"
+        },
+        "target_type": {
+          "const": "operator"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "operator_id": {
+              "$ref": "#/$defs/operator_id"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "operator_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
     "ev_operator_permission_granted": {
       "type": "object",
       "allOf": [
@@ -2878,6 +2962,12 @@
       "$ref": "#/$defs/ev_operator_created"
     },
     {
+      "$ref": "#/$defs/ev_operator_updated"
+    },
+    {
+      "$ref": "#/$defs/ev_operator_deleted"
+    },
+    {
       "$ref": "#/$defs/ev_operator_permission_granted"
     },
     {
@@ -3071,6 +3161,8 @@
       "tenant.updated": "#/$defs/ev_tenant_updated",
       "tenant.deleted": "#/$defs/ev_tenant_deleted",
       "operator.created": "#/$defs/ev_operator_created",
+      "operator.updated": "#/$defs/ev_operator_updated",
+      "operator.deleted": "#/$defs/ev_operator_deleted",
       "operator.permission.granted": "#/$defs/ev_operator_permission_granted",
       "operator.permission.revoked": "#/$defs/ev_operator_permission_revoked",
       "service.registered": "#/$defs/ev_service_registered",
