@@ -1,0 +1,244 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Write pytest tests for the aggregation endpoint": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155097
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675166033
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675880347
+      }
+    ],
+    "1.2 Implement the aggregation endpoint": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155119
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675888664
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676627769
+      }
+    ],
+    "2. Checkpoint - Ensure admin-api tests pass": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155143
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676653650
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676660168
+      }
+    ],
+    "3.1 Write integration tests for the BFF route": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155162
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675166736
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675883547
+      }
+    ],
+    "3.2 Implement the BFF budget-consumers route": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155178
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675889450
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676628501
+      }
+    ],
+    "4.1 Write unit tests for filterConsumers and isExhausted": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155196
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675169072
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675881196
+      }
+    ],
+    "4.2 Implement filterConsumers and isExhausted utilities": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155214
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675891770
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676630803
+      }
+    ],
+    "5. Checkpoint - Ensure all utility and BFF tests pass": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155234
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676655867
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676662367
+      }
+    ],
+    "6.1 Write component tests for BudgetConsumersPage": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155255
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676680904
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782677074451
+      }
+    ],
+    "6.2 Implement BudgetConsumersPage component": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155272
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782677079712
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678499999
+      }
+    ],
+    "7.1 Register the page in AdminJS config": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155289
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782677087652
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678502255
+      }
+    ],
+    "8. Final checkpoint - Ensure all tests pass": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782675155306
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678508725
+      },
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678514487
+      }
+    ],
+    "1. Admin-API aggregation endpoint (Python)": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676627797
+      }
+    ],
+    "3. BFF proxy route (TypeScript)": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676628530
+      }
+    ],
+    "4. Pure utility functions (TypeScript)": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782676630830
+      }
+    ],
+    "6. React page component (TypeScript)": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678500037
+      }
+    ],
+    "7. AdminJS wiring and navigation": [
+      {
+        "executionId": "a9bf4556-527f-40ce-8b43-4dcdb0c26053",
+        "chatSessionId": "sess_378f7892-9386-4758-9cb7-a45d88b3bef9",
+        "timestamp": 1782678502281
+      }
+    ]
+  }
+}

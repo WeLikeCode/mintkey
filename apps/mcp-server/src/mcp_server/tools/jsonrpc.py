@@ -387,12 +387,20 @@ def _helpful_400() -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-async def _require_agent(request: Request) -> tuple[dict | None, str | None]:
+async def _require_agent(request: Request) -> tuple[dict | None, str | None, str | None]:
     """
     Extract and validate the agent key from the incoming request.
 
     Tries Authorization: Bearer mk_agent_<key> first, then X-API-Key: mk_agent_<key>.
-    Returns (agent_ctx, agent_key) on success, (None, None) on failure.
+    Returns (agent_ctx, agent_key, None) on success and (None, None, reason)
+    on failure, where reason is:
+      - "unauthorized"        — no/invalid-format token, or admin-api judged
+                               the key bad (4xx). Maps to JSON-RPC -32001.
+      - "service_unavailable" — admin-api timed out / 5xx: the key was never
+                               judged, so this is transient and retryable.
+                               Maps to JSON-RPC -32603 so a client's initial
+                               discovery burst does not permanently mark the
+                               key as unauthorized when admin-api is briefly overloaded.
 
     Mirrors the prefix logic in main.py:agent_key_middleware so both paths
     always agree on which header takes precedence and which prefix is required.
@@ -408,11 +416,13 @@ async def _require_agent(request: Request) -> tuple[dict | None, str | None]:
         if x_api_key.startswith("mk_agent_"):
             token = x_api_key
     if token is None:
-        return None, None
-    ctx, _err = await validate_agent_key(token)
+        return None, None, "unauthorized"
+    ctx, err = await validate_agent_key(token)
     if ctx is None:
-        return None, None
-    return ctx, token
+        # "service_unavailable" is transient; anything else is a real auth fail.
+        reason = "service_unavailable" if err == "service_unavailable" else "unauthorized"
+        return None, None, reason
+    return ctx, token, None
 
 
 # ---------------------------------------------------------------------------
@@ -704,8 +714,14 @@ async def _dispatch(request: Request) -> Response:
         return Response(status_code=202)
 
     if method == "tools/list":
-        agent_ctx, _key = await _require_agent(request)
+        agent_ctx, _key, auth_err = await _require_agent(request)
         if agent_ctx is None:
+            if auth_err == "service_unavailable":
+                return _jsonrpc_error(
+                    request_id,
+                    -32603,
+                    "Auth service temporarily unavailable; retry",
+                )
             return _jsonrpc_error(
                 request_id,
                 -32001,
@@ -720,8 +736,14 @@ async def _dispatch(request: Request) -> Response:
         return _handle_resources_read(request_id, params)
 
     if method == "tools/call":
-        agent_ctx, agent_key = await _require_agent(request)
+        agent_ctx, agent_key, auth_err = await _require_agent(request)
         if agent_ctx is None:
+            if auth_err == "service_unavailable":
+                return _jsonrpc_error(
+                    request_id,
+                    -32603,
+                    "Auth service temporarily unavailable; retry",
+                )
             return _jsonrpc_error(
                 request_id,
                 -32001,

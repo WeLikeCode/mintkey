@@ -1,0 +1,1208 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "Create `apps/admin-api/db/changelog/019-budget-counters.yaml` per design §1.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244200
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593257457
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593566488
+      }
+    ],
+    "Table: `budget_counters(permission_id UUID, period_start TIMESTAMPTZ, period_end TIMESTAMPTZ, ceiling INTEGER, used INTEGER DEFAULT 0, tenant_id UUID)`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244239
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593575927
+      }
+    ],
+    "PK: `(permission_id, period_start)`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244273
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593580214
+      }
+    ],
+    "FK: `permission_id → permission_grants(id) ON DELETE CASCADE`, `tenant_id → tenants(id)`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244298
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593584534
+      }
+    ],
+    "RLS: `tenant_isolation` policy matching existing pattern (design §1).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244327
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593588380
+      }
+    ],
+    "Index: `idx_budget_counters_active(permission_id, period_end DESC)`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244355
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593592362
+      }
+    ],
+    "Verify: run Liquibase against test DB; `information_schema.columns` confirms schema; `pg_policies` confirms RLS.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244378
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593596445
+      }
+    ],
+    "Add `budget` property to `Constraints` schema in `docs/architecture/contracts/rest/openapi.yaml`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244403
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593605199
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593748458
+      }
+    ],
+    "Properties: `ceiling` (integer, min 1), `period` (enum: hourly/daily/weekly/monthly), `alert_thresholds` (array of int 1–100, default [50,80,100]).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244429
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593752809
+      }
+    ],
+    "Verify: `openapi-spec-validator` passes; Redocly lint passes.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244454
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593756916
+      }
+    ],
+    "Add `budget.threshold_reached`, `budget.exceeded`, `budget.config_updated`, `budget.reset` to `AuditEventType` enum in OpenAPI.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244477
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593762749
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594284998
+      }
+    ],
+    "Add `budget` to `target_type` enum in audit-event.schema.json.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244503
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594293615
+      }
+    ],
+    "Add payload schemas for each event type in `docs/architecture/contracts/events/audit-event.schema.json`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244527
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594294709
+      }
+    ],
+    "Verify: JSON Schema Draft 2020-12 validation passes.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244560
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594295586
+      }
+    ],
+    "`GET /v1/tenants/{tid}/agents/{aid}/permissions/{pid}/budget` — returns `BudgetStatus`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244585
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593764075
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594285813
+      }
+    ],
+    "`POST /v1/tenants/{tid}/agents/{aid}/permissions/{pid}/budget/reset` — returns `BudgetStatus`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244609
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594296558
+      }
+    ],
+    "Define `BudgetStatus` schema: `{ceiling, period, used, remaining, period_start, period_end, alert_thresholds}`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244637
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594298418
+      }
+    ],
+    "Verify: Redocly lint passes; no breaking changes to existing endpoints.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244661
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594302555
+      }
+    ],
+    "Extend `your_constraints` in `describe_service` output schema (`docs/architecture/contracts/mcp/tools.yaml`) with `budget` object.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244682
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593766029
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594288459
+      }
+    ],
+    "Fields: `ceiling`, `period`, `used`, `remaining`, `period_end`, `alert_thresholds`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244711
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594303487
+      }
+    ],
+    "`budget` is nullable (null when no budget configured).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244736
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594304810
+      }
+    ],
+    "Verify: YAML lint passes.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244761
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594306368
+      }
+    ],
+    "Add `BudgetCounter` mapped class to `packages/python/mintkey-models/`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244782
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782594317537
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782626818312
+      }
+    ],
+    "Mirror the Liquibase schema exactly (composite PK, all columns).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244806
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782626822140
+      }
+    ],
+    "Add `BudgetCounterOut` Pydantic read model and `BudgetStatus` response model.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244829
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782626822924
+      }
+    ],
+    "Verify: model introspection matches Liquibase-applied schema.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244853
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782626824004
+      }
+    ],
+    "Extend the `GrantPermissionRequest` handler to validate `constraints.budget` against the closed schema.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244873
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782626835171
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638183703
+      }
+    ],
+    "On grant creation with budget: upsert initial `budget_counters` row for current period.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244909
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638187543
+      }
+    ],
+    "On grant update (PATCH): if ceiling changed, update the current counter row's ceiling; if period changed, close current row and create new.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244932
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638188730
+      }
+    ],
+    "Emit `budget.config_updated` audit event.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244957
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638189463
+      }
+    ],
+    "Fire change-channel `NOTIFY mintkey:agent` with `budget.config_updated` payload.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593244987
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638190262
+      }
+    ],
+    "Verify: unit test — invalid budget rejected; valid budget persists and counter created.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245014
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638191754
+      }
+    ],
+    "Implement `GET /v1/tenants/{tid}/agents/{aid}/permissions/{pid}/budget`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245039
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638201155
+      }
+    ],
+    "Query `budget_counters` for current period; return `BudgetStatus`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245063
+      }
+    ],
+    "404 if grant has no budget constraint.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245086
+      }
+    ],
+    "Verify: integration test — returns correct `used`, `remaining`, `period_end`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245111
+      }
+    ],
+    "Implement `POST /v1/tenants/{tid}/agents/{aid}/permissions/{pid}/budget/reset`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245132
+      }
+    ],
+    "Create new counter row with `used=0` for current period remainder.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245158
+      }
+    ],
+    "Emit `budget.reset` audit event.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245179
+      }
+    ],
+    "Fire change-channel notification.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245200
+      }
+    ],
+    "Return new `BudgetStatus`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245227
+      }
+    ],
+    "Verify: integration test — after reset, `used=0`; subsequent proxy call succeeds.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245261
+      }
+    ],
+    "Implement `budget_period_bounds(period: str, now: datetime) → (start, end)` utility.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245286
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638596059
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638741892
+      }
+    ],
+    "UTC-aligned: hourly=top of hour, daily=midnight, weekly=Monday midnight, monthly=1st midnight.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245312
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638742884
+      }
+    ],
+    "Unit tests for all four period types including edge cases (month boundaries, leap year, DST-irrelevant since UTC).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245335
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638744638
+      }
+    ],
+    "Create `apps/proxy-plugin/internal/budget/` package.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245357
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782638753826
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639010879
+      }
+    ],
+    "`Check(ctx, db, permissionID, tenantID, budgetConfig) → (used, ceiling, error)`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245380
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639014829
+      }
+    ],
+    "Implements the atomic upsert: `INSERT...ON CONFLICT DO UPDATE SET used=used+1 WHERE used < ceiling RETURNING used, ceiling`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245406
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639015941
+      }
+    ],
+    "If 0 rows (ceiling hit): return `ErrBudgetExceeded` with `{used, ceiling, period_end}`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245429
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639017069
+      }
+    ],
+    "Period boundary calculation (same logic as Python, design §3).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245454
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639018068
+      }
+    ],
+    "Unit tests with mock DB (testify + pgx mock).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245478
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639019325
+      }
+    ],
+    "After JWT verification (step 9), call `budget.Check` if the resolved grant has `constraints.budget`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245499
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639029889
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639756883
+      }
+    ],
+    "On `ErrBudgetExceeded`: return 429 with the error body per design §10.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245522
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639757762
+      }
+    ],
+    "Set `Retry-After` header to `period_end` (RFC 7231 HTTP-date format).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245546
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639758697
+      }
+    ],
+    "Emit `mintkey_budget_denied_total` Prometheus counter on deny.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245566
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639759493
+      }
+    ],
+    "Verify: integration test — agent hits ceiling; next request gets 429; upstream never called.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245594
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639761868
+      }
+    ],
+    "After successful increment, check if `used` crossed any threshold in `alert_thresholds`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245615
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639765666
+      }
+    ],
+    "If crossed: emit `budget.threshold_reached` audit event via `audit.Emit` (async, non-blocking).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245644
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639766584
+      }
+    ],
+    "Track which thresholds have already fired for this period (avoid duplicate events).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245665
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639767528
+      }
+    ],
+    "Unit test: crossing 50% triggers event; crossing 50% again does not.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245694
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639768318
+      }
+    ],
+    "Extend existing `mintkey:agent` channel handler to recognize `budget.config_updated` events.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245716
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639769542
+      }
+    ],
+    "On receipt: invalidate any locally cached budget config for the affected `permission_id`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245741
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639773523
+      }
+    ],
+    "Unit test: inject `budget.config_updated` event; verify cached state cleared.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245763
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639774339
+      }
+    ],
+    "`mintkey_budget_used` gauge — set after each successful increment.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245789
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639775107
+      }
+    ],
+    "`mintkey_budget_ceiling` gauge — set when budget config is loaded.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245814
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639775925
+      }
+    ],
+    "`mintkey_budget_denied_total` counter — incremented on each 429.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245839
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639777067
+      }
+    ],
+    "Labels: `permission_id`, `agent_id`, `service_id`, `tenant_id`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245864
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639781142
+      }
+    ],
+    "Verify: metrics endpoint exposes all three after a budget-checked request.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245894
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639782796
+      }
+    ],
+    "In MCP server's `describe_service` handler, query `budget_counters` for the agent's grants on the target service.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245915
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782639792436
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640367382
+      }
+    ],
+    "Populate `your_constraints.budget` with `{ceiling, period, used, remaining, period_end, alert_thresholds}`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245944
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640368367
+      }
+    ],
+    "If no budget: `budget: null`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245969
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640369086
+      }
+    ],
+    "Verify: MCP tool call returns budget info; matches actual counter state.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593245991
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640370377
+      }
+    ],
+    "Add budget consumption panel to existing Grafana dashboard JSON.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246015
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640371686
+      }
+    ],
+    "Panel: bar gauge showing `used/ceiling` per agent×service.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246058
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640377087
+      }
+    ],
+    "Color: green < 50%, yellow 50–80%, red > 80%.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246086
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640376194
+      }
+    ],
+    "Verify: panel renders in Grafana with test data.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246112
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640377978
+      }
+    ],
+    "Add `BudgetNearExhaustion` alert to `infra/observability/alert_rules.yml`.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246133
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640378897
+      }
+    ],
+    "Trigger: `mintkey_budget_used / mintkey_budget_ceiling > 0.9` for 1m.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246161
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640379820
+      }
+    ],
+    "Severity: warning.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246182
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640380510
+      }
+    ],
+    "Verify: alert fires in test Prometheus with synthetic metrics.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246208
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640382124
+      }
+    ],
+    "Test scenario: create agent, grant with budget ceiling=5, make 5 calls (all succeed), 6th call returns 429.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246237
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782640392917
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641397167
+      }
+    ],
+    "Assert upstream service received exactly 5 calls.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246263
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641398000
+      }
+    ],
+    "Assert 429 response body matches design §10.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246289
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641398795
+      }
+    ],
+    "Assert `budget.exceeded` audit event emitted.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246314
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641399683
+      }
+    ],
+    "Test scenario: exhaust budget; advance clock past period_end; next call succeeds (new period).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246339
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641401737
+      }
+    ],
+    "Assert new counter row created.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246363
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641406062
+      }
+    ],
+    "Test scenario: exhaust budget; operator calls POST /budget/reset; next call succeeds.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246388
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641407181
+      }
+    ],
+    "Assert `budget.reset` audit event emitted.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246415
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641407860
+      }
+    ],
+    "Assert change-channel notification fired.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246440
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641408388
+      }
+    ],
+    "Test scenario: agent at 8/10 budget; operator increases ceiling to 20; next call succeeds.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246470
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641410843
+      }
+    ],
+    "Assert change-channel notification fired within ≤ 5s.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246494
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641418416
+      }
+    ],
+    "Assert `budget.config_updated` audit event emitted.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246516
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641417450
+      }
+    ],
+    "Assert `budget_counters` has RLS policy (extend existing `test_rls_coverage.py`).": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246543
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641417074
+      }
+    ],
+    "Assert cascade delete: deleting a grant removes its counter rows.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246566
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641415660
+      }
+    ],
+    "Promote P-011 to ADR-0029 once the architect accepts.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246596
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641420287
+      }
+    ],
+    "Status: Accepted.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246623
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641424810
+      }
+    ],
+    "Add forward-links from ADR-0006, ADR-0010, ADR-0016.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246654
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641425662
+      }
+    ],
+    "Add budget guardrails to the \"Mintkey-specific guardrails\" section.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246682
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641426749
+      }
+    ],
+    "Add `budget_counters` to the \"How to add an X\" table.": [
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782593246708
+      },
+      {
+        "executionId": "725f3586-439c-4ecd-b89c-2bd607c38f8b",
+        "chatSessionId": "sess_a964a6cb-a5ba-4b0f-bc9a-b4ede65aa26b",
+        "timestamp": 1782641428660
+      }
+    ]
+  }
+}

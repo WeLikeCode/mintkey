@@ -4,7 +4,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -79,11 +78,6 @@ func TestNewFromEnv_UnknownBackend(t *testing.T) {
 	// Must mention the bad value so operators know what to fix.
 	if !strings.Contains(err.Error(), "mysql") {
 		t.Errorf("expected error to mention bad value 'mysql', got: %v", err)
-	}
-	// Sentinel check: not a wrapped sql/pgx error — it's purely a config error.
-	var target interface{ Unwrap() error }
-	if errors.As(err, &target) {
-		// wrapped errors are fine, just ensure the message includes the value
 	}
 }
 

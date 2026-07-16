@@ -70,7 +70,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
   options: {
     navigation: { name: "Permissions", icon: "Shield" },
     listProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "action", "created_at"],
-    showProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "service_slug", "action", "constraints", "created_at", "created_by"],
+    showProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "service_slug", "action", "constraints", "created_at", "created_by", "_budgetPanel"],
     editProperties: ["agent_id", "service_id", "action", "constraints"],
     filterProperties: ["q", "agent_id", "service_id", "action"],
     properties: {
@@ -104,6 +104,11 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         label: "Agent Name",
         isVisible: { list: true, show: true, edit: false, filter: false },
         description: "Denormalised convenience field — the human-readable name of the agent that holds this grant. Populated at list time via JOIN on agents; null if the agent has been deleted.",
+      },
+      // Virtual property: budget status panel rendered on show page (Task 8.2)
+      _budgetPanel: {
+        isVisible: { list: false, show: true, edit: false, filter: false },
+        components: { show: Components.BudgetStatusPanel },
       },
       action: {
         description:
@@ -148,6 +153,31 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
               record: await recordJSON(context, request.payload ?? {}),
               notice: { message: "constraints must be valid JSON", type: "error" },
             };
+          }
+
+          // Budget fields from payload (Task 8.2): if ceiling + period provided,
+          // include them in constraints.budget.
+          const budgetCeiling = request.payload?.budget_ceiling;
+          const budgetPeriod = request.payload?.budget_period;
+          if (budgetCeiling && budgetPeriod) {
+            const ceiling = Number(budgetCeiling);
+            if (ceiling > 0 && Number.isInteger(ceiling)) {
+              const budgetConfig: Record<string, unknown> = {
+                ceiling,
+                period: budgetPeriod,
+              };
+              const rawThresholds = request.payload?.budget_alert_thresholds;
+              if (rawThresholds && typeof rawThresholds === "string" && rawThresholds.trim()) {
+                const parsed = rawThresholds
+                  .split(",")
+                  .map((s: string) => Number(s.trim()))
+                  .filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 100);
+                if (parsed.length > 0) {
+                  budgetConfig.alert_thresholds = parsed;
+                }
+              }
+              constraints.budget = budgetConfig;
+            }
           }
 
           // admin-api grant endpoint: POST /v1/tenants/{tid}/agents/{aid}/permissions
@@ -220,6 +250,15 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         },
       },
       edit: { isVisible: false },
+      editBudget: {
+        actionType: "record" as const,
+        isVisible: true,
+        component: Components.BudgetForm,
+        handler: async (request: any, response: any, context: any) => {
+          // Just return the record — the component handles the API call
+          return { record: await recordJSON(context) };
+        },
+      },
     },
   },
 };

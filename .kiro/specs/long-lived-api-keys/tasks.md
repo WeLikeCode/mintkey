@@ -56,7 +56,7 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
     - Verify `key_fingerprint` is NOT added as a span attribute
     - _Requirements: 11.4, 2.6_
 
-- [ ] 3. Checkpoint — Schema and contracts
+- [x] 3. Checkpoint — Schema and contracts
   - Ensure Liquibase migration applies cleanly, SQLAlchemy mirror diff passes, OpenAPI validates, JSON schemas validate. Ask the user if questions arise.
 
 - [x] 4. Broker resolution endpoint (Go) (impl: apps/broker/internal/api/resolve/resolve.go, apps/broker/internal/api/resolve/pgstore.go, apps/broker/internal/config/config.go, apps/broker/cmd/broker/main.go; tests: apps/broker/internal/api/resolve/resolve_test.go; review: PASS 11/11)
@@ -291,16 +291,16 @@ This plan implements classical service API keys (`mk_svckey_…`) — long-lived
     - Create N keys; assert no row, audit payload, log line, or span contains `mk_svckey_…`
     - **Validates: Requirements 10.1, 10.7**
 
-- [ ] 12. Integration tests
-  - [ ] 12.1 Implement end-to-end integration test
+- [x] 12. Integration tests
+  - [x] 12.1 Implement end-to-end integration test
     - Operator creates a key (curl), uses it against mock backend, mock backend log shows real backend credential (not the API key), operator revokes, next call → 401 within ≤ 5s
     - _Requirements: 1.1, 2.3, 4.1, 4.3_
 
-  - [ ] 12.2 Implement cache behavior integration test
+  - [x] 12.2 Implement cache behavior integration test
     - First call → resolve roundtrip (slow, Argon2id); next N calls within TTL → no Broker call (fast); after TTL → one resolve again
     - _Requirements: 2.2_
 
-  - [ ] 12.3 Implement constraint enforcement integration test
+  - [x] 12.3 Implement constraint enforcement integration test
     - Wrong service: key bound to svc_A, presented at `/v1/call/svc_B/...` → 401 `api_key_wrong_service`
     - Time window: call inside window OK, call outside → 403 `api_key_constraint_failed:time_window` (mock clock)
     - Agent revocation cascades: revoke bound agent → key stops working within ≤ 5s

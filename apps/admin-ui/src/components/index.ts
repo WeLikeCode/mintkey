@@ -69,6 +69,11 @@ export const Components = {
   EmailServiceCredentialForm: componentLoader.add("EmailServiceCredentialForm", "./actions/EmailServiceCredentialForm"),
   // Email service new form — provider-driven prefill for IMAP/SMTP host+port (Bug-B fix)
   EmailServiceNewForm: componentLoader.add("EmailServiceNewForm", "./actions/EmailServiceNewForm"),
+  // Budget management components (budget-management-ui spec, Tasks 8.2)
+  BudgetStatusPanel: componentLoader.add("BudgetStatusPanel", "./sections/BudgetStatusPanel"),
+  BudgetForm: componentLoader.add("BudgetForm", "./actions/BudgetForm"),
+  // Budget consumers dashboard page (budget-consumers-dashboard spec, Task 7.1)
+  BudgetConsumersPage: componentLoader.add("BudgetConsumersPage", "./pages/BudgetConsumersPage"),
   // Agent secret create form with reveal-once panel (Chunk C6, D11)
   AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
   // Agent secret rotate form with reveal-once panel (Chunk C6b)
