@@ -8,7 +8,7 @@ version = "0.1.0-preview.1"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.136.3",
-    "sqlalchemy[asyncio]>=2.0.50",
+    "sqlalchemy[asyncio]>=2.0.51",
     "asyncpg>=0.31.0",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
