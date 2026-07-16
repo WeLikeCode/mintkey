@@ -44,14 +44,24 @@ An authenticated platform admin SHALL update an operator via `PATCH /v1/operator
 - **THEN** the request returns `404 not_found`
 
 ### Requirement: Platform admin can deactivate an operator
-`DELETE /v1/operators/{operator_id}` SHALL soft-deactivate the operator (`status='disabled'`), be
-idempotent (`204`), and emit `operator.deleted` when a row changed. It MUST NOT hard-delete
-(`sessions` and `operator_tenant_memberships` FK-reference `operators(id)`).
+`DELETE /v1/operators/{operator_id}` SHALL soft-deactivate the operator (`status='disabled'`) and emit
+`operator.deleted` when a row changed. It MUST NOT hard-delete (`sessions` and
+`operator_tenant_memberships` FK-reference `operators(id)`). It is idempotent for an already-disabled
+operator (`204`, no duplicate event) but returns `404 not_found` for an id that does not resolve to an
+existing operator.
 
 #### Scenario: Deactivate
 - **WHEN** a platform admin deletes an active operator
 - **THEN** the operator's `status` becomes `disabled`, it can no longer establish a session, and
   `operator.deleted` is emitted
+
+#### Scenario: Already disabled (idempotent)
+- **WHEN** a platform admin deletes an operator whose `status` is already `disabled`
+- **THEN** the request returns `204` and no duplicate `operator.deleted` is emitted
+
+#### Scenario: Unknown operator
+- **WHEN** a DELETE targets an operator id that does not exist
+- **THEN** the request returns `404 not_found`
 
 ### Requirement: Operator writes require platform-admin session + signed request
 Every state-changing operator call MUST require the `mintkey_session` cookie of a platform admin, a

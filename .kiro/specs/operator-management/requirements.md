@@ -79,8 +79,10 @@ longer sign in.
 1. WHEN a platform admin calls `DELETE /v1/operators/{operator_id}` for an active operator, THEN THE
    Admin REST API SHALL set `status='disabled'` (soft delete; no hard `DELETE`), emit `operator.deleted`,
    and return HTTP 204.
-2. WHEN the operator is already disabled or absent, THE Admin REST API SHALL return HTTP 204
-   (idempotent) and SHALL NOT emit a duplicate `operator.deleted`.
+2. WHEN the operator is already disabled, THE Admin REST API SHALL return HTTP 204 (idempotent) and
+   SHALL NOT emit a duplicate `operator.deleted`.
+3. IF `operator_id` does not resolve to an existing operator, THEN THE Admin REST API SHALL return HTTP
+   404 `not_found`.
 
 ### Requirement 5: Admin UI operators surface
 
