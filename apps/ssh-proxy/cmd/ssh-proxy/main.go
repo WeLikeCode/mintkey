@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Configure structured logging. LOG_LEVEL (debug|info|warn|error,
+	// case-insensitive; unknown → info) controls verbosity.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(os.Getenv("LOG_LEVEL")),
+	})))
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)
@@ -50,7 +57,11 @@ func main() {
 		slog.Error("failed to initialize OTel", "error", err)
 		os.Exit(1)
 	}
-	defer shutdown(context.Background())
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			slog.Error("failed to shutdown OTel", "error", err)
+		}
+	}()
 
 	// Create SSH server
 	srv, err := server.New(cfg)
@@ -93,6 +104,24 @@ func main() {
 	}
 
 	slog.Info("shutdown complete")
+}
+
+// parseLogLevel maps the LOG_LEVEL env value to an slog.Level. Matching is
+// case-insensitive and tolerant of surrounding whitespace; any unrecognized
+// value (including empty) falls back to slog.LevelInfo.
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func startHTTPServer(addr string, srv *server.Server) *http.Server {

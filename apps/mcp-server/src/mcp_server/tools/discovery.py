@@ -142,11 +142,14 @@ def _make_auth_scheme_details(auth_scheme: str) -> dict:
     }
 
 
-def _make_your_constraints(constraints_raw) -> dict:
+def _make_your_constraints(constraints_raw, *, budget_info: dict | None = None) -> dict:
     """
     Extract the calling agent's permission-grant constraints into the contracted shape.
     constraints_raw may be a dict (asyncpg returns JSONB as dict), a JSON string, or None.
     Each field is null when the operator has not set a limit.
+
+    budget_info: pre-computed budget status dict or None if no budget configured.
+    Source: FR-8; design §8; T-BUD-4.1.
     """
     if constraints_raw is None:
         c: dict = {}
@@ -163,6 +166,97 @@ def _make_your_constraints(constraints_raw) -> dict:
         "time_window": c.get("time_window"),
         "request_path_prefix": c.get("request_path_prefix"),
         "source_ip_allowlist": c.get("source_ip_allowlist"),
+        "budget": budget_info,
+    }
+
+
+async def _fetch_budget_info(
+    session: AsyncSession,
+    permission_id: str,
+    constraints_raw,
+) -> dict | None:
+    """
+    Query budget_counters for the current period's usage and build the
+    contracted budget status dict.
+
+    Returns None if the grant has no budget constraint configured.
+    Source: FR-8; design §8; T-BUD-4.1.
+    """
+    # Parse constraints to check if budget is configured.
+    if constraints_raw is None:
+        c: dict = {}
+    elif isinstance(constraints_raw, dict):
+        c = constraints_raw
+    else:
+        import json as _json
+        try:
+            c = _json.loads(constraints_raw)
+        except Exception:
+            c = {}
+
+    budget_cfg = c.get("budget")
+    if not budget_cfg:
+        return None
+
+    # Query the current period's counter row.
+    counter_result = await session.execute(
+        text(
+            "SELECT used, ceiling, period_end"
+            " FROM budget_counters"
+            " WHERE permission_id = :perm_id"
+            "   AND now() BETWEEN period_start AND period_end"
+            " ORDER BY period_end DESC"
+            " LIMIT 1"
+        ),
+        {"perm_id": permission_id},
+    )
+    counter_row = counter_result.fetchone()
+
+    ceiling = budget_cfg["ceiling"]
+    period = budget_cfg["period"]
+    alert_thresholds = budget_cfg.get("alert_thresholds", [50, 80, 100])
+
+    if counter_row:
+        used = counter_row.used
+        period_end = counter_row.period_end.isoformat().replace("+00:00", "Z") if hasattr(counter_row.period_end, "isoformat") else str(counter_row.period_end)
+    else:
+        # No counter row yet (no requests made this period).
+        used = 0
+        # Compute period_end from the budget config.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        from calendar import monthrange
+        from datetime import timedelta
+
+        if period == "hourly":
+            start = now.replace(minute=0, second=0, microsecond=0)
+            p_end = start + timedelta(hours=1)
+        elif period == "daily":
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            p_end = start + timedelta(days=1)
+        elif period == "weekly":
+            days_since_monday = now.weekday()
+            start = (now - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            p_end = start + timedelta(days=7)
+        elif period == "monthly":
+            start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            _, days_in_month = monthrange(now.year, now.month)
+            p_end = start + timedelta(days=days_in_month)
+        else:
+            p_end = now
+        period_end = p_end.isoformat() + "Z"
+
+    remaining = max(0, ceiling - used)
+
+    return {
+        "ceiling": ceiling,
+        "period": period,
+        "used": used,
+        "remaining": remaining,
+        "period_end": period_end,
+        "alert_thresholds": alert_thresholds,
     }
 
 
@@ -508,7 +602,7 @@ async def describe_service(
     # collision with existing fake sessions in tests.
     constraints_result = await session.execute(
         text(
-            "SELECT constraints FROM permission_grants"
+            "SELECT id, constraints FROM permission_grants"
             " WHERE agent_id = :agent_id_ds AND service_id = :service_id_ds"
             " ORDER BY (action = 'call') DESC, created_at DESC"
             " LIMIT 1"
@@ -520,6 +614,12 @@ async def describe_service(
     )
     constraints_row = constraints_result.fetchone()
     constraints_raw = getattr(constraints_row, "constraints", None) if constraints_row else None
+    permission_id = str(getattr(constraints_row, "id", "")) if constraints_row else None
+
+    # Fetch budget info from budget_counters (T-BUD-4.1; design §8).
+    budget_info = None
+    if permission_id:
+        budget_info = await _fetch_budget_info(session, permission_id, constraints_raw)
 
     ct = _connect_type(row.auth_scheme)
     proxy_url = resolve_proxy_public_url()
@@ -537,7 +637,7 @@ async def describe_service(
         "connect_type": ct,
         "explicit_proxy_url": f"{proxy_url}/v1/call/{wire_id}",
         "auth_scheme_details": _make_auth_scheme_details(row.auth_scheme),
-        "your_constraints": _make_your_constraints(constraints_raw),
+        "your_constraints": _make_your_constraints(constraints_raw, budget_info=budget_info),
         "openapi": {
             "status": "available" if openapi_url else "not_registered",
             "url": openapi_url,

@@ -38,7 +38,7 @@ func TestIncTokenIssued_Concurrent(t *testing.T) {
 	m.IncTokenIssued("tenant_B", "svc_2")
 
 	var buf bytes.Buffer
-	if err := m.WriteTo(&buf); err != nil {
+	if err := m.WriteMetricsTo(&buf); err != nil {
 		t.Fatalf("WriteTo: %v", err)
 	}
 	out := buf.String()
@@ -65,7 +65,7 @@ func TestWriteTo_ExpositionFormat(t *testing.T) {
 	m.IncTokenIssued("tenant_test", "svc_test")
 
 	var buf bytes.Buffer
-	if err := m.WriteTo(&buf); err != nil {
+	if err := m.WriteMetricsTo(&buf); err != nil {
 		t.Fatalf("WriteTo returned error: %v", err)
 	}
 	out := buf.String()
@@ -87,7 +87,7 @@ func TestWriteTo_ExpositionFormat(t *testing.T) {
 func TestWriteTo_NoCounters(t *testing.T) {
 	m := metrics.New()
 	var buf bytes.Buffer
-	if err := m.WriteTo(&buf); err != nil {
+	if err := m.WriteMetricsTo(&buf); err != nil {
 		t.Fatalf("WriteTo: %v", err)
 	}
 	out := buf.String()
@@ -107,7 +107,7 @@ func TestIncTokenIssued_LabelEscaping(t *testing.T) {
 	m.IncTokenIssued(`ten"ant`, `svc\1`)
 
 	var buf bytes.Buffer
-	if err := m.WriteTo(&buf); err != nil {
+	if err := m.WriteMetricsTo(&buf); err != nil {
 		t.Fatalf("WriteTo: %v", err)
 	}
 	out := buf.String()

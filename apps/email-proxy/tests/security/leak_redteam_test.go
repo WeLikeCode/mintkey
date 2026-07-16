@@ -197,27 +197,6 @@ func makeHandlers(p handlers.PoolGetter, o handlers.OAuth2Manager, v handlers.Va
 }
 
 // ============================================================================
-// Helper: assert no marker in any observation point
-// ============================================================================
-
-func assertNoLeak(t *testing.T, label, marker, logOutput, auditOutput, errorBody string) {
-	t.Helper()
-	for _, observation := range []struct {
-		name string
-		data string
-	}{
-		{"slog_output", logOutput},
-		{"audit_payload", auditOutput},
-		{"http_error_body", errorBody},
-	} {
-		if strings.Contains(observation.data, marker) {
-			t.Errorf("LEAK DETECTED [%s/%s]: marker %q found in %s",
-				label, observation.name, marker, observation.name)
-		}
-	}
-}
-
-// ============================================================================
 // Vector 1: Email body content — send_message endpoint
 // ============================================================================
 

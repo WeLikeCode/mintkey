@@ -20,6 +20,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -35,6 +36,7 @@ import (
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/budget"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/cache"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/changes"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/classicalkey"
@@ -109,7 +111,14 @@ func main() {
 	agentSet := revocation.NewAgentRevocationSet()
 	jtiSet := revocation.NewJTIRevocationSet(10_000)
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler)
+		var subOpts []changes.SubscriberOption
+		// Wire budget cache invalidation if a resolver is configured (T-BUD-3.4).
+		if handler.budgetResolver != nil {
+			if bc, ok := handler.budgetResolver.(changes.BudgetCacheInvalidator); ok {
+				subOpts = append(subOpts, changes.WithBudgetCache(bc))
+			}
+		}
+		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler, subOpts...)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("proxy-plugin: changes subscriber error: %v", err)
@@ -198,6 +207,19 @@ type proxyHandler struct {
 	// coalescing of concurrent token-cache-miss exchanges.  Initialised once at
 	// startup and reused across all requests (Req 20/21 thundering-herd protection).
 	sfGroup *singleflight.Group
+
+	// budgetMetrics holds Prometheus gauges/counters for budget enforcement.
+	// Source: NFR-5, design §9; T-BUD-3.5.
+	budgetMetrics *budget.BudgetMetrics
+	// budgetThresholds tracks which alert thresholds have fired per period.
+	// Source: FR-7, design §7; T-BUD-3.3.
+	budgetThresholds *budget.ThresholdTracker
+	// budgetDB is the database interface for budget checks. May be nil when
+	// budget enforcement is not active.
+	budgetDB budget.DB
+	// budgetResolver resolves budget config for a given (agent, service, tenant).
+	// May be nil when budget enforcement is not active.
+	budgetResolver budget.ConfigResolver
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
@@ -209,17 +231,19 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		m = metrics.New()
 	}
 	return &proxyHandler{
-		cfg:            cfg,
-		vaultClient:    vaultClient,
-		jwksLimiter:    limiter,
-		ckHandler:      ck,
-		audit:          ae,
-		auditQ:         aq,
-		metrics:        m,
-		pubKeys:        make(map[string]ed25519.PublicKey),
-		tokenCache:     cache.NewTokenCache(),
-		tokenExchanger: credential.NewTokenExchanger(),
-		sfGroup:        new(singleflight.Group),
+		cfg:              cfg,
+		vaultClient:      vaultClient,
+		jwksLimiter:      limiter,
+		ckHandler:        ck,
+		audit:            ae,
+		auditQ:           aq,
+		metrics:          m,
+		pubKeys:          make(map[string]ed25519.PublicKey),
+		tokenCache:       cache.NewTokenCache(),
+		tokenExchanger:   credential.NewTokenExchanger(),
+		sfGroup:          new(singleflight.Group),
+		budgetMetrics:    budget.NewBudgetMetrics(),
+		budgetThresholds: budget.NewThresholdTracker(),
 	}
 }
 
@@ -233,8 +257,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/metrics" {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		// Write proxy-plugin hit/denied/latency metrics (OPS-P).
-		if err := h.metrics.WriteTo(w); err != nil {
-			log.Printf("proxy-plugin: metrics WriteTo error: %v", err)
+		if err := h.metrics.WriteMetricsTo(w); err != nil {
+			log.Printf("proxy-plugin: metrics WriteMetricsTo error: %v", err)
+		}
+		// Write budget enforcement metrics (T-BUD-3.5).
+		if h.budgetMetrics != nil {
+			if err := h.budgetMetrics.WriteMetricsTo(w); err != nil {
+				log.Printf("proxy-plugin: budget metrics WriteMetricsTo error: %v", err)
+			}
 		}
 		// Write auditq WAL and dead-letter metrics (#27).
 		if h.auditQ != nil {
@@ -294,6 +324,18 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read-scoped proxy action (read:atlas): restrict the agent to safe HTTP
+	// methods. Only the literal scope "read:atlas" triggers this gate; admin:atlas,
+	// call, email scopes, and everything else are unaffected. Runs before the vault
+	// credential fetch so a denied write never touches the credential.
+	scope, _ := claims["scope"].(string)
+	if scope == "read:atlas" && r.Method != http.MethodGet &&
+		r.Method != http.MethodHead && r.Method != http.MethodOptions {
+		h.metrics.IncProxyDenied(serviceID, "permission_denied")
+		http.Error(w, "forbidden: read:atlas grants read-only access", http.StatusForbidden)
+		return
+	}
+
 	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service_id
 	// embedded in the URL path.  Both are in the canonical UUID form (the JWT aud
 	// contains the DB UUID; the URL path /v1/call/<uuid>/... also carries the UUID).
@@ -333,6 +375,111 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Permissive: log warning, proceed.
 	}
 
+	// Step 10 — Budget check (FR-2, FR-3; design §4).
+	// If the resolved grant has a budget constraint, atomically increment and
+	// check. On ceiling hit: return 429 budget_exceeded without calling upstream.
+	if h.budgetResolver != nil && h.budgetDB != nil {
+		if resolved := h.budgetResolver.Resolve(agentID, serviceID, tenantID); resolved != nil {
+			budgetLabels := budget.MetricLabels{
+				PermissionID: resolved.PermissionID,
+				AgentID:      agentID,
+				ServiceID:    serviceID,
+				TenantID:     tenantID,
+			}
+
+			// Set ceiling gauge when budget config is loaded (T-BUD-3.5).
+			h.budgetMetrics.SetCeiling(budgetLabels, resolved.Config.Ceiling)
+
+			used, _, budgetErr := budget.Check(r.Context(), h.budgetDB, resolved.PermissionID, tenantID, resolved.Config)
+			if budgetErr != nil {
+				var exceeded *budget.ErrBudgetExceeded
+				if errors.As(budgetErr, &exceeded) {
+					// 429 budget_exceeded — design §10.
+					h.budgetMetrics.IncDenied(budgetLabels)
+
+					// Emit budget.exceeded audit event (async, non-blocking).
+					if h.audit != nil {
+						jtiDenied, _ := claims["jti"].(string)
+						h.audit.Enqueue(auditq.Event{
+							EventType:  budget.AuditEventExceeded,
+							TenantID:   tenantID,
+							ActorID:    agentID,
+							ActorType:  "agent",
+							TargetID:   resolved.PermissionID,
+							TargetType: "permission",
+							Payload: map[string]any{
+								"permission_id": resolved.PermissionID,
+								"used":          exceeded.Used,
+								"ceiling":       exceeded.Ceiling,
+								"period_end":    exceeded.PeriodEnd.Format(time.RFC3339),
+								"denied_jti":    jtiDenied,
+							},
+						})
+					}
+
+					// Retry-After header: RFC 7231 HTTP-date format.
+					w.Header().Set("Retry-After", exceeded.PeriodEnd.UTC().Format(http.TimeFormat))
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+
+					respBody, _ := json.Marshal(map[string]any{
+						"error":         budget.ErrCodeBudgetExceeded,
+						"detail":        "Call budget exhausted for this period.",
+						"permission_id": resolved.PermissionID,
+						"budget": map[string]any{
+							"ceiling":    exceeded.Ceiling,
+							"used":       exceeded.Used,
+							"period":     resolved.Config.Period,
+							"period_end": exceeded.PeriodEnd.Format(time.RFC3339),
+						},
+						"retry_after": exceeded.PeriodEnd.Format(time.RFC3339),
+					})
+					_, _ = w.Write(respBody)
+					return
+				}
+				// Non-budget-exceeded error (DB issue) — log and continue
+				// (fail open; budget check should not block on transient errors).
+				log.Printf("proxy-plugin: budget check error (perm=%s): %v",
+					safeID(resolved.PermissionID), budgetErr)
+			} else {
+				// Successful increment — update used gauge (T-BUD-3.5).
+				h.budgetMetrics.SetUsed(budgetLabels, used)
+
+				// Threshold audit emission (T-BUD-3.3).
+				now := time.Now().UTC()
+				periodStart, _ := budget.PeriodBounds(resolved.Config.Period, now)
+				thresholds := resolved.Config.AlertThresholds
+				if len(thresholds) == 0 {
+					thresholds = []int{50, 80, 100}
+				}
+				crossed := h.budgetThresholds.CheckThresholds(
+					resolved.PermissionID, periodStart, used, resolved.Config.Ceiling, thresholds,
+				)
+				for _, pct := range crossed {
+					if h.audit != nil {
+						_, periodEnd := budget.PeriodBounds(resolved.Config.Period, now)
+						h.audit.Enqueue(auditq.Event{
+							EventType:  "budget.threshold_reached",
+							TenantID:   tenantID,
+							ActorID:    "system",
+							ActorType:  "system",
+							TargetID:   resolved.PermissionID,
+							TargetType: "permission",
+							Payload: map[string]any{
+								"permission_id": resolved.PermissionID,
+								"used":          used,
+								"ceiling":       resolved.Config.Ceiling,
+								"threshold_pct": pct,
+								"period_start":  periodStart.Format(time.RFC3339),
+								"period_end":    periodEnd.Format(time.RFC3339),
+							},
+						})
+					}
+				}
+			}
+		}
+	}
+
 	// Fetch credential from Vault Adapter.
 	credResp, err := h.vaultClient.GetCredential(r.Context(), vault.GetCredentialRequest{
 		TenantID:      tenantID,
@@ -353,6 +500,24 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// OAuth2 Password Grant (auth_scheme=8): orchestrate cache → exchange → inject → audit.
 	if credential.AuthScheme(credResp.AuthScheme) == credential.AuthSchemeOAuth2PasswordGrant {
 		h.handleOAuth2PasswordGrant(w, r, credResp, tenantID, serviceID, agentID, pluginStart)
+		return
+	}
+
+	// OAuth2 Client Credentials (auth_scheme=5) with an exchange-shaped payload:
+	// orchestrate cache → exchange → inject Bearer → audit. A scheme-5 payload that
+	// is NOT exchange-shaped (no JSON token_url) falls through to the generic
+	// injector below (pre-fetched bearer), preserving backward compatibility.
+	if credential.AuthScheme(credResp.AuthScheme) == credential.AuthSchemeOAuth2ClientCredentials &&
+		isClientCredentialsExchangeShaped(credResp.Plaintext) {
+		h.handleOAuth2ClientCredentials(w, r, credResp, tenantID, serviceID, agentID, pluginStart)
+		return
+	}
+
+	// HTTP Digest (auth_scheme=18): the credential is not a static header — the
+	// proxy attaches a per-request digest.Transport that performs the RFC 2617
+	// challenge-response handshake against the upstream (e.g. Atlas API keys).
+	if credential.AuthScheme(credResp.AuthScheme) == credential.AuthSchemeHTTPDigest {
+		h.handleHTTPDigest(w, r, credResp, tenantID, serviceID, agentID, pluginStart)
 		return
 	}
 
@@ -469,6 +634,267 @@ func (h *proxyHandler) newOAuth2Deps() egress.OAuth2HandlerDeps {
 		// thundering-herd regression (FIX-5).  The test
 		// TestProductionPath_NewOAuth2Deps_SFIsWired catches that.
 		SF: h.sfGroup,
+	}
+}
+
+// newOAuth2ClientCredentialsDeps builds the egress deps for the client-credentials
+// egress flow. Reuses the same shared token cache, exchanger, and singleflight
+// group as the password-grant path (*credential.TokenExchanger satisfies both
+// exchanger interfaces).
+func (h *proxyHandler) newOAuth2ClientCredentialsDeps() egress.OAuth2ClientCredentialsDeps {
+	return egress.OAuth2ClientCredentialsDeps{
+		Cache:     h.tokenCache,
+		Exchanger: h.tokenExchanger,
+		SF:        h.sfGroup,
+	}
+}
+
+// isClientCredentialsExchangeShaped reports whether a scheme-5 credential payload
+// is a live-exchange OAuth2 client-credentials envelope (JSON with a non-empty
+// token_url). If not, the caller falls through to the generic injector, which
+// treats the credential as a pre-fetched bearer (backward compatible).
+func isClientCredentialsExchangeShaped(payload []byte) bool {
+	var probe struct {
+		TokenURL string `json:"token_url"`
+	}
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return false
+	}
+	return probe.TokenURL != ""
+}
+
+// handleOAuth2ClientCredentials handles the OAuth2 client-credentials egress flow.
+// It is a near-clone of handleOAuth2PasswordGrant; the only differences are the
+// deps builder, the client-credentials exchange, and the injected AuthScheme
+// (which the injector maps to Authorization: Bearer).
+func (h *proxyHandler) handleOAuth2ClientCredentials(
+	w http.ResponseWriter, r *http.Request,
+	credResp *vault.GetCredentialResponse,
+	tenantID, serviceID, agentID string,
+	pluginStart time.Time,
+) {
+	deps := h.newOAuth2ClientCredentialsDeps()
+
+	oauthResult, err := egress.HandleOAuth2ClientCredentials(
+		r.Context(), deps, tenantID, serviceID, credResp.Plaintext,
+	)
+
+	// Emit token.exchanged audit event if an exchange was attempted (fire-and-forget).
+	if oauthResult != nil && oauthResult.Exchanged && h.tokenExchangeEmitter != nil {
+		emitter := h.tokenExchangeEmitter
+		ev := audit.TokenExchangedEvent{
+			TenantID:     tenantID,
+			ServiceID:    serviceID,
+			AgentID:      agentID,
+			TokenURLHost: oauthResult.TokenURLHost, // already host-only from egress layer
+			Success:      oauthResult.ExchangeSuccess,
+			LatencyMS:    oauthResult.ExchangeLatencyMS,
+		}
+		go func() {
+			if err := emitter.EmitTokenExchanged(context.Background(), ev); err != nil {
+				log.Printf("proxy-plugin: token.exchanged audit emit error: %v", err)
+			}
+		}()
+	}
+
+	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		errCode := egress.ClassifyError(err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprintf(w, `{"error":"%s"}`, errCode)
+		return
+	}
+
+	// Determine target URL.
+	target := credResp.TargetURL
+	if target == "" {
+		target = r.Header.Get("X-Mintkey-Target")
+	}
+	if target == "" {
+		target = h.cfg.DefaultTarget
+	}
+	if target == "" {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
+		return
+	}
+
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		return
+	}
+
+	// Build the credential with the exchanged token for injection (Bearer).
+	cred := credential.Credential{
+		AuthScheme: credential.AuthSchemeOAuth2ClientCredentials,
+		Value:      []byte(oauthResult.Token),
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = req.URL.Host
+		req.Header.Del("X-Mintkey-Target")
+		// Strip the leading /<svc_id> segment from the path.
+		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
+		if stripped != req.URL.Path {
+			if stripped == "" || stripped[0] != '/' {
+				stripped = "/" + stripped
+			}
+			req.URL.Path = stripped
+		}
+		// Inject the exchanged token as Authorization: Bearer.
+		if injectErr := credential.Inject(req, cred); injectErr != nil {
+			safeErr := safeInjectErr(injectErr)
+			log.Printf("proxy-plugin: oauth2 client-credentials inject error: %s", safeErr)
+		}
+	}
+
+	// Plugin logic complete: record added latency.
+	pluginElapsed := time.Since(pluginStart).Seconds()
+	h.metrics.ObserveAddedLatency(serviceID, pluginElapsed)
+	h.metrics.IncProxyHit(serviceID)
+
+	// Wrap ResponseWriter to capture status for audit.
+	startTime := time.Now()
+	rw := &statusCapture{ResponseWriter: w}
+	proxy.ServeHTTP(rw, r)
+
+	// Async audit: proxy.hit / proxy.error.
+	if h.audit != nil {
+		latencyMS := time.Since(startTime).Milliseconds()
+		statusCode := rw.status
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		eventType := "proxy.hit"
+		outcome := "allowed"
+		if statusCode >= 400 {
+			eventType = "proxy.error"
+			outcome = "error"
+		}
+		h.audit.Enqueue(auditq.Event{
+			EventType:  eventType,
+			TenantID:   tenantID,
+			ActorID:    agentID,
+			ActorType:  "agent",
+			TargetID:   serviceID,
+			TargetType: "service",
+			Payload: map[string]any{
+				"upstream_status":     statusCode,
+				"upstream_latency_ms": latencyMS,
+				"outcome":             outcome,
+			},
+		})
+	}
+}
+
+// handleHTTPDigest handles the HTTP Digest (auth_scheme=18) egress flow. Unlike
+// the header-injecting schemes, Digest is a 401→challenge→retry handshake, so the
+// proxy attaches a per-request digest.Transport (built from the stored key pair)
+// to the reverse proxy and strips the agent's Authorization in the Director
+// WITHOUT injecting any credential header — the transport supplies the upstream
+// Authorization during the handshake. Path/host stripping and audit match the
+// generic path.
+func (h *proxyHandler) handleHTTPDigest(
+	w http.ResponseWriter, r *http.Request,
+	credResp *vault.GetCredentialResponse,
+	tenantID, serviceID, agentID string,
+	pluginStart time.Time,
+) {
+	// Build the per-request Digest transport from the stored key pair. On a
+	// malformed payload, fail closed with 502 (admin-api validates at
+	// registration, so this is defensive).
+	digestTransport, err := credential.NewDigestTransport(credResp.Plaintext, nil)
+	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: invalid digest credential", http.StatusBadGateway)
+		return
+	}
+
+	// Determine target URL.
+	target := credResp.TargetURL
+	if target == "" {
+		target = r.Header.Get("X-Mintkey-Target")
+	}
+	if target == "" {
+		target = h.cfg.DefaultTarget
+	}
+	if target == "" {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
+		return
+	}
+
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		h.metrics.IncProxyDenied(serviceID, "backend_error")
+		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		return
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	// The digest transport performs the RFC 2617 handshake on dial; it MUST NOT
+	// be reused across requests (no plaintext credential cached — ADR-0014.4).
+	proxy.Transport = digestTransport
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		req.Host = req.URL.Host
+		req.Header.Del("X-Mintkey-Target")
+		// Strip the leading /<svc_id> segment from the path.
+		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
+		if stripped != req.URL.Path {
+			if stripped == "" || stripped[0] != '/' {
+				stripped = "/" + stripped
+			}
+			req.URL.Path = stripped
+		}
+		// Strip the agent's Authorization header and inject NO credential header —
+		// the digest.Transport supplies the upstream Authorization on the retry.
+		req.Header.Del("Authorization")
+	}
+
+	// Plugin logic complete: record added latency.
+	pluginElapsed := time.Since(pluginStart).Seconds()
+	h.metrics.ObserveAddedLatency(serviceID, pluginElapsed)
+	h.metrics.IncProxyHit(serviceID)
+
+	// Wrap ResponseWriter to capture status for audit.
+	startTime := time.Now()
+	rw := &statusCapture{ResponseWriter: w}
+	proxy.ServeHTTP(rw, r)
+
+	// Async audit: proxy.hit / proxy.error.
+	if h.audit != nil {
+		latencyMS := time.Since(startTime).Milliseconds()
+		statusCode := rw.status
+		if statusCode == 0 {
+			statusCode = http.StatusOK
+		}
+		eventType := "proxy.hit"
+		outcome := "allowed"
+		if statusCode >= 400 {
+			eventType = "proxy.error"
+			outcome = "error"
+		}
+		h.audit.Enqueue(auditq.Event{
+			EventType:  eventType,
+			TenantID:   tenantID,
+			ActorID:    agentID,
+			ActorType:  "agent",
+			TargetID:   serviceID,
+			TargetType: "service",
+			Payload: map[string]any{
+				"upstream_status":     statusCode,
+				"upstream_latency_ms": latencyMS,
+				"outcome":             outcome,
+			},
+		})
 	}
 }
 

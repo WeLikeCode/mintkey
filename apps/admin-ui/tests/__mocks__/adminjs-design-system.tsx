@@ -48,3 +48,10 @@ export const Label = ({
 
 export const FormGroup = ({ children, ...rest }: AnyProps) =>
   React.createElement("div", rest, children);
+
+export const ValueGroup = ({
+  children,
+  label,
+  ...rest
+}: AnyProps & { label?: string }) =>
+  React.createElement("div", { "data-label": label, ...rest }, children);
