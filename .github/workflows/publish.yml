@@ -43,6 +43,9 @@ jobs:
           - { service: vault-adapter, context: .,                 dockerfile: apps/vault-adapter/Dockerfile }
           - { service: proxy-plugin,  context: .,                 dockerfile: apps/proxy-plugin/Dockerfile  }
           - { service: kong-syncer,   context: .,                 dockerfile: apps/kong-syncer/Dockerfile   }
+          - { service: liquibase,     context: .,                 dockerfile: apps/liquibase/Dockerfile     }
+          - { service: email-proxy,   context: .,                 dockerfile: apps/email-proxy/Dockerfile   }
+          - { service: ssh-proxy,     context: .,                 dockerfile: apps/ssh-proxy/Dockerfile     }
           # Self-contained Dockerfiles (no sibling COPYs).
           - { service: admin-ui,      context: apps/admin-ui,     dockerfile: apps/admin-ui/Dockerfile      }
           - { service: seed-job,      context: apps/seed-job,     dockerfile: apps/seed-job/Dockerfile      }
