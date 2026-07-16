@@ -99,7 +99,7 @@ func main() {
 				"mintkey_broker_up 1\n",
 		)
 		auditQueue.WriteMetricsTo(w)
-		_ = m.WriteTo(w)
+		_ = m.WriteMetricsTo(w)
 	})
 
 	// POST /v1/api-keys/resolve — internal; called by Egress Proxy only.

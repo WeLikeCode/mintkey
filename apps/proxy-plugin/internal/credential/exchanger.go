@@ -237,10 +237,34 @@ func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*E
 		}
 	}
 
-	// Marshal credential_fields as JSON body.
-	body, err := json.Marshal(req.CredentialFields)
-	if err != nil {
-		return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, err)
+	// Determine the effective Content-Type. Default is application/json, but
+	// token_request_headers may override it (case-insensitive header match).
+	// The body encoding MUST match the declared Content-Type — an OAuth2
+	// password-grant endpoint (e.g. Contabo/Keycloak) requires the fields to be
+	// form-encoded, in which case a JSON body with a form Content-Type is
+	// rejected with token_exchange_failed.
+	contentType := "application/json"
+	for name, value := range req.TokenRequestHeaders {
+		if strings.EqualFold(name, "Content-Type") {
+			contentType = value
+			break
+		}
+	}
+
+	// Encode credential_fields to match the declared Content-Type.
+	var body []byte
+	if mediaType := strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]); strings.EqualFold(mediaType, "application/x-www-form-urlencoded") {
+		form := url.Values{}
+		for k, v := range req.CredentialFields {
+			form.Set(k, v)
+		}
+		body = []byte(form.Encode())
+	} else {
+		b, err := json.Marshal(req.CredentialFields)
+		if err != nil {
+			return nil, fmt.Errorf("%w: marshal credential fields: %v", ErrTokenParseFailed, err)
+		}
+		body = b
 	}
 
 	// Build the HTTP request.
@@ -287,6 +311,108 @@ func (te *TokenExchanger) Exchange(ctx context.Context, req ExchangeRequest) (*E
 	}
 
 	// Attempt to read expires_in from the response body.
+	expiresIn := extractExpiresIn(rawBody)
+
+	return &ExchangeResult{
+		Token:     token,
+		ExpiresIn: expiresIn,
+		RawBody:   json.RawMessage(rawBody),
+	}, nil
+}
+
+// defaultClientCredentialsTokenPath is the JSONPath applied to a
+// client-credentials token response when the credential omits token_response_path.
+const defaultClientCredentialsTokenPath = "$.access_token"
+
+// ClientCredentialsRequest holds the parsed payload for an OAuth 2.0
+// client-credentials token exchange.
+type ClientCredentialsRequest struct {
+	TokenURL          string // HTTPS endpoint
+	ClientID          string // HTTP Basic username
+	ClientSecret      string // HTTP Basic password
+	Scope             string // optional space-delimited scopes
+	Audience          string // optional token-request audience; omitted when empty
+	TokenResponsePath string // JSONPath, default "$.access_token"
+	// Timeout is the per-credential whole-request timeout. Zero → default (10s);
+	// clamped ≤0 → 10s, >120s → 120s (via effectiveTimeout).
+	Timeout time.Duration
+}
+
+// ExchangeClientCredentials performs an OAuth 2.0 client-credentials token
+// exchange. It is a sibling of Exchange (password grant): it reuses te.httpClient
+// (the SSRF-hardened dial/redirect guard), validateTokenURL, extractJSONPath, and
+// extractExpiresIn, but builds the request per the client-credentials grant:
+//   - Content-Type: application/x-www-form-urlencoded
+//   - Body: grant_type=client_credentials (+ scope when set), form-encoded
+//   - Authorization: Basic base64(client_id:client_secret)
+//
+// The token is extracted via TokenResponsePath (default "$.access_token").
+// The password-grant Exchange path is left untouched.
+//
+// Returns ExchangeResult on success, or a typed error:
+//   - ErrTokenExchangeFailed (non-2xx)
+//   - ErrTokenEndpointUnreachable (network error or SSRF block)
+//   - ErrTokenParseFailed (JSONPath extraction failure)
+func (te *TokenExchanger) ExchangeClientCredentials(ctx context.Context, req ClientCredentialsRequest) (*ExchangeResult, error) {
+	// Apply per-credential timeout via context deadline.
+	timeout := effectiveTimeout(req.Timeout)
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Pre-flight: reject literal-IP blocked addresses before dialling.
+	// Skipped when allowPrivate is true (test/dev mode only).
+	if !te.allowPrivate {
+		if err := validateTokenURL(req.TokenURL); err != nil {
+			return nil, err
+		}
+	}
+
+	// Build the form-encoded body: grant_type=client_credentials (+ scope + audience).
+	vals := url.Values{}
+	vals.Set("grant_type", "client_credentials")
+	if req.Scope != "" {
+		vals.Set("scope", req.Scope)
+	}
+	if req.Audience != "" {
+		vals.Set("audience", req.Audience)
+	}
+	body := []byte(vals.Encode())
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.TokenURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("%w: create request: %v", ErrTokenEndpointUnreachable, err)
+	}
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Authorization: Basic base64(client_id:client_secret) — MongoDB's documented method.
+	httpReq.SetBasicAuth(req.ClientID, req.ClientSecret)
+
+	resp, err := te.httpClient.Do(httpReq)
+	if err != nil {
+		// Classify all network/SSRF errors as unreachable (see Exchange BUG-3/BUG-17).
+		return nil, fmt.Errorf("%w: %v", ErrTokenEndpointUnreachable, err)
+	}
+	defer resp.Body.Close()
+
+	rawBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return nil, fmt.Errorf("%w: read response body: %v", ErrTokenExchangeFailed, err)
+	}
+
+	// Non-2xx: status code only — never the attacker-controlled response body (BUG-17).
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%w: token endpoint returned HTTP %d", ErrTokenExchangeFailed, resp.StatusCode)
+	}
+
+	path := req.TokenResponsePath
+	if path == "" {
+		path = defaultClientCredentialsTokenPath
+	}
+	token, err := extractJSONPath(rawBody, path)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrTokenParseFailed, err)
+	}
+
 	expiresIn := extractExpiresIn(rawBody)
 
 	return &ExchangeResult{
@@ -396,27 +522,4 @@ func extractExpiresIn(body []byte) int64 {
 	default:
 		return 0
 	}
-}
-
-// isNetworkError checks if an error is a network-level error (timeout, DNS, connection refused).
-func isNetworkError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for net.Error (includes timeouts).
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-	// Check for DNS errors.
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return true
-	}
-	// Check for connection refused / reset.
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-	return false
 }

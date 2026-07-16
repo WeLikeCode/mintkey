@@ -1,0 +1,144 @@
+cmd/ssh-proxy/main.go:53:16: Error return value is not checked (errcheck)
+	defer shutdown(context.Background())
+	              ^
+internal/session/session_integration_test.go:119:19: Error return value of `newChan.Reject` is not checked (errcheck)
+				newChan.Reject(ssh.UnknownChannelType, "unknown")
+				              ^
+internal/session/session_integration_test.go:151:14: Error return value of `req.Reply` is not checked (errcheck)
+				req.Reply(false, nil)
+				         ^
+internal/session/session_integration_test.go:156:13: Error return value of `req.Reply` is not checked (errcheck)
+			req.Reply(true, nil)
+			         ^
+internal/session/session_integration_test.go:163:13: Error return value of `ch.Write` is not checked (errcheck)
+				ch.Write([]byte(cmd + "\n"))
+				        ^
+internal/session/session_integration_test.go:167:17: Error return value of `ch.SendRequest` is not checked (errcheck)
+		ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+		              ^
+internal/session/session_integration_test.go:245:23: Error return value of `agentSide.SetDeadline` is not checked (errcheck)
+	agentSide.SetDeadline(time.Now().Add(5 * time.Second))
+	                     ^
+internal/session/session_integration_test.go:247:9: Error return value of `io.Copy` is not checked (errcheck)
+	io.Copy(&buf, agentSide)
+	       ^
+internal/session/session_integration_test.go:336:23: Error return value of `agentSide.SetDeadline` is not checked (errcheck)
+	agentSide.SetDeadline(time.Now().Add(2 * time.Second))
+	                     ^
+internal/session/session_integration_test.go:337:9: Error return value of `io.Copy` is not checked (errcheck)
+	io.Copy(io.Discard, agentSide)
+	       ^
+internal/session/session_integration_test.go:407:19: Error return value of `newChan.Reject` is not checked (errcheck)
+				newChan.Reject(ssh.UnknownChannelType, "unknown")
+				              ^
+internal/session/session_integration_test.go:440:14: Error return value of `req.Reply` is not checked (errcheck)
+				req.Reply(true, nil)
+				         ^
+internal/session/session_integration_test.go:447:12: Error return value of `ch.Write` is not checked (errcheck)
+			ch.Write([]byte("hello from shell\r\n"))
+			        ^
+internal/session/session_integration_test.go:448:18: Error return value of `ch.SendRequest` is not checked (errcheck)
+			ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+			              ^
+internal/session/session_integration_test.go:521:23: Error return value of `agentSide.SetDeadline` is not checked (errcheck)
+	agentSide.SetDeadline(time.Now().Add(5 * time.Second))
+	                     ^
+internal/session/session_integration_test.go:522:9: Error return value of `io.Copy` is not checked (errcheck)
+	io.Copy(io.Discard, agentSide)
+	       ^
+internal/trace/trace_test.go:35:2: ineffectual assignment to ctx (ineffassign)
+	ctx, span := StartSessionSpan(ctx, "session_123", "agent_456", "service_789", "tenant_abc", "jwt")
+	^
+internal/trace/trace_test.go:48:2: ineffectual assignment to ctx (ineffassign)
+	ctx, span := StartAuthSpan(ctx, "jwt")
+	^
+internal/trace/trace_test.go:58:2: ineffectual assignment to ctx (ineffassign)
+	ctx, span := StartFetchCredentialSpan(ctx, "service_789")
+	^
+internal/recording/recording_test.go:189:22: Error return value of `recorder.WriteOutput` is not checked (errcheck)
+	recorder.WriteOutput([]byte("hello"))
+	                    ^
+internal/recording/recording_test.go:190:21: Error return value of `recorder.WriteInput` is not checked (errcheck)
+	recorder.WriteInput([]byte("world"))
+	                   ^
+internal/recording/recording_test.go:191:22: Error return value of `recorder.WriteOutput` is not checked (errcheck)
+	recorder.WriteOutput([]byte("more output"))
+	                    ^
+internal/recording/recording_test.go:231:22: Error return value of `recorder.WriteOutput` is not checked (errcheck)
+	recorder.WriteOutput([]byte("some output"))
+	                    ^
+internal/recording/recording_test.go:289:20: Error return value of `writer.WriteOutput` is not checked (errcheck)
+	writer.WriteOutput([]byte("line 1"))
+	                  ^
+internal/recording/recording_test.go:290:20: Error return value of `writer.WriteOutput` is not checked (errcheck)
+	writer.WriteOutput([]byte("line 2"))
+	                  ^
+internal/recording/recording_test.go:342:29: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	path, err := storage.Store(nil, "test_session", data)
+	                           ^
+internal/recording/recording_test.go:352:29: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	paths, err := storage.List(nil)
+	                           ^
+internal/recording/recording_test.go:362:34: SA1012: do not pass a nil Context, even if a function permits it; pass context.TODO if you are unsure about which Context to use (staticcheck)
+	reader, err := storage.Retrieve(nil, path)
+	                                ^
+internal/recording/recording.go:222:2: SA9003: empty branch (staticcheck)
+	if err := w.recorder.WriteOutput(data); err != nil {
+	^
+internal/recording/recording.go:250:3: SA9003: empty branch (staticcheck)
+		if recErr := r.recorder.WriteInput(data[:n]); recErr != nil {
+		^
+internal/session/session.go:371:40: Error return value of `s.deps.AuditEmitter.EmitSessionExec` is not checked (errcheck)
+				s.deps.AuditEmitter.EmitSessionExec(ctx, s.Context, s.ID, "shell:no_pty", -1)
+				                                   ^
+internal/session/session.go:396:27: Error return value of `(io.Writer).Write` is not checked (errcheck)
+		s.Channel.Stderr().Write([]byte("Error: backend not configured\r\n"))
+		                        ^
+internal/session/session.go:415:27: Error return value of `(io.Writer).Write` is not checked (errcheck)
+		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		                        ^
+internal/session/session.go:425:27: Error return value of `(io.Writer).Write` is not checked (errcheck)
+		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		                        ^
+internal/session/session.go:551:19: Error return value of `backendSess.Wait` is not checked (errcheck)
+		backendSess.Wait()
+		                ^
+internal/session/session.go:561:39: Error return value of `s.deps.AuditEmitter.EmitSessionExec` is not checked (errcheck)
+			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, "shell:timeout", -1)
+			                                   ^
+internal/session/session.go:608:39: Error return value of `s.deps.AuditEmitter.EmitSessionExec` is not checked (errcheck)
+			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, command, -2)
+			                                   ^
+internal/session/session.go:798:23: Error return value of `s.Channel.SendRequest` is not checked (errcheck)
+	s.Channel.SendRequest("exit-status", false, exitPayload)
+	                     ^
+internal/session/session.go:843:39: Error return value of `s.deps.AuditEmitter.EmitSessionSFTP` is not checked (errcheck)
+			s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "denied", subsystem)
+			                                   ^
+internal/session/session.go:976:39: Error return value of `s.deps.AuditEmitter.EmitSessionSFTP` is not checked (errcheck)
+			s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "env.denied", name)
+			                                   ^
+internal/session/session.go:1132:20: Error return value of `rw.rec.WriteInput` is not checked (errcheck)
+		rw.rec.WriteInput(p)
+		                 ^
+internal/session/session.go:1134:21: Error return value of `rw.rec.WriteOutput` is not checked (errcheck)
+		rw.rec.WriteOutput(p)
+		                  ^
+internal/session/session.go:1148:21: Error return value of `rr.rec.WriteOutput` is not checked (errcheck)
+		rr.rec.WriteOutput(p[:n])
+		                  ^
+internal/bridge/bridge.go:51:30: Error return value of `b.backendChannel.CloseWrite` is not checked (errcheck)
+		b.backendChannel.CloseWrite()
+		                           ^
+internal/bridge/bridge.go:69:28: Error return value of `b.agentChannel.CloseWrite` is not checked (errcheck)
+		b.agentChannel.CloseWrite()
+		                         ^
+internal/server/server.go:179:10: Error return value of `w.Write` is not checked (errcheck)
+		w.Write([]byte("shutting down"))
+		       ^
+internal/server/server.go:184:9: Error return value of `w.Write` is not checked (errcheck)
+	w.Write([]byte("ok"))
+	       ^
+internal/server/server.go:322:20: Error return value of `newChannel.Reject` is not checked (errcheck)
+		newChannel.Reject(ssh.Prohibited, "Mintkey SSH bastion: channel type not permitted")
+		                 ^

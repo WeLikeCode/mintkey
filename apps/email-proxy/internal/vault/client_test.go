@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"log"
 	"net"
 	"testing"
 
@@ -54,7 +55,7 @@ func startMockServer(t *testing.T, mock *mockVaultServer) *Client {
 
 	go func() {
 		if err := srv.Serve(lis); err != nil && err != grpc.ErrServerStopped {
-			// ignore — test cleanup
+			log.Printf("test gRPC server: unexpected error: %v", err)
 		}
 	}()
 	t.Cleanup(srv.GracefulStop)
