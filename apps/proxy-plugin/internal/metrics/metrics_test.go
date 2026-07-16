@@ -211,7 +211,7 @@ func TestWriteTo_ContainsAllFamilies(t *testing.T) {
 	m.ObserveAddedLatency("svc-write", 0.07)
 
 	var sb strings.Builder
-	if err := m.WriteTo(&sb); err != nil {
+	if err := m.WriteMetricsTo(&sb); err != nil {
 		t.Fatalf("WriteTo: %v", err)
 	}
 	out := sb.String()
@@ -240,7 +240,7 @@ func TestWriteTo_HitCountCorrect(t *testing.T) {
 		m.IncProxyHit("svc-count")
 	}
 	var sb strings.Builder
-	_ = m.WriteTo(&sb)
+	_ = m.WriteMetricsTo(&sb)
 	out := sb.String()
 
 	// Expect: mintkey_proxy_hit_total{service="svc-count"} 5
@@ -257,7 +257,7 @@ func TestWriteTo_BucketZeroForSmallValues(t *testing.T) {
 	m.ObserveAddedLatency("svc-z", 0.07)
 
 	var sb strings.Builder
-	_ = m.WriteTo(&sb)
+	_ = m.WriteMetricsTo(&sb)
 	out := sb.String()
 
 	// The 0.001 bucket should be 0 since 0.07 > 0.001.
@@ -278,7 +278,7 @@ func TestWriteTo_BucketZeroForSmallValues(t *testing.T) {
 func TestWriteTo_EmptyMetrics(t *testing.T) {
 	m := New()
 	var sb strings.Builder
-	if err := m.WriteTo(&sb); err != nil {
+	if err := m.WriteMetricsTo(&sb); err != nil {
 		t.Fatalf("WriteTo on empty metrics: %v", err)
 	}
 	out := sb.String()

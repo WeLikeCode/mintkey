@@ -1,0 +1,2 @@
+# compiled binary — ignore at workspace root only, not cmd/proxy-plugin/ source dir
+/proxy-plugin

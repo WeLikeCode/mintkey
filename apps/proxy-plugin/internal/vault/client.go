@@ -114,9 +114,14 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 	)
 	ctx = metadata.NewOutgoingContext(ctx, md)
 
-	// Apply a per-call dial timeout so that an unreachable adapter returns
-	// quickly rather than blocking indefinitely.
-	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Apply a per-call deadline so that an unreachable adapter cannot block a
+	// caller indefinitely. grpc.WaitForReady(false) already fails fast when the
+	// adapter is truly down (connection refused returns immediately), so this
+	// deadline only bounds the slow-but-alive case. It must therefore be large
+	// enough to cover a cold vault-adapter (postgres backend + KEK load) plus a
+	// slow upstream credential operation; a 5s value here surfaced as spurious
+	// 502 "bad gateway: vault error" (DeadlineExceeded) on legitimate calls.
+	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	conn, err := grpc.NewClient(
