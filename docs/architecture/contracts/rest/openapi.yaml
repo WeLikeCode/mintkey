@@ -173,6 +173,11 @@ tags:
       configuration is managed via the `constraints.budget` field on
       permission grants (POST/PATCH). These endpoints expose read and reset
       operations on the resulting counters.
+  - name: Operators
+    description: |
+      Operator (human console user) management. PlatformAdmin only. Operators
+      are keyed by `(tenant_id, email)`; the OIDC subject binds lazily on first
+      login. Per ADR-0031.
 
 security:
   - OperatorSession: []
@@ -582,6 +587,184 @@ paths:
       responses:
         "204":
           description: Soft-deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  ###########################################################################
+  # Operators (PlatformAdmin only)
+  ###########################################################################
+
+  /v1/operators:
+    get:
+      tags: [Operators]
+      operationId: listOperators
+      summary: List operators.
+      description: |
+        PlatformAdmin only. Paginated. Returns operators across all tenants,
+        optionally filtered to a single home tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Case-insensitive substring search on email and display_name.
+        - in: query
+          name: tenant_id
+          required: false
+          schema:
+            type: string
+          description: Filter to operators whose home tenant matches this id.
+      responses:
+        "200":
+          description: A page of operators.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorPage"
+              example:
+                data:
+                  - id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    email: "ops@acme.example"
+                    display_name: "Acme Ops"
+                    oidc_sub: null
+                    oidc_provider: null
+                    is_platform_admin: false
+                    status: "active"
+                    created_at: "2026-04-30T11:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Operators]
+      operationId: createOperator
+      summary: Create an operator.
+      description: |
+        PlatformAdmin only. Creates an operator in the given home tenant,
+        keyed by `(tenant_id, email)`. No Keycloak call is made at creation;
+        `oidc_sub` binds lazily on first OIDC login. Emits `operator.created`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperatorRequest"
+            example:
+              email: "ops@acme.example"
+              display_name: "Acme Ops"
+              tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+              is_platform_admin: false
+      responses:
+        "201":
+          description: Operator created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorResource"
+              example:
+                id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                email: "ops@acme.example"
+                display_name: "Acme Ops"
+                oidc_sub: null
+                oidc_provider: null
+                is_platform_admin: false
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/operators/{operator_id}:
+    parameters:
+      - $ref: "#/components/parameters/OperatorId"
+    patch:
+      tags: [Operators]
+      operationId: updateOperator
+      summary: Update an operator.
+      description: |
+        PlatformAdmin only. Updates mutable operator fields. Setting `status`
+        to `disabled` soft-disables the operator. Emits `operator.updated`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperatorRequest"
+            example:
+              display_name: "Acme Platform Ops"
+              is_platform_admin: true
+              status: "active"
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorResource"
+              example:
+                id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                email: "ops@acme.example"
+                display_name: "Acme Platform Ops"
+                oidc_sub: null
+                oidc_provider: null
+                is_platform_admin: true
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Operators]
+      operationId: deleteOperator
+      summary: Disable an operator.
+      description: |
+        PlatformAdmin only. Soft-delete — the operator is moved to
+        `status = "disabled"`; the row is retained for audit history.
+        Emits `operator.deleted`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      responses:
+        "204":
+          description: Operator disabled.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -4362,6 +4545,14 @@ components:
         type: string
         pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
       description: ULID-prefixed agent secret identifier (ADR-0025).
+    OperatorId:
+      in: path
+      name: operator_id
+      required: true
+      schema:
+        type: string
+        pattern: "^op_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed operator identifier (ADR-0031).
     AfterCursor:
       in: query
       name: after
@@ -5356,6 +5547,86 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Agent"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
+    # ----- Operator -----
+
+    OperatorStatus:
+      type: string
+      enum: [active, disabled]
+
+    OperatorResource:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^op_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        email:
+          type: string
+          maxLength: 256
+        display_name:
+          type: [string, "null"]
+        oidc_sub:
+          type: [string, "null"]
+          description: |
+            Subject claim from the OIDC provider. `null` until the operator
+            first authenticates via OIDC, at which point it binds lazily.
+        oidc_provider:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - email
+        - is_platform_admin
+        - status
+        - created_at
+
+    CreateOperatorRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 256
+        display_name:
+          type: [string, "null"]
+        oidc_sub:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+          default: false
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+      required: [email, tenant_id]
+
+    UpdateOperatorRequest:
+      type: object
+      properties:
+        display_name:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+
+    OperatorPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorResource"
         next_cursor:
           type: [string, "null"]
       required: [data, next_cursor]
@@ -6726,4 +6997,6 @@ x-mintkey-error-codes:
     - secret_not_found
     - api_key_policy_violation
     - budget_exceeded
+    - not_found
+    - invalid_id
     - budget_not_configured
