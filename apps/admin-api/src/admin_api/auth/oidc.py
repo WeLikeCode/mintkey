@@ -18,6 +18,8 @@ from authlib.jose import JsonWebToken
 from authlib.jose.errors import JoseError
 import httpx
 
+from admin_api.auth.oidc_state import OidcStateRepository
+
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -87,18 +89,16 @@ async def _fetch_jwks(force: bool = False) -> dict[str, Any]:
         return _JWKS_CACHE
 
 
-# ---------------------------------------------------------------------------
-# In-memory state store (single-server PKCE state; Redis deferred per open-Q)
-# ---------------------------------------------------------------------------
-
-_state_store: dict[str, dict[str, str]] = {}
-
-
-def generate_authorization_url() -> tuple[str, str, str]:
+async def generate_authorization_url(state_repo: OidcStateRepository) -> tuple[str, str, str]:
     """Return (auth_url, state, code_verifier).
 
     Uses MINTKEY_KEYCLOAK_PUBLIC_URL for the browser-facing redirect.
     Implements PKCE S256 per RFC 7636.
+
+    PKCE state is persisted via state_repo (Postgres-backed; see
+    admin_api.auth.oidc_state) so login works when admin-api runs at
+    multiple replicas — /login and /callback may land on different pods.
+
     Source: Req 2 AC6.
     """
     admin_api_public = os.getenv("MINTKEY_ADMIN_API_PUBLIC_URL", "http://localhost:8080")
@@ -110,7 +110,8 @@ def generate_authorization_url() -> tuple[str, str, str]:
     digest = hashlib.sha256(code_verifier.encode()).digest()
     code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
-    _state_store[state] = {"code_verifier": code_verifier, "redirect_uri": redirect_uri}
+    ttl = int(os.getenv("MINTKEY_OIDC_STATE_TTL_SECONDS", "600"))
+    await state_repo.put(state, code_verifier, redirect_uri, ttl)
 
     auth_url = (
         f"{_keycloak_public_url()}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/auth"
@@ -131,9 +132,18 @@ async def oidc_token_exchange(code: str, state: str) -> dict[str, Any]:
     Raises ValueError("state_mismatch") if the state is unknown or tampered.
     Raises Exception on token exchange or signature verification failure.
 
+    Opens its own DB session to pop the PKCE state (Postgres-backed;
+    see admin_api.auth.oidc_state) in its own committed transaction before
+    proceeding to the HTTP token exchange, so the state gate stays strictly
+    before token exchange while keeping single-use semantics.
+
     Source: Req 2 AC6; ADR-0016.2.
     """
-    stored = _state_store.pop(state, None)
+    from admin_api.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            stored = await OidcStateRepository(db).pop(state)
     if stored is None:
         raise ValueError("state_mismatch")
 

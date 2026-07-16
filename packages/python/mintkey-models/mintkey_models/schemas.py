@@ -14,7 +14,9 @@ from datetime import datetime
 from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TenantOut(BaseModel):
@@ -155,3 +157,57 @@ class ServiceApiKeyCreated(ServiceApiKey):
     """
 
     plaintext_key: str  # mk_svckey_<…> — never stored; show-once at creation/rotation
+
+
+# ---------------------------------------------------------------------------
+# 028-budget-counters.yaml — P-011; agent-budgets T-BUD-2.1
+# ---------------------------------------------------------------------------
+
+
+class BudgetCounterOut(BaseModel):
+    """Read model for the budget_counters table. Source: 028-budget-counters.yaml."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    permission_id: UUID
+    period_start: datetime
+    period_end: datetime
+    ceiling: int
+    used: int
+    tenant_id: UUID
+
+
+class BudgetStatus(BaseModel):
+    """
+    Response model for GET /budget — matches OpenAPI BudgetStatus schema.
+    Source: T-BUD-1.4; design §5.
+    """
+
+    ceiling: int
+    period: str
+    used: int
+    remaining: int
+    period_start: datetime
+    period_end: datetime
+    alert_thresholds: List[int]
+
+
+class BudgetConfig(BaseModel):
+    """
+    Input/constraints model for the budget configuration on permission grants.
+    Source: FR-1; design §2; T-BUD-1.2.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ceiling: int = Field(ge=1)
+    period: Literal["hourly", "daily", "weekly", "monthly"]
+    alert_thresholds: List[int] = Field(default=[50, 80, 100])
+
+    @field_validator("alert_thresholds")
+    @classmethod
+    def thresholds_valid(cls, v: List[int]) -> List[int]:
+        for t in v:
+            if t < 1 or t > 100:
+                raise ValueError("Each alert_threshold must be between 1 and 100")
+        return sorted(set(v))

@@ -399,31 +399,6 @@ func reservoirSampleIdx(n, k int) []int {
 	return out
 }
 
-// isNotFoundErr returns true for errors that indicate a missing KV path.
-func isNotFoundErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		return true
-	}
-	// Check for the text wrapping pattern used by hashicorp.go.
-	errMsg := err.Error()
-	return len(errMsg) > 0 && (contains(errMsg, "sql: no rows") || contains(errMsg, "not found"))
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		func() bool {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-			return false
-		}())
-}
-
 // redactDSN removes the password from a postgres DSN for safe log output.
 func redactDSN(dsn string) string {
 	u, err := url.Parse(dsn)

@@ -72,7 +72,7 @@ func (h *Handler) HandleSubsystemRequest(req *ssh.Request) error {
 	if subsystem != "sftp" {
 		slog.Debug("unknown subsystem", "name", subsystem)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return fmt.Errorf("unknown subsystem: %s", subsystem)
 	}
@@ -88,13 +88,13 @@ func (h *Handler) HandleSubsystemRequest(req *ssh.Request) error {
 	if !ok {
 		slog.Warn("backend rejected SFTP subsystem")
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return errors.New("backend rejected SFTP subsystem")
 	}
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 
 	return nil

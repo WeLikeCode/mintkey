@@ -1,0 +1,25 @@
+{
+  "run": ".orchestration/runs/20260711-1034-fix-ci-green",
+  "milestones": [
+    {
+      "id": "M0",
+      "status": "done"
+    },
+    {
+      "id": "M1",
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "status": "done"
+    },
+    {
+      "id": "LAND",
+      "status": "done"
+    }
+  ]
+}

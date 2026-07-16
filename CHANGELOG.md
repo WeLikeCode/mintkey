@@ -11,6 +11,33 @@ pre-release (`0.1.0-preview.N`) during pre-alpha.
 
 ---
 
+## [Unreleased] — feat/agent-budgets
+
+### Added
+- **Agent budget enforcement** (ADR-0029) — call-count ceilings per permission grant
+  with automatic proxy circuit-breaking (HTTP 429 `budget_exceeded`).
+- **Liquibase changeset** `028-budget-counters.yaml` — `budget_counters` table with
+  composite PK, RLS policy, cascade FK, and active-period index.
+- **OpenAPI contract** — `Constraints.budget` schema (ceiling, period, alert_thresholds),
+  `BudgetStatus` response schema, `GET /budget` + `POST /budget/reset` endpoints,
+  4 new audit event types (`budget.threshold_reached/exceeded/config_updated/reset`).
+- **MCP tools contract** — `your_constraints.budget` in `describe_service` output.
+- **Admin API (Python)** — budget validation in grant CRUD, GET/POST budget endpoints,
+  `BudgetCounter` SQLAlchemy model, `BudgetConfig`/`BudgetStatus` Pydantic schemas,
+  UTC-aligned period boundary utility with 24 unit tests.
+- **Proxy plugin (Go)** — atomic `budget.Check()` with INSERT…ON CONFLICT upsert,
+  `ErrBudgetExceeded` → 429 + Retry-After, threshold audit emission with dedup tracker,
+  `mintkey:agent` change-channel subscriber for budget invalidation, 3 Prometheus metrics
+  (`mintkey_budget_used`, `mintkey_budget_ceiling`, `mintkey_budget_denied_total`).
+- **MCP server** — `describe_service` returns real-time budget status (used/remaining).
+- **Grafana dashboard** `mintkey-budget.json` — bar gauge (used/ceiling), denied rate,
+  24h denial stat.
+- **Prometheus alert** `BudgetNearExhaustion` (> 90% for 1m, severity: warning).
+- **Acceptance tests** — enforcement, period rollover, manual reset, config propagation.
+- **Architecture tests** — RLS coverage for `budget_counters`, cascade deletion.
+
+---
+
 ## [Unreleased] — feat/email-service-templates
 
 ### Added

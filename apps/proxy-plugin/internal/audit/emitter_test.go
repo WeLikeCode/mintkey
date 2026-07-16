@@ -168,7 +168,7 @@ func TestEmitHitOTelSpan(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
 	)
-	defer tp.Shutdown(context.Background())
+	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	// Register as the global provider so the emitter picks it up.
 	orig := otel.GetTracerProvider()

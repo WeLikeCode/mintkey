@@ -100,3 +100,7 @@ Parallel dispatches: C1 + C6 first round. Then C2 (needs C1's schema names). The
 - Verification snapshot captured *before* cutover (C5 dispatch): list of `(credential_id, sha256(value-on-GetCredential))` for the Apple + Google services. Compare post-cutover.
 - The `KEK volume` (`mintkey_vault_kek`) is **independent** of which store backend is used — it's always needed to decrypt envelopes; backup/restore must always include it.
 - 138 credentials in SQLite at baseline. Most are historical test artifacts; only ~5 are the user's real (Apple, Google, GitHub, GitLab, Spotus Dashboard). Migration must round-trip ALL 138 — don't filter.
+
+## Outcome — CLOSED 2026-05-31
+
+C5 cutover PASS: 138 credentials migrated SQLite → Postgres, zero errors. Apple + Google gRPC spot-check passed. Live API calls confirmed (Apple /v1/apps → 200, Google tokeninfo → 200). R4 docs committed as `d340c18`: ADR-0021, HOW-TO §5 migration guide, AGENTS.md + CLAUDE.md guardrail. Vault-adapter running from Postgres; SQLite file retained on volume as fallback.

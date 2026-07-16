@@ -30,12 +30,15 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from admin_api.api.agent_secrets import router as agent_secrets_router
+from admin_api.api.budget_consumers import router as budget_consumers_router
+from admin_api.api.budgets import router as budgets_router
 from admin_api.api.agents import router as agents_router
 from admin_api.api.email_permission_grants import router as email_permission_grants_router
 from admin_api.api.email_services import router as email_services_router
 from admin_api.api.email_services import internal_oauth2_router as email_oauth2_internal_router
 from admin_api.api.email_services import oauth2_per_tenant_router as email_oauth2_per_tenant_router
 from admin_api.api.oauth2_providers import router as oauth2_providers_router
+from admin_api.api.operators import router as operators_router
 from admin_api.api.api_keys import router as api_keys_router
 from admin_api.api.api_keys_shortcut import api_keys_shortcut_router
 from admin_api.api.audit import router as audit_router
@@ -96,10 +99,13 @@ def create_app() -> FastAPI:
     app.include_router(internal_router)
     app.include_router(permissions_router)
     app.include_router(tenant_permissions_router)
+    app.include_router(budget_consumers_router)
+    app.include_router(budgets_router)
     app.include_router(audit_router)
     app.include_router(audit_admin_router)
     app.include_router(settings_router)
     app.include_router(tenants_router)
+    app.include_router(operators_router)
     app.include_router(proxy_router)
     app.include_router(service_templates_router)
 
