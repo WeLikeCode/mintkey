@@ -294,7 +294,7 @@ func (s *Session) HandleRequest(req *ssh.Request) error {
 	default:
 		slog.Debug("unknown session request", "type", req.Type)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -331,7 +331,7 @@ func (s *Session) handlePTYRequest(req *ssh.Request) error {
 	if err != nil {
 		slog.Warn("failed to parse pty-req payload", "session_id", s.ID, "error", err)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -348,7 +348,7 @@ func (s *Session) handlePTYRequest(req *ssh.Request) error {
 	)
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 	return nil
 }
@@ -368,17 +368,19 @@ func (s *Session) handleShellRequest(req *ssh.Request) error {
 		s.emitAudit(func(ctx context.Context) {
 			if s.deps.AuditEmitter != nil {
 				// Emit as a failed exec with a synthetic command label.
-				s.deps.AuditEmitter.EmitSessionExec(ctx, s.Context, s.ID, "shell:no_pty", -1)
+				if err := s.deps.AuditEmitter.EmitSessionExec(ctx, s.Context, s.ID, "shell:no_pty", -1); err != nil {
+					slog.Debug("failed to emit shell:no_pty exec", "session_id", s.ID, "error", err)
+				}
 			}
 		})
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 
 	// Run the shell in a goroutine so we don't block the request loop.
@@ -393,7 +395,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	connector := s.deps.Connector
 	if connector == nil {
 		slog.Error("no backend connector configured", "session_id", s.ID)
-		s.Channel.Stderr().Write([]byte("Error: backend not configured\r\n"))
+		_, _ = s.Channel.Stderr().Write([]byte("Error: backend not configured\r\n"))
 		s.Channel.Close()
 		return
 	}
@@ -412,7 +414,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	if err != nil {
 		slog.Error("shell: failed to connect to backend",
 			"session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -422,7 +424,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	if err != nil {
 		slog.Error("shell: failed to open backend session",
 			"session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -442,7 +444,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	if err := backendSess.RequestPty(ptyReq.Term, int(ptyReq.Height), int(ptyReq.Width), ssh.TerminalModes{}); err != nil {
 		slog.Error("shell: backend pty request failed",
 			"session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -487,7 +489,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 
 	if err := backendSess.Shell(); err != nil {
 		slog.Error("shell: backend shell start failed", "session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -522,7 +524,7 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 		if recorder != nil {
 			w = &recordingWriter{w: w, rec: recorder, input: true}
 		}
-		io.Copy(w, s.Channel)
+		_, _ = io.Copy(w, s.Channel)
 		backendStdin.Close()
 	}()
 
@@ -542,13 +544,13 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(s.Channel.Stderr(), backendStderr)
+		_, _ = io.Copy(s.Channel.Stderr(), backendStderr)
 	}()
 
 	// Wait for backend to exit (or session context cancellation), flush output.
 	doneCh := make(chan struct{})
 	go func() {
-		backendSess.Wait()
+		_ = backendSess.Wait()
 		close(doneCh)
 	}()
 	select {
@@ -558,7 +560,9 @@ func (s *Session) runShell(ptyReq *bridge.PTYRequest) {
 			"session_id", s.ID)
 		backendSess.Close()
 		if s.deps.AuditEmitter != nil {
-			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, "shell:timeout", -1)
+			if err := s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, "shell:timeout", -1); err != nil {
+				slog.Debug("failed to emit shell:timeout exec", "session_id", s.ID, "error", err)
+			}
 		}
 	}
 	wg.Wait()
@@ -585,14 +589,14 @@ func (s *Session) handleExecRequest(req *ssh.Request) error {
 	// Parse SSH exec payload: [uint32 len][command bytes].
 	if len(req.Payload) < 4 {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
 	cmdLen := binary.BigEndian.Uint32(req.Payload[0:4])
 	if int(4+cmdLen) > len(req.Payload) {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -605,12 +609,14 @@ func (s *Session) handleExecRequest(req *ssh.Request) error {
 		slog.Info("exec: command blocked by filter",
 			"session_id", s.ID, "command", command)
 		if s.deps.AuditEmitter != nil {
-			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, command, -2)
+			if err := s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID, command, -2); err != nil {
+				slog.Debug("exec: failed to emit blocked command audit", "session_id", s.ID, "error", err)
+			}
 		}
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
-		s.Channel.Stderr().Write([]byte("Error: command blocked by policy\r\n"))
+		_, _ = s.Channel.Stderr().Write([]byte("Error: command blocked by policy\r\n"))
 		s.Channel.Close()
 		return nil
 	}
@@ -620,7 +626,7 @@ func (s *Session) handleExecRequest(req *ssh.Request) error {
 	s.mu.Unlock()
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 
 	go s.runExec(command, ptyReq)
@@ -634,7 +640,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	connector := s.deps.Connector
 	if connector == nil {
 		slog.Error("no backend connector configured", "session_id", s.ID)
-		s.Channel.Stderr().Write([]byte("Error: backend not configured\r\n"))
+		_, _ = s.Channel.Stderr().Write([]byte("Error: backend not configured\r\n"))
 		s.Channel.Close()
 		return
 	}
@@ -650,7 +656,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	if err != nil {
 		slog.Error("exec: failed to connect to backend",
 			"session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -660,7 +666,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	if err != nil {
 		slog.Error("exec: failed to open backend session",
 			"session_id", s.ID, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -728,7 +734,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	if err := backendSess.Start(command); err != nil {
 		slog.Error("exec: backend start failed",
 			"session_id", s.ID, "command", command, "error", err)
-		s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
+		_, _ = s.Channel.Stderr().Write([]byte(fmt.Sprintf("Error: %v\r\n", err)))
 		s.Channel.Close()
 		return
 	}
@@ -776,7 +782,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	outWg.Add(1)
 	go func() {
 		defer outWg.Done()
-		io.Copy(s.Channel.Stderr(), backendStderr)
+		_, _ = io.Copy(s.Channel.Stderr(), backendStderr)
 	}()
 
 	waitErr := backendSess.Wait()
@@ -795,7 +801,7 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 	// unblock the stdin-copy goroutine (which reads from s.Channel).
 	exitPayload := make([]byte, 4)
 	binary.BigEndian.PutUint32(exitPayload, uint32(exitCode))
-	s.Channel.SendRequest("exit-status", false, exitPayload)
+	_, _ = s.Channel.SendRequest("exit-status", false, exitPayload)
 	s.Channel.Close()
 
 	duration := time.Since(start)
@@ -822,14 +828,14 @@ func (s *Session) runExec(command string, ptyReq *bridge.PTYRequest) {
 func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 	if len(req.Payload) < 4 {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
 	nameLen := binary.BigEndian.Uint32(req.Payload[0:4])
 	if int(4+nameLen) > len(req.Payload) {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -840,10 +846,12 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 	if subsystem != "sftp" {
 		slog.Info("subsystem denied", "session_id", s.ID, "subsystem", subsystem)
 		if s.deps.AuditEmitter != nil {
-			s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "denied", subsystem)
+			if err := s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "denied", subsystem); err != nil {
+				slog.Debug("failed to emit sftp denied audit", "session_id", s.ID, "error", err)
+			}
 		}
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -852,7 +860,7 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 	if s.deps.Connector == nil {
 		slog.Error("no backend connector configured for sftp", "session_id", s.ID)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -870,7 +878,7 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 		slog.Error("sftp: failed to connect to backend",
 			"session_id", s.ID, "error", err)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -881,7 +889,7 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 		slog.Error("sftp: failed to open backend session",
 			"session_id", s.ID, "error", err)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -894,13 +902,13 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 		slog.Warn("sftp: backend rejected sftp subsystem",
 			"session_id", s.ID, "err", err, "ok", ok)
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 
 	// Bridge agent channel ↔ backend stdin/stdout.
@@ -918,12 +926,12 @@ func (s *Session) handleSubsystemRequest(req *ssh.Request) error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			io.Copy(backendStdin, s.Channel)
+			_, _ = io.Copy(backendStdin, s.Channel)
 			backendStdin.Close()
 		}()
 		go func() {
 			defer wg.Done()
-			io.Copy(s.Channel, backendStdout)
+			_, _ = io.Copy(s.Channel, backendStdout)
 		}()
 		wg.Wait()
 		s.Channel.Close()
@@ -941,7 +949,7 @@ func (s *Session) handleEnvRequest(req *ssh.Request) error {
 	// Parse env payload: [uint32 nameLen][name][uint32 valueLen][value].
 	if len(req.Payload) < 4 {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -949,7 +957,7 @@ func (s *Session) handleEnvRequest(req *ssh.Request) error {
 	nameLen := binary.BigEndian.Uint32(req.Payload[0:4])
 	if int(4+nameLen) > len(req.Payload) {
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -973,10 +981,12 @@ func (s *Session) handleEnvRequest(req *ssh.Request) error {
 			// Re-use SFTP slot to carry the var name as path; a dedicated
 			// EmitEnvDenied would be cleaner but is not in the current Emitter
 			// interface — adding it is out of scope for this chunk.
-			s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "env.denied", name)
+			if err := s.deps.AuditEmitter.EmitSessionSFTP(context.Background(), s.Context, s.ID, "env.denied", name); err != nil {
+				slog.Debug("failed to emit env denied audit", "session_id", s.ID, "error", err)
+			}
 		}
 		if req.WantReply {
-			req.Reply(false, nil)
+			_ = req.Reply(false, nil)
 		}
 		return nil
 	}
@@ -987,7 +997,7 @@ func (s *Session) handleEnvRequest(req *ssh.Request) error {
 	)
 
 	if req.WantReply {
-		req.Reply(true, nil)
+		_ = req.Reply(true, nil)
 	}
 	return nil
 }
@@ -1030,8 +1040,10 @@ func (s *Session) handleSignalRequest(req *ssh.Request) error {
 		slog.Debug("signal forwarded", "session_id", s.ID, "signal", sigReq.Signal)
 		if s.deps.AuditEmitter != nil {
 			// Re-use exec slot with a synthetic "signal:<name>" command string.
-			s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID,
-				"signal:"+sigReq.Signal, 0)
+			if err := s.deps.AuditEmitter.EmitSessionExec(context.Background(), s.Context, s.ID,
+				"signal:"+sigReq.Signal, 0); err != nil {
+				slog.Debug("failed to emit signal exec audit", "session_id", s.ID, "error", err)
+			}
 		}
 	}
 
@@ -1129,9 +1141,13 @@ type recordingWriter struct {
 
 func (rw *recordingWriter) Write(p []byte) (int, error) {
 	if rw.input {
-		rw.rec.WriteInput(p)
+		if err := rw.rec.WriteInput(p); err != nil {
+			slog.Debug("failed to record input", "error", err)
+		}
 	} else {
-		rw.rec.WriteOutput(p)
+		if err := rw.rec.WriteOutput(p); err != nil {
+			slog.Debug("failed to record output", "error", err)
+		}
 	}
 	return rw.w.Write(p)
 }
@@ -1145,7 +1161,9 @@ type recordingReader struct {
 func (rr *recordingReader) Read(p []byte) (int, error) {
 	n, err := rr.r.Read(p)
 	if n > 0 {
-		rr.rec.WriteOutput(p[:n])
+		if recErr := rr.rec.WriteOutput(p[:n]); recErr != nil {
+			slog.Debug("failed to record output", "error", recErr)
+		}
 	}
 	return n, err
 }

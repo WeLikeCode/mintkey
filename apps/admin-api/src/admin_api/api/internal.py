@@ -22,7 +22,9 @@ Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5; long-lived-api-keys task 7.5;
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import os
 import uuid
 from datetime import datetime
 from threading import Lock
@@ -51,6 +53,31 @@ from mintkey_models.tenant_ctx import set_tenant_context
 router = APIRouter(prefix="/v1/internal")
 
 _ph = argon2.PasswordHasher()
+
+# Bound the number of Argon2id verifies running concurrently.
+#
+# The verify is offloaded off the event loop (asyncio.to_thread) so validations
+# no longer serialise — but each Argon2id verify allocates memory_cost bytes
+# (64 MiB at the default/most-common parameters, and the amount is fixed by the
+# *stored hash*, not by this process). Unbounded concurrency therefore turns a
+# burst of N validations into N * 64 MiB of simultaneous allocation, which OOM-
+# kills a memory-capped container. This semaphore caps peak memory at
+# roughly (concurrency * memory_cost) while still allowing that many verifies to
+# run truly in parallel across the thread pool. Size the container's memory
+# limit accordingly (concurrency * ~64 MiB + base RSS). Default 4 → ~256 MiB of
+# hashing headroom; tune via MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY.
+_VERIFY_CONCURRENCY = max(1, int(os.getenv("MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY", "4")))
+_verify_semaphore = asyncio.Semaphore(_VERIFY_CONCURRENCY)
+
+
+async def _verify_argon2(stored_hash: str, secret: str) -> None:
+    """Run an Argon2id verify off the event loop, memory-bounded by a semaphore.
+
+    Raises the same exceptions as argon2.PasswordHasher.verify
+    (e.g. VerifyMismatchError) so callers keep their existing error handling.
+    """
+    async with _verify_semaphore:
+        await asyncio.to_thread(_ph.verify, stored_hash, secret)
 
 INVALID_KEY_RESPONSE: dict[str, object] = {
     "type": "https://mintkey.internal/errors/invalid-agent-key",
@@ -141,16 +168,23 @@ async def validate_agent_key(
     row = result.fetchone()
 
     if row is None:
-        # Equalize timing against DUMMY_HASH — ADR-0017.5
+        # Equalize timing against DUMMY_HASH — ADR-0017.5.
+        # Verify off the event loop (see _verify_argon2): the hash is CPU-bound
+        # (~0.6-0.9s at time_cost=3/64MB) and argon2-cffi releases the GIL while
+        # hashing, so running it inline serialises all concurrent validations
+        # and blows the callers' timeouts under a startup burst. Offloading keeps
+        # the loop free; the semaphore keeps peak memory bounded.
         try:
-            _ph.verify(DUMMY_HASH, api_key)
+            await _verify_argon2(DUMMY_HASH, api_key)
         except Exception:
             pass
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
 
-    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5
+    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5.
+    # Offloaded off the event loop (see _verify_argon2 / the DUMMY_HASH branch)
+    # so the loop stays free and concurrent validations do not serialise.
     try:
-        _ph.verify(row.api_key_hash, api_key)
+        await _verify_argon2(row.api_key_hash, api_key)
     except VerifyMismatchError:
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
     except Exception:

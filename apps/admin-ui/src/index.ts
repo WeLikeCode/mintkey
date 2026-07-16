@@ -36,7 +36,10 @@ import { ApiKeysResource } from "./resources/api_keys.js";
 import { PermissionsResource } from "./resources/permissions.js";
 import { AuditResource } from "./resources/audit.js";
 import { TenantsResource } from "./resources/tenants.js";
+import { OperatorsResource } from "./resources/operators.js";
 import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
+import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
+import { budgetConsumersHandler } from "./routes/budget-consumers.js";
 import { AgentSecretsResource } from "./resources/agent-secrets.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -144,6 +147,13 @@ async function main() {
       component: Components.Dashboard,
       handler: dashboardHandler,
     },
+    pages: {
+      "budget-consumers": {
+        component: Components.BudgetConsumersPage,
+        label: "Budget Consumers",
+        icon: "Activity",
+      },
+    },
     // Nav order: Dashboard → Services → Email Services → Agents → Permissions → API Keys → Audit → Tenants
     resources: [
       { resource: ServicesResource.adminResource, options: ServicesResource.options },
@@ -157,6 +167,7 @@ async function main() {
       { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
       { resource: AuditResource.adminResource, options: AuditResource.options },
       { resource: TenantsResource.adminResource, options: TenantsResource.options },
+      { resource: OperatorsResource.adminResource, options: OperatorsResource.options },
     ],
     rootPath: "/admin",
     branding: {
@@ -298,6 +309,16 @@ async function main() {
 
   // PlatformAdmin view flag middleware (reads from req.adminSession via session shim).
   app.use(platformAdminMiddleware);
+
+  // ── BFF: Budget management routes ──────────────────────────────────────────
+  // Mounted BEFORE the AdminJS router so they are session-protected via
+  // requireSession above. All routes proxy to admin-api via apiWrite/fetch.
+  // Source: budget-management-ui spec, Task 8.2.
+  app.get("/admin/api/budget-consumers", budgetConsumersHandler);
+  app.get("/admin/api/budget/:permId", budgetGetHandler);
+  app.post("/admin/api/budget/:permId/edit", express.json(), budgetEditHandler);
+  app.post("/admin/api/budget/:permId/remove", budgetRemoveHandler);
+  app.post("/admin/api/budget/:permId/reset", budgetResetHandler);
 
   // ── AdminJS unauthenticated router ──────────────────────────────────────────
   // buildRouter(admin, predefinedRouter?, formidableOptions?) — we own auth above.

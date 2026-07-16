@@ -168,6 +168,7 @@ def admin_app(postgres_container: PostgresContainer, apply_migrations):
 # ---------------------------------------------------------------------------
 
 _DOMAIN_TABLES = (
+    "budget_counters",
     "service_api_keys",
     "permission_grants",
     "credentials",
