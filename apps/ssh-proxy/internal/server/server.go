@@ -12,11 +12,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/auth"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/backend"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/metrics"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/session"
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/vault"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -383,7 +385,9 @@ func (s *Server) handleChannel(sshConn *ssh.ServerConn, newChannel ssh.NewChanne
 func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
 	ctx, err := s.authHandler.AuthenticateJWT(conn.User(), password)
 	if err != nil {
-		slog.Debug("JWT auth failed", "user", conn.User(), "error", err)
+		// Observable auth failure (do NOT log the presented password/JWT bytes).
+		metrics.RecordAuthFailure("jwt")
+		slog.Warn("ssh.auth.failed", "method", "jwt", "user", conn.User(), "reason", err)
 		return nil, fmt.Errorf("authentication failed")
 	}
 
@@ -397,7 +401,18 @@ func (s *Server) passwordCallback(conn ssh.ConnMetadata, password []byte) (*ssh.
 func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 	ctx, err := s.authHandler.AuthenticatePublicKey(conn.User(), key)
 	if err != nil {
-		slog.Debug("public key auth failed", "user", conn.User(), "error", err)
+		// SSH clients routinely offer a public key before falling back to
+		// password, and pubkey auth is not wired (vault-backed CA), so the
+		// "unsupported" rejection is expected on nearly every connection. Log it
+		// at Debug and do NOT count it, so AuthFailures{public_key} stays a
+		// genuine signal; reserve Warn + the metric for real key-verification
+		// failures once pubkey auth is wired. Never log the key material.
+		if strings.Contains(err.Error(), "ssh.auth.pubkey.unsupported") {
+			slog.Debug("ssh.auth.pubkey.unsupported", "user", conn.User())
+		} else {
+			metrics.RecordAuthFailure("public_key")
+			slog.Warn("ssh.auth.failed", "method", "public_key", "user", conn.User(), "reason", err)
+		}
 		return nil, fmt.Errorf("authentication failed")
 	}
 
