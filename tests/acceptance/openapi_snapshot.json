@@ -14,6 +14,7 @@
   "health": "/metrics",
   "internal": "/v1/internal",
   "oauth2_providers": "/v1/tenants/{tenant_id}/oauth2-providers",
+  "operators": "/v1/operators",
   "permissions": "/v1/tenants/{tenant_id}/agents/{agent_id}/permissions",
   "proxy": "/v1/proxy/call/{service_id}/{path_suffix:path}",
   "service_templates": "/v1/service-templates",
