@@ -308,11 +308,12 @@ Per-scheme injection cheat-sheet. Derived from `proxy-plugin/internal/credential
 | `api_key_query` | URL query param (default `api_key`) set to the raw key. Operator may configure a different name. | Your own `api_key` query param or `Authorization`. |
 | `bearer_token` | `Authorization: Bearer <secret>`. | Your own `Authorization` header to the upstream. |
 | `basic_auth` | `Authorization: Basic base64(user:pass)`. The vault stores the credential as `user:pass` bytes; proxy base64-encodes it. | Your own `Authorization` header to the upstream. |
-| `oauth2_client_credentials` | `Authorization: Bearer <access_token>`. Vault Adapter performs the client_credentials exchange; proxy injects the result. | Your own `Authorization` header to the upstream. |
+| `oauth2_client_credentials` | `Authorization: Bearer <access_token>`. Proxy exchanges the stored `client_id`/`client_secret` (client_credentials grant) for a short-lived token and injects the result. | Your own `Authorization` header to the upstream. |
 | `oidc_client_secret` | `Authorization: Bearer <id_or_access_token>`. Vault Adapter performs the OIDC exchange; proxy injects the result. | Your own `Authorization` header to the upstream. |
 | `oauth2_password_grant` | `Authorization: Bearer <access_token>`. Vault Adapter performs the ROPC grant; proxy injects the result. | Your own `Authorization` header to the upstream. |
 | `apple_jwt` | `Authorization: Bearer <apple_jwt>`. Vault Adapter generates a signed Apple JWT (ES256) per request. | Your own `Authorization` header to the upstream. |
 | `google_service_account` | `Authorization: Bearer <google_access_token>`. Vault Adapter exchanges the service account JSON key per request (not cached). | Your own `Authorization` header to the upstream. |
+| `http_digest` | HTTP Digest auth (RFC 2617): proxy answers the upstream challenge using the stored public/private key pair (public key = username, private key = password) and sets `Authorization: Digest ...` per request. | Your own `Authorization` header to the upstream. |
 | `mtls` | **Not implemented** — proxy returns an error. Do not attempt to call an mTLS service through the HTTP proxy. | N/A — calls fail. |
 | `ssh_private_key` | **SSH bastion only** — handled by the SSH proxy, not Kong. Use bastion endpoint (§ssh_services). | Do not route through Kong. |
 | `ssh_ca` | **SSH bastion only** — CA signing handled by the SSH proxy. Use bastion endpoint (§ssh_services). | Do not route through Kong. |

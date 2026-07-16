@@ -368,3 +368,54 @@ templates:
       help: "Install a Slack app at https://api.slack.com/apps and copy the Bot User OAuth Token"
       format: "xoxb-..."
     test_path: /api.test
+
+  - template_id: mongodb-atlas-service-account
+    name: mongodb-atlas-service-account
+    display_name: MongoDB Atlas Administration API (Service Account)
+    description: "MongoDB Atlas Administration API (control plane) via a Service Account. Mintkey exchanges your client_id/client_secret for a 1-hour Bearer access token and injects it as Authorization: Bearer — never send your own auth. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Admin API only — reading collection documents is not supported."
+    base_url: https://cloud.mongodb.com/api/atlas/v2
+    auth_type: oauth2_client_credentials
+    openapi_spec_url: https://mongodb.com/docs/atlas/reference/api-resources-spec/v2
+    category: database
+    version: "1.0.0"
+    config_notes: "Create a Service Account in Atlas (Organization Settings → Access Manager → Applications → Service Accounts) and paste its client_id and client_secret. Mintkey exchanges them for a 1-hour Bearer token at https://cloud.mongodb.com/api/oauth/token (token_response_path $.access_token) and injects it per request. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Grant read:atlas and/or admin:atlas per agent."
+    credential_hint:
+      token_url: https://cloud.mongodb.com/api/oauth/token
+      client_id: "(your Service Account client ID)"
+      client_secret: "(your Service Account client secret)"
+      token_response_path: "$.access_token"
+    test_path: /groups
+
+  - template_id: mongodb-atlas-api-key
+    name: mongodb-atlas-api-key
+    display_name: MongoDB Atlas Administration API (Programmatic API Key)
+    description: "MongoDB Atlas Administration API (control plane) via a Programmatic API Key. Mintkey performs the RFC 2617 HTTP Digest challenge-response with your public/private key pair — never send your own auth. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Admin API only — reading collection documents is not supported."
+    base_url: https://cloud.mongodb.com/api/atlas/v2
+    auth_type: http_digest
+    openapi_spec_url: https://mongodb.com/docs/atlas/reference/api-resources-spec/v2
+    category: database
+    version: "1.0.0"
+    config_notes: "Create a Programmatic API Key in Atlas (Organization/Project → Access Manager → API Keys) and paste its public key and private key. Mintkey authenticates via HTTP Digest per request — no token to rotate manually. REQUIRED: send `Accept: application/vnd.atlas.<yyyy-mm-dd>+json` (e.g. `2025-03-12`) on every request — the Atlas API returns 406 without it. Mintkey forwards request headers to MongoDB unchanged; it does not add this header for you. Grant read:atlas and/or admin:atlas per agent."
+    credential_hint:
+      public_key: "(your Programmatic API Key public key)"
+      private_key: "(your Programmatic API Key private key)"
+    test_path: /groups
+
+  - template_id: auth0-management
+    name: auth0-management
+    display_name: Auth0 Management API
+    description: "Auth0 Management API (tenant administration — applications, users, connections, roles, actions, logs). Mintkey exchanges your M2M client_id/client_secret for a 24-hour Bearer access token at your tenant's /oauth/token endpoint (audience required) and injects it as Authorization: Bearer — never send your own auth. No versioned Accept header is required. Operations are bounded by the Management API scopes granted to the M2M application in Auth0."
+    base_url: https://YOUR_TENANT.auth0.com/api/v2
+    auth_type: oauth2_client_credentials
+    openapi_spec_url: https://auth0.com/docs/oas/management/v2/management-api-oas.json
+    category: identity
+    version: "1.0.0"
+    config_notes: "Replace YOUR_TENANT with your Auth0 tenant domain EVERYWHERE (base_url, token_url, audience), including any region suffix (e.g. my-tenant.us.auth0.com) or your custom domain. In Auth0: Applications → create or select a Machine-to-Machine application authorized for the Auth0 Management API, granting the scopes your agents need (the test_path /clients needs read:clients). Credential JSON: {token_url: https://YOUR_TENANT.auth0.com/oauth/token, client_id, client_secret, audience: https://YOUR_TENANT.auth0.com/api/v2/}. The audience MUST match your tenant's Management API identifier exactly, INCLUDING the trailing slash. Mintkey authenticates to the token endpoint with HTTP Basic (client_secret_basic); if the exchange fails with 401 invalid_client, set the application's Authentication Method to Client Secret (Basic) (Applications → your app → Credentials). Tokens last 24 hours (expires_in 86400) and are cached and auto-refreshed by the proxy. Grant agents the call action per service."
+    credential_hint:
+      token_url: https://YOUR_TENANT.auth0.com/oauth/token
+      credential_fields:
+        client_id: "(your M2M application Client ID)"
+        client_secret: "(your M2M application Client Secret)"
+        audience: "https://YOUR_TENANT.auth0.com/api/v2/"
+      token_response_path: "$.access_token"
+    test_path: /clients

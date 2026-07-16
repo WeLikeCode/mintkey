@@ -1,5 +1,5 @@
 """
-Injection hint table for all 16 Mintkey AuthScheme values.
+Injection hint table for all 17 Mintkey AuthScheme values.
 
 Each entry describes exactly what the Mintkey proxy injects and where, so agents
 can self-serve the call recipe from on-wire responses without reading source code.
@@ -115,15 +115,15 @@ INJECTION_HINTS: dict[str, dict[str, str]] = {
 
     # ------------------------------------------------------------------
     # AUTH_SCHEME_OAUTH2_CLIENT_CREDENTIALS = 5
-    # injector.go:76-77: sets Authorization: Bearer <value>.
-    # The Vault Adapter exchanges client_credentials grant and returns the
-    # access token as cred.Value; proxy treats it opaquely.
+    # The proxy's client-credentials handler POSTs grant_type=client_credentials
+    # (HTTP Basic client_id:client_secret) to the token_url, caches the result,
+    # and injects Authorization: Bearer <access_token>.
     # ------------------------------------------------------------------
     "oauth2_client_credentials": {
         "injects": (
-            "Proxy sets Authorization: Bearer <access_token> on the outbound request. "
-            "The Vault Adapter performs the OAuth2 client_credentials token exchange; "
-            "the proxy receives the resulting access token and injects it as a bearer."
+            "Proxy exchanges the stored client_id/client_secret for a short-lived "
+            "access token (OAuth2 client_credentials grant) and sets "
+            "Authorization: Bearer <access_token> on the outbound request."
         ),
         "location": "header",
         "never_send": (
@@ -370,5 +370,28 @@ INJECTION_HINTS: dict[str, dict[str, str]] = {
         ),
         "handled_by": "email-proxy",
         "status": "handled_by_other_proxy",
+    },
+
+    # ------------------------------------------------------------------
+    # AUTH_SCHEME_HTTP_DIGEST = 18
+    # digest.go: the proxy attaches an RFC 2617 Digest transport built from
+    # the stored public_key (username) / private_key (password) and performs
+    # the 401-challenge → response handshake per request; no static header.
+    # ------------------------------------------------------------------
+    "http_digest": {
+        "injects": (
+            "Proxy performs HTTP Digest authentication (RFC 2617) using the stored "
+            "public/private key pair (public key = username, private key = password). "
+            "The proxy answers the upstream's challenge and sets the resulting "
+            "Authorization: Digest header on the outbound request per request."
+        ),
+        "location": "header",
+        "never_send": (
+            "Never send your own Authorization header to the upstream service. "
+            "The proxy strips the agent's Authorization header and performs the "
+            "Digest handshake with the stored key pair itself."
+        ),
+        "handled_by": "http-proxy",
+        "status": "injected_by_proxy",
     },
 }

@@ -13,11 +13,11 @@
 - `apps/ssh-proxy/internal/config/config_test.go`
 
 **Acceptance Criteria**:
-- [ ] Go module initialized with dependencies (golang.org/x/crypto/ssh, google.golang.org/grpc, etc.)
-- [ ] Dockerfile builds distroless image
-- [ ] main.go loads configuration from environment variables
-- [ ] config.go defines all configuration parameters with defaults
-- [ ] Unit tests for configuration loading
+- [x] Go module initialized with dependencies (golang.org/x/crypto/ssh, google.golang.org/grpc, etc.)
+- [x] Dockerfile builds distroless image
+- [x] main.go loads configuration from environment variables
+- [x] config.go defines all configuration parameters with defaults
+- [x] Unit tests for configuration loading
 
 **Dependencies**: None
 
@@ -28,11 +28,11 @@
 - `apps/ssh-proxy/internal/server/server_test.go`
 
 **Acceptance Criteria**:
-- [ ] SSH server listens on configured port (default 2222)
-- [ ] Host key loaded from file or generated
-- [ ] Server configuration (ciphers, MACs, key exchanges) follows security best practices
-- [ ] Graceful shutdown on SIGTERM
-- [ ] Unit tests for server lifecycle
+- [x] SSH server listens on configured port (default 2222)
+- [x] Host key loaded from file or generated
+- [x] Server configuration (ciphers, MACs, key exchanges) follows security best practices
+- [x] Graceful shutdown on SIGTERM
+- [x] Unit tests for server lifecycle
 
 **Dependencies**: M1.1
 
@@ -43,11 +43,11 @@
 - `apps/ssh-proxy/internal/auth/jwt_test.go`
 
 **Acceptance Criteria**:
-- [ ] Parse JWT from SSH password field
-- [ ] Validate JWT signature using JWKS from broker
-- [ ] Extract agent_id, service_id, tenant_id from JWT claims
-- [ ] Reject expired or invalid JWTs with clear error message
-- [ ] Unit tests with valid/invalid/expired JWTs
+- [x] Parse JWT from SSH password field
+- [x] Validate JWT signature using JWKS from broker
+- [x] Extract agent_id, service_id, tenant_id from JWT claims
+- [x] Reject expired or invalid JWTs with clear error message
+- [x] Unit tests with valid/invalid/expired JWTs
 
 **Dependencies**: M1.2
 
@@ -58,11 +58,11 @@
 - `apps/ssh-proxy/internal/auth/apikey_test.go`
 
 **Acceptance Criteria**:
-- [ ] Derive Ed25519 public key from agent API key
-- [ ] Validate API key via Vault Adapter
-- [ ] Extract agent_id, service_id, tenant_id from API key metadata
-- [ ] Reject invalid API keys with clear error message
-- [ ] Unit tests with valid/invalid API keys
+- [x] Derive Ed25519 public key from agent API key
+- [x] Validate API key via Vault Adapter
+- [x] Extract agent_id, service_id, tenant_id from API key metadata
+- [x] Reject invalid API keys with clear error message
+- [x] Unit tests with valid/invalid API keys
 
 **Dependencies**: M1.2
 
@@ -73,11 +73,11 @@
 - `apps/ssh-proxy/internal/auth/auth_test.go`
 
 **Acceptance Criteria**:
-- [ ] Detect authentication method (password = JWT, public key = API key)
-- [ ] Route to appropriate authentication handler
-- [ ] Return session context with agent_id, service_id, tenant_id
-- [ ] Emit audit event on authentication failure
-- [ ] Integration tests for both authentication methods
+- [x] Detect authentication method (password = JWT, public key = API key)
+- [x] Route to appropriate authentication handler
+- [x] Return session context with agent_id, service_id, tenant_id
+- [x] Emit audit event on authentication failure
+- [x] Integration tests for both authentication methods
 
 **Dependencies**: M1.3, M1.4
 
@@ -88,10 +88,10 @@
 - `apps/ssh-proxy/internal/server/health_test.go`
 
 **Acceptance Criteria**:
-- [ ] HTTP health check endpoint on separate port (default 8087)
-- [ ] Return 200 OK when server is ready
-- [ ] Return 503 Service Unavailable when server is shutting down
-- [ ] Unit tests for health check responses
+- [x] HTTP health check endpoint on separate port (default 8087)
+- [x] Return 200 OK when server is ready
+- [x] Return 503 Service Unavailable when server is shutting down
+- [x] Unit tests for health check responses
 
 **Dependencies**: M1.2
 
@@ -107,12 +107,12 @@
 - `apps/ssh-proxy/internal/vault/client_test.go`
 
 **Acceptance Criteria**:
-- [ ] Fetch SSH private key from Vault Adapter (gRPC)
-- [ ] Parse SSH private key (PEM or OpenSSH format)
-- [ ] Establish SSH connection to backend server
-- [ ] Handle connection failures with clear error messages
-- [ ] Zero private key material after use
-- [ ] Unit tests with mock Vault Adapter and SSH server
+- [x] Fetch SSH private key from Vault Adapter (gRPC)
+- [x] Parse SSH private key (PEM or OpenSSH format)
+- [x] Establish SSH connection to backend server
+- [x] Handle connection failures with clear error messages
+- [x] Zero private key material after use
+- [x] Unit tests with mock Vault Adapter and SSH server
 
 **Dependencies**: M1.5
 
@@ -123,11 +123,11 @@
 - `apps/ssh-proxy/internal/backend/hostkey_test.go`
 
 **Acceptance Criteria**:
-- [ ] Store host key fingerprints in database on first connection
-- [ ] Verify host key on subsequent connections
-- [ ] Configurable behavior on host key change (fail or warn)
-- [ ] Emit audit event on host key change
-- [ ] Unit tests for TOFU logic
+- [x] Store host key fingerprints in database on first connection
+- [x] Verify host key on subsequent connections
+- [x] Configurable behavior on host key change (fail or warn)
+- [x] Emit audit event on host key change
+- [x] Unit tests for TOFU logic
 
 **Dependencies**: M2.1
 
@@ -138,11 +138,11 @@
 - `apps/ssh-proxy/internal/bridge/bridge_test.go`
 
 **Acceptance Criteria**:
-- [ ] Bridge stdin/stdout/stderr between agent and backend
-- [ ] Handle channel close gracefully
-- [ ] Track bytes sent/received for metrics
-- [ ] Support multiple channels per session
-- [ ] Unit tests for I/O bridging
+- [x] Bridge stdin/stdout/stderr between agent and backend
+- [x] Handle channel close gracefully
+- [x] Track bytes sent/received for metrics
+- [x] Support multiple channels per session
+- [x] Unit tests for I/O bridging
 
 **Dependencies**: M2.1
 
@@ -153,11 +153,11 @@
 - `apps/ssh-proxy/internal/bridge/pty_test.go`
 
 **Acceptance Criteria**:
-- [ ] Handle PTY requests from agent
-- [ ] Forward PTY requests to backend
-- [ ] Handle window size changes
-- [ ] Support terminal modes (echo, canonical, etc.)
-- [ ] Unit tests for PTY handling
+- [x] Handle PTY requests from agent
+- [x] Forward PTY requests to backend
+- [x] Handle window size changes
+- [x] Support terminal modes (echo, canonical, etc.)
+- [x] Unit tests for PTY handling
 
 **Dependencies**: M2.3
 
@@ -168,9 +168,9 @@
 - `apps/ssh-proxy/internal/bridge/signal_test.go`
 
 **Acceptance Criteria**:
-- [ ] Forward signals from agent to backend (SIGINT, SIGTERM, etc.)
-- [ ] Handle signal requests gracefully
-- [ ] Unit tests for signal forwarding
+- [x] Forward signals from agent to backend (SIGINT, SIGTERM, etc.)
+- [x] Handle signal requests gracefully
+- [x] Unit tests for signal forwarding
 
 **Dependencies**: M2.3
 
@@ -181,11 +181,11 @@
 - `apps/ssh-proxy/internal/session/session_test.go`
 
 **Acceptance Criteria**:
-- [ ] Create session context on authentication
-- [ ] Track active sessions
-- [ ] Clean up session resources on disconnect
-- [ ] Handle concurrent sessions per agent
-- [ ] Unit tests for session lifecycle
+- [x] Create session context on authentication
+- [x] Track active sessions
+- [x] Clean up session resources on disconnect
+- [x] Handle concurrent sessions per agent
+- [x] Unit tests for session lifecycle
 
 **Dependencies**: M1.5, M2.3
 
@@ -196,10 +196,10 @@
 - `apps/ssh-proxy/internal/session/limiter_test.go`
 
 **Acceptance Criteria**:
-- [ ] Track active sessions per agent
-- [ ] Reject new sessions when limit reached (configurable, default 5)
-- [ ] Emit audit event on session rejection
-- [ ] Unit tests for rate limiting
+- [x] Track active sessions per agent
+- [x] Reject new sessions when limit reached (configurable, default 5)
+- [x] Emit audit event on session rejection
+- [x] Unit tests for rate limiting
 
 **Dependencies**: M2.6
 
@@ -210,10 +210,10 @@
 - `apps/ssh-proxy/internal/session/timeout_test.go`
 
 **Acceptance Criteria**:
-- [ ] Terminate sessions after configurable timeout (default 3600s)
-- [ ] Emit audit event on session timeout
-- [ ] Graceful shutdown (send SIGHUP to backend)
-- [ ] Unit tests for session timeout
+- [x] Terminate sessions after configurable timeout (default 3600s)
+- [x] Emit audit event on session timeout
+- [x] Graceful shutdown (send SIGHUP to backend)
+- [x] Unit tests for session timeout
 
 **Dependencies**: M2.6
 
@@ -227,13 +227,13 @@
 - `apps/ssh-proxy/internal/audit/audit_test.go`
 
 **Acceptance Criteria**:
-- [ ] Emit `ssh.session.started` on session start
-- [ ] Emit `ssh.session.ended` on session end
-- [ ] Emit `ssh.session.exec` on command execution
-- [ ] Emit `ssh.session.sftp` on SFTP operations
-- [ ] Include session_id, agent_id, service_id, tenant_id in all events
-- [ ] No plaintext credentials in audit payloads
-- [ ] Unit tests for audit emission
+- [x] Emit `ssh.session.started` on session start
+- [x] Emit `ssh.session.ended` on session end
+- [x] Emit `ssh.session.exec` on command execution
+- [x] Emit `ssh.session.sftp` on SFTP operations
+- [x] Include session_id, agent_id, service_id, tenant_id in all events
+- [x] No plaintext credentials in audit payloads
+- [x] Unit tests for audit emission
 
 **Dependencies**: M2.6
 
@@ -246,11 +246,11 @@
 - `apps/ssh-proxy/internal/recording/asciicast_test.go`
 
 **Acceptance Criteria**:
-- [ ] Record session I/O in asciicast v2 format
-- [ ] Write recording to configured storage path
-- [ ] Include session metadata (agent_id, service_id, tenant_id)
-- [ ] Handle recording write failures gracefully (log error, continue session)
-- [ ] Unit tests for asciicast format
+- [x] Record session I/O in asciicast v2 format
+- [x] Write recording to configured storage path
+- [x] Include session metadata (agent_id, service_id, tenant_id)
+- [x] Handle recording write failures gracefully (log error, continue session)
+- [x] Unit tests for asciicast format
 
 **Dependencies**: M2.3, M3.1
 
@@ -261,10 +261,10 @@
 - `apps/ssh-proxy/internal/recording/storage_test.go`
 
 **Acceptance Criteria**:
-- [ ] Store recordings in configured directory
-- [ ] Implement retention policy (delete recordings older than N days, default 30)
-- [ ] Periodic cleanup of old recordings (daily)
-- [ ] Unit tests for storage and retention
+- [x] Store recordings in configured directory
+- [x] Implement retention policy (delete recordings older than N days, default 30)
+- [x] Periodic cleanup of old recordings (daily)
+- [x] Unit tests for storage and retention
 
 **Dependencies**: M3.2
 
@@ -277,11 +277,11 @@
 - `apps/ssh-proxy/internal/sftp/handler_test.go`
 
 **Acceptance Criteria**:
-- [ ] Handle SFTP subsystem requests from agent
-- [ ] Forward SFTP requests to backend
-- [ ] Parse SFTP operations (read, write, list, delete, mkdir, rmdir, rename)
-- [ ] Emit audit events for SFTP operations
-- [ ] Unit tests for SFTP handling
+- [x] Handle SFTP subsystem requests from agent
+- [x] Forward SFTP requests to backend
+- [x] Parse SFTP operations (read, write, list, delete, mkdir, rmdir, rename)
+- [x] Emit audit events for SFTP operations
+- [x] Unit tests for SFTP handling
 
 **Dependencies**: M2.3, M3.1
 
@@ -295,11 +295,11 @@
 - `apps/ssh-proxy/internal/filter/filter_test.go`
 
 **Acceptance Criteria**:
-- [ ] Support allowlist mode (only listed commands allowed)
-- [ ] Support denylist mode (listed commands blocked)
-- [ ] Support regex patterns for command matching
-- [ ] Default mode: denylist (empty = all commands allowed)
-- [ ] Unit tests for filtering logic
+- [x] Support allowlist mode (only listed commands allowed)
+- [x] Support denylist mode (listed commands blocked)
+- [x] Support regex patterns for command matching
+- [x] Default mode: denylist (empty = all commands allowed)
+- [x] Unit tests for filtering logic
 
 **Dependencies**: None
 
@@ -310,10 +310,10 @@
 - `apps/ssh-proxy/internal/filter/parser_test.go`
 
 **Acceptance Criteria**:
-- [ ] Parse command string into command name and arguments
-- [ ] Handle shell metacharacters (pipes, redirects, etc.)
-- [ ] Handle quoted arguments
-- [ ] Unit tests for command parsing
+- [x] Parse command string into command name and arguments
+- [x] Handle shell metacharacters (pipes, redirects, etc.)
+- [x] Handle quoted arguments
+- [x] Unit tests for command parsing
 
 **Dependencies**: M4.1
 
@@ -324,11 +324,11 @@
 - `apps/ssh-proxy/internal/session/session_test.go` (update)
 
 **Acceptance Criteria**:
-- [ ] Load command filter configuration per service
-- [ ] Check commands against filter before forwarding to backend
-- [ ] Block filtered commands with clear error message
-- [ ] Emit audit event on command block
-- [ ] Integration tests for command filtering
+- [x] Load command filter configuration per service
+- [x] Check commands against filter before forwarding to backend
+- [x] Block filtered commands with clear error message
+- [x] Emit audit event on command block
+- [x] Integration tests for command filtering
 
 **Dependencies**: M2.6, M4.1, M4.2
 
@@ -339,10 +339,10 @@
 - `apps/ssh-proxy/internal/sftp/handler_test.go` (update)
 
 **Acceptance Criteria**:
-- [ ] Apply command filter to SFTP paths
-- [ ] Block filtered SFTP operations with clear error message
-- [ ] Emit audit event on SFTP operation block
-- [ ] Integration tests for SFTP path filtering
+- [x] Apply command filter to SFTP paths
+- [x] Block filtered SFTP operations with clear error message
+- [x] Emit audit event on SFTP operation block
+- [x] Integration tests for SFTP path filtering
 
 **Dependencies**: M3.4, M4.3
 
@@ -356,10 +356,10 @@
 - `apps/ssh-proxy/internal/metrics/metrics_test.go`
 
 **Acceptance Criteria**:
-- [ ] Expose metrics on HTTP endpoint (default 8087)
-- [ ] Track active sessions, session duration, bytes transferred
-- [ ] Track authentication failures, command blocks, session timeouts
-- [ ] Unit tests for metrics collection
+- [x] Expose metrics on HTTP endpoint (default 8087)
+- [x] Track active sessions, session duration, bytes transferred
+- [x] Track authentication failures, command blocks, session timeouts
+- [x] Unit tests for metrics collection
 
 **Dependencies**: M2.6
 
@@ -370,11 +370,11 @@
 - `apps/ssh-proxy/internal/trace/trace_test.go`
 
 **Acceptance Criteria**:
-- [ ] Create spans for authentication, Vault fetch, backend connection, session duration
-- [ ] Add attributes: session_id, agent_id, service_id, tenant_id, auth_method
-- [ ] No credentials in span attributes (per allowlist)
-- [ ] Export traces to OTel collector
-- [ ] Unit tests for trace creation
+- [x] Create spans for authentication, Vault fetch, backend connection, session duration
+- [x] Add attributes: session_id, agent_id, service_id, tenant_id, auth_method
+- [x] No credentials in span attributes (per allowlist)
+- [x] Export traces to OTel collector
+- [x] Unit tests for trace creation
 
 **Dependencies**: M2.6
 
@@ -384,12 +384,12 @@
 - `grafana/dashboards/ssh-proxy.json`
 
 **Acceptance Criteria**:
-- [ ] Dashboard shows active sessions over time
-- [ ] Dashboard shows session duration distribution
-- [ ] Dashboard shows authentication failure rate
-- [ ] Dashboard shows command block rate
-- [ ] Dashboard shows bytes transferred
-- [ ] Dashboard shows error rate by type
+- [x] Dashboard shows active sessions over time
+- [x] Dashboard shows session duration distribution
+- [x] Dashboard shows authentication failure rate
+- [x] Dashboard shows command block rate
+- [x] Dashboard shows bytes transferred
+- [x] Dashboard shows error rate by type
 
 **Dependencies**: M5.1
 
@@ -400,11 +400,11 @@
 - `apps/ssh-proxy/internal/revocation/revocation_test.go`
 
 **Acceptance Criteria**:
-- [ ] Subscribe to `mintkey:agent` change channel
-- [ ] Terminate active sessions on agent revocation
-- [ ] Emit audit event on revocation-triggered termination
-- [ ] Graceful shutdown (send SIGHUP to backend)
-- [ ] Integration tests for revocation handling
+- [x] Subscribe to `mintkey:agent` change channel
+- [x] Terminate active sessions on agent revocation
+- [x] Emit audit event on revocation-triggered termination
+- [x] Graceful shutdown (send SIGHUP to backend)
+- [x] Integration tests for revocation handling
 
 **Dependencies**: M2.6
 
@@ -414,11 +414,11 @@
 - `docker-compose.yml` (update)
 
 **Acceptance Criteria**:
-- [ ] ssh-proxy service defined with correct dependencies
-- [ ] Environment variables configured
-- [ ] Ports exposed (2222 for SSH, 8087 for metrics/health)
-- [ ] Health check configured
-- [ ] Service starts after admin-api is healthy
+- [x] ssh-proxy service defined with correct dependencies
+- [x] Environment variables configured
+- [x] Ports exposed (2222 for SSH, 8087 for metrics/health)
+- [x] Health check configured
+- [x] Service starts after admin-api is healthy
 
 **Dependencies**: M1.1, M1.6
 
@@ -428,10 +428,10 @@
 - `seed-job/seed.py` (update)
 
 **Acceptance Criteria**:
-- [ ] Create service identity `svc_ssh_proxy` in seed job
-- [ ] Generate service identity token
-- [ ] Store token in Kubernetes secret (or environment variable)
-- [ ] ssh-proxy uses token to authenticate to Vault Adapter
+- [x] Create service identity `svc_ssh_proxy` in seed job
+- [x] Generate service identity token
+- [x] Store token in Kubernetes secret (or environment variable)
+- [x] ssh-proxy uses token to authenticate to Vault Adapter
 
 **Dependencies**: M2.1
 
@@ -447,13 +447,13 @@
 - `tests/integration/ssh_proxy/test_recording.py`
 
 **Acceptance Criteria**:
-- [ ] Test end-to-end session flow (agent → bastion → backend)
-- [ ] Test SFTP operations
-- [ ] Test command filtering
-- [ ] Test session recording
-- [ ] Test authentication methods (JWT and API key)
-- [ ] Test rate limiting and session timeout
-- [ ] All tests pass
+- [x] Test end-to-end session flow (agent → bastion → backend)
+- [x] Test SFTP operations
+- [x] Test command filtering
+- [x] Test session recording
+- [x] Test authentication methods (JWT and API key)
+- [x] Test rate limiting and session timeout
+- [x] All tests pass
 
 **Dependencies**: M2, M3, M4
 
@@ -463,11 +463,11 @@
 - `tests/acceptance/test_ssh_proxy.py`
 
 **Acceptance Criteria**:
-- [ ] Test golden path: agent → bastion → backend
-- [ ] Test security: no credentials in logs/audit
-- [ ] Test performance: latency < 500ms, overhead < 5%
-- [ ] Test revocation: sessions terminated on agent revocation
-- [ ] All tests pass
+- [x] Test golden path: agent → bastion → backend
+- [x] Test security: no credentials in logs/audit
+- [x] Test performance: latency < 500ms, overhead < 5%
+- [x] Test revocation: sessions terminated on agent revocation
+- [x] All tests pass
 
 **Dependencies**: M5.5, M6.1
 
@@ -477,11 +477,11 @@
 - `tests/architecture/test_ssh_proxy_security.py`
 
 **Acceptance Criteria**:
-- [ ] No plaintext credentials in code
-- [ ] All sessions emit audit events
-- [ ] Key material zeroed on disconnect
-- [ ] Command filtering enforced
-- [ ] All tests pass
+- [x] No plaintext credentials in code
+- [x] All sessions emit audit events
+- [x] Key material zeroed on disconnect
+- [x] Command filtering enforced
+- [x] All tests pass
 
 **Dependencies**: M6.1
 
@@ -491,9 +491,9 @@
 - `docs/architecture/01-architecture/adr/README.md` (update)
 
 **Acceptance Criteria**:
-- [ ] ADR-0021 listed in index
-- [ ] Status: Proposed
-- [ ] Summary: SSH proxy support for agent remote execution
+- [x] ADR-0021 listed in index
+- [x] Status: Proposed
+- [x] Summary: SSH proxy support for agent remote execution
 
 **Dependencies**: ADR-0021 created
 
@@ -503,9 +503,9 @@
 - `AGENTS.md` (update)
 
 **Acceptance Criteria**:
-- [ ] SSH proxy mentioned in architecture overview
-- [ ] Link to ADR-0021
-- [ ] Instructions for running SSH proxy tests
+- [x] SSH proxy mentioned in architecture overview
+- [x] Link to ADR-0021
+- [x] Instructions for running SSH proxy tests
 
 **Dependencies**: M6.4
 
@@ -515,11 +515,11 @@
 - Pull request description
 
 **Acceptance Criteria**:
-- [ ] All tasks completed
-- [ ] All tests pass (unit, integration, acceptance, architecture)
-- [ ] All contract validators pass
-- [ ] Comprehensive PR description
-- [ ] Review requested from maintainers
+- [x] All tasks completed
+- [x] All tests pass (unit, integration, acceptance, architecture)
+- [x] All contract validators pass
+- [x] Comprehensive PR description
+- [x] Review requested from maintainers
 
 **Dependencies**: All previous tasks
 
