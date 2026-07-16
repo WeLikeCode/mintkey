@@ -48,7 +48,9 @@ func (b *Bridge) Start() error {
 		}
 
 		// Signal EOF to backend
-		b.backendChannel.CloseWrite()
+		if err := b.backendChannel.CloseWrite(); err != nil {
+			slog.Debug("agent->backend: CloseWrite error", "error", err)
+		}
 	}()
 
 	// Backend -> Agent
@@ -66,7 +68,9 @@ func (b *Bridge) Start() error {
 		}
 
 		// Signal EOF to agent
-		b.agentChannel.CloseWrite()
+		if err := b.agentChannel.CloseWrite(); err != nil {
+			slog.Debug("backend->agent: CloseWrite error", "error", err)
+		}
 	}()
 
 	// Wait for both directions to complete
@@ -112,13 +116,13 @@ func ForwardRequests(agentReqs <-chan *ssh.Request, backendConn *ssh.Conn) {
 		if err != nil {
 			slog.Debug("failed to forward request", "type", req.Type, "error", err)
 			if req.WantReply {
-				req.Reply(false, nil)
+				_ = req.Reply(false, nil)
 			}
 			continue
 		}
 
 		if req.WantReply {
-			req.Reply(ok, payload)
+			_ = req.Reply(ok, payload)
 		}
 	}
 }
@@ -130,13 +134,13 @@ func ForwardChannelRequests(src <-chan *ssh.Request, dst ssh.Channel) {
 		if err != nil {
 			slog.Debug("failed to forward channel request", "type", req.Type, "error", err)
 			if req.WantReply {
-				req.Reply(false, nil)
+				_ = req.Reply(false, nil)
 			}
 			continue
 		}
 
 		if req.WantReply {
-			req.Reply(ok, nil)
+			_ = req.Reply(ok, nil)
 		}
 	}
 }

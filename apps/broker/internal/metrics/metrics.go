@@ -50,7 +50,7 @@ func (m *Metrics) IncTokenIssued(tenantID, serviceID string) {
 //
 // Returns the first error encountered by the underlying writer; on partial
 // writes the caller should discard or close the response.
-func (m *Metrics) WriteTo(w io.Writer) error {
+func (m *Metrics) WriteMetricsTo(w io.Writer) error {
 	// Collect all counters into a local slice so we can emit HELP/TYPE once
 	// before iterating, which is required by exposition format 0.0.4.
 	type sample struct {

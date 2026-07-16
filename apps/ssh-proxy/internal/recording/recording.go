@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -220,8 +221,7 @@ func NewRecordingWriter(writer io.Writer, recorder *Recorder) *RecordingWriter {
 func (w *RecordingWriter) Write(data []byte) (int, error) {
 	// Record the output
 	if err := w.recorder.WriteOutput(data); err != nil {
-		// Log error but don't fail the write
-		// slog.Debug("failed to record output", "error", err)
+		slog.Debug("failed to record output", "error", err)
 	}
 
 	// Write to underlying writer
@@ -248,8 +248,7 @@ func (r *RecordingReader) Read(data []byte) (int, error) {
 	if n > 0 {
 		// Record the input
 		if recErr := r.recorder.WriteInput(data[:n]); recErr != nil {
-			// Log error but don't fail the read
-			// slog.Debug("failed to record input", "error", recErr)
+			slog.Debug("failed to record input", "error", recErr)
 		}
 	}
 	return n, err

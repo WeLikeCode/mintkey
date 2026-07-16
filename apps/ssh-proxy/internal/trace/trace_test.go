@@ -32,7 +32,7 @@ func TestStartSpan(t *testing.T) {
 
 func TestStartSessionSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartSessionSpan(ctx, "session_123", "agent_456", "service_789", "tenant_abc", "jwt")
+	_, span := StartSessionSpan(ctx, "session_123", "agent_456", "service_789", "tenant_abc", "jwt")
 	defer span.End()
 
 	if span == nil {
@@ -45,7 +45,7 @@ func TestStartSessionSpan(t *testing.T) {
 
 func TestStartAuthSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartAuthSpan(ctx, "jwt")
+	_, span := StartAuthSpan(ctx, "jwt")
 	defer span.End()
 
 	if span == nil {
@@ -55,7 +55,7 @@ func TestStartAuthSpan(t *testing.T) {
 
 func TestStartFetchCredentialSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartFetchCredentialSpan(ctx, "service_789")
+	_, span := StartFetchCredentialSpan(ctx, "service_789")
 	defer span.End()
 
 	if span == nil {
@@ -65,7 +65,7 @@ func TestStartFetchCredentialSpan(t *testing.T) {
 
 func TestStartConnectBackendSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartConnectBackendSpan(ctx, "backend.example.com:22")
+	_, span := StartConnectBackendSpan(ctx, "backend.example.com:22")
 	defer span.End()
 
 	if span == nil {
@@ -75,7 +75,7 @@ func TestStartConnectBackendSpan(t *testing.T) {
 
 func TestStartBridgeChannelsSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartBridgeChannelsSpan(ctx, "session_123")
+	_, span := StartBridgeChannelsSpan(ctx, "session_123")
 	defer span.End()
 
 	if span == nil {

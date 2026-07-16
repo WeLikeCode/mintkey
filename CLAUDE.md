@@ -164,6 +164,12 @@ These come from the architectural decisions and are not negotiable without an AD
 - **The Agent API Key is returned plaintext exactly once** at agent creation; `agent.created` audit carries the fingerprint, never the key.
 - **Span attributes are an explicit allowlist**; anything matching `*_token`, `*_secret`, `*_password`, `*_passphrase`, `Authorization`, `Cookie` is forbidden ([ADR‑0017.6](docs/architecture/01-architecture/adr/0017-round-3-corrections.md)).
 
+### Budget enforcement
+- **Budget counters live in `budget_counters` table** (Liquibase changeset `019`). Composite PK `(permission_id, period_start)`. RLS policy `tenant_isolation` + cascade FK to `permission_grants`. Per [ADR‑0029](team/drafts/ADR-0029-agent-budgets.md), [P‑011](docs/architecture/proposal/P-011-agent-budgets.md).
+- **The proxy enforces budgets atomically** via `UPDATE SET used=used+1 WHERE used < ceiling RETURNING used, ceiling`. On exhaustion: HTTP 429 `budget_exceeded` with `Retry-After` header. The upstream is never called.
+- **Budget config changes propagate via `mintkey:agent` channel** (reuses ADR‑0010). Proxy invalidates cached state within ≤ 5s (S‑OPS‑1).
+- **Four budget audit events**: `budget.threshold_reached`, `budget.exceeded`, `budget.config_updated`, `budget.reset`. Emitted by proxy (Go) and admin‑api (Python) respectively.
+
 ### Tokens
 - **JWT format is JWS Ed25519** with claims `iss="mintkey/broker"`, `sub` (agent), `aud` (service), `tnt` (tenant), `scope`, `jti`, `iat`, `exp`, optional `cnf.jkt`, optional `kid` ([ADR‑0006](docs/architecture/01-architecture/adr/0006-token-format-and-binding.md), [ADR‑0008](docs/architecture/01-architecture/adr/0008-multi-tenancy-row-level-with-db-tier.md)).
 - **Default TTL is 10 minutes**, configurable per service.
@@ -292,6 +298,7 @@ When the request maps onto a recognized pattern, follow the corresponding flow:
 | A schema column | the relevant Liquibase changelog under `apps/admin-api/db/changelog/` | new Liquibase changeset; regenerate SQLAlchemy mirror; update Pydantic model; update OpenAPI schema; CI diff must pass |
 | An ADR | `docs/architecture/01-architecture/adr/README.md`, [ADR‑0001](docs/architecture/01-architecture/adr/0001-record-architecture-decisions.md) | `0NNN-name.md` in the canonical adr/ dir AND a symlink in `adrs/` (per the dual-path setup) |
 | A flow | `docs/architecture/03-flows/00-overview.md` | new flow doc with sequence diagram + pre/post + quality-attributes + test plan + Kiro spec inputs |
+| A budget constraint on a grant | [ADR‑0029](team/drafts/ADR-0029-agent-budgets.md), design §2 in `.kiro/specs/agent-budgets/design.md` | PATCH grant with `constraints.budget`; `budget_counters` row auto-created; proxy enforces; Grafana panel shows usage |
 
 ---
 

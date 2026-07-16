@@ -167,6 +167,17 @@ tags:
       managing read-only share grants between agents in the same tenant.
       Operators never see secret values — only metadata (name, owner, version,
       size, timestamps). Per ADR-0025.
+  - name: Budgets
+    description: |
+      Budget status and manual reset for agent permission grants. Budget
+      configuration is managed via the `constraints.budget` field on
+      permission grants (POST/PATCH). These endpoints expose read and reset
+      operations on the resulting counters.
+  - name: Operators
+    description: |
+      Operator (human console user) management. PlatformAdmin only. Operators
+      are keyed by `(tenant_id, email)`; the OIDC subject binds lazily on first
+      login. Per ADR-0031.
 
 security:
   - OperatorSession: []
@@ -576,6 +587,184 @@ paths:
       responses:
         "204":
           description: Soft-deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  ###########################################################################
+  # Operators (PlatformAdmin only)
+  ###########################################################################
+
+  /v1/operators:
+    get:
+      tags: [Operators]
+      operationId: listOperators
+      summary: List operators.
+      description: |
+        PlatformAdmin only. Paginated. Returns operators across all tenants,
+        optionally filtered to a single home tenant.
+      parameters:
+        - $ref: "#/components/parameters/AfterCursor"
+        - $ref: "#/components/parameters/Limit"
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+          description: Case-insensitive substring search on email and display_name.
+        - in: query
+          name: tenant_id
+          required: false
+          schema:
+            type: string
+          description: Filter to operators whose home tenant matches this id.
+      responses:
+        "200":
+          description: A page of operators.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorPage"
+              example:
+                data:
+                  - id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                    tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                    email: "ops@acme.example"
+                    display_name: "Acme Ops"
+                    oidc_sub: null
+                    oidc_provider: null
+                    is_platform_admin: false
+                    status: "active"
+                    created_at: "2026-04-30T11:00:00Z"
+                next_cursor: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Operators]
+      operationId: createOperator
+      summary: Create an operator.
+      description: |
+        PlatformAdmin only. Creates an operator in the given home tenant,
+        keyed by `(tenant_id, email)`. No Keycloak call is made at creation;
+        `oidc_sub` binds lazily on first OIDC login. Emits `operator.created`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperatorRequest"
+            example:
+              email: "ops@acme.example"
+              display_name: "Acme Ops"
+              tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+              is_platform_admin: false
+      responses:
+        "201":
+          description: Operator created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorResource"
+              example:
+                id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                email: "ops@acme.example"
+                display_name: "Acme Ops"
+                oidc_sub: null
+                oidc_provider: null
+                is_platform_admin: false
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/operators/{operator_id}:
+    parameters:
+      - $ref: "#/components/parameters/OperatorId"
+    patch:
+      tags: [Operators]
+      operationId: updateOperator
+      summary: Update an operator.
+      description: |
+        PlatformAdmin only. Updates mutable operator fields. Setting `status`
+        to `disabled` soft-disables the operator. Emits `operator.updated`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOperatorRequest"
+            example:
+              display_name: "Acme Platform Ops"
+              is_platform_admin: true
+              status: "active"
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorResource"
+              example:
+                id: "op_01HX5J9F8V8H8V0CG3F2Y5J6A1"
+                tenant_id: "tenant_01HX5J9F8V8H8V0CG3F2Y5J6M9"
+                email: "ops@acme.example"
+                display_name: "Acme Platform Ops"
+                oidc_sub: null
+                oidc_provider: null
+                is_platform_admin: true
+                status: "active"
+                created_at: "2026-05-10T14:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Operators]
+      operationId: deleteOperator
+      summary: Disable an operator.
+      description: |
+        PlatformAdmin only. Soft-delete — the operator is moved to
+        `status = "disabled"`; the row is retained for audit history.
+        Emits `operator.deleted`.
+      security:
+        - AdminUiSignedRequest: []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      responses:
+        "204":
+          description: Operator disabled.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1455,6 +1644,93 @@ paths:
       responses:
         "204":
           description: Revoked.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  ###########################################################################
+  # Budgets  (FR-9; agent budget status & reset)
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: permission_id
+        required: true
+        schema:
+          type: string
+          pattern: "^perm_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Permission grant identifier.
+    get:
+      tags: [Budgets]
+      operationId: getBudgetStatus
+      summary: Get the current budget status for a permission grant.
+      description: |
+        Returns the current period's budget counters for the specified
+        permission grant. If no budget constraint is configured on the grant,
+        returns 404.
+      responses:
+        "200":
+          description: Current budget status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetStatus"
+              example:
+                ceiling: 100
+                period: "daily"
+                used: 42
+                remaining: 58
+                period_start: "2026-05-10T00:00:00Z"
+                period_end: "2026-05-11T00:00:00Z"
+                alert_thresholds: [50, 80, 100]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget/reset:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: permission_id
+        required: true
+        schema:
+          type: string
+          pattern: "^perm_[0-9A-HJKMNP-TV-Z]{26}$"
+        description: Permission grant identifier.
+    post:
+      tags: [Budgets]
+      operationId: resetBudget
+      summary: Reset the budget counter for a permission grant.
+      description: |
+        Closes the current budget counter and creates a new counter row for
+        the remainder of the current period with `used = 0`. Emits a
+        `budget.reset` audit event and fires a change-channel notification
+        so the proxy picks up the new state within ≤ 5 s. FR-5.
+      responses:
+        "200":
+          description: Budget reset successful. Returns the new status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetStatus"
+              example:
+                ceiling: 100
+                period: "daily"
+                used: 0
+                remaining: 100
+                period_start: "2026-05-10T14:30:00Z"
+                period_end: "2026-05-11T00:00:00Z"
+                alert_thresholds: [50, 80, 100]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -4269,6 +4545,14 @@ components:
         type: string
         pattern: "^sec_[0-9A-HJKMNP-TV-Z]{26}$"
       description: ULID-prefixed agent secret identifier (ADR-0025).
+    OperatorId:
+      in: path
+      name: operator_id
+      required: true
+      schema:
+        type: string
+        pattern: "^op_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed operator identifier (ADR-0031).
     AfterCursor:
       in: query
       name: after
@@ -4646,6 +4930,7 @@ components:
         - email_password
         - email_oauth2
         - email_app_password
+        - http_digest
       description: |
         How Mintkey injects the credential into the outbound request.
         - `api_key_header`: header injection (e.g. `X-API-Key: …`).
@@ -4664,6 +4949,7 @@ components:
         - `email_password`: IMAP/SMTP password credential for the email proxy (ADR-0024).
         - `email_oauth2`: OAuth2 refresh token (Gmail or Outlook) for the email proxy (ADR-0024).
         - `email_app_password`: App-password credential (e.g. Google App Password) for the email proxy (ADR-0024).
+        - `http_digest`: HTTP Digest (RFC 2617) challenge-response with a public/private key pair (ADR-0029).
 
     Service:
       type: object
@@ -5265,6 +5551,86 @@ components:
           type: [string, "null"]
       required: [data, next_cursor]
 
+    # ----- Operator -----
+
+    OperatorStatus:
+      type: string
+      enum: [active, disabled]
+
+    OperatorResource:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: "^op_[0-9A-HJKMNP-TV-Z]{26}$"
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+        email:
+          type: string
+          maxLength: 256
+        display_name:
+          type: [string, "null"]
+        oidc_sub:
+          type: [string, "null"]
+          description: |
+            Subject claim from the OIDC provider. `null` until the operator
+            first authenticates via OIDC, at which point it binds lazily.
+        oidc_provider:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+      required:
+        - id
+        - tenant_id
+        - email
+        - is_platform_admin
+        - status
+        - created_at
+
+    CreateOperatorRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 256
+        display_name:
+          type: [string, "null"]
+        oidc_sub:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+          default: false
+        tenant_id:
+          type: string
+          pattern: "^tenant_[0-9A-HJKMNP-TV-Z]{26}$"
+      required: [email, tenant_id]
+
+    UpdateOperatorRequest:
+      type: object
+      properties:
+        display_name:
+          type: [string, "null"]
+        is_platform_admin:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/OperatorStatus"
+
+    OperatorPage:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperatorResource"
+        next_cursor:
+          type: [string, "null"]
+      required: [data, next_cursor]
+
     # ----- Permission -----
 
     PermissionGrant:
@@ -5354,6 +5720,10 @@ components:
         - agent_secret.deleted
         - agent_secret_grant.created
         - agent_secret_grant.revoked
+        - budget.threshold_reached
+        - budget.exceeded
+        - budget.config_updated
+        - budget.reset
 
     TargetType:
       type: string
@@ -5370,6 +5740,7 @@ components:
         - session
         - agent_secret
         - agent_secret_grant
+        - budget
 
     AuditEvent:
       type: object
@@ -5617,6 +5988,71 @@ components:
         source_ip_allowlist:
           type: array
           items: { type: string, format: cidr }
+        budget:
+          type: object
+          additionalProperties: false
+          description: |
+            Call-count ceiling per period. When exhausted, the proxy returns
+            429 budget_exceeded without calling upstream. FR-1, FR-2.
+          properties:
+            ceiling:
+              type: integer
+              minimum: 1
+              description: Maximum calls allowed within a single period.
+            period:
+              type: string
+              enum: [hourly, daily, weekly, monthly]
+              description: Reset cadence. Periods are aligned to UTC boundaries.
+            alert_thresholds:
+              type: array
+              items:
+                type: integer
+                minimum: 1
+                maximum: 100
+              default: [50, 80, 100]
+              description: |
+                Percentage thresholds that trigger budget.threshold_reached
+                audit events. Default: 50%, 80%, 100%.
+          required: [ceiling, period]
+
+    BudgetStatus:
+      type: object
+      additionalProperties: false
+      description: |
+        Current budget period status for a permission grant. Returned by
+        GET /budget and POST /budget/reset. FR-9.
+      properties:
+        ceiling:
+          type: integer
+          minimum: 1
+          description: Maximum calls allowed within a single period.
+        period:
+          type: string
+          enum: [hourly, daily, weekly, monthly]
+        used:
+          type: integer
+          minimum: 0
+          description: Calls consumed in the current period.
+        remaining:
+          type: integer
+          minimum: 0
+          description: Calls remaining (ceiling - used).
+        period_start:
+          type: string
+          format: date-time
+          description: Start of the current budget period (RFC 3339 UTC).
+        period_end:
+          type: string
+          format: date-time
+          description: End of the current budget period (RFC 3339 UTC).
+        alert_thresholds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 100
+      required: [ceiling, period, used, remaining, period_start, period_end, alert_thresholds]
+
     MtlsCredentialValue:
       type: object
       additionalProperties: false
@@ -5811,7 +6247,7 @@ components:
           description: Candidate base URL for the service.
         auth_scheme:
           type: string
-          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password, email_password, email_oauth2, email_app_password]
+          enum: [bearer_token, api_key_header, api_key_query, basic_auth, oauth2_client_credentials, oidc_client_secret, mtls, oauth2_password_grant, apple_jwt, google_service_account, ssh_private_key, ssh_ca, ssh_password, email_password, email_oauth2, email_app_password, http_digest]
 
     TransientCredentialCandidate:
       type: object
@@ -6560,3 +6996,7 @@ x-mintkey-error-codes:
     - api_key_actions_exceed_grant
     - secret_not_found
     - api_key_policy_violation
+    - budget_exceeded
+    - not_found
+    - invalid_id
+    - budget_not_configured

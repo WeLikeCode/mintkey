@@ -494,7 +494,7 @@ func (c *Client) fetchActiveServices() ([]kong.ServiceEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(context.Background(), "SET LOCAL app.platform_admin_view = 'on'"); err != nil {
 		return nil, fmt.Errorf("set platform_admin_view: %w", err)
