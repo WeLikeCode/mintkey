@@ -36,6 +36,7 @@ import { ApiKeysResource } from "./resources/api_keys.js";
 import { PermissionsResource } from "./resources/permissions.js";
 import { AuditResource } from "./resources/audit.js";
 import { TenantsResource } from "./resources/tenants.js";
+import { OperatorsResource } from "./resources/operators.js";
 import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
 import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 import { budgetConsumersHandler } from "./routes/budget-consumers.js";
@@ -166,6 +167,7 @@ async function main() {
       { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
       { resource: AuditResource.adminResource, options: AuditResource.options },
       { resource: TenantsResource.adminResource, options: TenantsResource.options },
+      { resource: OperatorsResource.adminResource, options: OperatorsResource.options },
     ],
     rootPath: "/admin",
     branding: {
