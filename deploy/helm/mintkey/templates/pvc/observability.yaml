@@ -1,0 +1,31 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana-data
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.observability.grafana.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.observability.grafana.storage }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mintkey.fullname" . }}-prometheus-data
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.observability.prometheus.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.observability.prometheus.storage }}
+{{- end }}

@@ -1,0 +1,164 @@
+{{- $adminApiScheme := ternary "https" "http" .Values.ingress.adminApi.tls -}}
+{{- $adminApiUrl := ternary (printf "%s://%s" $adminApiScheme .Values.ingress.adminApi.host) "" (ne .Values.ingress.adminApi.host "") -}}
+{{- $adminUiScheme := ternary "https" "http" .Values.ingress.adminUi.tls -}}
+{{- $adminUiUrl := ternary (printf "%s://%s" $adminUiScheme .Values.ingress.adminUi.host) "" (ne .Values.ingress.adminUi.host "") -}}
+{{- $keycloakScheme := ternary "https" "http" .Values.ingress.keycloak.tls -}}
+{{- $keycloakPublicUrl := ternary (printf "%s://%s" $keycloakScheme .Values.ingress.keycloak.host) "" (ne .Values.ingress.keycloak.host "") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-admin-api
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-api
+spec:
+  replicas: {{ .Values.adminApi.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: admin-api
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: admin-api
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-vault-adapter
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "mintkey.fullname" . }}-vault-adapter 8084; do
+                echo "Waiting for vault-adapter..."
+                sleep 2
+              done
+        - name: wait-for-seed-job
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until test -f /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem; do
+                echo "Waiting for seed-job to complete..."
+                sleep 5
+              done
+          volumeMounts:
+            - name: bootstrap-secrets
+              mountPath: /run/secrets/mintkey/bootstrap-secrets
+              readOnly: true
+      containers:
+        - name: admin-api
+          image: {{ include "mintkey.image" (dict "image" .Values.adminApi.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATABASE_URL
+            - name: MINTKEY_AUDIT_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_AUDIT_HMAC_KEY
+            - name: MINTKEY_BROKER_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_BROKER_SERVICE_TOKEN
+            - name: MINTKEY_PROXY_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_PROXY_SERVICE_TOKEN
+            - name: MINTKEY_MCP_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_MCP_SERVICE_TOKEN
+            - name: MINTKEY_EMAIL_PROXY_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_EMAIL_PROXY_SERVICE_TOKEN
+            - name: OIDC_CLIENT_SECRET_FILE
+              value: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
+            - name: MINTKEY_VAULT_ADMIN_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_ADMIN_IDENTITY_ID
+            - name: MINTKEY_VAULT_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_ADMIN_TOKEN
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: VAULT_GRPC_ADDR
+              value: {{ include "mintkey.fullname" . }}-vault-adapter:8084
+            - name: ADMIN_UI_PUBLIC_KEY_PATH
+              value: /run/secrets/mintkey/bootstrap-secrets/admin_ui_public.pem
+            - name: MINTKEY_KEYCLOAK_PUBLIC_URL
+              value: {{ $keycloakPublicUrl | quote }}
+            - name: MINTKEY_KEYCLOAK_INTERNAL_URL
+              value: http://{{ include "mintkey.fullname" . }}-keycloak:8443
+            - name: MINTKEY_ADMIN_API_PUBLIC_URL
+              value: {{ $adminApiUrl | quote }}
+            - name: MINTKEY_ADMIN_UI_PUBLIC_URL
+              value: {{ $adminUiUrl | quote }}
+          volumeMounts:
+            - name: bootstrap-secrets
+              mountPath: /run/secrets/mintkey/bootstrap-secrets
+              readOnly: true
+            - name: oidc-client-secret
+              mountPath: /run/secrets/mintkey/bootstrap-secrets/oidc_client_secret
+              subPath: oidc_client_secret
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adminApi.resources | nindent 12 }}
+      volumes:
+        - name: bootstrap-secrets
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-bootstrap-secrets
+        - name: oidc-client-secret
+          secret:
+            secretName: {{ .Values.secretName }}
+            items:
+              - key: oidc_client_secret
+                path: oidc_client_secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-admin-api
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-api
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

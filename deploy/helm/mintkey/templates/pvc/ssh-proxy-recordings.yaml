@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mintkey.fullname" . }}-ssh-proxy-recordings
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-proxy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.sshProxy.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.sshProxy.storage.recordings }}

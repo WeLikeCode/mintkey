@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-broker
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: broker
+spec:
+  replicas: {{ .Values.broker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: broker
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: broker
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-admin-api
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://{{ include "mintkey.fullname" . }}-admin-api:8080/v1/health > /dev/null 2>&1; do
+                echo "Waiting for admin-api..."
+                sleep 5
+              done
+        - name: wait-for-vault-adapter
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "mintkey.fullname" . }}-vault-adapter 8084; do
+                echo "Waiting for vault-adapter..."
+                sleep 2
+              done
+      containers:
+        - name: broker
+          image: {{ include "mintkey.image" (dict "image" .Values.broker.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: BROKER_PORT
+              value: "8083"
+            - name: VAULT_GRPC_ADDR
+              value: {{ include "mintkey.fullname" . }}-vault-adapter:8084
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATABASE_URL
+            - name: MINTKEY_MCP_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_MCP_SERVICE_TOKEN
+            - name: MINTKEY_PROXY_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_PROXY_SERVICE_TOKEN
+            - name: MINTKEY_BROKER_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_BROKER_SERVICE_TOKEN
+            - name: MINTKEY_ADMIN_API_URL
+              value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
+            - name: MINTKEY_BROKER_SIGNING_KEY_FILE
+              value: /var/lib/mintkey/broker-signing-key
+          volumeMounts:
+            - name: broker-wal
+              mountPath: /var/lib/mintkey
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.broker.resources | nindent 12 }}
+      volumes:
+        - name: broker-wal
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-broker-wal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-broker
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: broker
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: broker
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083

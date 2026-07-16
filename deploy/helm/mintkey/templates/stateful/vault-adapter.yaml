@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "mintkey.fullname" . }}-vault-adapter
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vault-adapter
+spec:
+  serviceName: {{ include "mintkey.fullname" . }}-vault-adapter
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: vault-adapter
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: vault-adapter
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "mintkey.fullname" . }}-postgres 5432; do
+                echo "Waiting for postgres..."
+                sleep 2
+              done
+      containers:
+        - name: vault-adapter
+          image: {{ include "mintkey.image" (dict "image" .Values.vaultAdapter.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: VAULT_GRPC_PORT
+              value: "8084"
+            - name: VAULT_HTTP_PORT
+              value: "8087"
+            - name: MINTKEY_VAULT_FILE_PATH
+              value: /var/lib/mintkey/vault.sqlite
+            - name: MINTKEY_VAULT_BACKEND
+              value: postgres
+            - name: MINTKEY_VAULT_PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_PG_DSN
+            - name: MINTKEY_VAULT_KEK_FILE
+              value: /run/secrets/mintkey/vault-kek/kek
+            - name: MINTKEY_VAULT_PROXY_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_PROXY_IDENTITY_ID
+            - name: MINTKEY_VAULT_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_PROXY_TOKEN
+            - name: MINTKEY_VAULT_ADMIN_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_ADMIN_IDENTITY_ID
+            - name: MINTKEY_VAULT_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_ADMIN_TOKEN
+            - name: MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID
+            - name: MINTKEY_VAULT_SSH_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_SSH_PROXY_TOKEN
+            - name: MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID
+            - name: MINTKEY_VAULT_EMAIL_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_EMAIL_PROXY_TOKEN
+            - name: MINTKEY_VAULT_MCP_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_MCP_IDENTITY_ID
+            - name: MINTKEY_VAULT_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_MCP_TOKEN
+          volumeMounts:
+            - name: vault-data
+              mountPath: /var/lib/mintkey
+            - name: vault-kek
+              mountPath: /run/secrets/mintkey/vault-kek
+              readOnly: true
+          readinessProbe:
+            grpc:
+              port: 8084
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.vaultAdapter.resources | nindent 12 }}
+      volumes:
+        - name: vault-kek
+          secret:
+            secretName: {{ .Values.secretName }}
+            items:
+              - key: MINTKEY_VAULT_KEK
+                path: kek
+  volumeClaimTemplates:
+    - metadata:
+        name: vault-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.vaultAdapter.storageClassName | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.vaultAdapter.storage.data }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-vault-adapter
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vault-adapter
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: vault-adapter
+  ports:
+    - name: grpc
+      port: 8084
+      targetPort: 8084
+    - name: http
+      port: 8087
+      targetPort: 8087

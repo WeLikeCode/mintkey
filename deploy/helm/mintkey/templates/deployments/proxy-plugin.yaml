@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-proxy-plugin
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin
+spec:
+  replicas: {{ .Values.proxyPlugin.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: proxy-plugin
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy-plugin
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-kong
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "mintkey.fullname" . }}-kong 8000; do
+                echo "Waiting for kong..."
+                sleep 2
+              done
+      containers:
+        - name: proxy-plugin
+          image: {{ include "mintkey.image" (dict "image" .Values.proxyPlugin.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: BROKER_ADDR
+              value: {{ include "mintkey.fullname" . }}-broker:8083
+            - name: VAULT_GRPC_ADDR
+              value: {{ include "mintkey.fullname" . }}-vault-adapter:8084
+            - name: PLUGIN_PORT
+              value: "8086"
+            - name: DEFAULT_TARGET
+              value: ""
+            - name: MINTKEY_PROXY_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_PROXY_SERVICE_TOKEN
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATABASE_URL
+            - name: MINTKEY_AUD_ENFORCEMENT
+              value: strict
+            - name: MINTKEY_ADMIN_API_URL
+              value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
+            - name: MINTKEY_VAULT_PROXY_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_PROXY_IDENTITY_ID
+            - name: MINTKEY_VAULT_PROXY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_PROXY_TOKEN
+          volumeMounts:
+            - name: proxy-wal
+              mountPath: /var/lib/mintkey
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8086
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.proxyPlugin.resources | nindent 12 }}
+      volumes:
+        - name: proxy-wal
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-proxy-wal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-proxy-plugin
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086

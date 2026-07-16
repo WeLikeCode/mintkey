@@ -1,0 +1,27 @@
+# Base Kong declarative configuration.
+# NOTE: The kong-syncer service dynamically updates the Kong declarative config at runtime
+# via the Kong Admin API. This file is the base/initial config only — it is overwritten
+# by kong-syncer as services and routes are registered through Mintkey.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong-config
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+data:
+  kong.yml: |
+    # Kong DB-less declarative config — routes /proxy/ through the proxy-plugin HTTP server.
+    # The proxy-plugin validates JWTs and injects credentials before forwarding to the backend.
+    _format_version: "3.0"
+    _transform: true
+
+    services:
+      - name: mock-backend
+        url: http://{{ include "mintkey.fullname" . }}-proxy-plugin:8086
+        routes:
+          - name: mock-backend-route
+            paths: ["/proxy/"]
+            strip_path: true
+
+    plugins: []
