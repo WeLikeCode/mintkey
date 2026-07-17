@@ -16,8 +16,10 @@ gcp-service-account
 # Updated: 2026-07-17 (fix/trivy-high-gate-2026-07) — 2026-07 CVE-DB flip.
 #   Fixed by version bumps (NOT listed here): Go stdlib CVE-2026-39822 → builder
 #   bumped to Go 1.26.5 (all Go services); joserfc CVE-2026-49852 → uv lock bump
-#   to 1.7.3 (admin-api). Added below: new unfixed Debian-12 base CVEs on the
-#   util-linux/gzip/libacl1/krb5 packages (see the dated section at end of file).
+#   to 1.7.3 (admin-api). Added below (dated section at end of file): new unfixed
+#   Debian-12 base CVEs on util-linux/gzip/libacl1/krb5 and perl-base, plus the
+#   residual Go stdlib CVE-2026-39822 in the upstream oauth2-proxy binary
+#   (jaeger-auth) — our own Go binaries are fixed by the 1.26.5 bump.
 # Every CVE here is individually listed; no blanket severity downgrade.
 # Re-evaluate at expiry: upgrade base images or accept renewed allowance.
 
@@ -600,3 +602,29 @@ CVE-2026-54369
 #   A Debian fix exists (deb12u5) and will be picked up at the next quarterly
 #   base-image re-pin; accepted meanwhile (same treatment as CVE-2026-45447).
 CVE-2026-40355
+
+# CVE-2026-13221  perl-base 5.36.0-7+deb12u3 (Debian 12 base images) HIGH
+#   Perl through 5.43.9: a regex alternation of >65535 fixed-string branches
+#   overflows a 16-bit trie field, producing silently incorrect matches.
+#   Mintkey services are Python/Node and never compile Perl regexes from
+#   user-controlled input; perl-base is a Debian base-image transitive dep not
+#   invoked at runtime. No fix available in Debian 12 yet.
+CVE-2026-13221
+
+# CVE-2026-57432  perl-base 5.36.0-7+deb12u3 (Debian 12 base images) HIGH
+#   Perl through 5.43.10: integer overflow in S_measure_struct → out-of-bounds
+#   heap read in pack()/unpack().
+#   No Mintkey service calls Perl pack/unpack on user-controlled input; perl-base
+#   is a Debian base-image transitive dep not invoked at runtime. No fix in
+#   Debian 12 yet.
+CVE-2026-57432
+
+# CVE-2026-39822  stdlib v1.26.4 — jaeger-auth ONLY (oauth2-proxy v7.15.3 binary)
+#   os.Root symlink-following (same CVE fixed in our first-party Go services by
+#   the Go 1.26.5 builder bump in this PR). The residual instance is the upstream
+#   oauth2-proxy v7.15.3 prebuilt binary, compiled with Go 1.26.4 — a toolchain
+#   we do not control. oauth2-proxy version bumps are gated on compat testing
+#   (MINTKEY-412). jaeger-auth does not use os.Root on untrusted paths and is a
+#   cluster-internal (VPN-only) service behind Kong. Accept until the tracked
+#   oauth2-proxy upgrade; our own Go binaries are already remediated.
+CVE-2026-39822
