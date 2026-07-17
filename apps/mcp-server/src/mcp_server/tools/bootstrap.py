@@ -55,6 +55,15 @@ _SKILL_FILE_CANDIDATES = [
     Path(__file__).resolve().parents[3] / "skills" / "agent-bootstrap.md",  # local dev
 ]
 
+_GUIDE_DIRS = [
+    Path("/app/skills/guides"),
+    Path(__file__).resolve().parents[3] / "skills" / "guides",
+]
+_QUICKREF_CANDIDATES = [
+    Path("/app/skills/quick-reference.md"),
+    Path(__file__).resolve().parents[3] / "skills" / "quick-reference.md",
+]
+
 
 def _load_skill_markdown() -> str:
     """
@@ -70,6 +79,29 @@ def _load_skill_markdown() -> str:
     raise FileNotFoundError(
         f"agent-bootstrap.md not found. Checked:\n  {paths}\n"
         "Ensure mcp-server/skills/agent-bootstrap.md is present before starting the server."
+    )
+
+
+def _load_guide(filename: str) -> str:
+    """Load a guide file from the guides/ directory. Fails fast if absent."""
+    for base in _GUIDE_DIRS:
+        p = base / filename
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    raise FileNotFoundError(
+        f"guide not found: {filename}. Checked: "
+        + ", ".join(str(d / filename) for d in _GUIDE_DIRS)
+    )
+
+
+def _load_quickref() -> str:
+    """Load quick-reference.md. Fails fast if absent."""
+    for p in _QUICKREF_CANDIDATES:
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    raise FileNotFoundError(
+        "quick-reference.md not found. Checked: "
+        + ", ".join(str(p) for p in _QUICKREF_CANDIDATES)
     )
 
 
@@ -91,10 +123,38 @@ _SECTION_TAGS: dict[str, str] = {
     "proxy_call": "proxy_usage",
     "email": "email_services",
     "secrets": "agent_secrets",
+    "quick_start": "quick_start",
+    "use_cases": "use_cases",
+    "anti_patterns": "anti_patterns",
 }
-_SECTION_NAMES: list[str] = ["index", "auth", "discover", "proxy_call", "email", "secrets", "full"]
+_SECTION_NAMES: list[str] = [
+    "index", "auth", "discover", "proxy_call", "email", "secrets",
+    "quick_start", "use_cases", "anti_patterns",
+    "rest-api", "ssh", "secrets-guide", "email-guide", "quick-reference",
+    "full",
+]
 _RESOURCE_URI = "mintkey://skill/agent-bootstrap"
 _BOOTSTRAP_VERSION = "2.0"
+
+# Guide resource URIs (loaded once at startup — same fail-fast pattern).
+_GUIDE_RESOURCES: dict[str, str] = {
+    "mintkey://guides/rest-api": _load_guide("rest-api.md"),
+    "mintkey://guides/ssh":      _load_guide("ssh.md"),
+    "mintkey://guides/secrets":  _load_guide("secrets.md"),
+    "mintkey://guides/email":    _load_guide("email.md"),
+    "mintkey://quick-reference": _load_quickref(),
+}
+
+# Alias → guide resource URI (these return guide files, NOT XML blocks).
+# "email" and "secrets" are kept pointing at the XML blocks for backward-compat.
+# New distinct aliases "email-guide" and "secrets-guide" point to the guide files.
+_SECTION_GUIDE_ALIASES: dict[str, str] = {
+    "rest-api":       "mintkey://guides/rest-api",
+    "ssh":            "mintkey://guides/ssh",
+    "secrets-guide":  "mintkey://guides/secrets",
+    "email-guide":    "mintkey://guides/email",
+    "quick-reference": "mintkey://quick-reference",
+}
 
 
 def _extract_xml_block(markdown: str, tag: str) -> str:
@@ -119,7 +179,8 @@ def _bootstrap_payload(section: str | None) -> dict[str, object]:
     """Build the bootstrap response for the requested section.
 
     None/empty/unknown → 'index'. 'full' → legacy payload + bootstrap_version.
-    Named section → that XML block only. 'index' → compact TOC + resource pointer.
+    Named XML section → that XML block only. Guide alias → guide file content.
+    'index' → compact TOC + resource pointer.
     """
     sel = (section or "index").strip().lower()
 
@@ -137,6 +198,15 @@ def _bootstrap_payload(section: str | None) -> dict[str, object]:
             "section": sel,
             "content": _SECTIONS[sel],
             "resource_uri": _RESOURCE_URI,
+            "bootstrap_version": _BOOTSTRAP_VERSION,
+        }
+
+    if sel in _SECTION_GUIDE_ALIASES:
+        uri = _SECTION_GUIDE_ALIASES[sel]
+        return {
+            "section": sel,
+            "content": _GUIDE_RESOURCES[uri],
+            "resource_uri": uri,
             "bootstrap_version": _BOOTSTRAP_VERSION,
         }
 

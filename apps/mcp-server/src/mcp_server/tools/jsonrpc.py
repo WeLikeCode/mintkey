@@ -35,7 +35,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from mcp_server.auth.agent_key import validate_agent_key
-from mcp_server.tools.bootstrap import _RESOURCE_URI, _SKILL_MARKDOWN as _BOOTSTRAP_FULL_MD
+from mcp_server.tools.bootstrap import (
+    _RESOURCE_URI,
+    _SKILL_MARKDOWN as _BOOTSTRAP_FULL_MD,
+    _GUIDE_RESOURCES,
+)
 
 router = APIRouter()
 
@@ -95,15 +99,22 @@ TOOLS: list[dict] = [
         "description": (
             "Onboarding skill for the credential broker. By default returns a compact "
             "index (section table + resource URI). Pass section to fetch one block: "
-            "index|auth|discover|proxy_call|email|secrets|full. Use 'full' for the entire "
-            "skill, or read the MCP resource mintkey://skill/agent-bootstrap."
+            "index|quick_start|use_cases|anti_patterns|auth|discover|proxy_call|email|secrets"
+            "|rest-api|ssh|secrets-guide|email-guide|quick-reference|full. "
+            "Use 'full' for the entire skill, or read the MCP resource "
+            "mintkey://skill/agent-bootstrap."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "section": {
                     "type": "string",
-                    "enum": ["index", "auth", "discover", "proxy_call", "email", "secrets", "full"],
+                    "enum": [
+                        "index", "quick_start", "use_cases", "anti_patterns",
+                        "auth", "discover", "proxy_call", "email", "secrets",
+                        "rest-api", "ssh", "secrets-guide", "email-guide",
+                        "quick-reference", "full",
+                    ],
                     "default": "index",
                     "description": "Which bootstrap section to return. Default 'index'.",
                 }
@@ -254,8 +265,46 @@ _RESOURCES: list[dict] = [
         "title": "Mintkey Agent Bootstrap Skill",
         "description": "Full vendor-agnostic onboarding skill (markdown).",
         "mimeType": "text/markdown",
-    }
+    },
+    {
+        "uri": "mintkey://guides/rest-api",
+        "name": "guide-rest-api",
+        "title": "Mintkey REST/HTTP Service Guide",
+        "description": "discover -> token -> proxy call; never add upstream auth.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/ssh",
+        "name": "guide-ssh",
+        "title": "Mintkey SSH Service Guide",
+        "description": "SSH bastion, JWT-as-password, ssh:// base_url.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/secrets",
+        "name": "guide-secrets",
+        "title": "Mintkey Agent Secrets Guide",
+        "description": "secret_put/get/list/delete; agent-owned vs operator-managed.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/email",
+        "name": "guide-email",
+        "title": "Mintkey Email Service Guide",
+        "description": "9 email_* tools -> IMAP/SMTP via email-proxy.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://quick-reference",
+        "name": "quick-reference",
+        "title": "Mintkey Quick Reference",
+        "description": "One-page cheat sheet.",
+        "mimeType": "text/markdown",
+    },
 ]
+
+# Map of URI → text for resources/read dispatch.
+_READABLE: dict[str, str] = {_RESOURCE_URI: _BOOTSTRAP_FULL_MD, **_GUIDE_RESOURCES}
 
 
 def _handle_resources_list(request_id: Any) -> JSONResponse:
@@ -264,14 +313,15 @@ def _handle_resources_list(request_id: Any) -> JSONResponse:
 
 def _handle_resources_read(request_id: Any, params: dict) -> JSONResponse:
     uri = params.get("uri", "")
-    if uri != _RESOURCE_URI:
+    text = _READABLE.get(uri)
+    if text is None:
         return _jsonrpc_error(
             request_id, -32602, f"Unknown resource URI: {uri!r}",
             data={"hint": "Call resources/list for available resources."},
         )
     return _jsonrpc_result(
         request_id,
-        {"contents": [{"uri": _RESOURCE_URI, "mimeType": "text/markdown", "text": _BOOTSTRAP_FULL_MD}]},
+        {"contents": [{"uri": uri, "mimeType": "text/markdown", "text": text}]},
     )
 
 
