@@ -95,6 +95,7 @@ spec:
               value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
             - name: MINTKEY_BROKER_SIGNING_KEY_FILE
               value: /var/lib/mintkey/broker-signing-key
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.broker) | nindent 12 }}
           volumeMounts:
             - name: broker-wal
               mountPath: /var/lib/mintkey

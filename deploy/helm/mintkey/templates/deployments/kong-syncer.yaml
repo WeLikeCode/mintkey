@@ -62,6 +62,7 @@ spec:
                   key: BROKER_DATABASE_URL
             - name: KONG_SYNCER_HTTP_PORT
               value: "8085"
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.kongSyncer) | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /v1/health

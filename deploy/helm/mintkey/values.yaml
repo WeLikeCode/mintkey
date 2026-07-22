@@ -4,6 +4,11 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecret: ""  # name of an existing pull secret, or ""
   env: production      # MINTKEY_ENV
+  # Env vars appended to every Go-service container below (broker, proxyPlugin,
+  # kongSyncer, vaultAdapter, sshProxy, emailProxy) — e.g. OTEL_* exporter
+  # config set via GitOps Helm values, no chart/code change required.
+  # List of {name, value} or {name, valueFrom: {...}}.
+  extraEnv: []
 
 database:
   mode: chart  # "chart" = manage postgres in-cluster; "external" = provide DSN via secret
@@ -36,6 +41,7 @@ vaultAdapter:
   # Production: KEK loaded from mounted file (env-var form rejected in production)
   # Create a Secret named mintkey-secrets with key MINTKEY_VAULT_KEK containing 32 raw bytes
   secretName: mintkey-secrets
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 adminApi:
   image: mintkey-admin-api
@@ -68,6 +74,7 @@ broker:
     limits: {cpu: "250m", memory: "128Mi"}
   storage: 1Gi
   storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 kong:
   image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
@@ -82,6 +89,7 @@ kongSyncer:
   resources:
     requests: {cpu: "50m", memory: "64Mi"}
     limits: {cpu: "250m", memory: "128Mi"}
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 proxyPlugin:
   image: mintkey-proxy-plugin
@@ -91,6 +99,7 @@ proxyPlugin:
     limits: {cpu: "250m", memory: "128Mi"}
   storage: 1Gi
   storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 sshProxy:
   image: mintkey-ssh-proxy
@@ -103,6 +112,7 @@ sshProxy:
     hostKey: 100Mi
     recordings: 10Gi
   storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 emailProxy:
   image: mintkey-email-proxy
@@ -110,6 +120,7 @@ emailProxy:
   resources:
     requests: {cpu: "50m", memory: "64Mi"}
     limits: {cpu: "250m", memory: "128Mi"}
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
 
 observability:
   enabled: false  # Set to true to deploy prometheus/grafana/jaeger/otel-collector

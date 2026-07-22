@@ -58,6 +58,7 @@ spec:
                   key: MINTKEY_VAULT_SSH_PROXY_TOKEN
             - name: LOG_LEVEL
               value: info
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.sshProxy) | nindent 12 }}
           volumeMounts:
             - name: ssh-proxy-hostkey
               mountPath: /var/lib/mintkey
