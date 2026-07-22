@@ -19,6 +19,12 @@ spec:
     spec:
       serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
       {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      # ssh-proxy runs non-root and self-generates its host key onto the
+      # (root-owned) Longhorn hostkey PVC on first boot — fsGroup makes the
+      # volume group-writable so the write succeeds.
+      securityContext:
+        fsGroup: {{ .Values.sshProxy.fsGroup | default 65532 }}
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: ssh-proxy
           image: {{ include "mintkey.image" (dict "image" .Values.sshProxy.image "root" .) }}
@@ -31,7 +37,7 @@ spec:
             - name: SSH_PROXY_HOST_KEY_PATH
               value: /var/lib/mintkey/ssh_host_ed25519_key
             - name: SSH_PROXY_HOST_KEY_GENERATE
-              value: "false"
+              value: "true"   # self-generate onto the PVC (was false; chart never seeded the key)
             - name: SSH_PROXY_RECORDING_DIR
               value: /var/lib/mintkey/ssh-recordings
             - name: SSH_PROXY_RECORDING_ENABLED
@@ -52,10 +58,13 @@ spec:
                   key: MINTKEY_VAULT_SSH_PROXY_TOKEN
             - name: LOG_LEVEL
               value: info
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.sshProxy) | nindent 12 }}
           volumeMounts:
             - name: ssh-proxy-hostkey
               mountPath: /var/lib/mintkey
-              readOnly: true
+              # RW so the host key can be generated AND so the nested
+              # ssh-recordings mountpoint can be created (was readOnly: true → both failed).
+              readOnly: false
             - name: ssh-proxy-recordings
               mountPath: /var/lib/mintkey/ssh-recordings
           readinessProbe:

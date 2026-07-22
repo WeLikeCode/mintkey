@@ -69,6 +69,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: MINTKEY_VAULT_PROXY_TOKEN
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.proxyPlugin) | nindent 12 }}
           volumeMounts:
             - name: proxy-wal
               mountPath: /var/lib/mintkey
@@ -93,6 +94,29 @@ metadata:
   labels:
     {{- include "mintkey.labels" . | nindent 4 }}
     app.kubernetes.io/component: proxy-plugin
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086
+---
+# Alias Service so the kong-syncer's HARDCODED upstream "http://proxy-plugin:8086"
+# (apps/kong-syncer/internal/kong/yaml.go) resolves on Kubernetes, where the real
+# proxy-plugin Service is fullname-prefixed (e.g. mintkey-proxy-plugin). Without
+# this bare "proxy-plugin" name, Kong returns "name resolution failed" for every
+# brokered call. Proper fix is to make that upstream URL configurable in
+# kong-syncer; until then this alias lets the existing images work on k8s.
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxy-plugin
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin-alias
 spec:
   type: ClusterIP
   selector:

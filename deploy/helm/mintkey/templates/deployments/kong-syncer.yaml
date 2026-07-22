@@ -48,14 +48,21 @@ spec:
             - name: MINTKEY_ENV
               value: {{ .Values.global.env }}
             - name: KONG_ADMIN_URL
-              value: http://{{ include "mintkey.fullname" . }}-kong:8001
+              value: http://{{ include "mintkey.fullname" . }}-kong-admin:8001
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: DATABASE_URL
+                  # Go (lib/pq) can't parse the SQLAlchemy `postgresql+asyncpg://`
+                  # DSN the Python services use — it needs a plain `postgres://`
+                  # DSN, same as the broker. Using DATABASE_URL (the asyncpg form)
+                  # broke the pq.Listener ('missing "=" in connection info string'),
+                  # so the syncer never processed the service.registered NOTIFY and
+                  # never published Kong routes for newly-registered services.
+                  key: BROKER_DATABASE_URL
             - name: KONG_SYNCER_HTTP_PORT
               value: "8085"
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.kongSyncer) | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /v1/health

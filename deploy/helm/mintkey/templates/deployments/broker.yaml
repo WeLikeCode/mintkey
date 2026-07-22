@@ -20,6 +20,24 @@ spec:
       serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
       {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
       initContainers:
+        # Broker refuses to start in production without a signing key at
+        # MINTKEY_BROKER_SIGNING_KEY_FILE, and it must be a 32-byte raw seed
+        # (see apps/broker/internal/config/config.go). Generate it once onto the
+        # broker-wal PVC if absent (or if a wrong-sized file is present).
+        - name: gen-signing-key
+          image: alpine/openssl:latest
+          command:
+            - sh
+            - -c
+            - |
+              f=/var/lib/mintkey/broker-signing-key
+              if [ ! -s "$f" ] || [ "$(wc -c < "$f")" != "32" ]; then
+                openssl rand -out "$f" 32
+                echo "generated 32-byte broker signing seed"
+              fi
+          volumeMounts:
+            - name: broker-wal
+              mountPath: /var/lib/mintkey
         - name: wait-for-admin-api
           image: busybox:1.36
           command:
@@ -55,7 +73,9 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
-                  key: DATABASE_URL
+                  # Go (pgx) can't parse the SQLAlchemy `postgresql+asyncpg://` DSN
+                  # the Python services use — needs a plain `postgres://` DSN.
+                  key: BROKER_DATABASE_URL
             - name: MINTKEY_MCP_SERVICE_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -75,6 +95,7 @@ spec:
               value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
             - name: MINTKEY_BROKER_SIGNING_KEY_FILE
               value: /var/lib/mintkey/broker-signing-key
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.broker) | nindent 12 }}
           volumeMounts:
             - name: broker-wal
               mountPath: /var/lib/mintkey

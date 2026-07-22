@@ -36,12 +36,10 @@ spec:
             - --url=jdbc:postgresql://{{ include "mintkey.fullname" . }}-postgres:5432/mintkey
             - --username=mintkey_migrate
             - --changeLogFile=changelog/db.changelog-master.yaml
-            - -Ddb_app_password=$(MINTKEY_DB_APP_PASSWORD)
-            - -Ddb_subscriber_password=$(MINTKEY_DB_SUBSCRIBER_PASSWORD)
             - update
           env:
             - name: JAVA_OPTS
-              value: ""
+              value: "-Ddb_app_password=$(MINTKEY_DB_APP_PASSWORD) -Ddb_subscriber_password=$(MINTKEY_DB_SUBSCRIBER_PASSWORD)"
             - name: LIQUIBASE_COMMAND_PASSWORD
               valueFrom:
                 secretKeyRef:
