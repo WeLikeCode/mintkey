@@ -63,8 +63,14 @@ const AccessRequestsPage: React.FC = () => {
         `/admin/api/access-requests${qs ? `?${qs}` : ""}`,
       );
       if (res.ok) {
-        const data: AccessRequest[] = await res.json();
-        setRecords(data);
+        // The BFF (and admin-api) wrap the list as { data: AccessRequest[] }.
+        // Tolerate both a wrapped object and a bare array so the list renders
+        // regardless of which layer answers.
+        const payload: unknown = await res.json();
+        const rows: AccessRequest[] = Array.isArray(payload)
+          ? (payload as AccessRequest[])
+          : ((payload as { data?: AccessRequest[] })?.data ?? []);
+        setRecords(rows);
         setLoadError(false);
       } else {
         setLoadError(true);

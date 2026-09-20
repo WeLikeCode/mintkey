@@ -1,5 +1,8 @@
 # Playwright E2E Coverage Map
 
+> Placement rationale (why this suite lives under `apps/admin-ui/` and not the
+> root `tests/`): see [`README.md`](./README.md).
+>
 > Canonical test tree: `admin-ui/e2e/tests/`
 > Config: `admin-ui/e2e/playwright.config.ts`
 > Run: `pnpm test:e2e` (chromium only for CI; all browsers locally)
@@ -38,6 +41,7 @@
 | 28 | `28-search-filters.spec.ts` | Filter params cause real row-count narrowing (5 scenarios) | search-filter AC #3, #4 |
 | 29 | `29-tenants-pa.spec.ts` | PlatformAdmin sees tenants list with t_default | fix-tenants-403; ADR-0016.3 |
 | 30 | `30-show-pages.spec.ts` | All 7 resource show pages: no React #31 / JSON columns render | fix-show-page-react-31; ADR-0019 |
+| 44 | `44-access-requests-review.spec.ts` | Requests_Review_Area: Approve + Reject-with-reason with screenshot/trace artifacts | agent-access-requests Req 15; Task 10.1 |
 
 ## Fixture
 

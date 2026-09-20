@@ -47,6 +47,9 @@ export class AccessRequestsPage extends BasePage {
    * in time — satisfying Req 15.3 and Req 15.10 (area absent ⇒ fail).
    */
   async gotoReviewArea(): Promise<void> {
+    // Direct navigation to the AdminJS custom-page route. The SPA mounts the
+    // page component after the shell loads, so wait for the container with a
+    // generous bound (the probe shows it renders in <1s once mounted).
     await this.goto(REQUESTS_REVIEW_PATH);
     const reached = await this.listContainer
       .waitFor({ state: "visible", timeout: NAV_TIMEOUT_MS })
@@ -55,13 +58,16 @@ export class AccessRequestsPage extends BasePage {
 
     if (reached) return;
 
-    // Fallback: click the dedicated nav-section link, then re-assert.
+    // Fallback: click the dedicated nav-section link, then re-assert. The link
+    // lives in a scrollable sidebar and can be outside the viewport, so scroll
+    // it into view and force the click past any overlay before re-navigating.
     const navLink = this.page
       .locator("nav a, .sidebar a, a")
       .filter({ hasText: /Requests Review/i })
       .first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
+    if (await navLink.count().then((n) => n > 0).catch(() => false)) {
+      await navLink.scrollIntoViewIfNeeded().catch(() => {});
+      await navLink.click({ force: true }).catch(() => {});
       await this.page.waitForLoadState("domcontentloaded");
     }
 

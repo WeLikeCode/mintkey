@@ -45,7 +45,6 @@ import { resetCleanupQueue } from "../fixtures/test-data.js";
 test.use({ trace: "on" });
 
 const TENANT_ID = process.env.PLAYWRIGHT_TENANT_ID ?? "";
-const API_JWT = process.env.PLAYWRIGHT_API_JWT ?? "";
 
 /** Attach a PNG screenshot of the current page as a retained report artifact. */
 async function captureScreenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
@@ -54,6 +53,12 @@ async function captureScreenshot(page: Page, testInfo: TestInfo, name: string): 
 }
 
 test.describe("44 — Requests_Review_Area e2e (Req 15)", () => {
+  // This mandatory evidence test does real work per case: it seeds via the
+  // admin-api + MCP (3 authenticated round-trips) and then drives two UI
+  // navigations. The 30s config default (tuned for pure-UI specs) is too tight
+  // for the seed+navigate+action sequence, so give each case a larger budget.
+  test.describe.configure({ timeout: 120_000 });
+
   test.beforeAll(() => {
     // The stack + OIDC login are provided by the workflow (global-setup builds
     // state.json). Without a password there is no authenticated session, so the
@@ -76,10 +81,11 @@ test.describe("44 — Requests_Review_Area e2e (Req 15)", () => {
   test("Approve: pending request → operator approves → status becomes approved", async ({
     page,
   }, testInfo) => {
-    const seeded: SeededAccessRequest = await seedPendingAccessRequest(
-      { tenantId: TENANT_ID, label: "approve" },
-      API_JWT,
-    );
+    const seeded: SeededAccessRequest = await seedPendingAccessRequest({
+      request: page.request,
+      tenantId: TENANT_ID,
+      label: "approve",
+    });
 
     const review = new AccessRequestsPage(page);
 
@@ -118,10 +124,11 @@ test.describe("44 — Requests_Review_Area e2e (Req 15)", () => {
     page,
   }, testInfo) => {
     const rejectReason = "Denied by e2e: agent scope not justified for this action.";
-    const seeded: SeededAccessRequest = await seedPendingAccessRequest(
-      { tenantId: TENANT_ID, label: "reject" },
-      API_JWT,
-    );
+    const seeded: SeededAccessRequest = await seedPendingAccessRequest({
+      request: page.request,
+      tenantId: TENANT_ID,
+      label: "reject",
+    });
 
     const review = new AccessRequestsPage(page);
 

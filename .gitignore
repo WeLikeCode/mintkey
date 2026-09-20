@@ -29,6 +29,14 @@ install-*.log
 # admin-ui Playwright/test screenshot output
 apps/admin-ui/screenshots-*/
 
+# admin-ui Playwright e2e run artifacts (generated per run — never commit).
+# NOTE: only the ephemeral OUTPUT is ignored, not the e2e test suite itself
+# (specs, page objects, fixtures, config under apps/admin-ui/e2e/ stay tracked).
+apps/admin-ui/e2e/test-results/
+apps/admin-ui/e2e/playwright-report/
+apps/admin-ui/e2e/proof-agentflow/
+apps/admin-ui/e2e/state.json
+
 # pnpm content-addressable store (local cache; created by pnpm install)
 **/.pnpm-store/
 
@@ -39,3 +47,4 @@ apps/admin-ui/screenshots-*/
 # Claude Code internal session state — local only, not project content
 .claire/
 
+infra/compose/docker-compose.yml.bak-20260906-140158
