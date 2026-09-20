@@ -1,0 +1,48 @@
+# agent-access-requests — local e2e image override (reproducible proof run).
+#
+# Layers on top of docker-compose.yml + docker-compose.test.yml to point ONLY
+# the three feature-bearing services (admin-api, admin-ui, mcp-server) at
+# locally-built `:agentflow` images that contain the agent-access-requests code.
+# Every other service keeps the shared mintkey-<svc> image. The primary instance
+# is never touched — this only ever runs under the `mintkey-test` project.
+#
+# Why this exists: the shared `mintkey-<svc>` images can lag behind branch source
+# (they are only rebuilt on demand). To run the Requests_Review_Area Playwright
+# e2e against the ACTUAL feature code without overwriting the primary's
+# `mintkey-<svc>:latest` images, build the three services under a distinct
+# `:agentflow` tag and select them here. `pull_policy: never` guarantees Docker
+# uses the local build and never reaches for a registry image.
+#
+# Recipe:
+#   # 1. Build the three feature images under the :agentflow tag (from repo root):
+#   docker build -t mintkey-admin-api:agentflow  -f apps/admin-api/Dockerfile .
+#   docker build -t mintkey-mcp-server:agentflow -f apps/mcp-server/Dockerfile .
+#   docker build -t mintkey-admin-ui:agentflow   -f apps/admin-ui/Dockerfile apps/admin-ui
+#
+#   # 2. Bring up the isolated test namespace on those images (+100 ports).
+#   #    MINTKEY_AUDIT_HMAC_KEY must be supplied (admin-api refuses a blank key);
+#   #    reuse the primary's or generate one: openssl rand -hex 32
+#   MINTKEY_AUDIT_HMAC_KEY=$(openssl rand -hex 32) \
+#   docker compose -f infra/compose/docker-compose.yml \
+#     -f infra/compose/docker-compose.test.yml \
+#     -f infra/compose/docker-compose.agentflow.yml \
+#     --env-file .env.test --project-name mintkey-test up -d
+#
+#   # 3. Run the e2e (see apps/admin-ui/e2e/README.md for the env vars):
+#   #    admin-ui :8181, admin-api :8180, mcp :8182.
+#   # 4. Tear down (preserves test-ns volumes): make dev-test-down
+#
+name: mintkey-test
+
+services:
+  admin-api:
+    image: mintkey-admin-api:agentflow
+    pull_policy: never
+
+  admin-ui:
+    image: mintkey-admin-ui:agentflow
+    pull_policy: never
+
+  mcp-server:
+    image: mintkey-mcp-server:agentflow
+    pull_policy: never
