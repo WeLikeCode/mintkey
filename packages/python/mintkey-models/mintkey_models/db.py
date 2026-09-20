@@ -392,3 +392,41 @@ class BudgetCounter(Base):
     ceiling: Mapped[int] = mapped_column(Integer, nullable=False)
     used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# 030-access-requests.yaml  (feature: agent-access-requests; Req 12; P-3, ADR-0008)
+# ---------------------------------------------------------------------------
+
+
+class AccessRequest(Base):
+    """
+    Mirror of the access_requests table. Source: 030-access-requests.yaml.
+
+    Umbrella row for agent-originated access/integration/share requests
+    (feature: agent-access-requests), discriminated by `kind`. Secrets are
+    NEVER stored on this row (P-1); `proposed_config` holds non-secret
+    integration config only.
+
+    This class MIRRORS the introspected Liquibase schema; it does not define
+    it (P-8, ADR-0015). Do not add a column here without a Liquibase changeset.
+    """
+
+    __tablename__ = "access_requests"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    requesting_agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    service_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("services.id"))
+    action: Mapped[Optional[str]] = mapped_column(String(256))
+    target_agent_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("agents.id"))
+    share_direction: Mapped[Optional[str]] = mapped_column(String(16))
+    proposed_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB)
+    reason: Mapped[Optional[str]] = mapped_column(String(1000))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[UUID] = mapped_column(nullable=False)
+    resolved_by: Mapped[Optional[UUID]] = mapped_column()

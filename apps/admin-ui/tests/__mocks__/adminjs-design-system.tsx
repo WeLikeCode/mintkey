@@ -13,6 +13,12 @@ export const Box = ({ children, ...rest }: AnyProps) =>
 export const H3 = ({ children, ...rest }: AnyProps) =>
   React.createElement("h3", rest, children);
 
+export const H4 = ({ children, ...rest }: AnyProps) =>
+  React.createElement("h4", rest, children);
+
+export const Badge = ({ children, ...rest }: AnyProps) =>
+  React.createElement("span", rest, children);
+
 export const Text = ({ children, ...rest }: AnyProps) =>
   React.createElement("span", rest, children);
 

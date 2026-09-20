@@ -1,0 +1,258 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 030-access-requests.yaml
+  #
+  # Creates the umbrella table for agent-originated access requests
+  # (feature: agent-access-requests). One table, three kinds
+  # (access | integration | share), discriminated by `kind`.
+  #
+  # New table:
+  #   public.access_requests — pending/resolved requests + non-secret
+  #                            proposed config (JSONB). Secrets NEVER land
+  #                            on this row (design §Data Models, P-1).
+  #
+  # RLS policy follows the pattern from 027-agent-secrets.yaml:
+  #   tenant_id = current_setting('app.current_tenant', true)::uuid
+  #   OR current_setting('app.platform_admin_view', true) = 'on'
+  #
+  # Idempotent: MARK_RAN preConditions guard each changeset.
+  # Source: .kiro/specs/agent-access-requests/design.md §Data Models,
+  #         §RLS and Liquibase placement; Req 12.1, 12.5, 9.1; P-3, ADR-0008.
+  # -----------------------------------------------------------------------
+
+  # =========================================================================
+  # 1. public.access_requests — umbrella request table
+  # =========================================================================
+  - changeSet:
+      id: "030-access-requests-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: access_requests
+      changes:
+        - createTable:
+            schemaName: public
+            tableName: access_requests
+            remarks: "Agent-originated access/integration/share requests (feature: agent-access-requests)."
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  defaultValueComputed: gen_random_uuid()
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_access_requests_tenant
+                    references: public.tenants(id)
+              - column:
+                  name: kind
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(32)
+                  defaultValue: pending
+                  constraints:
+                    nullable: false
+              - column:
+                  name: requesting_agent_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_access_requests_requesting_agent
+                    references: public.agents(id)
+              - column:
+                  name: service_id
+                  type: UUID
+                  remarks: "NULL for integration proposals."
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_access_requests_service
+                    references: public.services(id)
+              - column:
+                  name: action
+                  type: VARCHAR(256)
+                  remarks: "NULL for integration proposals."
+              - column:
+                  name: target_agent_id
+                  type: UUID
+                  remarks: "NULL unless kind = share."
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_access_requests_target_agent
+                    references: public.agents(id)
+              - column:
+                  name: share_direction
+                  type: VARCHAR(16)
+                  remarks: "outbound | inbound; NULL unless kind = share."
+              - column:
+                  name: proposed_config
+                  type: JSONB
+                  remarks: "Non-secret proposed config only; NULL unless kind = integration. Secrets are NEVER stored here (P-1)."
+              - column:
+                  name: reason
+                  type: VARCHAR(1000)
+                  remarks: "Reject reason (<=1000 chars); NULL until rejected."
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+                  remarks: "created_at + 30 days (Req 9.1)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: now()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resolved_at
+                  type: TIMESTAMPTZ
+                  remarks: "NULL until resolved."
+              - column:
+                  name: created_by
+                  type: UUID
+                  remarks: "Requesting agent id (attribution)."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resolved_by
+                  type: UUID
+                  remarks: "Operator/system id; NULL until resolved."
+      rollback:
+        - dropTable:
+            schemaName: public
+            tableName: access_requests
+
+  # --- 1b. CHECK constraints for the enum-as-checked-varchar columns -------
+  - changeSet:
+      id: "030-access-requests-1b"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: access_requests
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.access_requests
+                ADD CONSTRAINT ck_access_requests_kind
+                  CHECK (kind IN ('access', 'integration', 'share'));
+              ALTER TABLE public.access_requests
+                ADD CONSTRAINT ck_access_requests_status
+                  CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'cancelled'));
+              ALTER TABLE public.access_requests
+                ADD CONSTRAINT ck_access_requests_share_direction
+                  CHECK (share_direction IS NULL OR share_direction IN ('outbound', 'inbound'));
+              COMMENT ON TABLE public.access_requests IS
+                'Agent-originated access/integration/share requests (feature: agent-access-requests).';
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE public.access_requests
+                DROP CONSTRAINT IF EXISTS ck_access_requests_share_direction;
+              ALTER TABLE public.access_requests
+                DROP CONSTRAINT IF EXISTS ck_access_requests_status;
+              ALTER TABLE public.access_requests
+                DROP CONSTRAINT IF EXISTS ck_access_requests_kind;
+
+  # --- 2. Index on access_requests.tenant_id ------------------------------
+  - changeSet:
+      id: "030-access-requests-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: access_requests
+              indexName: idx_access_requests_tenant
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_access_requests_tenant
+                ON public.access_requests (tenant_id);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_access_requests_tenant;
+
+  # --- 2b. Partial index on (tenant_id, status) for pending list + sweep ---
+  - changeSet:
+      id: "030-access-requests-2b"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: access_requests
+              indexName: idx_access_requests_tenant_status_pending
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_access_requests_tenant_status_pending
+                ON public.access_requests (tenant_id, status)
+                WHERE status = 'pending';
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_access_requests_tenant_status_pending;
+
+  # --- 3. RLS on access_requests (same changeset family as the table) ------
+  - changeSet:
+      id: "030-access-requests-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: access_requests
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE public.access_requests ENABLE ROW LEVEL SECURITY;
+              CREATE POLICY tenant_isolation ON public.access_requests
+                USING (
+                  tenant_id = current_setting('app.current_tenant', true)::uuid
+                  OR current_setting('app.platform_admin_view', true) = 'on'
+                );
+      rollback:
+        - sql:
+            sql: |
+              DROP POLICY IF EXISTS tenant_isolation ON public.access_requests;
+              ALTER TABLE public.access_requests DISABLE ROW LEVEL SECURITY;
+
+  # --- 4. GRANT on access_requests ----------------------------------------
+  - changeSet:
+      id: "030-access-requests-4"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: access_requests
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.access_requests TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.access_requests FROM mintkey_app;

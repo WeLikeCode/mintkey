@@ -211,3 +211,38 @@ class BudgetConfig(BaseModel):
             if t < 1 or t > 100:
                 raise ValueError("Each alert_threshold must be between 1 and 100")
         return sorted(set(v))
+
+
+# ---------------------------------------------------------------------------
+# 030-access-requests.yaml — feature: agent-access-requests; Req 12.6, 13.4
+# ---------------------------------------------------------------------------
+
+
+class AccessRequestOut(BaseModel):
+    """
+    Read model for the access_requests table. Source: 030-access-requests.yaml.
+
+    Mirrors the introspected schema (P-8, ADR-0015). All IDs are UUID at the
+    Python layer; the API layer translates them to ULID-prefixed wire form
+    (`request_`/`agent_`/`svc_`, ADR-0017.11). Secrets are never present on
+    this row (P-1); `proposed_config` holds non-secret integration config only.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    kind: Literal["access", "integration", "share"]
+    status: Literal["pending", "approved", "rejected", "expired", "cancelled"]
+    requesting_agent_id: UUID
+    service_id: UUID | None
+    action: str | None
+    target_agent_id: UUID | None
+    share_direction: Literal["outbound", "inbound"] | None
+    proposed_config: dict[str, Any] | None
+    reason: str | None
+    expires_at: datetime
+    created_at: datetime
+    resolved_at: datetime | None
+    created_by: UUID
+    resolved_by: UUID | None

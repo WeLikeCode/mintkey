@@ -40,6 +40,13 @@ import { OperatorsResource } from "./resources/operators.js";
 import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
 import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 import { budgetConsumersHandler } from "./routes/budget-consumers.js";
+import {
+  accessRequestsListHandler,
+  accessRequestGetHandler,
+  accessRequestApproveHandler,
+  accessRequestRejectHandler,
+  accessRequestTestHandler,
+} from "./routes/access-requests.js";
 import { AgentSecretsResource } from "./resources/agent-secrets.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -152,6 +159,14 @@ async function main() {
         component: Components.BudgetConsumersPage,
         label: "Budget Consumers",
         icon: "Activity",
+      },
+      // Requests_Review_Area — its OWN navigation section, clearly separated
+      // from the Services / Agents / Permissions resources (Req 4.5). Backed by
+      // the /admin/api/access-requests BFF routes (Task 8.1); no DB connection.
+      "requests-review": {
+        component: Components.AccessRequestsPage,
+        label: "Requests Review",
+        icon: "Inbox",
       },
     },
     // Nav order: Dashboard → Services → Email Services → Agents → Permissions → API Keys → Audit → Tenants
@@ -319,6 +334,18 @@ async function main() {
   app.post("/admin/api/budget/:permId/edit", express.json(), budgetEditHandler);
   app.post("/admin/api/budget/:permId/remove", budgetRemoveHandler);
   app.post("/admin/api/budget/:permId/reset", budgetResetHandler);
+
+  // ── BFF: Agent access-request review routes ────────────────────────────────
+  // Mounted BEFORE the AdminJS router so they are session-protected via
+  // requireSession above. Reads proxy with the session cookie; writes go through
+  // apiWrite (session cookie + signed JWT). Secret-bearing bodies (approve
+  // finalize, test) are forwarded straight through and never logged (ADR-0019,
+  // ADR-0026 D7). Source: agent-access-requests spec, Task 8.1.
+  app.get("/admin/api/access-requests", accessRequestsListHandler);
+  app.get("/admin/api/access-requests/:requestId", accessRequestGetHandler);
+  app.post("/admin/api/access-requests/:requestId/approve", express.json(), accessRequestApproveHandler);
+  app.post("/admin/api/access-requests/:requestId/reject", express.json(), accessRequestRejectHandler);
+  app.post("/admin/api/access-requests/:requestId/test", express.json(), accessRequestTestHandler);
 
   // ── AdminJS unauthenticated router ──────────────────────────────────────────
   // buildRouter(admin, predefinedRouter?, formidableOptions?) — we own auth above.

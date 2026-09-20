@@ -32,6 +32,16 @@ AUDIT_EXEMPT = {
     "get_agent",            # GET — read-only
     "validate_agent_key",   # POST — internal validation stub; no state change (read-only Argon2id check)
     "verify_chain_endpoint", # POST — read-only verification; audit emitted via emit_platform_admin_access
+    # agent-access-requests (T-6.1): these router handlers deliberately delegate
+    # audit emission to the service layer (services/access_requests.py), which
+    # emits access_request.* through the single audit chokepoint inside the SAME
+    # transaction (documented in the router module docstring; ADR-0014.7). The
+    # service-layer emission is asserted explicitly by
+    # test_access_request_service_handlers_emit_audit (T-11.1), so audit coverage
+    # is verified — just not inside the handler body this scanner walks.
+    "approve_access_request",          # POST — audit emitted in svc.approve()
+    "reject_access_request",           # POST — audit emitted in svc.reject()
+    "test_access_request_connection",  # POST — Connection_Test; secret-free diagnostic, no state change
 }
 
 _WRITE_DECORATORS = {"post", "put", "patch", "delete"}
@@ -127,4 +137,107 @@ def test_audit_coverage_scans_services_api() -> None:
     """Smoke test: confirms the scanner sees the services.py file."""
     assert (API_DIR / "services.py").exists(), (
         f"services.py not found under {API_DIR}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Feature: agent-access-requests — service-layer + MCP audit coverage (T-11.1)
+#
+# The scanner above walks only the admin-api @router write handlers. The
+# access-request state-change handlers live in the SERVICE layer
+# (services/access_requests.py) and in the MCP create funnel
+# (_access_requests_common.py), which are not @router-decorated and so are not
+# covered above. This add-only section asserts, via the same AST mechanism
+# (calls_audit_emit — a call whose name contains 'audit' in the function body),
+# that each new state-change handler routes through the single audit chokepoint.
+#
+# Add-only: the existing scanner and its tests are unchanged.
+#
+# Sources:
+#   - ADR-0014.7 (audit chokepoint — every state change emits an audit event)
+#   - agent-access-requests Req 10.1; design §Sequence (create/approve/reject/expire)
+# ---------------------------------------------------------------------------
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+# admin-api service-layer state-change handlers (each must emit access_request.*
+# through the single audit chokepoint — directly or via an 'audit'-named helper).
+_ACCESS_REQUEST_SERVICE = (
+    _ROOT / "apps/admin-api" / "src" / "admin_api" / "services" / "access_requests.py"
+)
+_ACCESS_REQUEST_SERVICE_HANDLERS = {
+    "create_access_request",
+    "create_integration_proposal",
+    "create_share_request",
+    "approve",
+    "reject",
+    "sweep_tenant_expired",
+}
+
+# MCP create funnel — the single shared emit path for the 3 create tools.
+_MCP_ACCESS_REQUEST_COMMON = (
+    _ROOT / "apps/mcp-server" / "src" / "mcp_server" / "tools" / "_access_requests_common.py"
+)
+_MCP_ACCESS_REQUEST_HANDLERS = {
+    "emit_created_audit",
+}
+
+
+def _find_func(tree: ast.AST, name: str) -> ast.AsyncFunctionDef | ast.FunctionDef | None:
+    """Return the top-level-or-nested function def matching *name*, else None."""
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+            and node.name == name
+        ):
+            return node
+    return None
+
+
+def _assert_handlers_emit_audit(
+    py_file: Path, handler_names: set[str]
+) -> None:
+    """Assert every named handler in *py_file* calls an 'audit'-named function."""
+    assert py_file.exists(), f"Expected file not found: {py_file}"
+    tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+
+    missing: list[str] = []
+    for name in sorted(handler_names):
+        func = _find_func(tree, name)
+        if func is None:
+            missing.append(f"{py_file.name}:{name} (function not found)")
+            continue
+        if not calls_audit_emit(func):
+            missing.append(f"{py_file.name}:{name} (no audit_emit call)")
+
+    assert not missing, (
+        f"access-request state-change handler(s) missing audit_emit call "
+        f"(ADR-0014.7, agent-access-requests Req 10.1): {missing}"
+    )
+
+
+def test_access_request_service_handlers_emit_audit() -> None:
+    """
+    Every admin-api access-request state-change handler
+    (create_access_request / create_integration_proposal / create_share_request /
+    approve / reject / sweep_tenant_expired) routes through the single audit
+    chokepoint — asserted via the same AST mechanism as the router scanner.
+
+    Sources: ADR-0014.7; agent-access-requests Req 10.1.
+    """
+    _assert_handlers_emit_audit(
+        _ACCESS_REQUEST_SERVICE, _ACCESS_REQUEST_SERVICE_HANDLERS
+    )
+
+
+def test_mcp_access_request_create_funnel_emits_audit() -> None:
+    """
+    The MCP create funnel (emit_created_audit in _access_requests_common.py) —
+    the single shared emit path for request_access / propose_integration /
+    request_share — routes through the audit chokepoint.
+
+    Sources: ADR-0014.7; agent-access-requests Req 10.1; ADR-0009.
+    """
+    _assert_handlers_emit_audit(
+        _MCP_ACCESS_REQUEST_COMMON, _MCP_ACCESS_REQUEST_HANDLERS
     )

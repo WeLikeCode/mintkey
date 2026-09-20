@@ -213,7 +213,8 @@ export async function apiWrite(
   path: string,
   method: string,
   body?: unknown,
-  operatorOpts?: { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string } | null
+  operatorOpts?: { operatorId: string; tenantId: string; sessionToken: string; csrfToken: string } | null,
+  traceContext?: Record<string, string>
 ): Promise<Response> {
   const opts = operatorOpts ?? await getApiSession();
 
@@ -225,13 +226,37 @@ export async function apiWrite(
       csrfToken: opts.csrfToken,
       method,
       body,
+      traceContext,
     });
   }
 
   // No session available — unauthenticated fallback (dev mode)
   return fetch(`${ADMIN_API_URL}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(traceContext ?? {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+}
+
+/**
+ * Extract the inbound W3C Trace Context headers (`traceparent`, `tracestate`)
+ * from an incoming operator request so a BFF handler can relay them to
+ * admin-api. Because admin-ui runs no OTel SDK, forwarding these headers is
+ * what lets the operator approve action's admin-api span continue the same
+ * trace as the rest of the request flow (Req 11.1). Header names are
+ * lower-cased per the W3C Trace Context spec.
+ *
+ * Source: agent-access-requests spec Task 9.1; Req 11.1;
+ * docs/architecture/contracts/events/span-attributes.md (W3C Trace Context).
+ */
+export function traceHeadersFrom(
+  reqHeaders: Record<string, string | string[] | undefined>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of ["traceparent", "tracestate"] as const) {
+    const raw = reqHeaders[name];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof value === "string" && value) out[name] = value;
+  }
+  return out;
 }

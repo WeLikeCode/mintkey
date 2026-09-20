@@ -405,6 +405,13 @@ $defs:
       - validation_failed
       - unavailable
       - secret_not_found
+      - request_not_found
+      - request_not_pending
+      - already_granted
+      - request_already_pending
+      - secret_field_not_allowed
+      - missing_secret_material
+      - reason_required
 
 # ---------------------------------------------------------------------------
 # Errors emitted by ANY tool (in addition to per-tool error lists).
@@ -1563,12 +1570,325 @@ tools:
         message: |
           Secret does not exist or is not owned by the calling agent
           (uniform not-found — indistinguishable by design, ADR-0025.D5).
+      - code: "secret_not_found"
+        message: |
+          Secret does not exist or is not owned by the calling agent
+          (uniform not-found — indistinguishable by design, ADR-0025.D5).
       - code: "invalid_argument"
         message: "`secret_id` is malformed."
       - code: "not_authorized"
         message: "Agent is not authenticated or has been revoked."
       - code: "unavailable"
         message: "Vault Adapter or Postgres unreachable."
+
+  # =========================================================================
+  # Agent Access Request tools (agent-access-requests feature, Req 1/2/3/13)
+  # ---------------------------------------------------------------------------
+  # An agent asks a human operator — over MCP — for capabilities it does not
+  # yet have. Three request kinds share one umbrella row (`access_requests`,
+  # discriminated by `kind`) and one wire prefix (`request_`):
+  #
+  #   request_access      kind=access       grant on an existing service
+  #   propose_integration kind=integration  register a brand-new service
+  #   request_share       kind=share        extend/ask access for another agent
+  #
+  # None of these tools declares a `tenant_id` argument — the tenant is
+  # resolved from the Agent API Key auth context (ADR-0009; multi-tenancy note
+  # at the top of this file). The operator resolves each request from the Admin
+  # Console; agents observe status via `list_my_requests`.
+  # =========================================================================
+
+  # =========================================================================
+  - name: "request_access"
+    description: |
+      Request a permission grant on a service that already exists in the
+      calling agent's tenant. Creates an access request (`kind=access`,
+      `status=pending`) with a default 30-day expiration for an operator to
+      approve or reject. Does not itself grant access.
+      Emits audit event: access_request.created (actor=agent).
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [service_id, action]
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+          description: The existing service to request access to.
+        action:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The action/scope string being requested on the service.
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [request_id, status]
+      properties:
+        request_id:
+          type: string
+          pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID of the created access request (request_ prefix).
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired, cancelled]
+    errors:
+      - code: "invalid_argument"
+        message: "`service_id` or `action` is missing, empty, or malformed."
+      - code: "service_not_found"
+        message: "Service does not exist in the calling agent's tenant."
+      - code: "already_granted"
+        message: "The agent already holds a grant for this (service_id, action)."
+      - code: "request_already_pending"
+        message: "An identical pending access request already exists."
+    examples:
+      - name: "request-crm-read"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          action: "read:contacts"
+        response:
+          request_id: "request_01HX5J9F8V8H8V0CG3F2Y5J6R1"
+          status: "pending"
+
+  # =========================================================================
+  - name: "propose_integration"
+    description: |
+      Propose registering a brand-new backend service. The agent supplies the
+      service name, base URL, auth scheme, an optional OpenAPI reference, and a
+      NON-SECRET `config` object (e.g. client_id, token_url, ssh_user,
+      header_name). The critical secret material is deliberately omitted — the
+      operator supplies it, may edit the proposed config, tests the connection,
+      then finalizes. Any config key matching the secret denylist
+      (`*_secret`, `*_password`, `*_passphrase`, `private_key`, `token`,
+      `api_key`) is rejected. Creates an integration proposal
+      (`kind=integration`, `status=pending`) with a default 30-day expiration.
+      Emits audit event: access_request.created (actor=agent).
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [name, base_url, auth_scheme, config]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Proposed service name.
+        base_url:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: |
+            Base URL of the upstream service. For SSH auth schemes this MUST be
+            in `ssh://host:port` form (ADR-0023); `target_address` is not
+            accepted.
+        auth_scheme:
+          $ref: "#/$defs/auth_scheme"
+          description: |
+            Auth scheme of the proposed service. Member of the closed
+            auth_scheme enum.
+        openapi_url:
+          type: string
+          format: uri
+          description: |
+            Optional OpenAPI document URL. When supplied it must use HTTPS and
+            pass the SSRF allowlist check.
+        config:
+          type: object
+          additionalProperties: true
+          description: |
+            NON-SECRET configuration only (e.g. client_id, token_url, ssh_user,
+            header_name). Keys matching the secret denylist are rejected with
+            secret_field_not_allowed.
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [request_id, status]
+      properties:
+        request_id:
+          type: string
+          pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID of the created integration proposal (request_ prefix).
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired, cancelled]
+    errors:
+      - code: "invalid_argument"
+        message: |
+          A required field (`name`, `base_url`, `auth_scheme`) is missing or
+          empty; `auth_scheme` is not a member of the closed enum; an SSH
+          scheme lacks `ssh://host:port` form or carries `target_address`; or
+          `openapi_url` is not HTTPS / fails the SSRF allowlist.
+      - code: "secret_field_not_allowed"
+        message: |
+          The `config` object contains a key matching the secret denylist
+          (`*_secret`, `*_password`, `*_passphrase`, `private_key`, `token`,
+          `api_key`).
+    examples:
+      - name: "propose-rest-service"
+        request:
+          name: "billing"
+          base_url: "https://billing.acme.example/api"
+          auth_scheme: "oauth2_client_credentials"
+          openapi_url: "https://billing.acme.example/openapi.json"
+          config:
+            client_id: "acme-billing-agent"
+            token_url: "https://billing.acme.example/oauth/token"
+        response:
+          request_id: "request_01HX5J9F8V8H8V0CG3F2Y5J6R2"
+          status: "pending"
+
+  # =========================================================================
+  - name: "request_share"
+    description: |
+      Request sharing access on an existing service with another agent
+      (`outbound` — the calling agent shares access it holds), or request
+      access to a service owned by another agent (`inbound`). The direction is
+      inferred by the Admin API and returned as `share_direction`. Creates a
+      share request (`kind=share`, `status=pending`) with a default 30-day
+      expiration for an operator to approve or reject.
+      Emits audit event: access_request.created (actor=agent).
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [service_id, action, target_agent_id]
+      properties:
+        service_id:
+          $ref: "#/$defs/service_id"
+          description: The existing service whose access is being shared.
+        action:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The action/scope string being shared.
+        target_agent_id:
+          $ref: "#/$defs/agent_id"
+          description: |
+            The agent that would receive access. Must not equal the calling
+            agent's own id.
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [request_id, status, share_direction]
+      properties:
+        request_id:
+          type: string
+          pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID of the created share request (request_ prefix).
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired, cancelled]
+        share_direction:
+          type: string
+          enum: [outbound, inbound]
+          description: |
+            `outbound` — the calling agent shares access it holds with the
+            target; `inbound` — the calling agent asks for access owned by
+            another agent.
+    errors:
+      - code: "invalid_argument"
+        message: |
+          `service_id`, `action`, or `target_agent_id` is missing/empty, or
+          `target_agent_id` equals the calling agent's own id.
+      - code: "service_not_found"
+        message: "Service does not exist in the calling agent's tenant."
+      - code: "agent_not_found"
+        message: "Target agent does not exist in the calling agent's tenant."
+      - code: "action_not_granted"
+        message: |
+          Outbound share: the calling agent does not hold a grant for the
+          (service_id, action) being shared.
+      - code: "already_granted"
+        message: "The target agent already holds a grant for this (service_id, action)."
+    examples:
+      - name: "share-crm-read-with-peer"
+        request:
+          service_id: "svc_01HX5J9F8V8H8V0CG3F2Y5J6S1"
+          action: "read:contacts"
+          target_agent_id: "agent_01HX5J9F8V8H8V0CG3F2Y5J6A2"
+        response:
+          request_id: "request_01HX5J9F8V8H8V0CG3F2Y5J6R3"
+          status: "pending"
+          share_direction: "outbound"
+
+  # =========================================================================
+  - name: "list_my_requests"
+    description: |
+      List the calling agent's own access requests (access, integration, and
+      share), filtered to its tenant. Supports optional filtering by `status`
+      and `kind`, with ULID cursor pagination matching the other list tools.
+    input_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired, cancelled]
+          description: Optional filter by request status.
+        kind:
+          type: string
+          enum: [access, integration, share]
+          description: Optional filter by request kind.
+        after:
+          type: string
+          pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: |
+            Optional pagination cursor — the `request_id` from the previous
+            page. Exclusive.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+    output_schema:
+      $schema: "https://json-schema.org/draft/2020-12/schema"
+      type: object
+      additionalProperties: false
+      required: [requests, next_cursor]
+      properties:
+        requests:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [request_id, kind, status, created_at, expires_at]
+            properties:
+              request_id:
+                type: string
+                pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+              kind:
+                type: string
+                enum: [access, integration, share]
+              status:
+                type: string
+                enum: [pending, approved, rejected, expired, cancelled]
+              created_at:
+                $ref: "#/$defs/timestamp"
+              expires_at:
+                $ref: "#/$defs/timestamp"
+        next_cursor:
+          type: [string, "null"]
+    errors:
+      - code: "invalid_argument"
+        message: "`status`/`kind` filter is not a member of its enum, `limit` is out of range, or `after` is malformed."
+    examples:
+      - name: "list-pending"
+        request:
+          status: "pending"
+          limit: 50
+        response:
+          requests:
+            - request_id: "request_01HX5J9F8V8H8V0CG3F2Y5J6R1"
+              kind: "access"
+              status: "pending"
+              created_at: "2026-05-10T14:00:00Z"
+              expires_at: "2026-06-09T14:00:00Z"
+          next_cursor: null
 
 # ---------------------------------------------------------------------------
 # Tenant or agent deletion mid-session (per ADR-0016.7)

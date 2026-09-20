@@ -25,6 +25,10 @@ from mcp_server.tools.email_search_messages import router as email_search_messag
 from mcp_server.tools.email_send import router as email_send_router
 from mcp_server.tools.jsonrpc import router as jsonrpc_router
 from mcp_server.tools.landing import router as landing_router
+from mcp_server.tools.list_my_requests import router as list_my_requests_router
+from mcp_server.tools.propose_integration import router as propose_integration_router
+from mcp_server.tools.request_access import router as request_access_router
+from mcp_server.tools.request_share import router as request_share_router
 from mcp_server.tools.request_token import router as request_token_router
 from mcp_server.tools.secret_delete import router as secret_delete_router
 from mcp_server.tools.secret_get import router as secret_get_router
@@ -143,6 +147,11 @@ def create_app() -> FastAPI:
     app.include_router(secret_get_router)
     app.include_router(secret_list_router)
     app.include_router(secret_delete_router)
+    # Agent access-request tools (agent-access-requests feature, Req 1/2/3/13)
+    app.include_router(request_access_router)
+    app.include_router(propose_integration_router)
+    app.include_router(request_share_router)
+    app.include_router(list_my_requests_router)
     return app
 
 

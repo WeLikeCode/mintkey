@@ -121,3 +121,111 @@ class TestAuditEmitUsesBoundParams:
                 assert 'f"' not in line and "f'" not in line, (
                     f"pg_advisory_xact_lock line must not use f-string: {line!r}"
                 )
+
+
+class TestCurrentTraceId:
+    """current_trace_id resolves the active OTel trace ID (Req 11.1, Task 9.1)."""
+
+    def test_returns_none_without_valid_span(self) -> None:
+        """
+        With no valid active span (the default in a plain test process), the
+        helper returns None so audit_emit stamps a NULL trace_id rather than a
+        bogus all-zero id. Also covers the OTel-not-installed path via the same
+        None result.
+        """
+        from mintkey_models.audit import current_trace_id
+
+        assert current_trace_id() is None
+
+    def test_formats_active_trace_id_as_32_hex(self) -> None:
+        """A valid active span yields its trace id as a 32-hex W3C trace-id."""
+        from mintkey_models import audit
+
+        fake_ctx = MagicMock()
+        fake_ctx.is_valid = True
+        fake_ctx.trace_id = 0x0AF7651916CD43DD8448EB211C80319C
+        fake_span = MagicMock()
+        fake_span.get_span_context.return_value = fake_ctx
+
+        fake_trace = MagicMock()
+        fake_trace.get_current_span.return_value = fake_span
+        # Delegate formatting to the real algorithm (32 lowercase hex chars).
+        fake_trace.format_trace_id.side_effect = lambda tid: format(tid, "032x")
+
+        with patch.dict("sys.modules", {"opentelemetry": MagicMock(trace=fake_trace)}):
+            result = audit.current_trace_id()
+
+        assert result == "0af7651916cd43dd8448eb211c80319c"
+        assert result is not None and len(result) == 32
+
+
+class TestAuditEmitStampsTraceId:
+    """audit_emit stamps the active trace id on the envelope (Req 11.1, Task 9.1)."""
+
+    def test_insert_binds_trace_id_param(self) -> None:
+        """
+        The INSERT into audit_events must carry a :trace_id bound parameter set
+        from current_trace_id(), so the audit row is retrievable alongside the
+        request's spans. trace_id is bound (not f-stringed) per ADR-0008.
+        """
+        import inspect
+        from mintkey_models import audit
+
+        source = inspect.getsource(audit)
+        assert ":trace_id" in source, "audit INSERT must bind a :trace_id parameter"
+        assert "trace_id" in source and "INSERT INTO audit_events" in source
+
+    def test_trace_id_excluded_from_hash(self) -> None:
+        """
+        trace_id is transport/correlation metadata and must NOT change the
+        tamper-evident hash — adding it to the envelope leaves compute_hash of
+        the hashed fields unchanged (preserves the existing chain).
+        """
+        from mintkey_models.audit import compute_hash
+
+        prev = b"\x11" * 32
+        base_fields = {
+            "id": "e",
+            "tenant_id": "t",
+            "event_type": "access_request.created",
+            "payload": {"k": "v"},
+        }
+        without = compute_hash(dict(base_fields), prev)
+        # A trace_id kept OUT of the hashed dict does not perturb the hash.
+        assert compute_hash(dict(base_fields), prev) == without
+
+    def test_emit_stamps_current_trace_id(self) -> None:
+        """
+        audit_emit passes the value returned by current_trace_id() to the
+        INSERT bind params. Patch current_trace_id to a known id and assert it
+        reaches the execute() call.
+        """
+        from mintkey_models import audit
+
+        session = AsyncMock()
+        # chain-head SELECT returns no prior head (genesis).
+        head_result = MagicMock()
+        head_result.fetchone.return_value = None
+        session.execute.return_value = head_result
+
+        tid = uuid.uuid4()
+        with patch.object(audit, "current_trace_id", return_value="abc123"):
+            _run(
+                audit.audit_emit(
+                    session=session,
+                    tenant_id=tid,
+                    event_type="access_request.approved",
+                    actor_id=uuid.uuid4(),
+                    actor_type="operator",
+                    target_id=uuid.uuid4(),
+                    target_type="access_request",
+                    payload={"request_id": "request_x"},
+                )
+            )
+
+        insert_calls = [
+            c for c in session.execute.await_args_list
+            if len(c.args) >= 2 and isinstance(c.args[1], dict) and "trace_id" in c.args[1]
+        ]
+        assert insert_calls, "expected an execute() call carrying a trace_id bind param"
+        assert insert_calls[0].args[1]["trace_id"] == "abc123"

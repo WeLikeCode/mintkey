@@ -61,6 +61,11 @@
       "type": "string",
       "pattern": "^audit_[0-9A-HJKMNP-TV-Z]{26}$"
     },
+    "access_request_id": {
+      "type": "string",
+      "pattern": "^request_[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "AccessRequest ULID (request_ prefix)."
+    },
     "timestamp_utc": {
       "type": "string",
       "format": "date-time",
@@ -108,7 +113,8 @@
         "email_permission_grant",
         "agent_secret",
         "agent_secret_grant",
-        "budget"
+        "budget",
+        "access_request"
       ]
     },
     "auth_scheme": {
@@ -2946,6 +2952,121 @@
         }
       },
       "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_access_request_created": {
+      "title": "access_request.created",
+      "description": "An agent created an access request (kind=access), integration proposal (kind=integration), or share request (kind=share). Emitted by the Admin API through the audit chokepoint (actor: agent). Payload is identifier/metadata-only — no secret material or denylisted field values. Per agent-access-requests design §Wire Contracts, Req 10.2, 10.3.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "access_request.created"},
+        "target_type": {"const": "access_request"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request_id": {"$ref": "#/$defs/access_request_id"},
+            "kind": {"type": "string", "enum": ["access", "integration", "share"]},
+            "status": {"type": "string", "const": "pending"},
+            "service_id": {
+              "$ref": "#/$defs/service_id",
+              "description": "Present for kind=access and kind=share. Absent for kind=integration (no service row exists yet)."
+            },
+            "action": {
+              "type": "string",
+              "description": "Requested action. Present for kind=access and kind=share."
+            },
+            "requesting_agent_id": {"$ref": "#/$defs/agent_id"},
+            "target_agent_id": {
+              "$ref": "#/$defs/agent_id",
+              "description": "Present only for kind=share."
+            },
+            "share_direction": {
+              "type": "string",
+              "enum": ["inbound", "outbound"],
+              "description": "Present only for kind=share."
+            },
+            "expires_at": {"$ref": "#/$defs/timestamp_utc"}
+          },
+          "required": ["request_id", "kind", "status", "requesting_agent_id", "expires_at"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_access_request_approved": {
+      "title": "access_request.approved",
+      "description": "An operator approved a pending access request. Emitted by the Admin API through the audit chokepoint (actor: operator) within the same transaction as the resulting grant/service/credential events. Payload is identifier/metadata-only — no secret material or denylisted field values. Per agent-access-requests design §Wire Contracts, Req 10.2, 10.3.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "access_request.approved"},
+        "target_type": {"const": "access_request"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request_id": {"$ref": "#/$defs/access_request_id"},
+            "kind": {"type": "string", "enum": ["access", "integration", "share"]},
+            "status": {"type": "string", "const": "approved"},
+            "service_id": {
+              "$ref": "#/$defs/service_id",
+              "description": "The existing (access/share) or newly registered (integration) service the approval acted on."
+            },
+            "action": {"type": "string"},
+            "requesting_agent_id": {"$ref": "#/$defs/agent_id"},
+            "target_agent_id": {
+              "$ref": "#/$defs/agent_id",
+              "description": "Present only for kind=share."
+            },
+            "permission_id": {
+              "$ref": "#/$defs/permission_id",
+              "description": "The grant created by this approval, when applicable."
+            }
+          },
+          "required": ["request_id", "kind", "status"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_access_request_rejected": {
+      "title": "access_request.rejected",
+      "description": "An operator rejected a pending access request with a reason. Emitted by the Admin API through the audit chokepoint (actor: operator). Payload is identifier/metadata-only — the reason is operator-supplied free text and carries no secret material or denylisted field values. Per agent-access-requests design §Wire Contracts, Req 10.2, 10.3.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "access_request.rejected"},
+        "target_type": {"const": "access_request"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request_id": {"$ref": "#/$defs/access_request_id"},
+            "kind": {"type": "string", "enum": ["access", "integration", "share"]},
+            "status": {"type": "string", "const": "rejected"},
+            "reason": {"type": "string", "maxLength": 1000}
+          },
+          "required": ["request_id", "kind", "status", "reason"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_access_request_expired": {
+      "title": "access_request.expired",
+      "description": "A pending access request reached its expiration (Default_Request_TTL) and was flipped to expired by the scheduled sweep. Emitted by the Admin API through the audit chokepoint (actor: system). Payload is identifier/metadata-only — no secret material or denylisted field values. Per agent-access-requests design §Wire Contracts, Req 10.2, 10.3.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "access_request.expired"},
+        "target_type": {"const": "access_request"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "request_id": {"$ref": "#/$defs/access_request_id"},
+            "kind": {"type": "string", "enum": ["access", "integration", "share"]},
+            "status": {"type": "string", "const": "expired"},
+            "expires_at": {"$ref": "#/$defs/timestamp_utc"}
+          },
+          "required": ["request_id", "kind", "status", "expires_at"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -3152,6 +3273,18 @@
     },
     {
       "$ref": "#/$defs/ev_budget_reset"
+    },
+    {
+      "$ref": "#/$defs/ev_access_request_created"
+    },
+    {
+      "$ref": "#/$defs/ev_access_request_approved"
+    },
+    {
+      "$ref": "#/$defs/ev_access_request_rejected"
+    },
+    {
+      "$ref": "#/$defs/ev_access_request_expired"
     }
   ],
   "discriminator": {
@@ -3227,7 +3360,11 @@
       "budget.threshold_reached": "#/$defs/ev_budget_threshold_reached",
       "budget.exceeded": "#/$defs/ev_budget_exceeded",
       "budget.config_updated": "#/$defs/ev_budget_config_updated",
-      "budget.reset": "#/$defs/ev_budget_reset"
+      "budget.reset": "#/$defs/ev_budget_reset",
+      "access_request.created": "#/$defs/ev_access_request_created",
+      "access_request.approved": "#/$defs/ev_access_request_approved",
+      "access_request.rejected": "#/$defs/ev_access_request_rejected",
+      "access_request.expired": "#/$defs/ev_access_request_expired"
     }
   },
   "examples": [

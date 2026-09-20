@@ -340,3 +340,104 @@ def test_rls_enabled_on_all_tenant_scoped_tables(
         f"RLS not enabled (ALTER TABLE ... ENABLE ROW LEVEL SECURITY missing) "
         f"on tenant-scoped tables (ADR-0008): {sorted(rls_disabled)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Feature: agent-access-requests — explicit, named RLS coverage (T-11.1)
+#
+# The generic coverage tests above enumerate a fixed TENANT_SCOPED allowlist
+# and do NOT include access_requests, so they would not catch a regression on
+# this table. This add-only section asserts the access_requests table
+# specifically has a `tenant_isolation` policy whose qual references
+# current_setting('app.current_tenant') — making the coverage explicit and named.
+#
+# Add-only: no existing test above is modified.
+#
+# Sources:
+#   - ADR-0008 (tenant GUC), ADR-0014.8 (RLS architecture test)
+#   - Liquibase changeset 030-access-requests.yaml (RLS in same changeset)
+#   - agent-access-requests Req 12.1, 10.1; design §Data Models
+# ---------------------------------------------------------------------------
+
+ACCESS_REQUESTS_TABLE = "access_requests"
+
+
+def test_access_requests_has_tenant_isolation_policy(
+    pg_conn: psycopg2.extensions.connection,
+) -> None:
+    """
+    access_requests must carry a `tenant_isolation` RLS policy.
+    Source: agent-access-requests Req 12.1; Liquibase changeset 030.
+    """
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT policyname FROM pg_policies
+            WHERE schemaname = 'public'
+              AND tablename = %s
+              AND policyname = 'tenant_isolation'
+            """,
+            (ACCESS_REQUESTS_TABLE,),
+        )
+        rows = cur.fetchall()
+
+    assert rows, (
+        f"Table {ACCESS_REQUESTS_TABLE!r} has no 'tenant_isolation' RLS policy "
+        f"(agent-access-requests Req 12.1; Liquibase changeset 030)"
+    )
+
+
+def test_access_requests_policy_references_current_tenant(
+    pg_conn: psycopg2.extensions.connection,
+) -> None:
+    """
+    The access_requests `tenant_isolation` policy qual must reference
+    current_setting('app.current_tenant').
+    Source: ADR-0008; agent-access-requests Req 12.1.
+    """
+    with pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT qual FROM pg_policies
+            WHERE schemaname = 'public'
+              AND tablename = %s
+              AND policyname = 'tenant_isolation'
+            """,
+            (ACCESS_REQUESTS_TABLE,),
+        )
+        policies = cur.fetchall()
+
+    assert policies, (
+        f"Table {ACCESS_REQUESTS_TABLE!r} has no 'tenant_isolation' policy to inspect"
+    )
+    bad = [p for p in policies if "app.current_tenant" not in (p["qual"] or "")]
+    assert not bad, (
+        f"access_requests 'tenant_isolation' policy qual does not reference "
+        f"current_setting('app.current_tenant') (ADR-0008): {[p['qual'] for p in bad]}"
+    )
+
+
+def test_access_requests_rls_enabled(
+    pg_conn: psycopg2.extensions.connection,
+) -> None:
+    """
+    RLS must be enabled (relrowsecurity = true) on access_requests.
+    Source: ADR-0008 §Decision; Liquibase changeset 030.
+    """
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT relrowsecurity FROM pg_class
+            WHERE relkind = 'r'
+              AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+              AND relname = %s
+            """,
+            (ACCESS_REQUESTS_TABLE,),
+        )
+        row = cur.fetchone()
+
+    assert row is not None, f"Table {ACCESS_REQUESTS_TABLE!r} does not exist"
+    assert row[0] is True, (
+        f"RLS not enabled on {ACCESS_REQUESTS_TABLE!r} "
+        f"(ALTER TABLE ... ENABLE ROW LEVEL SECURITY missing — ADR-0008)"
+    )

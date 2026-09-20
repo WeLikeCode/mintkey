@@ -74,6 +74,8 @@ export const Components = {
   BudgetForm: componentLoader.add("BudgetForm", "./actions/BudgetForm"),
   // Budget consumers dashboard page (budget-consumers-dashboard spec, Task 7.1)
   BudgetConsumersPage: componentLoader.add("BudgetConsumersPage", "./pages/BudgetConsumersPage"),
+  // Requests Review area — agent access requests list + detail (agent-access-requests spec, Task 8.2)
+  AccessRequestsPage: componentLoader.add("AccessRequestsPage", "./pages/AccessRequestsPage"),
   // Agent secret create form with reveal-once panel (Chunk C6, D11)
   AgentSecretNewForm: componentLoader.add("AgentSecretNewForm", "./actions/AgentSecretNewForm"),
   // Agent secret rotate form with reveal-once panel (Chunk C6b)

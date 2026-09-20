@@ -67,6 +67,35 @@ except ImportError:
     pass
 
 
+def current_trace_id() -> str | None:
+    """
+    Return the active OTel span's trace ID as a 32-hex-char W3C ``traceparent``
+    trace-id segment, or ``None`` when there is no valid active span.
+
+    This lets a single agent request flowing MCP → admin-api → admin-ui approval
+    be correlated: because every service continues the inbound ``traceparent``
+    (W3C Trace Context; opentelemetry-instrumentation-fastapi), all spans on the
+    path share one trace ID, and stamping that ID on each audit envelope makes
+    the audit rows retrievable alongside the trace (Req 11.1).
+
+    OpenTelemetry is an optional dependency of this shared package (it is
+    provided by the consuming services). The import is therefore lazy and
+    guarded so the module stays importable — and ``mypy --strict`` passes — in
+    environments where OTel is not installed. Mirrors the lazy-import pattern in
+    ``mintkey_models.otel_redaction`` and ``mcp_server.middleware.otel``.
+    """
+    try:
+        from opentelemetry import trace  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+
+    span = trace.get_current_span()
+    ctx = span.get_span_context()
+    if not ctx.is_valid:
+        return None
+    return cast(str, trace.format_trace_id(ctx.trace_id))
+
+
 def compute_hash(event_dict: dict[str, Any], prev_hash: bytes) -> bytes:
     """
     Compute sha256(canonical_json_bytes + prev_hash_bytes).
@@ -138,6 +167,13 @@ async def audit_emit(
         "payload": payload,
         "at": now.isoformat(),
     }
+    # Trace correlation: stamp the active OTel trace ID on the envelope so the
+    # audit row is retrievable alongside the request's spans (Req 11.1). It is
+    # deliberately NOT part of ``compute_hash`` — the hash covers the
+    # tamper-evident event content, not transport/correlation metadata, and
+    # keeping it out preserves the existing hash-chain of every audit event.
+    trace_id = current_trace_id()
+
     h = compute_hash(event_fields, prev_hash)
 
     # Step 5: INSERT into audit_events
@@ -147,10 +183,10 @@ async def audit_emit(
         text(
             "INSERT INTO audit_events"
             " (id, tenant_id, event_type, actor_id, actor_type,"
-            "  target_id, target_type, payload, prev_hash, hash, at)"
+            "  target_id, target_type, payload, prev_hash, hash, at, trace_id)"
             " VALUES"
             " (:id, :tenant_id, :event_type, :actor_id, :actor_type,"
-            "  :target_id, :target_type, CAST(:payload AS jsonb), :prev_hash, :hash, :at)"
+            "  :target_id, :target_type, CAST(:payload AS jsonb), :prev_hash, :hash, :at, :trace_id)"
         ),
         {
             "id": str(event_id),
@@ -164,6 +200,7 @@ async def audit_emit(
             "prev_hash": prev_hash,
             "hash": h,
             "at": now,
+            "trace_id": trace_id,
         },
     )
 

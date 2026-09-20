@@ -178,6 +178,14 @@ tags:
       Operator (human console user) management. PlatformAdmin only. Operators
       are keyed by `(tenant_id, email)`; the OIDC subject binds lazily on first
       login. Per ADR-0031.
+  - name: AccessRequests
+    description: |
+      Operator-facing review of agent access requests (agent-access-requests
+      feature). Agents ask over MCP for a grant on an existing service
+      (`access`), to register a new service (`integration`), or to share access
+      with another agent (`share`); operators approve, reject, or test-and-
+      finalize them here. State changes require the AdminUiSignedRequest +
+      operator session (ADR-0019).
 
 security:
   - OperatorSession: []
@@ -4424,6 +4432,294 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  ###########################################################################
+  # Agent Access Requests (agent-access-requests feature)
+  #
+  # Three request kinds share one umbrella row (discriminated by `kind`):
+  #   access       — grant on a service that already exists in the tenant
+  #   integration  — register a brand-new service (operator supplies the secret
+  #                  at finalize time; the secret never lands on the row)
+  #   share        — extend/obtain access on an existing service for another agent
+  #
+  # Reads use OperatorSession/OperatorBearer. State-changing routes require the
+  # AdminUiSignedRequest + operator session (ADR-0019); effective identity is
+  # derived from the session, not the JWT body. Integration secrets on the
+  # approve/test bodies are marked x-mintkey-sensitive and are never logged,
+  # audited, or placed on a span (P-1, S-SEC-1, ADR-0017.6).
+  ###########################################################################
+
+  /v1/tenants/{tenant_id}/access-requests:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      operationId: listAccessRequests
+      tags: [AccessRequests]
+      summary: List agent access requests for a tenant.
+      description: |
+        Returns the tenant's access requests (RLS-scoped), optionally filtered
+        by `status` and `kind`, ordered by `created_at` descending. Read-only;
+        emits no audit event.
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            $ref: "#/components/schemas/AccessRequestStatus"
+          description: Optional filter by request status.
+        - in: query
+          name: kind
+          required: false
+          schema:
+            $ref: "#/components/schemas/AccessRequestKind"
+          description: Optional filter by request kind.
+      responses:
+        "200":
+          description: List of access requests, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccessRequest"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: |
+            Filter rejected. Body is application/problem+json with
+            `mintkey:code` `validation_failed` (an unknown `status`/`kind`
+            filter value; `invalid_argument` at the tool boundary).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/tenants/{tenant_id}/access-requests/{request_id}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      operationId: getAccessRequest
+      tags: [AccessRequests]
+      summary: Get a single access request.
+      description: |
+        Returns the full detail of one access request. For an integration
+        proposal the operator-supplied secret fields are shown blank. A
+        `request_id` belonging to a different tenant responds `404` with
+        `mintkey:code` `request_not_found` and does not reveal cross-tenant
+        existence (Req 4.4, 12.3). Read-only; emits no audit event.
+      responses:
+        "200":
+          description: Access request detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: |
+            No such request in this tenant. Body is application/problem+json
+            with `mintkey:code` `request_not_found`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/tenants/{tenant_id}/access-requests/{request_id}/approve:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      operationId: approveAccessRequest
+      tags: [AccessRequests]
+      summary: Approve an access/share request or finalize an integration proposal.
+      description: |
+        Approves a `pending` request. For `access`/`share` this creates the
+        corresponding permission grant via the existing grant machinery; for
+        `integration` this finalizes the proposal — creating the `services` row
+        (with any operator-edited non-secret config) and storing the secret in
+        the Vault Adapter via the existing service-registration + credential
+        path — and sets `status = approved`. The resulting grant change is
+        published on the change channel so dependent components observe it
+        within 5s (P-9). Emits `access_request.approved` plus the reused
+        `agent.permission.granted` / `service.registered` / `credential.registered`
+        events in the same audited operation (Req 5, 6.5, 7, 10.4).
+
+        The request body carries the operator secret material for an
+        integration finalize (`x-mintkey-sensitive` — sent only to the Vault
+        Adapter, never persisted on the row, logged, audited, or spanned; P-1,
+        S-SEC-1, ADR-0017.6). For `access`/`share` the body may be omitted.
+      security:
+        - AdminUiSignedRequest: []
+          OperatorSession:      []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestApprove"
+      responses:
+        "200":
+          description: Request approved (grant created / service finalized).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: |
+            No such request in this tenant (`request_not_found`), or — for a
+            share/integration finalize — the referenced service no longer
+            exists (`service_not_found`). application/problem+json.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: |
+            The request is not in `status = pending`. Body is
+            application/problem+json with `mintkey:code` `request_not_pending`.
+            No grant/service/credential is created (Req 5.6, 7.4, 9.5).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: |
+            Finalize rejected. Body is application/problem+json with
+            `mintkey:code` `missing_secret_material` (required secret fields
+            still blank, Req 6.6) or `validation_failed`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "503":
+          description: |
+            The Vault Adapter is unavailable at finalize. Body is
+            application/problem+json with `mintkey:code` `vault_unavailable`.
+            No service, credential, or secret is persisted (Req 6.7).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/tenants/{tenant_id}/access-requests/{request_id}/reject:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      operationId: rejectAccessRequest
+      tags: [AccessRequests]
+      summary: Reject a pending request with a reason.
+      description: |
+        Rejects a `pending` request, recording a non-empty `reason` (≤ 1000
+        chars) on the row and setting `status = rejected`. Creates no grant,
+        service, or credential (Req 8.3). Emits `access_request.rejected`
+        (actor: operator).
+      security:
+        - AdminUiSignedRequest: []
+          OperatorSession:      []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestReject"
+      responses:
+        "200":
+          description: Request rejected.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: |
+            No such request in this tenant. Body is application/problem+json
+            with `mintkey:code` `request_not_found`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: |
+            The request is not in `status = pending`. Body is
+            application/problem+json with `mintkey:code` `request_not_pending`;
+            the existing `status` and `reason` are unchanged (Req 8.7).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: |
+            Missing/empty/whitespace-only or over-long `reason`. Body is
+            application/problem+json with `mintkey:code` `reason_required`
+            (Req 8.2).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/tenants/{tenant_id}/access-requests/{request_id}/test:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      operationId: testAccessRequestConnection
+      tags: [AccessRequests]
+      summary: Connection_Test for an integration proposal (secret-free diagnostic).
+      description: |
+        Performs an upstream handshake for an `integration` proposal using the
+        operator-supplied secret and the (possibly edited) config, with a 10s
+        timeout and egress allowlisting (ADR-0007). Nothing is persisted — the
+        secret is used in-memory only for the duration of the call. Returns a
+        pass/fail result and a diagnostic that contains no secret material
+        (Req 6.3–6.4). Mirrors the transient-test precedent behind
+        `POST /v1/tenants/{tenant_id}/services/test-transient`.
+      security:
+        - AdminUiSignedRequest: []
+          OperatorSession:      []
+        - OperatorBearer:       []
+      parameters:
+        - $ref: "#/components/parameters/CsrfHeaderRequired"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestConnectionTest"
+      responses:
+        "200":
+          description: |
+            Test executed; see body for ok/error and timing. A timeout is
+            reported as `ok: false` with a timeout diagnostic — never an error
+            status. The diagnostic contains no secret material.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TestRunResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: |
+            No such request in this tenant. Body is application/problem+json
+            with `mintkey:code` `request_not_found`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "422":
+          description: |
+            Test rejected before sending (not an integration proposal,
+            forbidden destination, invalid input). Body is
+            application/problem+json with `mintkey:code` `validation_failed`
+            or `forbidden_destination`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
 components:
 
   ###########################################################################
@@ -4553,6 +4849,14 @@ components:
         type: string
         pattern: "^op_[0-9A-HJKMNP-TV-Z]{26}$"
       description: ULID-prefixed operator identifier (ADR-0031).
+    RequestId:
+      in: path
+      name: request_id
+      required: true
+      schema:
+        type: string
+        pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+      description: ULID-prefixed access-request identifier (agent-access-requests).
     AfterCursor:
       in: query
       name: after
@@ -6956,6 +7260,158 @@ components:
           format: date-time
           description: UTC timestamp when the refresh was performed.
 
+    # ----- Agent Access Requests (agent-access-requests feature) -----
+
+    AccessRequestKind:
+      type: string
+      description: |
+        Discriminator for the umbrella access-request row.
+        `access` — grant on an existing service; `integration` — propose a
+        brand-new service; `share` — extend/obtain access for another agent.
+      enum: [access, integration, share]
+
+    AccessRequestStatus:
+      type: string
+      description: Lifecycle status of an access request.
+      enum: [pending, approved, rejected, expired, cancelled]
+
+    AccessRequestShareDirection:
+      type: string
+      description: |
+        For a `share` request: `outbound` — the requesting agent shares access
+        it holds with a target agent; `inbound` — the requesting agent asks for
+        access owned by another agent.
+      enum: [outbound, inbound]
+
+    AccessRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        An agent's request for a capability, resolved by an operator. One shape
+        covers all three kinds; kind-specific fields are null when not
+        applicable. `proposed_config` holds only non-secret fields — operator
+        secret material never appears on this row (P-1, ADR-0017.6).
+      required:
+        - request_id
+        - kind
+        - status
+        - requesting_agent_id
+        - created_at
+        - expires_at
+      properties:
+        request_id:
+          type: string
+          pattern: "^request_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: ULID-prefixed access-request identifier.
+        kind:
+          $ref: "#/components/schemas/AccessRequestKind"
+        status:
+          $ref: "#/components/schemas/AccessRequestStatus"
+        requesting_agent_id:
+          type: string
+          pattern: "^agent_[0-9A-HJKMNP-TV-Z]{26}$"
+          description: The agent that created the request (from auth context).
+        service_id:
+          type: [string, "null"]
+          description: |
+            Target service for `access`/`share`. Null for an `integration`
+            proposal (the service does not exist yet).
+        action:
+          type: [string, "null"]
+          description: Requested action on the service. Null for `integration`.
+        target_agent_id:
+          type: [string, "null"]
+          description: |
+            The agent that would receive access. Null unless `kind = share`.
+        share_direction:
+          oneOf:
+            - $ref: "#/components/schemas/AccessRequestShareDirection"
+            - type: "null"
+          description: Direction of a share request; null unless `kind = share`.
+        proposed_config:
+          type: [object, "null"]
+          additionalProperties: true
+          description: |
+            Agent-proposed non-secret config for an `integration` proposal
+            (e.g. `client_id`, `token_url`, `ssh_user`, `header_name`,
+            `base_url`, `openapi_url`, `auth_scheme`). Secret fields are
+            rejected at create time and never stored here. Null unless
+            `kind = integration`.
+        reason:
+          type: [string, "null"]
+          description: Operator-supplied rejection reason; null until rejected.
+        created_at:
+          $ref: "#/components/schemas/Timestamp"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        resolved_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+          description: When the request was resolved; null while pending.
+
+    AccessRequestApprove:
+      type: object
+      additionalProperties: false
+      description: |
+        Approve/finalize body. For `access`/`share` the body may be omitted
+        (all properties optional). For an `integration` finalize it carries the
+        operator secret material and any edited non-secret config.
+
+        `credential` is `x-mintkey-sensitive` — it is sent only to the Vault
+        Adapter and is never persisted on the request row, logged, placed in an
+        audit payload, or set as an OTel span attribute (P-1, S-SEC-1,
+        ADR-0017.6).
+      properties:
+        credential:
+          allOf:
+            - $ref: "#/components/schemas/RegisterCredentialRequest"
+          x-mintkey-sensitive: true
+          description: |
+            Operator secret material for an integration finalize (per
+            `auth_scheme`). Omit for `access`/`share` approvals.
+        config:
+          type: [object, "null"]
+          additionalProperties: true
+          description: |
+            Operator-edited non-secret config, overriding the agent-proposed
+            values at finalize time. Non-secret fields only.
+
+    AccessRequestReject:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      description: Reject body — a mandatory, non-empty reason (≤ 1000 chars).
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: |
+            Human-readable rejection reason. Must be non-empty and
+            non-whitespace-only; a missing/blank/over-long reason is rejected
+            with `mintkey:code` `reason_required`.
+
+    AccessRequestConnectionTest:
+      type: object
+      additionalProperties: false
+      description: |
+        Connection_Test body for an `integration` proposal. Carries the
+        operator secret and the (possibly edited) non-secret config to run an
+        upstream handshake without persisting anything. `credential` is
+        `x-mintkey-sensitive`; the returned diagnostic contains no secret
+        material (Req 6.3).
+      properties:
+        credential:
+          allOf:
+            - $ref: "#/components/schemas/RegisterCredentialRequest"
+          x-mintkey-sensitive: true
+          description: Operator secret material used in-memory for the test only.
+        config:
+          type: [object, "null"]
+          additionalProperties: true
+          description: Operator-edited non-secret config used for the test.
+
 x-mintkey-error-codes:
   description: |
     Stable, machine-readable error codes returned in `mintkey:code`.
@@ -7000,3 +7456,10 @@ x-mintkey-error-codes:
     - not_found
     - invalid_id
     - budget_not_configured
+    - request_not_found
+    - request_not_pending
+    - already_granted
+    - request_already_pending
+    - secret_field_not_allowed
+    - missing_secret_material
+    - reason_required

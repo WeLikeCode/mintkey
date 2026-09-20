@@ -29,6 +29,7 @@ logging.basicConfig(
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
+from admin_api.api.access_requests import router as access_requests_router
 from admin_api.api.agent_secrets import router as agent_secrets_router
 from admin_api.api.budget_consumers import router as budget_consumers_router
 from admin_api.api.budgets import router as budgets_router
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(oauth2_providers_router)
     app.include_router(services_router)
     app.include_router(agent_secrets_router)
+    app.include_router(access_requests_router)
     app.include_router(agents_router)
     app.include_router(api_keys_router)
     app.include_router(api_keys_shortcut_router)

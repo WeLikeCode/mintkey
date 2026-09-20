@@ -98,12 +98,23 @@ export async function buildSignedRequest(
  */
 export async function signedFetch(
   url: string,
-  opts: SignedRequestOptions & { method?: string; body?: unknown }
+  opts: SignedRequestOptions & {
+    method?: string;
+    body?: unknown;
+    /**
+     * W3C Trace Context headers (traceparent / tracestate) relayed from the
+     * inbound operator request so the admin-api span continues the same trace
+     * (Req 11.1). admin-ui has no OTel SDK, so it forwards the headers verbatim
+     * rather than starting a span of its own.
+     */
+    traceContext?: Record<string, string>;
+  }
 ): Promise<Response> {
   const token = await buildSignedRequest(opts);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(opts.traceContext ?? {}),
   };
   // ADR-0019: JWT goes in x-mintkey-signed-request, NOT Authorization
   // Omit header when key is unavailable (admin-api skips verify when no pub key).
