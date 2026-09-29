@@ -49,6 +49,15 @@ spec:
               value: {{ .Values.global.env }}
             - name: KONG_ADMIN_URL
               value: http://{{ include "mintkey.fullname" . }}-kong-admin:8001
+            - name: PROXY_PLUGIN_URL
+              # Upstream every generated Kong service routes to. On k8s this MUST be
+              # the release-prefixed proxy-plugin Service; the kong-syncer's built-in
+              # default "http://proxy-plugin:8086" only resolves under docker-compose,
+              # so without this Kong returns "name resolution failed" for every
+              # brokered call. Requires a kong-syncer image with WeLikeCode/mintkey#264
+              # (PROXY_PLUGIN_URL support); with an older image this env is ignored and
+              # the proxy-plugin alias Service is still needed.
+              value: http://{{ include "mintkey.fullname" . }}-proxy-plugin:8086
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
