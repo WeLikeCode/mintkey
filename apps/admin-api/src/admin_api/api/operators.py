@@ -132,7 +132,7 @@ async def list_operators(
     q: Optional[str] = None,
     tenant_id: Optional[str] = None,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     List operators across all tenants. PlatformAdmin only.
@@ -216,7 +216,7 @@ async def list_operators(
 async def create_operator(
     body: CreateOperatorRequest,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """
@@ -316,7 +316,7 @@ async def update_operator(
     operator_id: str,
     body: UpdateOperatorRequest,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """
@@ -405,7 +405,7 @@ async def update_operator(
 async def delete_operator(
     operator_id: str,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """

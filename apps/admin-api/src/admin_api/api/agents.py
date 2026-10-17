@@ -195,7 +195,7 @@ def _agent_row_to_dict(row: Any) -> dict[str, Any]:
 async def create_agent(
     tenant_id: UUID,
     body: AgentCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -356,7 +356,7 @@ async def list_agents(
     tenant_id: UUID,
     q: Optional[str] = None,
     has_access_to_service_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -480,7 +480,7 @@ async def list_agents(
 async def get_agent(
     tenant_id: UUID,
     agent_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -525,7 +525,7 @@ async def get_agent(
 async def revoke_agent(
     tenant_id: UUID,
     agent_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -609,7 +609,7 @@ async def rotate_agent_key(
     tenant_id: UUID,
     agent_id: str,
     body: AgentRotateKeyRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """Hard cutover rotation. Mirrors credentials.py rotate_credential pattern.
@@ -717,7 +717,7 @@ async def set_agent_ssh_pubkey(
     tenant_id: UUID,
     agent_id: str,
     body: "AgentSetSSHPubKeyRequest",
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -897,7 +897,7 @@ class AgentSetSSHPubKeyRequest(BaseModel):
 async def delete_agent(
     tenant_id: UUID,
     agent_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """

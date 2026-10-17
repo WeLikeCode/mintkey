@@ -135,7 +135,7 @@ async def configure_oauth2_provider(
     tenant_id: UUID,
     provider: str,
     body: OAuth2ProviderConfigBody,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -269,7 +269,7 @@ async def configure_oauth2_provider(
 @router.get("", status_code=200)
 async def list_oauth2_providers(
     tenant_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -314,7 +314,7 @@ async def list_oauth2_providers(
 async def get_oauth2_provider(
     tenant_id: UUID,
     provider: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -376,7 +376,7 @@ async def get_oauth2_provider(
 async def delete_oauth2_provider(
     tenant_id: UUID,
     provider: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:

@@ -174,7 +174,7 @@ async def proxy_call(
     service_id: str,
     path_suffix: str,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> Response:
     """

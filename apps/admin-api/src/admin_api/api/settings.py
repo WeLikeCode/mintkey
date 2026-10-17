@@ -124,7 +124,7 @@ async def _save_settings(session: AsyncSession, settings: AdminSettings) -> None
 @router.get("/settings")
 async def get_admin_settings(
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Return current platform-wide admin settings.
@@ -141,7 +141,7 @@ async def get_admin_settings(
 async def patch_admin_settings(
     body: AdminSettings,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Partially update platform-wide admin settings.

@@ -471,7 +471,7 @@ async def _run_ssh_post_save_test(
 async def create_service(
     tenant_id: UUID,
     body: ServiceCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -581,7 +581,7 @@ def _escape_like(value: str) -> str:
 async def create_service_from_template(
     tenant_id: UUID,
     body: FromTemplateRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -777,7 +777,7 @@ async def create_service_from_template(
 async def list_services(
     tenant_id: UUID,
     q: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -836,7 +836,7 @@ async def list_services(
 async def get_service(
     tenant_id: UUID,
     service_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -874,7 +874,7 @@ async def get_service(
 async def test_service_transient(
     tenant_id: UUID,
     body: TransientTestRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -1063,7 +1063,7 @@ async def test_service(
     tenant_id: UUID,
     service_id: str,
     req: Optional[TestRunRequest] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -1340,7 +1340,7 @@ async def update_service(
     tenant_id: UUID,
     service_id: str,
     body: ServiceUpdate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -1536,7 +1536,7 @@ async def update_service(
 async def delete_service(
     tenant_id: UUID,
     service_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """

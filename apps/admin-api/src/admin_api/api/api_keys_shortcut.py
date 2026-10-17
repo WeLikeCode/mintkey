@@ -44,7 +44,7 @@ async def list_tenant_api_keys(
     tenant_id: UUID,
     q: Optional[str] = None,
     service_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
