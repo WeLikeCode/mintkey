@@ -1,7 +1,7 @@
 # Vault Adapter — Go 1.26, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
-FROM golang:1.26-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
+FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS builder
 
 WORKDIR /workspace
 
@@ -25,17 +25,19 @@ WORKDIR /workspace/apps/vault-adapter
 RUN go build -o /vault-adapter ./cmd/vault-adapter
 
 # Build grpc_health_probe from source so it inherits the same Go stdlib as the
-# builder image (Go 1.26.4), avoiding CVE-2026-42504 in any pre-built binary.
-# Use a throwaway module to pin golang.org/x/net >= v0.55.0, overriding the
-# v0.53.0 pinned in grpc-health-probe's own go.mod (CVE-2026-25680 et al).
+# builder image (Go 1.26.9), avoiding the stdlib CVEs of any pre-built binary.
+# Use a throwaway module to pin golang.org/x/net, x/text and google.golang.org/grpc
+# to the versions the services use, overriding grpc-health-probe's own go.mod
+# (2026-10: CVE-2026-46600, CVE-2026-56852, CVE-2026-78669, CVE-2026-84304, CVE-2026-84445).
 RUN mkdir -p /tmp/grpc-build && cd /tmp/grpc-build && \
     printf 'module grpc-build\ngo 1.26\n' > go.mod && \
-    GOWORK=off go get github.com/grpc-ecosystem/grpc-health-probe@v0.4.50 golang.org/x/net@v0.55.0 && \
+    GOWORK=off go get github.com/grpc-ecosystem/grpc-health-probe@v0.4.59 golang.org/x/net@v0.61.0 \
+        golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.84.0 && \
     GOWORK=off go build -o /grpc_health_probe github.com/grpc-ecosystem/grpc-health-probe/... && \
     chmod +x /grpc_health_probe
 
 # Pinned 2026-06-19; re-pin every quarter.
-FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
+FROM gcr.io/distroless/static-debian12@sha256:d75cdd72874d4790092fcb1b058493ecf6bb5bf2b2b897045b00ff01d91843f2
 COPY --from=builder /vault-adapter /vault-adapter
 COPY --from=builder /grpc_health_probe /grpc_health_probe
 ENTRYPOINT ["/vault-adapter"]

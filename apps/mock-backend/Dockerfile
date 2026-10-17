@@ -1,7 +1,7 @@
 # Mock Backend — Python 3.12 + FastAPI
 # Build context is mock-backend/ directory.
-# Pinned 2026-05-18; re-pin every quarter.
-FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9
+# Pinned 2026-10-17; re-pin every quarter.
+FROM python:3.14-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
 
 WORKDIR /app
 
@@ -12,8 +12,11 @@ COPY requirements-hashes.txt .
 # Install pinned deps with hash verification, then install the local package.
 # --require-hashes cannot apply to a local editable ('.') path, so we install
 # third-party deps first (hashes verified) and then install the package itself.
+# pip is not needed at run time: uninstall it with the build, so the image carries no pip-vendored packages
+# (2026-10: pip 26.2.1, the latest, vendors msgpack 1.1.2, setuptools 70.3.0 and urllib3 2.7.0, all HIGH in Trivy).
 RUN pip install --no-cache-dir --require-hashes -r requirements-hashes.txt \
- && pip install --no-cache-dir --no-deps .
+ && pip install --no-cache-dir --no-deps . \
+ && pip uninstall --yes pip
 
 # Run as non-root (UID 65532 matches distroless nonroot convention for consistency)
 RUN useradd -u 65532 -M -s /sbin/nologin nonroot && chown -R 65532:65532 /app
