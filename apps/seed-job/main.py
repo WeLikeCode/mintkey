@@ -982,7 +982,8 @@ def _hand_admin_password_to_admin_ui(path: Path) -> None:
     try:
         os.chown(path, ADMIN_UI_UID, -1)
     except OSError as exc:
-        print(f"WARN: could not hand {path.name} to uid {ADMIN_UI_UID}: {exc}")
+        # (no file name / path in the message: CodeQL treats the admin_password name as a secret)
+        print(f"WARN: could not hand the bootstrap secret to uid {ADMIN_UI_UID}: {type(exc).__name__}")
 
 
 def _ensure_admin_password_file(
