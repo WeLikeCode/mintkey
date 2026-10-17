@@ -183,3 +183,41 @@ class TestEnsureSecretFileDispatch:
         # Should not raise InvalidToken
         plaintext = f.decrypt(raw).decode()
         assert plaintext == password
+
+
+class TestAdminPasswordHandedToAdminUi:
+    """admin-ui (uid 1000, USER node) must be able to read the 0o400 admin_password.
+
+    The seed-job runs as root, so the file used to be root:root 0o400 and admin-ui got EACCES
+    (every BFF call that needs the service session answered 500). The file keeps its 0o400 mode and
+    is chowned to the admin-ui uid instead of being made world-readable.
+    """
+
+    def test_file_is_chowned_to_admin_ui_uid_and_stays_0o400(
+        self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import main as m
+
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
+        chowned: list[tuple[str, int, int]] = []
+        monkeypatch.setattr(m.os, "chown", lambda p, uid, gid: chowned.append((str(p), uid, gid)))
+
+        m._ensure_admin_password_file(tmp_path, "handoff_test_password")
+
+        pw_file = tmp_path / "admin_password"
+        assert chowned == [(str(pw_file), m.ADMIN_UI_UID, -1)]
+        assert pw_file.stat().st_mode & 0o777 == 0o400
+
+    def test_chown_failure_is_not_fatal(
+        self, tmp_path: Path, kek_str: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import main as m
+
+        monkeypatch.setenv("MINTKEY_BOOTSTRAP_KEK", kek_str)
+
+        def _deny(*_a: object) -> None:
+            raise PermissionError("not root")
+
+        monkeypatch.setattr(m.os, "chown", _deny)
+        m._ensure_admin_password_file(tmp_path, "handoff_test_password")  # must not raise
+        assert (tmp_path / "admin_password").exists()
