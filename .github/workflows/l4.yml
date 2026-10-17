@@ -57,8 +57,21 @@ jobs:
           fi
           git checkout --quiet --detach "origin/$L4_BASE_BRANCH"
           echo "l4: base checkout $(git rev-parse HEAD)"
+      - name: set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.work"
+          cache: false
+      - name: set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: "11"
       - id: l4
-        uses: ciprianiacobescu/l4/.github/actions/l4@30b34edf7cbc012a6490f11d6e74a2bd4ea077ce # v0.4.9
+        uses: ciprianiacobescu/l4/.github/actions/l4@07769f33b282b87c5af514fbc7bcd085b64514a8 # v0.4.13
         with:
           self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
       - name: doctor
