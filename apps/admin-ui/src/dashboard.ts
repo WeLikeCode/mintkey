@@ -7,6 +7,7 @@
  * Source: ADMIN_UI_SPEC.md §2.1; T-1.1.4; ADR-0013; ADR-0014.5.
  */
 
+import type { ActionRequest, PageContext } from "adminjs";
 import { resolveMcpPublicUrl, resolveProxyPublicUrl } from "./lib/public-urls.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
@@ -47,13 +48,19 @@ export interface DashboardData {
  * falls back to the legacy AdminJS session shape for backward compatibility.
  */
 export async function dashboardHandler(
-  _request: unknown,
+  _request: ActionRequest,
   _response: unknown,
-  context: { currentAdmin: { tenantId?: string; email?: string; authMethod?: "keycloak" | "internal" } }
+  context: PageContext
 ): Promise<DashboardData> {
-  const tenantId = context.currentAdmin?.tenantId ?? "";
-  const email = context.currentAdmin?.email ?? "";
-  const authMethod = context.currentAdmin?.authMethod;
+  // CurrentAdmin carries the session fields through an index signature, so
+  // each one is narrowed here rather than cast.
+  const admin = context.currentAdmin;
+  const tenantId = typeof admin?.tenantId === "string" ? admin.tenantId : "";
+  const email = typeof admin?.email === "string" ? admin.email : "";
+  const authMethod =
+    admin?.authMethod === "keycloak" || admin?.authMethod === "internal"
+      ? admin.authMethod
+      : undefined;
 
   const empty: DashboardData = {
     email,

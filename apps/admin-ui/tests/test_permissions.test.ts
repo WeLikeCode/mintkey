@@ -3,7 +3,7 @@
  *
  * Tests verify:
  * - PermissionsResource has correct new action
- * - New action POSTs to /v1/tenants/{tid}/permissions (NOT agent-nested path)
+ * - New action POSTs to the agent-nested /v1/tenants/{tid}/agents/{aid}/permissions (tenant-wide POST does not exist)
  * - Constraints validation: valid JSON accepted, invalid JSON rejected
  * - edit action is not visible
  *
@@ -95,7 +95,7 @@ describe("PermissionsResource — new action handler", () => {
     vi.clearAllMocks();
   });
 
-  it("POSTs to /v1/tenants/{tid}/permissions with agent_id, service_id, action, constraints", async () => {
+  it("POSTs to /v1/tenants/{tid}/agents/{aid}/permissions with service_id, service_id, action, constraints", async () => {
     let capturedUrl = "";
     let capturedBody = {};
     mockFetch.mockImplementation(async (url: string, opts: { body: string }) => {
@@ -123,8 +123,9 @@ describe("PermissionsResource — new action handler", () => {
       }
     );
 
-    expect(capturedUrl).toContain("/v1/tenants/tenant_abc/permissions");
-    expect((capturedBody as Record<string, unknown>).agent_id).toBe("agent_abc");
+    expect(capturedUrl).toContain("/v1/tenants/tenant_abc/agents/agent_abc/permissions");
+    // agent_id lives in the path, not the body
+    expect((capturedBody as Record<string, unknown>).agent_id).toBeUndefined();
     expect((capturedBody as Record<string, unknown>).service_id).toBe("svc_xyz");
     expect((capturedBody as Record<string, unknown>).constraints).toEqual({ max_calls_per_day: 100 });
   });

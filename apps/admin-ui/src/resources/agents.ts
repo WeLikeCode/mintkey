@@ -10,9 +10,10 @@
  * Source: T-1.4.3; T-1.9.4; Req 5; ADR-0013; ADR-0014.5.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -55,7 +56,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
     showProperties: ["_grants_warning", "id", "name", "description", "status", "api_key_fingerprint", "api_key_expires_at", "api_key_version", "api_key_last_rotated_at", "mcp_endpoint", "rate_limit_rps", "created_at", "updated_at"],
     editProperties: ["name", "description", "mcp_endpoint", "rate_limit_rps"],
     filterProperties: ["q", "has_access_to_service_id", "name", "status"],
-    properties: {
+    properties: propertyOptions({
       _grants_warning: {
         isVisible: { show: true, list: false, edit: false, new: false, filter: false },
         components: { show: Components.AgentGrantsWarningPanel },
@@ -107,8 +108,8 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
         label: "Has access to service (ID)",
         description: "Filter agents that have a permission grant for this service. Paste a UUID or svc_… wire ID.",
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         component: Components.AgentsIntro,
       },
@@ -121,7 +122,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -174,7 +175,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
@@ -226,7 +227,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
@@ -298,7 +299,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const agentId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -345,6 +346,6 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
           };
         },
       },
-    },
+    }),
   },
 };

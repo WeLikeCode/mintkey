@@ -149,8 +149,8 @@ async function main() {
     },
     pages: {
       "budget-consumers": {
+        // AdminJS 7 takes the sidebar title from the page key / locale; AdminPage has no label option.
         component: Components.BudgetConsumersPage,
-        label: "Budget Consumers",
         icon: "Activity",
       },
     },

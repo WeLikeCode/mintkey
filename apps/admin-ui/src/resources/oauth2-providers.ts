@@ -15,9 +15,10 @@
  * Sources: feat/oauth2-providers-per-tenant-vault §Layer 5; ADR-0024.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 
 const OAUTH2_PROVIDERS = [
@@ -60,7 +61,7 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
     // ever renders these fields.
     editProperties: ["provider", "client_id", "client_secret"],
     filterProperties: [],
-    properties: {
+    properties: propertyOptions({
       provider: {
         availableValues: OAUTH2_PROVIDERS,
         label: "Provider",
@@ -90,8 +91,8 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
         isVisible: { show: false, list: false, edit: false, new: true, filter: false },
         type: "password",
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       show: {
         isVisible: true,
         handler: async (_request, _response, context) => ({
@@ -113,7 +114,7 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const provider = (request.payload as Record<string, string>)?.["provider"] ?? "";
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -176,7 +177,7 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const provider = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -210,6 +211,6 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
           };
         },
       },
-    },
+    }),
   },
 };

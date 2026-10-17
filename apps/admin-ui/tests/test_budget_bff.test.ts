@@ -147,8 +147,10 @@ describe("GET /admin/api/budget/:permId — BFF proxy", () => {
     const budgetCall = fetchCalls.find((c) => c.url.includes("/budget"));
     expect(budgetCall).toBeDefined();
     expect(budgetCall!.url).toContain(
-      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}/budget`
+      `/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}/budget`
     );
+    // Single hop since 9be8f9b: no agent_id lookup before the budget call
+    expect(fetchCalls).toHaveLength(1);
   });
 
   it("extracts tenant_id from session, not from URL params", async () => {
@@ -251,26 +253,22 @@ describe("GET /admin/api/budget/:permId — BFF proxy", () => {
     expect(res.body).toEqual(errorBody);
   });
 
-  it("returns 502 when permission lookup fails (cannot resolve agent_id)", async () => {
+  it("does not look up the permission record first (single upstream hop)", async () => {
+    const fetchCalls: string[] = [];
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
-      const urlStr = url.toString();
-
-      // Permission lookup fails
-      if (urlStr.includes(`/permissions/${TEST_PERM_ID}`) && !urlStr.includes("/budget")) {
-        return new Response(JSON.stringify({ title: "Not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response("Not Found", { status: 404 });
+      fetchCalls.push(url.toString());
+      return new Response(JSON.stringify(BUDGET_STATUS_RESPONSE), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }) as unknown as typeof globalThis.fetch;
 
     const app = createApp();
     const res = await request(app).get(`/admin/api/budget/${TEST_PERM_ID}`);
 
-    // Should return an error since it can't resolve agent_id
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(200);
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0]).toMatch(/\/permissions\/[^/]+\/budget$/);
   });
 
   it("returns 502 when upstream fetch throws a network error", async () => {
@@ -337,7 +335,9 @@ describe("POST /admin/api/budget/:permId/edit — BFF proxy", () => {
     // Verify signedFetch was called with the correct PATCH endpoint + body
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}`);
+    expect(url).toContain(
+      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}`
+    );
     expect(opts.method).toBe("PATCH");
     expect(opts.body).toEqual({
       constraints: { budget: { ceiling: 200, period: "weekly", alert_thresholds: [50, 90] } },
@@ -449,7 +449,9 @@ describe("POST /admin/api/budget/:permId/remove — BFF proxy", () => {
     // Verify signedFetch was called with budget: null
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}`);
+    expect(url).toContain(
+      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}`
+    );
     expect(opts.method).toBe("PATCH");
     expect(opts.body).toEqual({ constraints: { budget: null } });
   });
@@ -555,7 +557,9 @@ describe("POST /admin/api/budget/:permId/reset — BFF proxy", () => {
     // Verify signedFetch was called with POST to the budget reset endpoint
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}/budget/reset`);
+    expect(url).toContain(
+      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}/budget/reset`
+    );
     expect(opts.method).toBe("POST");
   });
 

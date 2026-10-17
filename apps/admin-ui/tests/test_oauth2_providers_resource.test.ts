@@ -5,7 +5,7 @@
  *   - Resource key is "oauth2_providers".
  *   - listProperties includes provider, client_id_last4, configured_at.
  *   - showProperties includes provider, client_id_last4, configured_at.
- *   - newProperties includes provider, client_id, client_secret.
+ *   - editProperties (drives the new form) includes provider, client_id, client_secret.
  *   - client_secret has type=password and is NOT in show/list.
  *   - client_id is NOT in show/list.
  *   - edit action is not accessible (credentials replaced via new).
@@ -38,8 +38,9 @@ describe("OAuth2ProvidersResource — feat/oauth2-providers-per-tenant-vault", (
     expect(showProps).toContain("configured_at");
   });
 
-  it("newProperties includes provider, client_id, client_secret", () => {
-    const newProps = (OAuth2ProvidersResource.options as Record<string, unknown>)?.["newProperties"] as string[] ?? [];
+  // AdminJS has no newProperties key (198caa5); editProperties drives the new form.
+  it("editProperties (used by the new form) includes provider, client_id, client_secret", () => {
+    const newProps = OAuth2ProvidersResource.options?.editProperties ?? [];
     expect(newProps).toContain("provider");
     expect(newProps).toContain("client_id");
     expect(newProps).toContain("client_secret");
