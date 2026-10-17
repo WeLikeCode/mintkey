@@ -26,22 +26,24 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "latest"
+      # --locked: lint with the tool versions uv.lock pins; a lock that no longer satisfies pyproject.toml fails here
+      # instead of being re-resolved to the newest release (a newer ruff brings new rules).
       - name: Lint admin-api
         working-directory: apps/admin-api
         run: |
-          uv sync
+          uv sync --locked
           uv run ruff check src/
           uv run mypy --strict src/admin_api/
       - name: Lint mintkey-models
         working-directory: packages/python/mintkey-models
         run: |
-          uv sync
+          uv sync --locked
           uv run ruff check mintkey_models/
           uv run mypy --strict mintkey_models/
       - name: Lint mcp-server
         working-directory: apps/mcp-server
         run: |
-          uv sync
+          uv sync --locked
           uv run ruff check src/
 
   lint-go:
