@@ -101,8 +101,8 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
       dotenv:
-        specifier: 16.4.5
-        version: 16.4.5
+        specifier: 17.4.2
+        version: 17.4.2
       fast-check:
         specifier: ^3.22.0
         version: 3.22.0
@@ -1958,8 +1958,8 @@ packages:
   dom-helpers@5.2.1:
     resolution: {integrity: sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==}
 
-  dotenv@16.4.5:
-    resolution: {integrity: sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg==}
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
   dunder-proto@1.0.1:
@@ -5373,7 +5373,7 @@ snapshots:
       '@babel/runtime': 7.29.7
       csstype: 3.2.3
 
-  dotenv@16.4.5: {}
+  dotenv@17.4.2: {}
 
   dunder-proto@1.0.1:
     dependencies:
