@@ -1,0 +1,83 @@
+# L4 harness settings for Mintkey (docs: the harness's docs/SPEC.md section 3.2, docs/quickstart.md).
+# The harness is not in this repository: the workflow's setup action (`uses: ciprianiacobescu/l4/.github/actions/l4@<sha>`,
+# a public repository, so no key) brings the pinned release. Move the pin with `l4 upgrade --harness-ref vX.Y.Z`.
+version: 1
+harness:
+  delivery: action
+spec:
+  # OpenSpec only for now. `kiro` waits for a harness that accepts the finished legacy specs of .kiro/specs: with it,
+  # L4 0.4.10 fails doctor row SPEC-002 (an error, so every L4 job stops) on done tasks without `_Requirements:_` lines,
+  # whole-requirement refs (`_Requirements: 1_`), `## Requirement N` headings and a mermaid Task Dependency Graph.
+  frameworks:
+  - openspec
+gates:
+  # the Python jobs of .github/workflows/ci.yml: "Lint Python", "Python Unit Tests", "Acceptance Tests" (three uv
+  # projects). The Go, contract, Docker-stack and browser jobs stay with the repository's own CI: the L4 job has no Go
+  # toolchain and its sandbox no Docker daemon.
+  setup:
+  - uv sync --frozen --directory apps/admin-api
+  - uv sync --frozen --directory packages/python/mintkey-models
+  - uv sync --frozen --directory apps/mcp-server
+  lint:
+  - uv run --frozen --directory apps/admin-api ruff check src/
+  - uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/
+  - uv run --frozen --directory apps/mcp-server ruff check src/
+  typecheck:
+  - uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/
+  - uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/
+  test:
+    command: sh .l4/gates/test.sh   # what it runs, and what it leaves out, is written in the script
+    reports:
+    - .l4-out/junit-admin-api.xml
+    - .l4-out/junit-mintkey-models.xml
+    - .l4-out/junit-mcp-server.xml
+profiles:
+  deepseek:                 # OpenCode Go, the key in OPENCODE_API_KEY
+    adapter: opencode
+    model: opencode-go/deepseek-v4.1-flash
+    vendor: deepseek
+    auth: api_key
+  glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
+    adapter: opencode
+    model: opencode-go/glm-5.3-flash
+    vendor: zhipu
+    auth: api_key
+  jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
+    backend: system-one
+    engine: jev
+    base_url: https://api.typesafe.ai
+    api_key_env: TYPESAFE_API_KEY
+    model: jev-1.13.0       # pinned: thresholds are tuned to a version
+    vendor: typesafe
+  claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
+    adapter: claude-code
+    auth: subscription
+    vendor: anthropic
+roles:
+  implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
+  - deepseek
+  - glm
+  judges:
+  - claude-judge
+  s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
+  - jev
+forge:
+  type: github
+  token_env: GITHUB_TOKEN
+  base_branch: staging      # every unit is cut from staging and merged into it; a person promotes staging to main
+  merge_policy: auto        # only units of an active `merge: auto` delivery plan are merged by L4; other PRs a person merges
+ci:
+  platform: github
+  runner_tags: []
+  self_provision: true
+  continuation: dispatch
+  time_budget: 21m
+  soft_deadline_margin: 20m
+  upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
+yolo:
+  review:
+    accept_by_agents: true  # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
+  hold:                     # every spec, existing and new, is opt-in by plan: nothing runs until a plan lists it
+  - "*"
+clarifier:
+  answer_by_agents: true    # the owner lets the planning agent answer questions with `l4 questions`; each answer is a commit on the unit branch
