@@ -85,9 +85,12 @@ describe("TestServiceForm SSH panel — source assertions", () => {
     const panelSrc = src.slice(panelStart, panelEnd);
 
     expect(panelSrc).toContain("ssh-command-preview");
-    // The command block must NOT reference any credential field
+    // The command block must NOT reference any credential field. The planned-connection text names the vault as
+    // the source of the user and key/password in prose (commit 8b9a113 replaced a made-up "<user>" with it), so the
+    // check is on fields read or interpolated, not on the word.
     expect(panelSrc).not.toContain("private_key_pem");
-    expect(panelSrc).not.toContain("password");
+    expect(panelSrc).not.toMatch(/\.password\b|\[["']password["']\]|\bpassword\s*[:=]|\$\{[^}]*password[^}]*\}/);
+    expect(panelSrc).toContain("from vault credential");
   });
 
   it("SSHTestPanel is rendered from TestServiceForm when auth_scheme is SSH", () => {

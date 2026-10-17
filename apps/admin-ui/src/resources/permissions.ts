@@ -7,9 +7,9 @@
  * Source: T-1.4.3; Req 6; ADR-0013; ADR-0014.5.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -64,7 +64,7 @@ const _permissionsResource = new RestResource({
   recordTransform: normalisePermissionRecord,
 });
 
-export const PermissionsResource: ResourceWithOptions & { adminResource: typeof _permissionsResource } = {
+export const PermissionsResource: LabeledResource<typeof _permissionsResource> = {
   resource: _permissionsResource.resource,
   adminResource: _permissionsResource,
   options: {
@@ -140,7 +140,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
             request.payload = { ...(request.payload ?? {}), action: "call" };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           let constraints: Record<string, unknown> = {};
@@ -220,7 +220,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: true,
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const permissionId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 

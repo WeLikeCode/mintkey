@@ -41,6 +41,7 @@ import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
 import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 import { budgetConsumersHandler } from "./routes/budget-consumers.js";
 import { AgentSecretsResource } from "./resources/agent-secrets.js";
+import { withLabelTranslations } from "./lib/labels.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
@@ -148,26 +149,27 @@ async function main() {
       handler: dashboardHandler,
     },
     pages: {
+      // the sidebar shows startCase(name), "Budget Consumers" (AdminJS pages take no label option)
       "budget-consumers": {
         component: Components.BudgetConsumersPage,
-        label: "Budget Consumers",
         icon: "Activity",
       },
     },
     // Nav order: Dashboard → Services → Email Services → Agents → Permissions → API Keys → Audit → Tenants
+    // withLabelTranslations: each resource's `label`s go into options.translations, which AdminJS reads
     resources: [
-      { resource: ServicesResource.adminResource, options: ServicesResource.options },
-      { resource: EmailServicesResource.adminResource, options: EmailServicesResource.options },
-      { resource: OAuth2ProvidersResource.adminResource, options: OAuth2ProvidersResource.options },
-      { resource: EmailPermissionGrantsResource.adminResource, options: EmailPermissionGrantsResource.options },
-      { resource: AgentsResource.adminResource, options: AgentsResource.options },
-      { resource: AgentSecretsResource.adminResource, options: AgentSecretsResource.options },
-      { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
-      { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
-      { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
-      { resource: AuditResource.adminResource, options: AuditResource.options },
-      { resource: TenantsResource.adminResource, options: TenantsResource.options },
-      { resource: OperatorsResource.adminResource, options: OperatorsResource.options },
+      { resource: ServicesResource.adminResource, options: withLabelTranslations(ServicesResource.options) },
+      { resource: EmailServicesResource.adminResource, options: withLabelTranslations(EmailServicesResource.options) },
+      { resource: OAuth2ProvidersResource.adminResource, options: withLabelTranslations(OAuth2ProvidersResource.options) },
+      { resource: EmailPermissionGrantsResource.adminResource, options: withLabelTranslations(EmailPermissionGrantsResource.options) },
+      { resource: AgentsResource.adminResource, options: withLabelTranslations(AgentsResource.options) },
+      { resource: AgentSecretsResource.adminResource, options: withLabelTranslations(AgentSecretsResource.options) },
+      { resource: PermissionsResource.adminResource, options: withLabelTranslations(PermissionsResource.options) },
+      { resource: ApiKeysResource.adminResource, options: withLabelTranslations(ApiKeysResource.options) },
+      { resource: CredentialsResource.adminResource, options: withLabelTranslations(CredentialsResource.options) },
+      { resource: AuditResource.adminResource, options: withLabelTranslations(AuditResource.options) },
+      { resource: TenantsResource.adminResource, options: withLabelTranslations(TenantsResource.options) },
+      { resource: OperatorsResource.adminResource, options: withLabelTranslations(OperatorsResource.options) },
     ],
     rootPath: "/admin",
     branding: {

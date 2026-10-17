@@ -143,11 +143,11 @@ describe("GET /admin/api/budget/:permId — BFF proxy", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual(BUDGET_STATUS_RESPONSE);
 
-    // Verify the budget URL was constructed correctly using session tenant_id
-    const budgetCall = fetchCalls.find((c) => c.url.includes("/budget"));
-    expect(budgetCall).toBeDefined();
-    expect(budgetCall!.url).toContain(
-      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}/budget`
+    // One upstream call, to the tenant-scoped budget endpoint, with the session tenant_id: the GET makes no
+    // permission lookup (admin-api serves GET /v1/tenants/{tid}/permissions/{pid}/budget, commit 9be8f9b)
+    expect(fetchCalls).toHaveLength(1);
+    expect(new URL(fetchCalls[0].url).pathname).toBe(
+      `/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}/budget`
     );
   });
 
@@ -251,26 +251,19 @@ describe("GET /admin/api/budget/:permId — BFF proxy", () => {
     expect(res.body).toEqual(errorBody);
   });
 
-  it("returns 502 when permission lookup fails (cannot resolve agent_id)", async () => {
-    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
-      const urlStr = url.toString();
-
-      // Permission lookup fails
-      if (urlStr.includes(`/permissions/${TEST_PERM_ID}`) && !urlStr.includes("/budget")) {
-        return new Response(JSON.stringify({ title: "Not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      return new Response("Not Found", { status: 404 });
+  it("forwards an upstream error that is not JSON with its own content type", async () => {
+    // An unknown permission (or a proxy in front of admin-api) answers a plain-text 404: the BFF forwards it as
+    // it came, and does not label it application/json for the browser to fail parsing.
+    globalThis.fetch = vi.fn(async () => {
+      return new Response("Not Found", { status: 404, headers: { "Content-Type": "text/plain" } });
     }) as unknown as typeof globalThis.fetch;
 
     const app = createApp();
     const res = await request(app).get(`/admin/api/budget/${TEST_PERM_ID}`);
 
-    // Should return an error since it can't resolve agent_id
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toMatch(/^text\/plain/);
+    expect(res.text).toBe("Not Found");
   });
 
   it("returns 502 when upstream fetch throws a network error", async () => {
@@ -337,7 +330,7 @@ describe("POST /admin/api/budget/:permId/edit — BFF proxy", () => {
     // Verify signedFetch was called with the correct PATCH endpoint + body
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}`);
+    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}`);
     expect(opts.method).toBe("PATCH");
     expect(opts.body).toEqual({
       constraints: { budget: { ceiling: 200, period: "weekly", alert_thresholds: [50, 90] } },
@@ -449,7 +442,7 @@ describe("POST /admin/api/budget/:permId/remove — BFF proxy", () => {
     // Verify signedFetch was called with budget: null
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}`);
+    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}`);
     expect(opts.method).toBe("PATCH");
     expect(opts.body).toEqual({ constraints: { budget: null } });
   });
@@ -555,7 +548,9 @@ describe("POST /admin/api/budget/:permId/reset — BFF proxy", () => {
     // Verify signedFetch was called with POST to the budget reset endpoint
     expect(mockedSignedFetch).toHaveBeenCalledOnce();
     const [url, opts] = mockedSignedFetch.mock.calls[0];
-    expect(url).toContain(`/v1/tenants/${TEST_TENANT_ID}/permissions/${TEST_PERM_ID}/budget/reset`);
+    expect(url).toContain(
+      `/v1/tenants/${TEST_TENANT_ID}/agents/${TEST_AGENT_ID}/permissions/${TEST_PERM_ID}/budget/reset`
+    );
     expect(opts.method).toBe("POST");
   });
 

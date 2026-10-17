@@ -16,9 +16,9 @@
  * Source: C-10; email-proxy contracts.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -65,9 +65,7 @@ const _emailServicesResource = new RestResource({
   ],
 });
 
-export const EmailServicesResource: ResourceWithOptions & {
-  adminResource: typeof _emailServicesResource;
-} = {
+export const EmailServicesResource: LabeledResource<typeof _emailServicesResource> = {
   resource: _emailServicesResource.resource,
   adminResource: _emailServicesResource,
   options: {
@@ -158,7 +156,6 @@ export const EmailServicesResource: ResourceWithOptions & {
           show: true,
           list: false,
           edit: false,
-          new: false,
           filter: false,
         },
         label: "OAuth2 Authorization",
@@ -197,7 +194,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -250,7 +247,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -294,7 +291,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -332,7 +329,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -379,7 +376,7 @@ export const EmailServicesResource: ResourceWithOptions & {
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );

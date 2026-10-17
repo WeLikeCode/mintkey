@@ -21,7 +21,7 @@
  * Source: T-1.7.4; Req 8 AC1–AC5; ADR-0013; ADR-0014.7; OpenAPI AuditEvent.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { Components } from "../components/index.js";
 
@@ -54,7 +54,7 @@ const _auditResource = new RestResource({
   ],
 });
 
-export const AuditResource: ResourceWithOptions & { adminResource: typeof _auditResource } = {
+export const AuditResource: LabeledResource<typeof _auditResource> = {
   resource: _auditResource.resource,
   adminResource: _auditResource,
   options: {

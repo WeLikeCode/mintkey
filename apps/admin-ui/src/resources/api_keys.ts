@@ -12,9 +12,9 @@
  * Source: long-lived-api-keys tasks 9.1–9.3; Req 9.1–9.4; ADR-0013; ADR-0014.5; ADR-0018.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -41,7 +41,7 @@ const _apiKeysResource = new RestResource({
   ],
 });
 
-export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _apiKeysResource } = {
+export const ApiKeysResource: LabeledResource<typeof _apiKeysResource> = {
   resource: _apiKeysResource.resource,
   adminResource: _apiKeysResource,
   options: {
@@ -90,7 +90,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const agentId = request.payload?.agent_id as string | undefined;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -152,7 +152,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
@@ -193,7 +193,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);

@@ -15,9 +15,9 @@
  * Sources: feat/oauth2-providers-per-tenant-vault §Layer 5; ADR-0024.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 
 const OAUTH2_PROVIDERS = [
@@ -42,22 +42,20 @@ const _oauth2ProvidersResource = new RestResource({
   ],
 });
 
-export const OAuth2ProvidersResource: ResourceWithOptions & {
-  adminResource: typeof _oauth2ProvidersResource;
-} = {
+export const OAuth2ProvidersResource: LabeledResource<typeof _oauth2ProvidersResource> = {
   resource: _oauth2ProvidersResource.resource,
   adminResource: _oauth2ProvidersResource,
   options: {
     navigation: { name: "Email", icon: "Mail" },
     listProperties: ["provider", "client_id_last4", "configured_at"],
     showProperties: ["provider", "client_id_last4", "configured_at"],
-    // client_id + client_secret are new-only (NEVER in show/list)
-    // AdminJS uses editProperties for BOTH new AND edit forms; per-property
-    // isVisible.{new,edit} below scope each field to the right action.
-    // (newProperties is not a recognized AdminJS key, so the previous form
-    // rendered with no client_id/client_secret inputs.) The edit ACTION
-    // itself is disabled in the actions block below — only the `new` form
-    // ever renders these fields.
+    // client_id + client_secret are new-only (NEVER in show/list).
+    // AdminJS renders editProperties on BOTH the new and the edit form, in
+    // this order, whatever a property's isVisible says (isVisible has no
+    // `new` key: it is show/list/edit/filter). The edit ACTION itself is
+    // disabled in the actions block below, so only the `new` form ever
+    // renders these fields. (newProperties is not a recognized AdminJS key,
+    // so the earlier form rendered with no client_id/client_secret inputs.)
     editProperties: ["provider", "client_id", "client_secret"],
     filterProperties: [],
     properties: {
@@ -69,25 +67,25 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
       client_id_last4: {
         label: "Client ID (last 4)",
         description: "Last 4 characters of the configured OAuth2 client ID.",
-        isVisible: { show: true, list: true, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: true, edit: false, filter: false },
       },
       configured_at: {
         label: "Configured At",
         description: "When this provider was last configured.",
-        isVisible: { show: true, list: true, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: true, edit: false, filter: false },
       },
       client_id: {
         label: "Client ID",
         description:
           "Your OAuth2 client ID from the Google Cloud Console or Azure portal. " +
           "This is public information and stored in cleartext.",
-        isVisible: { show: false, list: false, edit: false, new: true, filter: false },
+        isVisible: { show: false, list: false, edit: false, filter: false },
       },
       client_secret: {
         label: "Client Secret",
         description:
           "Your OAuth2 client secret. Stored encrypted in vault. NEVER shown after saving.",
-        isVisible: { show: false, list: false, edit: false, new: true, filter: false },
+        isVisible: { show: false, list: false, edit: false, filter: false },
         type: "password",
       },
     },
@@ -113,7 +111,7 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const provider = (request.payload as Record<string, string>)?.["provider"] ?? "";
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -176,7 +174,7 @@ export const OAuth2ProvidersResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const provider = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>

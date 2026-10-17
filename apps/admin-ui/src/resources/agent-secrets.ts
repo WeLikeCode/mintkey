@@ -12,9 +12,9 @@
  * Source: Chunk C6; D10; D11; D13; ADR-0013; ADR-0014.4; ADR-0019.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -41,7 +41,7 @@ const _agentSecretsResource = new RestResource({
   ],
 });
 
-export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof _agentSecretsResource } = {
+export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource> = {
   resource: _agentSecretsResource.resource,
   adminResource: _agentSecretsResource,
   options: {
@@ -53,7 +53,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
       agent_id: {
         label: "Agent ID",
         description: "The agent this secret belongs to.",
-        isVisible: { list: true, show: true, edit: false, new: false, filter: true },
+        isVisible: { list: true, show: true, edit: false, filter: true },
       },
       name: {
         label: "Name",
@@ -76,7 +76,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
         description: "Operator who created this secret.",
       },
       _agent_id_filter: {
-        isVisible: { list: false, show: false, edit: false, new: false, filter: true },
+        isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Filter by Agent ID",
       },
     },
@@ -92,7 +92,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const payload = request.payload as {
@@ -150,7 +150,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -204,7 +204,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -244,7 +244,7 @@ export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof
         component: Components.AgentSecretGrantsPanel,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const adminApiUrl = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);

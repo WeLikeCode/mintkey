@@ -10,9 +10,9 @@
  * Source: T-1.4.3; T-1.9.4; Req 5; ADR-0013; ADR-0014.5.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -45,7 +45,7 @@ const _agentsResource = new RestResource({
   ],
 });
 
-export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agentsResource } = {
+export const AgentsResource: LabeledResource<typeof _agentsResource> = {
   resource: _agentsResource.resource,
   adminResource: _agentsResource,
   options: {
@@ -57,7 +57,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
     filterProperties: ["q", "has_access_to_service_id", "name", "status"],
     properties: {
       _grants_warning: {
-        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: false, edit: false, filter: false },
         components: { show: Components.AgentGrantsWarningPanel },
       },
       grants_count: {
@@ -121,7 +121,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -174,7 +174,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
@@ -226,7 +226,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           // Pass the wire-form ID as-is — admin-api _wire_id_to_uuid handles both
           // Crockford (canonical post-#13) and legacy 32-hex forms.
           const agentId = request.params.recordId ?? "";
@@ -298,7 +298,7 @@ export const AgentsResource: ResourceWithOptions & { adminResource: typeof _agen
             return { record: await recordJSON(context) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const agentId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 

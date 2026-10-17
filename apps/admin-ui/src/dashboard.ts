@@ -7,6 +7,7 @@
  * Source: ADMIN_UI_SPEC.md §2.1; T-1.1.4; ADR-0013; ADR-0014.5.
  */
 
+import type { CurrentAdmin } from "adminjs";
 import { resolveMcpPublicUrl, resolveProxyPublicUrl } from "./lib/public-urls.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
@@ -49,11 +50,14 @@ export interface DashboardData {
 export async function dashboardHandler(
   _request: unknown,
   _response: unknown,
-  context: { currentAdmin: { tenantId?: string; email?: string; authMethod?: "keycloak" | "internal" } }
+  context: { currentAdmin?: CurrentAdmin }
 ): Promise<DashboardData> {
-  const tenantId = context.currentAdmin?.tenantId ?? "";
-  const email = context.currentAdmin?.email ?? "";
-  const authMethod = context.currentAdmin?.authMethod;
+  // auth.ts puts these into the session; AdminJS types the rest of CurrentAdmin as any, so they are narrowed here
+  const admin = context.currentAdmin;
+  const tenantId = typeof admin?.tenantId === "string" ? admin.tenantId : "";
+  const email = typeof admin?.email === "string" ? admin.email : "";
+  const method: unknown = admin?.authMethod;
+  const authMethod = method === "keycloak" || method === "internal" ? method : undefined;
 
   const empty: DashboardData = {
     email,
