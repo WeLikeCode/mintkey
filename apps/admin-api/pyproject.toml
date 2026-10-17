@@ -7,21 +7,21 @@ name = "admin-api"
 version = "0.1.0-preview.1"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[standard]>=0.136.3",
+    "fastapi[standard]>=0.143.1",
     "sqlalchemy[asyncio]>=2.0.50",
-    "asyncpg>=0.31.0",
-    "opentelemetry-sdk>=1.29",
+    "asyncpg>=0.32.0",
+    "opentelemetry-sdk>=1.45.1",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "argon2-cffi>=25.1.0",
-    "authlib>=1.3",
-    "structlog>=25.5.0",
+    "authlib>=1.9.0",
+    "structlog>=26.1.0",
     "httpx>=0.27",
     "psycopg2-binary>=2.9.12",
-    "grpcio>=1.80",
+    "grpcio>=1.84.0",
     "protobuf>=6.31",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
-    "prometheus-client>=0.20",
-    "asyncssh>=2.23.1",
+    "prometheus-client>=0.26.0",
+    "asyncssh>=2.24.1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -29,16 +29,16 @@ packages = ["src/admin_api"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.9",
-    "mypy>=2.1.0",
-    "testcontainers[postgres]>=4.14.2",
+    "mypy>=2.4.0",
+    "testcontainers[postgres]>=4.15.0",
     "grpc-stubs>=1.53.0.6",
-    "types-protobuf>=6.31",
-    "types-authlib>=1.3",
+    "types-protobuf>=7.35.1.20260906",
+    "types-authlib>=1.8.0.20260911",
     "types-PyYAML>=6.0",
-    "hypothesis>=6.155.7",
+    "hypothesis>=6.169.1",
 ]
 
 [tool.uv]
