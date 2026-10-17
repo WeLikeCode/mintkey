@@ -46,7 +46,7 @@ async function lookupPermission(
  * 3. Proxy to GET /v1/tenants/{tid}/agents/{aid}/permissions/{pid}/budget
  * 4. Forward response status + body unchanged
  */
-export async function budgetGetHandler(req: Request, res: Response): Promise<void> {
+export async function budgetGetHandler(req: Request<{ permId: string }>, res: Response): Promise<void> {
   const { permId } = req.params;
   const adminUser = req.session?.adminUser as
     | { tenantId: string; sessionToken: string; csrfToken: string }
@@ -81,7 +81,7 @@ export async function budgetGetHandler(req: Request, res: Response): Promise<voi
  * 3. Call apiWrite(PATCH /v1/tenants/{tid}/permissions/{pid}, { constraints: { budget: {...} } })
  * 4. Forward response status + body unchanged
  */
-export async function budgetEditHandler(req: Request, res: Response): Promise<void> {
+export async function budgetEditHandler(req: Request<{ permId: string }>, res: Response): Promise<void> {
   const { permId } = req.params;
   const adminUser = req.session?.adminUser as
     | { tenantId: string; operatorId: string; sessionToken: string; csrfToken: string }
@@ -134,7 +134,7 @@ export async function budgetEditHandler(req: Request, res: Response): Promise<vo
  * 3. Call apiWrite(PATCH /v1/tenants/{tid}/permissions/{pid}, { constraints: { budget: null } })
  * 4. Forward response status + body unchanged
  */
-export async function budgetRemoveHandler(req: Request, res: Response): Promise<void> {
+export async function budgetRemoveHandler(req: Request<{ permId: string }>, res: Response): Promise<void> {
   const { permId } = req.params;
   const adminUser = req.session?.adminUser as
     | { tenantId: string; operatorId: string; sessionToken: string; csrfToken: string }
@@ -181,7 +181,7 @@ export async function budgetRemoveHandler(req: Request, res: Response): Promise<
  * 3. Call apiWrite(POST /v1/tenants/{tid}/permissions/{pid}/budget/reset)
  * 4. Forward response status + body unchanged
  */
-export async function budgetResetHandler(req: Request, res: Response): Promise<void> {
+export async function budgetResetHandler(req: Request<{ permId: string }>, res: Response): Promise<void> {
   const { permId } = req.params;
   const adminUser = req.session?.adminUser as
     | { tenantId: string; operatorId: string; sessionToken: string; csrfToken: string }

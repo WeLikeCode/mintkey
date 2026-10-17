@@ -11,9 +11,10 @@
  * Source: feat/email-permission-grants.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -57,7 +58,7 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
     ],
     editProperties: ["agent_id", "email_service_id"],
     filterProperties: ["agent_id", "email_service_id"],
-    properties: {
+    properties: propertyOptions({
       // UX pickers: replace raw UUID text inputs with typeahead comboboxes
       // matching the HTTP Permission Grants flow (permissions.ts lines 83-90).
       agent_id: {
@@ -78,8 +79,8 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
           filter: Components.EmailServiceCombobox,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         isVisible: true,
       },
@@ -97,7 +98,7 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -153,7 +154,7 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
         isVisible: true,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const grantId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -177,6 +178,6 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
         },
       },
       edit: { isVisible: false },
-    },
+    }),
   },
 };

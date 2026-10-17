@@ -17,6 +17,7 @@
  * Source: operator-management OpenSpec change; ADR-0031; ADR-0019; ADR-0017.10.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
@@ -63,10 +64,9 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
     navigation: { name: "Operators", icon: "Users" },
     listProperties: ["id", "email", "display_name", "is_platform_admin", "status", "created_at"],
     showProperties: ["id", "email", "display_name", "tenant_id", "oidc_sub", "is_platform_admin", "status", "created_at"],
-    newProperties: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin"],
     editProperties: ["display_name", "is_platform_admin", "status"],
     filterProperties: ["q", "tenant_id", "status"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (email / name)",
@@ -93,14 +93,13 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
         ],
         description: "`active` operators can establish a session. `disabled` (soft-deactivated) operators cannot log in; deactivation never hard-deletes the row.",
       },
-    },
+    }),
 
     // Resource is visible only to PlatformAdmin (mirrors Tenants).
     // Non-PlatformAdmin sessions get an empty list and blocked writes.
-    actions: {
+    actions: actionOptions({
       list: {
-        isVisible: ({ currentAdmin }: { currentAdmin?: { isPlatformAdmin?: boolean } }) =>
-          currentAdmin?.isPlatformAdmin === true,
+        isVisible: ({ currentAdmin }) => currentAdmin?.isPlatformAdmin === true,
         before: [
           async (request, context) => {
             assertPlatformAdmin(context);
@@ -214,6 +213,6 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
           };
         },
       },
-    },
+    }),
   },
 };

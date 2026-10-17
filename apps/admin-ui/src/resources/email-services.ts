@@ -16,9 +16,10 @@
  * Source: C-10; email-proxy contracts.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -112,7 +113,7 @@ export const EmailServicesResource: ResourceWithOptions & {
       "updated_at",
     ],
     filterProperties: ["q", "provider", "auth_scheme"],
-    properties: {
+    properties: propertyOptions({
       provider: {
         availableValues: EMAIL_PROVIDERS,
       },
@@ -168,8 +169,8 @@ export const EmailServicesResource: ResourceWithOptions & {
           show: Components.EmailServiceOAuth2Setup,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       // Explicit show action — AdminJS 7.x will not auto-generate show when other
       // actions are declared. Without this the show page 404s with:
       // "Resource ... does not have an action with name: show or you are not authorized to use it!"
@@ -197,7 +198,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -250,7 +251,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -294,7 +295,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -332,7 +333,7 @@ export const EmailServicesResource: ResourceWithOptions & {
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -379,7 +380,7 @@ export const EmailServicesResource: ResourceWithOptions & {
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -442,6 +443,6 @@ export const EmailServicesResource: ResourceWithOptions & {
           };
         },
       },
-    },
+    }),
   },
 };

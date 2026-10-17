@@ -15,6 +15,7 @@
  * Source: T-1.12.4; Req 13 AC1, AC6; ADR-0016.3; UX-BL4.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
@@ -67,10 +68,9 @@ export const TenantsResource: ResourceWithOptions & { adminResource: typeof _ten
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],
     showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at", "_services_panel"],
-    newProperties: ["slug", "display_name", "isolation_mode"],
     editProperties: ["slug", "display_name", "isolation_mode"],
     filterProperties: ["q", "slug", "status"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (slug / name)",
@@ -98,14 +98,13 @@ Cannot be changed after tenant creation.`,
         label: "Services",
         components: { show: Components.TenantServicesPanel },
       },
-    },
+    }),
 
     // Resource is visible only to PlatformAdmin
     // Non-PlatformAdmin gets empty results (RLS enforces tenant scope)
-    actions: {
+    actions: actionOptions({
       list: {
-        isVisible: ({ currentAdmin }: { currentAdmin?: { isPlatformAdmin?: boolean } }) =>
-          currentAdmin?.isPlatformAdmin === true,
+        isVisible: ({ currentAdmin }) => currentAdmin?.isPlatformAdmin === true,
         component: Components.TenantsIntro,
         before: [
           async (request, context) => {
@@ -258,6 +257,6 @@ Cannot be changed after tenant creation.`,
           }
         },
       },
-    },
+    }),
   },
 };
