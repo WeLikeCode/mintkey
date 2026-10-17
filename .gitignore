@@ -39,3 +39,4 @@ apps/admin-ui/screenshots-*/
 # Claude Code internal session state — local only, not project content
 .claire/
 
+infra/compose/docker-compose.yml.bak-20260906-140158

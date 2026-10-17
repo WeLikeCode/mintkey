@@ -13,6 +13,13 @@ gcp-service-account
 # Owner decision recorded: 2026-05-16 (fix/ci-pipeline-remediation).
 # Updated: 2026-06-01 (fix/ssh-credential-flow PR #139) — new CVE-DB entries
 #   for Debian base image Perl/gnutls/sqlite/zlib/bzip2 packages.
+# Updated: 2026-07-17 (fix/trivy-high-gate-2026-07) — 2026-07 CVE-DB flip.
+#   Fixed by version bumps (NOT listed here): Go stdlib CVE-2026-39822 → builder
+#   bumped to Go 1.26.5 (all Go services); joserfc CVE-2026-49852 → uv lock bump
+#   to 1.7.3 (admin-api). Added below (dated section at end of file): new unfixed
+#   Debian-12 base CVEs on util-linux/gzip/libacl1/krb5 and perl-base, plus the
+#   residual Go stdlib CVE-2026-39822 in the upstream oauth2-proxy binary
+#   (jaeger-auth) — our own Go binaries are fixed by the 1.26.5 bump.
 # Every CVE here is individually listed; no blanket severity downgrade.
 # Re-evaluate at expiry: upgrade base images or accept renewed allowance.
 
@@ -553,3 +560,71 @@ CVE-2026-42506
 #   trusted internal services only (Keycloak, Jaeger). Not reachable by untrusted
 #   clients. Upgrade blocked on oauth2-proxy v7.16+ compat testing (MINTKEY-412).
 CVE-2026-27145
+
+# ── New CVEs 2026-07-17 (fix/trivy-high-gate-2026-07 — 2026-07 CVE-DB flip) ──
+#      review by 2026-10-17 (next quarterly base-image re-pin)
+# These HIGH CVEs appeared in the Trivy DB after the last main-branch scan and
+# affect Debian 12 (bookworm) base-image packages on the Python/Node service
+# images (admin-api, mcp-server, admin-ui). container-scan.yml gates PRs on
+# HIGH/CRITICAL with ignore-unfixed=false, so these must be listed until the
+# base images are re-pinned. Each is a Debian base transitive dep with no
+# reachable code path from application logic (services run nonroot / UID 65532).
+
+# CVE-2026-53615  util-linux (bsdutils, libblkid1, libmount1, libsmartcols1,
+#   libuuid1, mount, util-linux, util-linux-extra) 2.38.1-5+deb12u3 HIGH
+#   Vulnerability in the util-linux suite (mount/blkid/uuid tooling).
+#   The Python (admin-api, mcp-server) and Node (admin-ui) services never invoke
+#   mount/blkid/fdisk and do not link libmount/libblkid from application code;
+#   util-linux is a Debian base-image transitive dependency. Containers run
+#   unprivileged with no mount capability. No fix available in Debian 12 yet.
+CVE-2026-53615
+
+# CVE-2026-41992  gzip 1.12-1 (Debian 12 base images) HIGH
+#   Vulnerability in the gzip decompression utility.
+#   No service invokes the gzip CLI on attacker-controlled input in any request
+#   path; gzip is a Debian base-image utility, not an application dependency.
+#   No fix available in Debian 12 yet.
+CVE-2026-41992
+
+# CVE-2026-54369  libacl1 2.3.1-3 (Debian 12 base images) HIGH
+#   Vulnerability in the POSIX ACL library (libacl).
+#   Services do not read or manipulate filesystem ACLs from user-controlled
+#   input; libacl1 is a Debian base-image transitive dependency not reached from
+#   application code. No fix available in Debian 12 yet.
+CVE-2026-54369
+
+# CVE-2026-40355  krb5 (libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0)
+#   1.20.1-2+deb12u4 HIGH — fixed in 1.20.1-2+deb12u5 (DSA-6293-1)
+#   MIT Kerberos NegoEx NULL-pointer DoS via gss_accept_sec_context().
+#   Mintkey services do not use Kerberos/GSSAPI auth (auth is Keycloak OIDC and
+#   PostgreSQL); no service calls gss_accept_sec_context() and no NegoEx mech is
+#   registered in the container. krb5 is a Debian base-image transitive dep.
+#   A Debian fix exists (deb12u5) and will be picked up at the next quarterly
+#   base-image re-pin; accepted meanwhile (same treatment as CVE-2026-45447).
+CVE-2026-40355
+
+# CVE-2026-13221  perl-base 5.36.0-7+deb12u3 (Debian 12 base images) HIGH
+#   Perl through 5.43.9: a regex alternation of >65535 fixed-string branches
+#   overflows a 16-bit trie field, producing silently incorrect matches.
+#   Mintkey services are Python/Node and never compile Perl regexes from
+#   user-controlled input; perl-base is a Debian base-image transitive dep not
+#   invoked at runtime. No fix available in Debian 12 yet.
+CVE-2026-13221
+
+# CVE-2026-57432  perl-base 5.36.0-7+deb12u3 (Debian 12 base images) HIGH
+#   Perl through 5.43.10: integer overflow in S_measure_struct → out-of-bounds
+#   heap read in pack()/unpack().
+#   No Mintkey service calls Perl pack/unpack on user-controlled input; perl-base
+#   is a Debian base-image transitive dep not invoked at runtime. No fix in
+#   Debian 12 yet.
+CVE-2026-57432
+
+# CVE-2026-39822  stdlib v1.26.4 — jaeger-auth ONLY (oauth2-proxy v7.15.3 binary)
+#   os.Root symlink-following (same CVE fixed in our first-party Go services by
+#   the Go 1.26.5 builder bump in this PR). The residual instance is the upstream
+#   oauth2-proxy v7.15.3 prebuilt binary, compiled with Go 1.26.4 — a toolchain
+#   we do not control. oauth2-proxy version bumps are gated on compat testing
+#   (MINTKEY-412). jaeger-auth does not use os.Root on untrusted paths and is a
+#   cluster-internal (VPN-only) service behind Kong. Accept until the tracked
+#   oauth2-proxy upgrade; our own Go binaries are already remediated.
+CVE-2026-39822
