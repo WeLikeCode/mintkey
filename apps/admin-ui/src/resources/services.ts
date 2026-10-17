@@ -12,10 +12,10 @@
  * Source: T-1.2.3; Req 3; ADR-0013; ADR-0014.5.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
-import { apiWrite, getApiSession, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, getApiSession, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 import { resolveProxyPublicUrl } from "../lib/public-urls.js";
@@ -60,7 +60,7 @@ const _servicesResource = new RestResource({
   },
 });
 
-export const ServicesResource: ResourceWithOptions & { adminResource: typeof _servicesResource } = {
+export const ServicesResource: LabeledResource<typeof _servicesResource> = {
   resource: _servicesResource.resource,
   adminResource: _servicesResource,
   options: {
@@ -80,7 +80,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       },
       // (OPS-X) Virtual proxy URL — show only, not stored
       proxy_url: {
-        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: false, edit: false, filter: false },
         label: "Proxy URL",
         description: "Agents and clients call this URL to invoke the service through the egress proxy. Replace `{path}` with the upstream API path.",
         components: {
@@ -90,7 +90,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
       // (UX-FB-B) Virtual credential warning — renders red callout when no active credential
       _credential_warning: {
         type: "string",
-        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: false, edit: false, filter: false },
         label: "",
         description: "Inline warning when no credential is configured",
         components: {
@@ -112,7 +112,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -145,7 +145,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           if (request.method === "get") {
             return { record: await recordJSON(context, request.payload ?? {}) };
           }
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -171,7 +171,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         component: Components.ConfirmAction,
         handler: async (request, response, context) => {
           const { currentAdmin, h, resource } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -346,7 +346,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -409,7 +409,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           // request.payload contains the TransientTestRequest shaped body
@@ -493,7 +493,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 

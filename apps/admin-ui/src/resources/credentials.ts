@@ -9,9 +9,9 @@
  * Source: T-1.3.4; T-1.8.4; Req 4; ADR-0013; ADR-0014.4; ADR-0014.5.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -39,7 +39,7 @@ const _credentialsResource = new RestResource({
   ],
 });
 
-export const CredentialsResource: ResourceWithOptions & { adminResource: typeof _credentialsResource } = {
+export const CredentialsResource: LabeledResource<typeof _credentialsResource> = {
   resource: _credentialsResource.resource,
   adminResource: _credentialsResource,
   options: {
@@ -62,7 +62,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
       // Virtual show-page intro panel — renders above the property table (OPS-Y)
       _credentialShowPanel: {
         label: "About this credential",
-        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
+        isVisible: { show: true, list: false, edit: false, filter: false },
         components: {
           show: Components.CredentialShowPanel,
         },
@@ -84,7 +84,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const serviceId = request.payload?.service_id as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -140,7 +140,7 @@ export const CredentialsResource: ResourceWithOptions & { adminResource: typeof 
             return { record: await recordJSON(context) };
           }
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           // record.id is the service wire-form id (svc_…); the record here is a
           // service record (credentials list reuses services endpoint).
           const serviceId = record?.get("id") as string;

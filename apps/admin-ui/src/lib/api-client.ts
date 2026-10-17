@@ -200,6 +200,15 @@ export function operatorOptsFromAdmin(
 }
 
 /**
+ * The tenant of the signed-in operator: auth.ts puts `tenantId` into the AdminJS session. Every resource action runs
+ * behind the AdminJS auth router, so a missing session is a programming error, reported by name.
+ */
+export function tenantIdOf(currentAdmin: Record<string, unknown> | null | undefined): string {
+  if (!currentAdmin) throw new Error("no signed-in operator: the action needs an AdminJS session");
+  return currentAdmin["tenantId"] as string;
+}
+
+/**
  * Make an authenticated write call to admin-api.
  *
  * When operatorOpts is provided (per-operator session from currentAdmin), uses

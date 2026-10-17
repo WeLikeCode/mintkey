@@ -408,8 +408,8 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const api = new ApiClient();
     api
-      .getDashboard()
-      .then((res: { data: DashboardData }) => setData(res.data))
+      .getDashboard<DashboardData>()
+      .then((res) => setData(res.data))
       .catch(() => setData(null))
       .finally(() => setLoaded(true));
   }, []);

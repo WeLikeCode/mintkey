@@ -15,7 +15,8 @@
  * Source: T-1.12.4; Req 13 AC1, AC6; ADR-0016.3; UX-BL4.
  */
 
-import type { ResourceWithOptions, ActionContext } from "adminjs";
+import type { ActionContext } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
@@ -60,14 +61,14 @@ const _tenantsResource = new RestResource({
   ],
 });
 
-export const TenantsResource: ResourceWithOptions & { adminResource: typeof _tenantsResource } = {
+export const TenantsResource: LabeledResource<typeof _tenantsResource> = {
   resource: _tenantsResource.resource,
   adminResource: _tenantsResource,
   options: {
     navigation: { name: "Tenants", icon: "Building" },
     listProperties: ["id", "slug", "display_name", "isolation_mode", "status", "created_at"],
     showProperties: ["id", "slug", "display_name", "isolation_mode", "status", "settings", "created_at", "updated_at", "_services_panel"],
-    newProperties: ["slug", "display_name", "isolation_mode"],
+    // AdminJS renders editProperties on the new form too (it has no newProperties key)
     editProperties: ["slug", "display_name", "isolation_mode"],
     filterProperties: ["q", "slug", "status"],
     properties: {
@@ -104,8 +105,7 @@ Cannot be changed after tenant creation.`,
     // Non-PlatformAdmin gets empty results (RLS enforces tenant scope)
     actions: {
       list: {
-        isVisible: ({ currentAdmin }: { currentAdmin?: { isPlatformAdmin?: boolean } }) =>
-          currentAdmin?.isPlatformAdmin === true,
+        isVisible: ({ currentAdmin }: ActionContext) => currentAdmin?.isPlatformAdmin === true,
         component: Components.TenantsIntro,
         before: [
           async (request, context) => {

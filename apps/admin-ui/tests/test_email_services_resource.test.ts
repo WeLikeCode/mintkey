@@ -100,8 +100,9 @@ describe("EmailServicesResource — C-10", () => {
       expect(vis.show).toBe(true);
       expect(vis.list).toBe(false);
       expect(vis.edit).toBe(false);
-      expect(vis.new).toBe(false);
       expect(vis.filter).toBe(false);
+      // not on the new form either: AdminJS renders editProperties there (isVisible has no `new` key)
+      expect(EmailServicesResource.options?.editProperties ?? []).not.toContain("_oauth2_setup");
     } else {
       // If somehow not an object, fail clearly
       expect(typeof vis).toBe("object");

@@ -17,7 +17,8 @@
  * Source: operator-management OpenSpec change; ADR-0031; ADR-0019; ADR-0017.10.
  */
 
-import type { ResourceWithOptions, ActionContext } from "adminjs";
+import type { ActionContext } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
@@ -56,14 +57,13 @@ const _operatorsResource = new RestResource({
   ],
 });
 
-export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _operatorsResource } = {
+export const OperatorsResource: LabeledResource<typeof _operatorsResource> = {
   resource: _operatorsResource.resource,
   adminResource: _operatorsResource,
   options: {
     navigation: { name: "Operators", icon: "Users" },
     listProperties: ["id", "email", "display_name", "is_platform_admin", "status", "created_at"],
     showProperties: ["id", "email", "display_name", "tenant_id", "oidc_sub", "is_platform_admin", "status", "created_at"],
-    newProperties: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin"],
     editProperties: ["display_name", "is_platform_admin", "status"],
     filterProperties: ["q", "tenant_id", "status"],
     properties: {
@@ -99,8 +99,7 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
     // Non-PlatformAdmin sessions get an empty list and blocked writes.
     actions: {
       list: {
-        isVisible: ({ currentAdmin }: { currentAdmin?: { isPlatformAdmin?: boolean } }) =>
-          currentAdmin?.isPlatformAdmin === true,
+        isVisible: ({ currentAdmin }: ActionContext) => currentAdmin?.isPlatformAdmin === true,
         before: [
           async (request, context) => {
             assertPlatformAdmin(context);
@@ -110,6 +109,9 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
       },
       new: {
         isVisible: true,
+        // the promote form's own fields: AdminJS renders an action's layout, else editProperties, on the new form
+        // (it has no newProperties key, so these used to be ignored and the form showed the edit fields)
+        layout: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin"],
         handler: async (request, response, context) => {
           assertPlatformAdmin(context);
           if (request.method === "get") {

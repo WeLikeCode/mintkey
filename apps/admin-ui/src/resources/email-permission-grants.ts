@@ -11,9 +11,9 @@
  * Source: feat/email-permission-grants.
  */
 
-import type { ResourceWithOptions } from "adminjs";
+import type { LabeledResource } from "../lib/labels.js";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -34,9 +34,7 @@ const _emailPermissionGrantsResource = new RestResource({
   ],
 });
 
-export const EmailPermissionGrantsResource: ResourceWithOptions & {
-  adminResource: typeof _emailPermissionGrantsResource;
-} = {
+export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermissionGrantsResource> = {
   resource: _emailPermissionGrantsResource.resource,
   adminResource: _emailPermissionGrantsResource,
   options: {
@@ -97,7 +95,7 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -153,7 +151,7 @@ export const EmailPermissionGrantsResource: ResourceWithOptions & {
         isVisible: true,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdOf(currentAdmin);
           const grantId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>

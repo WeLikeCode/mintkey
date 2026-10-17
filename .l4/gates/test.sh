@@ -44,19 +44,10 @@ for m in .:root apps/broker:broker apps/email-proxy:email-proxy apps/kong-syncer
     --junitfile "$R/.l4-out/junit-go-${m##*:}.xml" -- ./... -short -timeout=120s) || status=1
 done
 
-# admin-ui's Vitest suite (ci.yml does not run it). Four files fail at staging f899fc7+ by assertion, their tests and
-# the code having drifted apart; a red base fails every unit, so they stay out until fixed (the repository owner's):
-# - test_budget_bff: the BFF calls /tenants/{t}/permissions/{p}/budget, the test expects /tenants/{t}/agents/{a}/...;
-# - test_permissions: the new-permission POST URL; test_oauth2_providers_resource: newProperties is empty;
-# - test_ssh_test_panel: the SSHTestPanel source contains "password".
-# The two projects of vitest.workspace.ts each own their include list (a CLI --exclude does not reach them), so the
-# files are named: every file the projects include (tests/**/*.test.ts, tests/**/*.render.test.tsx) but those four.
+# admin-ui's Vitest suite (ci.yml does not run it): both projects of vitest.workspace.ts, every file they include.
 # --testTimeout=30000: the first dynamic import of an AdminJS resource takes seconds on a busy runner (Vitest's 5 s
 # default timed out under load, and the tests after it in the file then saw no mock).
-(cd apps/admin-ui && files=$(find tests -type f \( -name '*.test.ts' -o -name '*.render.test.tsx' \) \
-    ! -name test_budget_bff.test.ts ! -name test_permissions.test.ts \
-    ! -name test_oauth2_providers_resource.test.ts ! -name test_ssh_test_panel.test.ts | sort) &&
-  pnpm exec vitest run --reporter=default --reporter=junit --testTimeout=30000 \
-    --outputFile.junit="$R/.l4-out/junit-admin-ui.xml" $files) || status=1
+(cd apps/admin-ui && pnpm exec vitest run --reporter=default --reporter=junit --testTimeout=30000 \
+    --outputFile.junit="$R/.l4-out/junit-admin-ui.xml") || status=1
 
 exit $status
