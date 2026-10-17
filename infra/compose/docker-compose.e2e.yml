@@ -1,0 +1,76 @@
+# Mintkey isolated e2e stack -- layers on top of docker-compose.yml.
+#
+#   E2E_PROJECT=mintkey-e2e make e2e-isolated-up e2e-isolated-test e2e-isolated-down
+#
+# Unlike docker-compose.test.yml (the +100 "test namespace", which deliberately shares the
+# mintkey-<service> images and the live stack's bind mounts), this overlay makes a stack that
+# shares NOTHING with another compose project on the machine:
+#
+#   * every locally built service gets its own image tag  ${E2E_PROJECT}-<service>
+#   * the two volumes with fixed names in docker-compose.yml are renamed ${E2E_PROJECT}_*
+#   * every host port comes from the +300 set (override with E2E_PORT_*)
+#   * the seed-job's host bind (data/bootstrap-secrets, which holds the LIVE stack's admin
+#     password when run from the same checkout) is redirected to ${E2E_SECRETS_DIR}
+#
+# Never pass this file without `-p ${E2E_PROJECT}`; tools/e2e-isolated.sh does it for you and
+# refuses the project names `mintkey` and `mintkey-test`.
+
+name: ${E2E_PROJECT:?set E2E_PROJECT (e.g. mintkey-e2e)}
+
+volumes:
+  ssh_proxy_hostkey:
+    name: ${E2E_PROJECT}_ssh_proxy_hostkey
+  ssh_proxy_recordings:
+    name: ${E2E_PROJECT}_ssh_proxy_recordings
+
+services:
+  seed-job:
+    image: ${E2E_PROJECT}-seed-job
+    volumes: !override
+      - bootstrap_secrets:/run/secrets/mintkey/bootstrap-secrets
+      - ${E2E_SECRETS_DIR:?set E2E_SECRETS_DIR}:/host-bootstrap-secrets:rw
+  vault-adapter:
+    image: ${E2E_PROJECT}-vault-adapter
+    ports: !override ["${E2E_PORT_VAULT_GRPC:-8384}:8084", "${E2E_PORT_VAULT_HTTP:-8387}:8087"]
+  admin-api:
+    image: ${E2E_PROJECT}-admin-api
+    ports: !override ["${E2E_PORT_ADMIN_API:-8380}:8080"]
+  admin-ui:
+    image: ${E2E_PROJECT}-admin-ui
+    ports: !override ["${E2E_PORT_ADMIN_UI:-8381}:8081"]
+  mcp-server:
+    image: ${E2E_PROJECT}-mcp-server
+    ports: !override ["${E2E_PORT_MCP:-8382}:8082"]
+  broker:
+    image: ${E2E_PROJECT}-broker
+    ports: !override ["${E2E_PORT_BROKER:-8383}:8083"]
+  kong-syncer:
+    image: ${E2E_PROJECT}-kong-syncer
+    ports: !override ["${E2E_PORT_KONG_SYNCER:-8385}:8085"]
+  proxy-plugin:
+    image: ${E2E_PROJECT}-proxy-plugin
+    ports: !override ["${E2E_PORT_PROXY_PLUGIN:-8386}:8086"]
+  mock-backend:
+    image: ${E2E_PROJECT}-mock-backend
+    ports: !override ["${E2E_PORT_MOCK_BACKEND:-9299}:8999"]
+  jaeger-auth:
+    image: ${E2E_PROJECT}-jaeger-auth
+    ports: !override ["${E2E_PORT_JAEGER:-16986}:4180"]
+  ssh-proxy:
+    image: ${E2E_PROJECT}-ssh-proxy
+    ports: !override ["${E2E_PORT_SSH:-2622}:2222", "${E2E_PORT_SSH_HTTP:-8389}:8087"]
+  email-proxy:
+    image: ${E2E_PROJECT}-email-proxy
+    ports: !override ["${E2E_PORT_EMAIL_PROXY:-8391}:8088", "${E2E_PORT_EMAIL_METRICS:-8392}:8090"]
+  keycloak:
+    ports: !override ["${E2E_PORT_KEYCLOAK:-8643}:8443"]
+  kong:
+    ports: !override ["${E2E_PORT_KONG:-8300}:8000", "127.0.0.1:${E2E_PORT_KONG_ADMIN:-8301}:8001"]
+  otel-collector:
+    ports: !override ["${E2E_PORT_OTLP:-4617}:4317"]
+  cadvisor:
+    ports: !override ["${E2E_PORT_CADVISOR:-8388}:8080"]
+  grafana:
+    ports: !override ["${E2E_PORT_GRAFANA:-3303}:3000"]
+  hashicorp-vault:
+    ports: !override ["${E2E_PORT_HASHICORP_VAULT:-8390}:8201"]

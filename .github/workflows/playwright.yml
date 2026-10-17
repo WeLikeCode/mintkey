@@ -1,7 +1,7 @@
 name: Mintkey Playwright E2E
 
 # On PRs: chromium only (fast feedback).
-# Nightly: all three browsers (cross-browser coverage).
+# Nightly (and manual workflow_dispatch): all three browsers (cross-browser coverage).
 on:
   pull_request:
     branches: [main, develop]
@@ -13,6 +13,8 @@ on:
   schedule:
     # Nightly at 02:00 UTC — runs all three browsers
     - cron: "0 2 * * *"
+  # Manual run of the all-browsers matrix (the schedule trigger cannot be exercised from a branch).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -148,7 +150,7 @@ jobs:
   playwright-all-browsers:
     name: Playwright (all browsers) — nightly
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
     strategy:
       fail-fast: false

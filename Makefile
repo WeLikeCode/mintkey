@@ -19,6 +19,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         test test-unit test-arch test-integration test-acceptance \
         test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
+        e2e-isolated-up e2e-isolated-test e2e-isolated-down e2e-isolated-check \
         lint lint-python lint-go lint-ts lint-contracts \
         proto-gen \
         deps bootstrap doctor stack-doctor audit-steering vibe-check spec-trace contract-lint \
@@ -46,6 +47,7 @@ help:
 	@echo "  test:e2e               Run Playwright E2E UI tests (requires running Docker stack)"
 	@echo "  test:e2e:headed        Run Playwright E2E tests in headed mode (for debugging)"
 	@echo "  test:e2e:ci            Run Playwright E2E tests in CI mode (Chromium only, retries)"
+	@echo "  e2e-isolated-up|-test|-down|-check  Playwright + stack tests against an ISOLATED compose project (E2E_PROJECT=<name> required; see apps/admin-ui/e2e/README.md)"
 	@echo "  smoke                  Run E2E smoke test against running stack"
 	@echo "  test-golden            Run WS-8 cross-stack golden-path E2E test (requires running stack)"
 	@echo "  test-data-plane        Run WS-4 data-plane smoke + resilience tests (requires running stack)"
@@ -234,7 +236,8 @@ test-acceptance:
 
 test-integration:
 	@echo "── Integration tests (requires Docker) ──"
-	MINTKEY_INTEGRATION_TEST=true cd apps/admin-api && $(UV) run pytest \
+	# NB: the variable must be set AFTER `cd` -- `VAR=x cd dir && cmd` only applies VAR to the (builtin) cd.
+	cd apps/admin-api && MINTKEY_INTEGRATION_TEST=true $(UV) run pytest \
 		$(REPO_ROOT)/tests/acceptance/test_brokered_call.py \
 		$(REPO_ROOT)/tests/acceptance/test_rotation_propagation.py \
 		$(REPO_ROOT)/tests/acceptance/test_revocation_timing.py \
@@ -273,6 +276,27 @@ test-data-plane-resilience:
 
 test-data-plane: test-data-plane-smoke test-data-plane-resilience
 	@echo "── WS-4 data-plane tests complete ──"
+
+# ── Isolated e2e (Playwright + stack-dependent Python tests) ─────────────────
+# Runs against a compose project you NAME (E2E_PROJECT, never `mintkey` / `mintkey-test`) on its own
+# ports (+300 set by default), own image tags and volumes. `smoke`, `test-golden` and
+# `test-data-plane*` above look for "the stack" with `docker compose ps` in this checkout, and the
+# Playwright config used to default to http://localhost:8081: both can hit the live dev stack.
+# Use these instead:
+#   E2E_PROJECT=mintkey-e2e make e2e-isolated-up
+#   E2E_PROJECT=mintkey-e2e make e2e-isolated-test            # E2E_BROWSERS="chromium firefox webkit", E2E_SUITES="playwright smoke ..."
+#   E2E_PROJECT=mintkey-e2e make e2e-isolated-down
+e2e-isolated-check:
+	@tools/e2e-isolated.sh check
+
+e2e-isolated-up:
+	@tools/e2e-isolated.sh up
+
+e2e-isolated-test:
+	@tools/e2e-isolated.sh test
+
+e2e-isolated-down:
+	@tools/e2e-isolated.sh down
 
 # ── Playwright E2E UI tests ──────────────────────────────────────────────────
 
