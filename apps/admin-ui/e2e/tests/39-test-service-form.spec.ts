@@ -16,13 +16,13 @@
  * Source: UX-CLARITY P0; ADMIN_UI_SPEC.md §1.4.
  */
 
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import { createTestService } from "../fixtures/test-data.js";
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? process.env.PLAYWRIGHT_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 
 // webkit: AdminJS/Axios CORS — tracked W8.
@@ -31,37 +31,9 @@ const skipWebkit = ({ browserName }: { browserName: string }) => browserName ===
 // ── Session helper (for programmatic setup + API assertions) ─────────────────
 
 interface Session { sessionToken: string; csrfToken: string }
-let _session: Session | null = null;
 
 async function getSession(): Promise<Session | null> {
-  if (_session) return _session;
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  if (!pass) return null;
-
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!resp.ok) return null;
-
-  const cookieHeaders: string[] =
-    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
-      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
-      : [resp.headers.get("set-cookie") ?? ""];
-
-  let sessionToken = "";
-  let csrfToken = "";
-  for (const c of cookieHeaders) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/);
-    if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/);
-    if (cm) csrfToken = cm[1];
-  }
-  if (!sessionToken || !csrfToken) return null;
-
-  _session = { sessionToken, csrfToken };
-  return _session;
+  return getApiSession();
 }
 
 /**

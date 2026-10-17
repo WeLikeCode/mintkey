@@ -19,6 +19,7 @@
  * Source: UI-MCP-modal chunk; Dashboard.tsx McpConfigModal component.
  */
 
+import { BASE_URL } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -88,7 +89,7 @@ test.describe("35 — MCP config modal", () => {
     // Grant clipboard-read permission so we can verify the content
     const context = page.context();
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-      origin: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081",
+      origin: new URL(BASE_URL).origin,
     });
 
     await copyBtn.click();

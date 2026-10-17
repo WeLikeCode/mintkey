@@ -34,6 +34,17 @@ function isBenign(message: string): boolean {
   return BENIGN_PATTERNS.some((p) => p.test(message));
 }
 
+/**
+ * A permission grant without a budget is the normal case: admin-api answers
+ * GET /v1/tenants/{tid}/permissions/{pid}/budget with 404 "No budget configured" and
+ * BudgetStatusPanel renders its empty state for exactly that status. The browser still logs
+ * "Failed to load resource: ... 404" for it, which is not an application error. Only that
+ * request (the BFF's /admin/api/budget/<permission id>) and only status 404 are ignored.
+ */
+function isExpectedEmptyBudget(message: string, url: string): boolean {
+  return /\/admin\/api\/budget\/[^/?]+$/.test(url) && /status of 404/.test(message);
+}
+
 /** Attach listeners and return the tracker. Call before any navigation. */
 export function attachConsoleErrorTracker(page: Page): ConsoleErrorTracker {
   const tracker: ConsoleErrorTracker = { errors: [] };
@@ -45,7 +56,7 @@ export function attachConsoleErrorTracker(page: Page): ConsoleErrorTracker {
   });
 
   page.on("console", (msg) => {
-    if (msg.type() === "error" && !isBenign(msg.text())) {
+    if (msg.type() === "error" && !isBenign(msg.text()) && !isExpectedEmptyBudget(msg.text(), msg.location().url)) {
       tracker.errors.push({ type: "console", message: msg.text() });
     }
   });

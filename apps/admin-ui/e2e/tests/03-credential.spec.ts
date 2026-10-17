@@ -33,7 +33,7 @@ test.describe("Tier 2 — Credentials (F-OP-03)", () => {
     const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
     if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
 
-    const svcId = await createTestService({ tenantId, name: "CredTestSvc", slug: "cred-test-svc", baseUrl: "https://cred.example.com" }, token);
+    const svcId = await createTestService({ tenantId, name: "CredTestSvc", slug: `cred-test-svc-${Date.now()}`, baseUrl: "https://cred.example.com" }, token);
     const plaintext = "sk-live-TEST-plaintext-secret-" + Date.now();
 
     const result = await creds.registerCredential({
@@ -52,7 +52,7 @@ test.describe("Tier 2 — Credentials (F-OP-03)", () => {
     const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
     if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
 
-    const svcId = await createTestService({ tenantId, name: "LeakTest", slug: "leak-test", baseUrl: "https://leak.example.com" }, token);
+    const svcId = await createTestService({ tenantId, name: "LeakTest", slug: `leak-test-${Date.now()}`, baseUrl: "https://leak.example.com" }, token);
 
     await creds.registerCredential({
       serviceId: svcId,
@@ -69,7 +69,7 @@ test.describe("Tier 2 — Credentials (F-OP-03)", () => {
     const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
     if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
 
-    const svcId = await createTestService({ tenantId, name: "RotateTest", slug: "rotate-test", baseUrl: "https://rotate.example.com" }, token);
+    const svcId = await createTestService({ tenantId, name: "RotateTest", slug: `rotate-test-${Date.now()}`, baseUrl: "https://rotate.example.com" }, token);
     const oldPlaintext = "old-key-" + Date.now();
     await creds.registerCredential({ serviceId: svcId, authScheme: "api_key_header", plaintext: oldPlaintext });
 

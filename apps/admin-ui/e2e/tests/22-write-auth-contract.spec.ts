@@ -60,27 +60,13 @@ test.describe("22 — Write-auth contract (AdminUiSignedRequest)", () => {
     // ── Trigger a write — services create ─────────────────────────────────────
     const svc = new ServicesPage(page);
     const name = `e2e-w6-svc-${Date.now().toString(36)}`;
-    const slug = `e2e-w6-${Date.now().toString(36)}`;
 
+    // ServiceCreateForm (0b04288): data-testid fields, native auth-scheme <select>, no slug input.
     await svc.gotoNew();
-    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
-
-    const nameField = page.getByLabel("name");
-    const baseUrlField = page.getByLabel(/base.?url/i);
-
-    if ((await nameField.count()) === 0 || (await baseUrlField.count()) === 0) {
-      // Form not rendered — assert no JS error and exit gracefully
-      const body = (await page.locator("body").innerText({ timeout: 5_000 }).catch(() => "")) ?? "";
-      expect(body).not.toContain("Javascript Error");
-      void consoleErrors;
-      return;
-    }
-
-    await nameField.fill(name);
-    await page.getByLabel("slug").fill(slug).catch(() => {});
-    await baseUrlField.fill("https://w6-test.example.com/api");
-    // auth_scheme is required — select via the react-select dropdown
-    await svc.selectFromReactSelect(/auth.?scheme/i, /api.?key/i).catch(() => {});
+    await page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator("[data-testid='field-input-name']").fill(name);
+    await page.locator("[data-testid='field-input-base_url']").fill("https://w6-test.example.com/api");
+    await page.locator("[data-testid='field-select-auth_scheme']").selectOption("api_key_header");
 
     const [createResp] = await Promise.all([
       page.waitForResponse(
@@ -89,7 +75,7 @@ test.describe("22 — Write-auth contract (AdminUiSignedRequest)", () => {
           r.request().method() === "POST",
         { timeout: 15_000 },
       ),
-      page.getByRole("button", { name: /save|create/i }).click(),
+      page.locator("[data-testid='service-create-submit']").click(),
     ]);
 
     // ── Assert (b): write returned 200, no error notice ────────────────────────

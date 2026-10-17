@@ -23,10 +23,11 @@
  * Source: PLAYWRIGHT_EXTENSION_PLAN.md W7.
  */
 
+import { TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import AxeBuilder from "@axe-core/playwright";
 
-const BOOTSTRAP_TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
+const BOOTSTRAP_TENANT_ID = TENANT_ID;
 
 /**
  * Known AdminJS 7.x axe rule IDs that fail in the third-party AdminJS

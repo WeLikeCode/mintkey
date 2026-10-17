@@ -9,33 +9,18 @@
  *   PLAYWRIGHT_API_JWT — signed JWT with PlatformAdmin claims for cleanup calls
  */
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
+import { getApiSession } from "./session.js";
+import { ADMIN_API } from "../env.js";
+
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 const PLAYWRIGHT_PASS = process.env.PLAYWRIGHT_PASS ?? "";
 
 // ── Session cache ────────────────────────────────────────────────────────────
 
 interface Session { sessionToken: string; csrfToken: string }
-let _session: Session | null = null;
 
 async function getSession(): Promise<Session | null> {
-  if (_session) return _session;
-  if (!PLAYWRIGHT_PASS) return null;
-
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: PLAYWRIGHT_PASS }),
-  });
-  if (!resp.ok) return null;
-
-  const setCookie = resp.headers.get("set-cookie") ?? "";
-  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
-  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
-  if (!smatch || !cmatch) return null;
-
-  _session = { sessionToken: smatch[1], csrfToken: cmatch[1] };
-  return _session;
+  return getApiSession();
 }
 
 // ── Minimal helper: POST with JSON ──────────────────────────────────────────
@@ -79,12 +64,19 @@ export async function createTestService(opts: {
   baseUrl?: string;
   authScheme?: string;
 }, token?: string): Promise<string> {
-  const slug = opts.slug ?? opts.name.toLowerCase().replace(/\s+/g, "-");
+  // admin-api derives the slug from the name and ignores a `slug` in the body, and the
+  // (tenant, slug) pair is unique (a duplicate currently surfaces as an HTTP 500). A fixed
+  // name therefore breaks on any retry or re-run against the same database, so every test
+  // service gets a unique suffix; callers that assert on the name use `toContainText`.
+  const unique = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const name = `${opts.name}-${unique}`;
+  const slug = opts.slug ?? name.toLowerCase().replace(/\s+/g, "-");
   const resp = await apiPost(
     `/v1/tenants/${opts.tenantId}/services`,
-    { name: opts.name, slug, base_url: opts.baseUrl ?? "https://example.com", auth_scheme: opts.authScheme ?? "api_key_header" },
+    { name, slug, base_url: opts.baseUrl ?? "https://example.com", auth_scheme: opts.authScheme ?? "api_key_header" },
     token
   );
+  if (!resp.ok) throw new Error(`createTestService(${name}) failed: HTTP ${resp.status} ${await resp.text()}`);
   const data = await resp.json() as { id?: string; service_id?: string };
   const id = data.id ?? data.service_id ?? "";
   enqueueCleanup({ method: "DELETE", url: `/v1/tenants/${opts.tenantId}/services/${id}` });
@@ -129,11 +121,13 @@ export async function createTestPermission(opts: {
   action: string;
   constraints?: Record<string, unknown>;
 }, token?: string): Promise<string> {
+  // The flat POST /v1/tenants/{tid}/permissions answers 405; grants are created agent-scoped.
   const resp = await apiPost(
-    `/v1/tenants/${opts.tenantId}/permissions`,
-    { agent_id: opts.agentId, service_id: opts.serviceId, action: opts.action, constraints: opts.constraints ?? {} },
+    `/v1/tenants/${opts.tenantId}/agents/${opts.agentId}/permissions`,
+    { service_id: opts.serviceId, action: opts.action, constraints: opts.constraints ?? {} },
     token
   );
+  if (!resp.ok) throw new Error(`createTestPermission failed: HTTP ${resp.status} ${await resp.text()}`);
   const data = await resp.json() as { id?: string; permission_id?: string };
   const permId = data.id ?? data.permission_id ?? "";
   enqueueCleanup({ method: "DELETE", url: `/v1/tenants/${opts.tenantId}/permissions/${permId}` });

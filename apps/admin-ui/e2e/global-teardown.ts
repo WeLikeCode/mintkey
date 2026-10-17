@@ -5,6 +5,7 @@
  * so we can delete them in reverse order.
  */
 
+import { ADMIN_API } from "./env.js";
 import { writeFileSync, existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -30,7 +31,7 @@ export default async function globalTeardown() {
     // ignore malformed files
   }
 
-  const adminApi = process.env.ADMIN_API_URL ?? "http://localhost:8080";
+  const adminApi = ADMIN_API;
   const token = process.env.PLAYWRIGHT_API_JWT ?? "";
 
   // Delete in reverse order (teardown LIFO)

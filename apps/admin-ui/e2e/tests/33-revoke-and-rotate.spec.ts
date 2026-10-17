@@ -15,6 +15,8 @@
  * Source: ADMIN_UI_ACTION_MATRIX.md Phase 1b; ADR-0013; T-1.4.3; T-1.8.4.
  */
 
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import { AgentsPage } from "../pages/agents.js";
 import { createTestService, createTestCredential } from "../fixtures/test-data.js";
@@ -50,42 +52,15 @@ function wireToUuid(wireId: string, prefix: string): string {
 }
 
 // Bootstrap tenant (t_default) — known from seed data.
-const TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 const PLAYWRIGHT_PASS = process.env.PLAYWRIGHT_PASS ?? "";
 
 // ── Shared session helper for direct admin-api calls ─────────────────────────
 
 interface Session { sessionToken: string; csrfToken: string }
-let _session: Session | null = null;
 
 async function getSession(): Promise<Session | null> {
-  if (_session) return _session;
-  if (!PLAYWRIGHT_PASS) return null;
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: PLAYWRIGHT_PASS }),
-  });
-  if (!resp.ok) return null;
-  // Node.js fetch returns multiple Set-Cookie headers as separate entries.
-  // getSetCookie() returns all; fall back to get("set-cookie") for older runtimes.
-  const cookieHeaders: string[] =
-    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
-      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
-      : [resp.headers.get("set-cookie") ?? ""];
-  let sessionToken = "";
-  let csrfToken = "";
-  for (const c of cookieHeaders) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/);
-    if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/);
-    if (cm) csrfToken = cm[1];
-  }
-  if (!sessionToken || !csrfToken) return null;
-  _session = { sessionToken, csrfToken };
-  return _session;
+  return getApiSession();
 }
 
 async function apiGet(path: string): Promise<unknown> {

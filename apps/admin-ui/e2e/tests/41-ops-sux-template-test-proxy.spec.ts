@@ -16,56 +16,24 @@
  * Source: OPS-SUX chunk; ADMIN_UI_SPEC.md; no page.route (R10-redux policy).
  */
 
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
-const TENANT_ID =
-  process.env.MINTKEY_TENANT_ID ??
-  process.env.PLAYWRIGHT_TENANT_ID ??
-  "9593e3ba-4102-4235-9748-28d35b473214";
 
 interface Session {
   sessionToken: string;
   csrfToken: string;
 }
 
-let _session: Session | null = null;
 
 async function getSession(): Promise<Session | null> {
-  if (_session) return _session;
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  if (!pass) return null;
-
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!resp.ok) return null;
-
-  const cookieHeaders: string[] =
-    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie ===
-    "function"
-      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
-      : [resp.headers.get("set-cookie") ?? ""];
-
-  let sessionToken = "";
-  let csrfToken = "";
-  for (const c of cookieHeaders) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/);
-    if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/);
-    if (cm) csrfToken = cm[1];
-  }
-  if (!sessionToken || !csrfToken) return null;
-
-  _session = { sessionToken, csrfToken };
-  return _session;
+  return getApiSession();
 }
 
 function authHeaders(session: Session): Record<string, string> {
@@ -117,19 +85,15 @@ test.describe("41 — OPS-SUX: template picker + test-before-save + proxy URL sh
       timeout: 15_000,
     });
 
-    // Either cards OR empty-state message must appear
+    // Either cards OR empty-state message OR error must appear. The templates are fetched
+    // asynchronously after the picker mounts, so wait for one of them instead of sampling once.
     const cardGrid = page.locator("[data-testid='template-card-grid']");
     const emptyState = page.locator("[data-testid='template-empty']");
     const errorState = page.locator("[data-testid='template-error']");
-
-    const isGrid = await cardGrid.isVisible().catch(() => false);
-    const isEmpty = await emptyState.isVisible().catch(() => false);
-    const isError = await errorState.isVisible().catch(() => false);
-
-    expect(
-      isGrid || isEmpty || isError,
+    await expect(
+      cardGrid.or(emptyState).or(errorState).first(),
       "Picker must show card grid, empty state, or error (backend responded)"
-    ).toBe(true);
+    ).toBeVisible({ timeout: 15_000 });
 
     // Skip button must always be present
     const skipBtn = page.locator("[data-testid='template-skip-btn']");

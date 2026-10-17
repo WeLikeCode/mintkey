@@ -15,11 +15,28 @@ export class PermissionsPage extends BasePage {
   }
 
   /**
+   * Pick an option by wire id in the agent/service combobox of the permission form.
+   * `search` is what gets typed to narrow the server-side list (agents/services are searched by
+   * name, not by wire id); it defaults to the wire id.
+   */
+  private async pickCombobox(kind: "agent" | "service", wireId: string, search: string = wireId) {
+    const input = this.page.locator(`[data-testid="${kind}-combobox-input"]`);
+    await input.waitFor({ state: "visible", timeout: 15_000 });
+    await input.click();
+    await input.fill(search);
+    const option = this.page.locator(`[data-testid="${kind}-combobox-dropdown"] li[data-value="${wireId}"]`);
+    await option.waitFor({ state: "visible", timeout: 15_000 });
+    await option.click();
+  }
+
+  /**
    * Grant a permission to an agent.
    */
   async grantPermission(data: {
     agent_id: string;
     service_id: string;
+    agent_search?: string;
+    service_search?: string;
     action: string;
     constraints?: string; // JSON string
   }) {
@@ -27,9 +44,11 @@ export class PermissionsPage extends BasePage {
     await this.goto("/admin/resources/permission_grants/actions/new");
     await this.page.waitForLoadState("networkidle");
 
-    await this.page.getByLabel(/agent.?id/i).fill(data.agent_id);
-    await this.page.getByLabel(/service.?id/i).fill(data.service_id);
-    await this.page.getByLabel("action").fill(data.action);
+    // agent_id / service_id are async comboboxes (UX-A): type the id, click the matching option.
+    // (The old plain-text "agent id" / "service id" inputs no longer exist.)
+    await this.pickCombobox("agent", data.agent_id, data.agent_search);
+    await this.pickCombobox("service", data.service_id, data.service_search);
+    await this.page.locator("#action").fill(data.action);
     if (data.constraints) {
       await this.page.getByLabel("constraints").fill(data.constraints);
     }
@@ -39,7 +58,7 @@ export class PermissionsPage extends BasePage {
         (r) => r.url().includes("/admin/api/resources/permission_grants/actions/new") && r.request().method() === "POST",
         { timeout: 10_000 }
       ),
-      this.page.getByRole("button", { name: /save|grant/i }).click(),
+      this.page.locator('[data-testid="button-save"]').click(),
     ]);
 
     // AdminJS 7 notices render inside [data-testid="notice-wrapper"]
