@@ -29,10 +29,7 @@ gates:
   typecheck:
   - uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/
   - uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/
-  # not `pnpm --dir apps/admin-ui exec tsc --noEmit`: admin-ui is type-checked nowhere today (ci.yml does not run tsc,
-  # the Dockerfile runs tsx), and at staging f899fc7+ tsc reports 142 errors (imports of @adminjs/design-system and
-  # react-router-dom that package.json does not declare, PropertyOptions/ActionContext type drift). A red base gate
-  # fails every unit; add the line back once tsc is clean.
+  - pnpm --dir apps/admin-ui exec tsc --noEmit                  # ci.yml does not type-check admin-ui; L4 does
   test:
     command: sh .l4/gates/test.sh   # what it runs, and what it leaves out, is written in the script
     reports:                        # one per suite: L4 reads them all (harness 0.4.11, L4-GAT-005)
