@@ -5,7 +5,10 @@ version: 1
 harness:
   delivery: action
 spec:
-  frameworks:               # OpenSpec only: the .kiro/specs task lists lack the `_Requirements:_` lines L4's Kiro grammar needs
+  # OpenSpec only for now. `kiro` waits for a harness that accepts the finished legacy specs of .kiro/specs: with it,
+  # L4 0.4.10 fails doctor row SPEC-002 (an error, so every L4 job stops) on done tasks without `_Requirements:_` lines,
+  # whole-requirement refs (`_Requirements: 1_`), `## Requirement N` headings and a mermaid Task Dependency Graph.
+  frameworks:
   - openspec
 gates:
   # the Python jobs of .github/workflows/ci.yml: "Lint Python", "Python Unit Tests", "Acceptance Tests" (three uv
