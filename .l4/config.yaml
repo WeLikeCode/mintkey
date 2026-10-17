@@ -72,5 +72,9 @@ ci:
   soft_deadline_margin: 20m
   upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
 yolo:
+  review:
+    accept_by_agents: true  # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
   hold:                     # every spec, existing and new, is opt-in by plan: nothing runs until a plan lists it
   - "*"
+clarifier:
+  answer_by_agents: true    # the owner lets the planning agent answer questions with `l4 questions`; each answer is a commit on the unit branch
