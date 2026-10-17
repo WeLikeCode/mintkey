@@ -116,35 +116,37 @@ updates:
       docker-jaeger-auth-minor-patch:
         update-types: [minor, patch]
 
-  # ── pip (Python) ──────────────────────────────────────────────────────────
-  - package-ecosystem: pip
+  # ── uv (Python) ───────────────────────────────────────────────────────────
+  # The three uv projects: the uv ecosystem updates pyproject.toml and uv.lock together, so a raised floor
+  # never leaves a stale lock behind (CI lints and tests with `uv sync --locked`).
+  - package-ecosystem: uv
     directory: /apps/admin-api
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-admin-api-minor-patch:
+      uv-admin-api-minor-patch:
         update-types: [minor, patch]
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /apps/mcp-server
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-mcp-server-minor-patch:
+      uv-mcp-server-minor-patch:
         update-types: [minor, patch]
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /packages/python/mintkey-models
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-mintkey-models-minor-patch:
+      uv-mintkey-models-minor-patch:
         update-types: [minor, patch]
 
   # ── npm (Node / TypeScript) ───────────────────────────────────────────────
