@@ -93,6 +93,7 @@ async function requireSession(
   // Exempt unauthenticated paths.
   if (
     req.path.startsWith("/admin/login") ||
+    req.path === "/admin/logout" ||
     req.path.startsWith("/auth/") ||
     req.path === "/health"
   ) {
@@ -254,6 +255,38 @@ async function main() {
   // GET /auth/start — proxy redirect to admin-api OIDC login (browser-facing).
   app.get("/auth/start", (_req, res) => {
     res.redirect(302, `${ADMIN_API_PUBLIC_URL}/v1/auth/oidc/login`);
+  });
+
+  // GET /admin/logout — end the operator session and return to the login page.
+  // The AdminJS router is built without authentication (buildRouter, not
+  // buildAuthenticatedRouter), so it has no /admin/logout of its own: before this route a
+  // visit to /admin/logout fell through to the SPA and the mintkey_session cookie stayed valid
+  // (e2e 21-logout-session). Tell admin-api to drop the cookie, clear the session + CSRF cookies
+  // here too (cookies are host-scoped, so this also covers the admin-api origin on localhost),
+  // and send the browser to /admin/login.
+  //
+  // It gets its own limiter: sharing loginRateLimit (20 requests / 15 min / IP) meant that after
+  // enough /admin/login hits (a full e2e run makes dozens) the logout answered 429 and the session
+  // survived.
+  const logoutRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many logout requests. Please try again later." },
+  });
+  app.get("/admin/logout", logoutRateLimit, async (req, res) => {
+    try {
+      await fetch(`${ADMIN_API_URL}/v1/auth/logout`, {
+        method: "POST",
+        headers: { Cookie: req.headers.cookie ?? "" },
+      });
+    } catch {
+      // admin-api unreachable: still clear the browser-side cookies below.
+    }
+    res.clearCookie("mintkey_session", { path: "/" });
+    res.clearCookie("csrf_token", { path: "/" });
+    res.redirect(302, "/admin/login");
   });
 
   // POST /auth/internal-login-proxy — server-side relay for break-glass form.
