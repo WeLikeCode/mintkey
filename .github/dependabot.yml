@@ -128,6 +128,12 @@ updates:
     groups:
       uv-admin-api-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.17 reports about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.17"]
 
   - package-ecosystem: uv
     directory: /apps/mcp-server
@@ -138,6 +144,12 @@ updates:
     groups:
       uv-mcp-server-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.17 reports about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.17"]
 
   - package-ecosystem: uv
     directory: /packages/python/mintkey-models
@@ -148,6 +160,12 @@ updates:
     groups:
       uv-mintkey-models-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.17 reports about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.17"]
 
   # ── npm (Node / TypeScript) ───────────────────────────────────────────────
   - package-ecosystem: npm
