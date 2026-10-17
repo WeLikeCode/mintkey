@@ -4,7 +4,7 @@
 # so that entrypoint.sh can read the bootstrap secret and exec into it.
 
 # Pinned 2026-05-18; re-pin every quarter.
-FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.3@sha256:10a1165743a192e1940b4708fb9647027185ce11a681a1c5519b442ff7f1f561 AS proxy
+FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.5@sha256:8498b0d0ef0a7b29686414000a08aee467f02d0299c9ed1e006a8f33fc017916 AS proxy
 
 # Pinned 2026-05-18; re-pin every quarter.
 FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
