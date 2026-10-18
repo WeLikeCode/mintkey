@@ -5,6 +5,7 @@
  * Tests derive from: F-OP-01 → F-OP-04, T-1.1.4 → T-1.12.4, S-SEC-1.
  */
 
+import { BASE_URL } from "./env.js";
 import { defineConfig, devices } from "@playwright/test";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -15,7 +16,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load .env.local if present (local developer overrides, not committed)
 loadDotenv({ path: path.resolve(__dirname, ".env.local"), override: false });
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081";
 const USER_PASS = process.env.PLAYWRIGHT_PASS ?? "";
 
 export default defineConfig({

@@ -138,7 +138,7 @@ async def _set_platform_admin_rls(session: AsyncSession) -> None:
 async def create_tenant(
     body: CreateTenantRequest,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Create a new tenant. PlatformAdmin only.
@@ -238,7 +238,7 @@ def _escape_like(value: str) -> str:
 async def list_tenants(
     q: Optional[str] = None,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     List all tenants. PlatformAdmin only.
@@ -295,7 +295,7 @@ async def list_tenants(
 async def get_tenant(
     tid: str,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Get a single tenant by id (UUID string). PlatformAdmin only.
@@ -340,7 +340,7 @@ async def update_tenant(
     tid: str,
     body: UpdateTenantRequest,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Update tenant metadata. PlatformAdmin only. Slug is immutable.
@@ -437,7 +437,7 @@ async def update_tenant(
 async def delete_tenant(
     tid: str,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Soft-delete a tenant by moving it to status="deleted". PlatformAdmin only.

@@ -6,7 +6,7 @@
 # Or from repo root: docker build -f apps/ssh-proxy/Dockerfile -t mintkey-ssh-proxy .
 
 # Pinned 2026-06-19; re-pin every quarter.
-FROM golang:1.26-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS builder
+FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS builder
 
 WORKDIR /workspace
 
@@ -37,7 +37,7 @@ RUN mkdir -p /var/lib/mintkey/ssh-recordings && \
     chown -R 65532:65532 /var/lib/mintkey
 
 # Runtime — pinned 2026-06-01; re-pin every quarter.
-FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
+FROM gcr.io/distroless/static-debian12@sha256:d75cdd72874d4790092fcb1b058493ecf6bb5bf2b2b897045b00ff01d91843f2
 COPY --from=builder /ssh-proxy /ssh-proxy
 COPY --from=builder --chown=65532:65532 /var/lib/mintkey /var/lib/mintkey
 USER nonroot:nonroot

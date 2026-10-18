@@ -11,12 +11,12 @@
  * Findings JSON: /tmp/runbook-ui-verify/findings.json
  */
 
+import { BASE_URL } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import fs from "fs";
 
 const SCREENSHOTS_DIR = "/tmp/runbook-ui-verify";
-const BASE_URL = "http://localhost:8081";
 
 const findings: Array<{ severity: string; step: string; description: string }> = [];
 
@@ -34,6 +34,18 @@ async function ss(page: any, filename: string) {
   await page.screenshot({ path: fpath, fullPage: true });
   log(`  Screenshot: ${fpath}`);
   return fpath;
+}
+
+/**
+ * Open the record a list-row link points at. The AdminJS list renders its per-row "show" anchors
+ * with no layout box (rows are opened by a click handler on the row), so Playwright's
+ * actionability wait for `anchor.click()` never completes (it retried until the 180 s test timeout);
+ * navigate to the anchor's href instead.
+ */
+async function openLink(page: any, link: any) {
+  const href = await link.getAttribute("href");
+  if (!href) throw new Error("link has no href");
+  await page.goto(new URL(href, BASE_URL).toString(), { waitUntil: "domcontentloaded" });
 }
 
 /** Return true if any whitespace-delimited token in text parses as a URL with the given hostname. */
@@ -293,31 +305,13 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
   });
 
   test("Step 3 — Test connection button before save", async ({ page }) => {
-    // Navigate to service create form via template
-    await page.goto(`${BASE_URL}/admin/resources/services`, { waitUntil: "domcontentloaded", timeout: 20_000 });
-    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    // Open the create form with the GitHub template, which is exactly where the picker's
+    // "Use this template" button (data-testid=template-pick-github) navigates. The old steps
+    // (click "Templates", then click the text "GitHub") never reached the form, so the
+    // "Test connection" button stayed disabled and the click below waited for the 180 s timeout.
+    await page.goto(`${BASE_URL}/admin/resources/services/actions/new?template=github`, { waitUntil: "domcontentloaded", timeout: 20_000 });
+    await page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
     await page.waitForTimeout(1000);
-
-    // Click Templates button
-    for (const sel of ['button:has-text("Templates")', 'button:has-text("Create from template")', 'a:has-text("Templates")']) {
-      const btn = page.locator(sel).first();
-      if (await btn.count().then(c => c > 0).catch(() => false) && await btn.isVisible().catch(() => false)) {
-        await btn.click();
-        await page.waitForTimeout(1500);
-        break;
-      }
-    }
-
-    // Click GitHub
-    const githubBtn = page.locator('button:has-text("GitHub"), text=GitHub').first();
-    if (await githubBtn.count().then(c => c > 0).catch(() => false)) {
-      await githubBtn.click();
-      await page.waitForTimeout(1500);
-    } else {
-      // Fall back to direct new form
-      await page.goto(`${BASE_URL}/admin/resources/services/actions/new`, { waitUntil: "domcontentloaded", timeout: 15_000 });
-      await page.waitForTimeout(1000);
-    }
 
     // Check "Test connection" button on create form (BEFORE save)
     const testBtnBeforeSave = page.locator('[data-testid="test-connection-btn"], button:has-text("Test connection"), button:has-text("Test Connection")').first();
@@ -497,7 +491,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
       return;
     }
 
-    await showLink.click();
+    await openLink(page, showLink);
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1500);
 
@@ -568,7 +562,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
 
     const showLink = page.locator('a[href*="/resources/services/records/"][href*="/show"]').first();
     if (await showLink.count().then(c => c > 0).catch(() => false)) {
-      await showLink.click();
+      await openLink(page, showLink);
       await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(1500);
     }
@@ -788,7 +782,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
       return;
     }
 
-    await showLink.click();
+    await openLink(page, showLink);
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     await page.waitForTimeout(1500);
 
@@ -1029,7 +1023,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
     const agentShowLink = page.locator('a[href*="/resources/agents/records/"][href*="/show"]').first();
 
     if (await agentShowLink.count().then(c => c > 0).catch(() => false)) {
-      await agentShowLink.click();
+      await openLink(page, agentShowLink);
       await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(1500);
       await ss(page, "20-show-page-descriptions.png");
@@ -1062,7 +1056,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     const svcShowLink = page.locator('a[href*="/resources/services/records/"][href*="/show"]').first();
     if (await svcShowLink.count().then(c => c > 0).catch(() => false)) {
-      await svcShowLink.click();
+      await openLink(page, svcShowLink);
       await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(1000);
       await ss(page, "20b-service-show-descriptions.png");
@@ -1073,7 +1067,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     const credShowLink = page.locator('a[href*="/resources/credentials/records/"][href*="/show"]').first();
     if (await credShowLink.count().then(c => c > 0).catch(() => false)) {
-      await credShowLink.click();
+      await openLink(page, credShowLink);
       await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(1000);
       await ss(page, "20c-credential-show-descriptions.png");
@@ -1084,7 +1078,7 @@ test.describe("Runbook UI Verifier — github-quickstart.md", () => {
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
     const tenantShowLink = page.locator('a[href*="/resources/tenants/records/"][href*="/show"]').first();
     if (await tenantShowLink.count().then(c => c > 0).catch(() => false)) {
-      await tenantShowLink.click();
+      await openLink(page, tenantShowLink);
       await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(1000);
       await ss(page, "20d-tenant-show-descriptions.png");

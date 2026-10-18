@@ -25,17 +25,18 @@ test.describe("12 — Services CRUD round-trip", () => {
   test("create → list → show → edit → delete", async ({ page, consoleErrors }) => {
     const svc = new ServicesPage(page);
     const name = `e2e-svc-${uid()}`;
-    const slug = `e2e-svc-${uid()}`;
     const baseUrl = "https://test.example.com/api";
     const updatedUrl = "https://updated.example.com/api";
 
     // ── Create ──────────────────────────────────────────────────────────────
+    // The AdminJS default "new" form was replaced by ServiceCreateForm (0b04288, UX-C6 Phase 3):
+    // data-testid fields, native auth-scheme <select>, no slug input, in-page success banner.
+    // (The UX-C5 "land on the show page" intent is kept: the banner's "View service" link goes there.)
     await svc.gotoNew();
-    await page.waitForLoadState("networkidle");
-    await page.getByLabel("name").fill(name);
-    await page.getByLabel("slug").fill(slug);
-    await page.getByLabel(/base url/i).fill(baseUrl);
-    await svc.selectFromReactSelect(/auth.?scheme/i, /api.?key.*header/i);
+    await page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator("[data-testid='field-input-name']").fill(name);
+    await page.locator("[data-testid='field-input-base_url']").fill(baseUrl);
+    await page.locator("[data-testid='field-select-auth_scheme']").selectOption("api_key_header");
 
     const [createResp] = await Promise.all([
       page.waitForResponse(
@@ -44,13 +45,12 @@ test.describe("12 — Services CRUD round-trip", () => {
           r.request().method() === "POST",
         { timeout: 15_000 },
       ),
-      page.getByRole("button", { name: /save|create/i }).click(),
+      page.locator("[data-testid='service-create-submit']").click(),
     ]);
     expect(createResp.status(), "create must return 2xx").toBeLessThan(400);
 
-    // UX-C5 Bug 1: after create, AdminJS must redirect to the show page
-    // (/admin/resources/services/records/{id}/show), NOT back to the list.
-    // The show page is where testService lives — operators need to find it.
+    await page.locator("[data-testid='service-create-success']").waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator("[data-testid='skip-to-service-btn']").click();
     await page.waitForURL(
       /\/admin\/resources\/services\/records\/[^/]+\/show/,
       { timeout: 10_000 },
@@ -113,7 +113,7 @@ test.describe("12 — Services CRUD round-trip", () => {
     // List no longer contains the row
     await svc.gotoList();
     await page.waitForLoadState("networkidle");
-    const rowAfterDelete = page.locator("tr").filter({ hasText: slug });
+    const rowAfterDelete = page.locator("tr").filter({ hasText: name });
     await expect(rowAfterDelete, "list must not contain deleted service").not.toBeVisible({
       timeout: 5_000,
     });

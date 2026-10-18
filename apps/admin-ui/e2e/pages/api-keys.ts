@@ -32,6 +32,7 @@ export class ApiKeysPage extends BasePage {
    */
   async createApiKey(agentId: string, data: {
     service_id?: string;
+    agentSearch?: string;
     allowed_actions?: string;
     constraints?: string;
     expires_at?: string;
@@ -44,47 +45,40 @@ export class ApiKeysPage extends BasePage {
       timeout: 10_000,
     });
 
-    // Wait for agents to load
-    const agentSelect = this.page.locator('[data-testid="field-agent-id"] select');
-    await agentSelect.waitFor({ state: "attached", timeout: 15_000 });
+    // The agent and service pickers are async comboboxes (UX-A), not <select>s. Agents are searched
+    // server-side by name, so type `agentSearch` (default: the wire id) and click the option whose
+    // data-value is the wire id; the service combobox then lists the agent's permission grants.
+    const agentInput = this.page.locator('[data-testid="combobox-agent-input"]');
+    await agentInput.waitFor({ state: "visible", timeout: 15_000 });
+    await agentInput.click();
+    await agentInput.fill(data.agentSearch ?? agentId);
+    const agentOption = this.page.locator(
+      `[data-testid="combobox-agent-dropdown"] li[data-value="${agentId}"]`
+    );
+    await agentOption.waitFor({ state: "visible", timeout: 20_000 });
+    await agentOption.click();
 
-    // Select the agent by its ID value
-    const agentOptionExists = await agentSelect.locator(`option[value="${agentId}"]`).count();
-    if (agentOptionExists > 0) {
-      await agentSelect.selectOption({ value: agentId });
-    } else {
-      // Agent not in list — select first available (fallback)
-      const firstValue = await agentSelect.evaluate(
-        (el: HTMLSelectElement) => el.options.length > 1 ? el.options[1].value : ""
-      );
-      if (firstValue) await agentSelect.selectOption({ value: firstValue });
-    }
-
-    // Select service if provided (wait briefly for permissions to load)
-    const svcSelect = this.page.locator('[data-testid="field-service-id"] select');
-    // Wait up to 4s for service options to appear (permissions fetch is fast)
-    const serviceOptions = await svcSelect.waitFor({ state: "attached", timeout: 4_000 })
-      .then(async () => svcSelect.evaluate((el: HTMLSelectElement) => el.options.length))
-      .catch(() => 0);
-
-    if (serviceOptions <= 1) {
-      // No services available for this agent (no permission grants, or R7 fingerprint bug).
-      // Cannot submit — return empty string gracefully rather than failing the test.
+    // Wait for the agent's permissions (service options) to load.
+    const serviceInput = this.page.locator('[data-testid="combobox-service-input"]');
+    await serviceInput.waitFor({ state: "visible", timeout: 15_000 });
+    await this.page.waitForFunction(
+      () => !document.body.innerText.includes("Loading services"),
+      undefined,
+      { timeout: 15_000 }
+    );
+    await serviceInput.click();
+    const svcOptions = this.page.locator('[data-testid="combobox-service-dropdown"] li[data-value]');
+    const hasOptions = await svcOptions.first().waitFor({ state: "visible", timeout: 5_000 }).then(() => true).catch(() => false);
+    if (!hasOptions) {
+      // The agent has no permission grants, so there is no service to pick and the form cannot
+      // be submitted. Return "" (callers that need a key grant a permission first).
       return "";
     }
-
-    if (data.service_id) {
-      const hasSvcOption = await svcSelect.locator(`option[value="${data.service_id}"]`).count() > 0;
-      if (hasSvcOption) {
-        await svcSelect.selectOption({ value: data.service_id });
-      } else {
-        // Service not in dropdown — select first available
-        await svcSelect.selectOption({ index: 1 });
-      }
-    } else {
-      // No service_id specified — pick the first available
-      await svcSelect.selectOption({ index: 1 });
-    }
+    const wantedService = data.service_id
+      ? this.page.locator(`[data-testid="combobox-service-dropdown"] li[data-value="${data.service_id}"]`)
+      : svcOptions.first();
+    await wantedService.waitFor({ state: "visible", timeout: 10_000 });
+    await wantedService.click();
 
     if (data.expires_at) {
       await this.page.locator('[data-testid="field-expires-at"] input').fill(data.expires_at);

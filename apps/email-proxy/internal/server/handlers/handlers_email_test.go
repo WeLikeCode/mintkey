@@ -138,16 +138,6 @@ func oauth2VaultCred() *vault.Credential {
 	}
 }
 
-// passwordVaultCred returns a fake password vault credential.
-func passwordVaultCred() *vault.Credential {
-	payload := `{"username":"alice@example.com","password":"secret","imap_host":"imap.example.com:993"}`
-	return &vault.Credential{
-		Value:      []byte(payload),
-		AuthScheme: vault.AuthSchemeEmailPassword,
-		BaseUrl:    "imap.example.com:993",
-	}
-}
-
 // makeHandlers creates an EmailHandlers with injected fakes, using a real
 // rate limiter so rate-limit tests work. Uses allowAllPermissionChecker by default.
 func makeHandlers(p handlers.PoolGetter, o handlers.OAuth2Manager, v handlers.VaultGetter, s handlers.SMTPSender, ae handlers.AuditEmitter) *handlers.EmailHandlers {

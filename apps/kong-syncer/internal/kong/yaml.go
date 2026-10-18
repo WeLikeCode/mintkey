@@ -24,8 +24,8 @@ type ServiceEntry struct {
 
 // declarativeConfig is the top-level Kong declarative YAML document.
 type declarativeConfig struct {
-	FormatVersion string           `yaml:"_format_version"`
-	Services      []kongService    `yaml:"services,omitempty"`
+	FormatVersion string        `yaml:"_format_version"`
+	Services      []kongService `yaml:"services,omitempty"`
 }
 
 type kongService struct {
@@ -51,7 +51,11 @@ type kongRoute struct {
 // for the given service list. Each service receives:
 //  1. A path route  /v1/call/<service_id>          (ADR-0007 option A)
 //  2. A virtual-host route <slug>.<tenant_slug>.proxy.local  (ADR-0007 option C)
-func GenerateDeclarativeYAML(services []ServiceEntry) (string, error) {
+//
+// proxyPluginURL is the upstream every generated service routes to (the
+// proxy-plugin). It must be a URL resolvable from Kong — "http://proxy-plugin:8086"
+// under docker-compose, or the release-prefixed Service on Kubernetes.
+func GenerateDeclarativeYAML(services []ServiceEntry, proxyPluginURL string) (string, error) {
 	cfg := declarativeConfig{
 		FormatVersion: "3.0",
 	}
@@ -61,7 +65,7 @@ func GenerateDeclarativeYAML(services []ServiceEntry) (string, error) {
 			// All Kong services point to the proxy-plugin which validates JWTs,
 			// fetches credentials from the Vault Adapter, and reverse-proxies.
 			Name: svc.ID,
-			URL:  "http://proxy-plugin:8086",
+			URL:  proxyPluginURL,
 			Routes: []kongRoute{
 				{
 					// strip_path: true removes /v1/call/<svc_id> so the proxy-plugin

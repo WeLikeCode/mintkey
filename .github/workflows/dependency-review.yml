@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Dependency Review
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
@@ -52,11 +52,13 @@ jobs:
           #     as pgregory.net/rapid.
           #   - @csstools/*: admin-ui build-time transitive deps (MIT-0)
           #   - lru-cache: admin-ui transitive dep (BlueOak-1.0.0)
-          #   - golang.org/x/{sync,net,time,text}: BSD-3-Clause + the standard Go patent grant
+          #   - golang.org/x/{sync,net,time,text,sys}: BSD-3-Clause + the standard Go patent grant
           #     (reported as a compound expr with a non-SPDX scancode LicenseRef);
           #     permissive Go stdlib-adjacent libs (singleflight, HTTP/2, rate-limiter, etc.).
           #     golang.org/x/time added as transitive dep of ssh-proxy in PR #138.
           #     golang.org/x/text added as transitive dep of ssh-proxy in PR #139.
+          #     golang.org/x/sys added when the 2026-10 Trivy fix (#322) moved it to 0.49.0, which is reported
+          #     with the same scancode LicenseRef (the Go PATENTS grant).
           #   - google.golang.org/protobuf: BSD-3-Clause + Google patent grant (same LicenseRef
           #     pattern as golang.org/x/*); permissive in practice, required by gRPC.
           #   - stretchr/testify, gopkg.in/yaml.v3, types-PyYAML: permissive
@@ -95,6 +97,7 @@ jobs:
             pkg:golang/golang.org/x/net,
             pkg:golang/golang.org/x/time,
             pkg:golang/golang.org/x/text,
+            pkg:golang/golang.org/x/sys,
             pkg:golang/google.golang.org/protobuf,
             pkg:golang/github.com/stretchr/testify,
             pkg:golang/gopkg.in/yaml.v3,

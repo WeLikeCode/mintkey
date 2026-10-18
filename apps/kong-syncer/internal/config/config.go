@@ -16,6 +16,15 @@ type Config struct {
 	DatabaseURL  string
 	KongAdminURL string
 
+	// ProxyPluginURL is the upstream every generated Kong service routes to —
+	// the proxy-plugin that validates JWTs, fetches credentials from the Vault
+	// Adapter, and reverse-proxies. Env: PROXY_PLUGIN_URL. Default:
+	// http://proxy-plugin:8086 (the docker-compose service name). On Kubernetes
+	// the Service is release-name-prefixed, so this MUST be overridden to e.g.
+	// http://mintkey-proxy-plugin:8086, otherwise Kong returns
+	// "name resolution failed" for every brokered call.
+	ProxyPluginURL string
+
 	// InitialRetryMaxDuration caps the total wall-clock time spent retrying
 	// the initial reconcile at startup. Env: KONG_SYNCER_INITIAL_RETRY_MAX_DURATION.
 	// Default: 5m.
@@ -34,6 +43,7 @@ func Load() *Config {
 		HTTPPort:                getEnvInt("KONG_SYNCER_HTTP_PORT", 8086),
 		DatabaseURL:             getEnv("DATABASE_URL", "postgres://mintkey:mintkey@localhost:5432/mintkey?sslmode=disable"),
 		KongAdminURL:            getEnv("KONG_ADMIN_URL", "http://kong:8001"),
+		ProxyPluginURL:          getEnv("PROXY_PLUGIN_URL", "http://proxy-plugin:8086"),
 		InitialRetryMaxDuration: getEnvDuration("KONG_SYNCER_INITIAL_RETRY_MAX_DURATION", 5*time.Minute),
 		PeriodicInterval:        getEnvDuration("KONG_SYNCER_PERIODIC_INTERVAL", 5*time.Minute),
 	}

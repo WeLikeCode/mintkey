@@ -75,8 +75,8 @@ func (m *BudgetMetrics) IncDenied(labels MetricLabels) {
 	v.(*atomic.Int64).Add(1)
 }
 
-// WriteTo writes all budget metrics to w in Prometheus text exposition format.
-func (m *BudgetMetrics) WriteTo(w io.Writer) error {
+// WriteMetricsTo writes all budget metrics to w in Prometheus text exposition format.
+func (m *BudgetMetrics) WriteMetricsTo(w io.Writer) error {
 	// Collect all known label keys for deterministic output.
 	keys := m.sortedKeys()
 

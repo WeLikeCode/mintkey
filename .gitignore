@@ -39,3 +39,4 @@ apps/admin-ui/screenshots-*/
 # Claude Code internal session state — local only, not project content
 .claire/
 
+.l4-out/

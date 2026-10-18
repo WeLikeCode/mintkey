@@ -1218,3 +1218,288 @@ curl -s -X DELETE \
 All payloads carry **identifiers only** — the plaintext value never appears in any audit row.
 
 ---
+
+## 13. MongoDB Atlas Administration API
+
+Mintkey can broker the **MongoDB Atlas Administration API**
+(`https://cloud.mongodb.com/api/atlas/v2`) so agents perform Atlas administrative operations —
+create/scale clusters, manage projects, database users, network access, backups, alerts — without
+ever holding the Atlas credential. The architecture decision is
+[ADR-0029](architecture/01-architecture/adr/0029-mongodb-atlas-admin-api-support.md), which records the two new
+auth schemes and the read-scoped method-gating semantic.
+
+> **Control-plane only — reading collection documents is out of scope.** The Atlas Administration
+> API manages Atlas resources; it **cannot read documents from your collections**. The former Atlas
+> Data API (HTTP document access) has been **retired** by MongoDB, and reading collection data
+> requires the MongoDB wire protocol, which Mintkey's HTTP proxy does not speak. Mintkey brokers
+> Atlas *administration* only — there is no data-plane / document-read path.
+
+### 13.1 Two ways to register — pick your credential type
+
+Atlas authenticates via exactly two schemes, and Mintkey ships a template for each:
+
+| Template | Auth scheme | Credential you supply | When to use |
+|---|---|---|---|
+| `mongodb-atlas-service-account` | `oauth2_client_credentials` | `client_id` + `client_secret` | Atlas **Service Account** (OAuth2 client-credentials; the proxy exchanges the pair for a 1-hour Bearer token and refreshes it automatically) |
+| `mongodb-atlas-api-key` | `http_digest` | `public_key` + `private_key` | Atlas **Programmatic API Key** (HTTP Digest challenge-response; the proxy performs the RFC 2617 handshake per request) |
+
+Both templates create a service with `base_url: https://cloud.mongodb.com/api/atlas/v2`,
+`test_path: /groups`, and the Atlas v2 OpenAPI spec URL. In either case the agent never sees the
+credential — the proxy injects it in-flight.
+
+**Via Admin UI:** Services → New → **From Template** → choose **MongoDB Atlas (Service Account)** or
+**MongoDB Atlas (Programmatic API Key)** → supply the credential fields → Create.
+
+**Via curl (Service Account):**
+
+```bash
+# Step 1 — create the service from the template's shape
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "Atlas Admin (Service Account)",
+    "slug":        "atlas-admin-sa",
+    "display_name":"MongoDB Atlas Administration API",
+    "auth_scheme": "oauth2_client_credentials",
+    "base_url":    "https://cloud.mongodb.com/api/atlas/v2"
+  }')
+SID=$(echo "$SVC" | jq -r '.id')
+
+# Step 2 — store the credential (client_id/client_secret; never echoed back)
+curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services/$SID/credentials" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "auth_scheme": "oauth2_client_credentials",
+    "value": {
+      "token_url":           "https://cloud.mongodb.com/api/oauth/token",
+      "client_id":           "CLIENT_ID_HERE",
+      "client_secret":       "CLIENT_SECRET_HERE",
+      "token_response_path": "$.access_token"
+    }
+  }' | jq .
+```
+
+**Via curl (Programmatic API Key):** identical, but with `"auth_scheme": "http_digest"` and a
+credential value of `{"public_key": "PUBLIC_KEY_HERE", "private_key": "PRIVATE_KEY_HERE"}`.
+
+### 13.2 REQUIRED: the agent must send the dated Atlas version header
+
+Atlas v2 **requires** a dated `Accept` version header on **every** request:
+
+```
+Accept: application/vnd.atlas.<yyyy-mm-dd>+json      # e.g. application/vnd.atlas.2025-03-12+json
+```
+
+**Without it, Atlas returns `406 Not Acceptable`.** Mintkey forwards your request headers to MongoDB
+**unchanged** — it strips/replaces only `Authorization` and `X-Mintkey-*`, and it does **not** add
+the version header for you. The agent must set `Accept` itself on the proxy call. Both templates
+carry this instruction verbatim in the service `description` (surfaced to agents via
+`list_services` / `describe_service`) and in operator `config_notes`.
+
+### 13.3 Grant the agent `read:atlas` and/or `admin:atlas`
+
+Two actions bound what an agent can do. Grant either, both, or neither per agent:
+
+| Action / scope | HTTP methods allowed at the proxy | Use for |
+|---|---|---|
+| `read:atlas` | `GET`, `HEAD`, `OPTIONS` only (any other method → `403`) | Read-only inventory: list projects, clusters, DB users, alerts |
+| `admin:atlas` | all methods (`POST`, `PATCH`, `DELETE`, …) | Full administration: create/scale/delete clusters, manage users |
+
+The proxy enforces the `read:atlas` method gate from the JWT `scope`; a `read:atlas` token that
+attempts a `DELETE` is rejected with `403` before the upstream is contacted. `admin:atlas` and all
+pre-existing actions (`call`, the email scopes, …) are unaffected. Full power is still additionally
+bounded by the Service Account's / API Key's own roles on MongoDB's side.
+
+**Via Admin UI:** Permission Grants → New → select Agent, Service, and `read:atlas` or `admin:atlas`.
+
+**Via curl:**
+
+```bash
+# Read-only grant
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"read:atlas\"}" | jq .
+
+# Full-admin grant (separate call — each action is a separate grant)
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"admin:atlas\"}" | jq .
+```
+
+### 13.4 Agent calling Atlas through the proxy
+
+```bash
+# Step 1 — request a token with the granted action
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"read:atlas\"}" | jq -r '.token')
+
+# Step 2 — call the Atlas API through the proxy, sending the dated Accept header yourself.
+# URL pattern: http://localhost:8000/v1/call/<service_id>/<atlas_path>
+curl -s "http://localhost:8000/v1/call/$SID/groups" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.atlas.2025-03-12+json" | jq .
+```
+
+The proxy injects the Atlas credential (exchanged Bearer token for a Service Account, Digest
+challenge-response for an API Key) and forwards your `Accept` header unchanged. Your agent never
+sees the raw credential value.
+
+**What could go wrong:**
+- `406 Not Acceptable` → you omitted (or misspelled) the dated `Accept: application/vnd.atlas.<date>+json` header. Mintkey does not add it for you (§13.2).
+- `403 forbidden: read:atlas grants read-only access` → a `read:atlas` token attempted a write method; request an `admin:atlas` token instead (and hold the matching grant).
+- `403 permission_not_found` → no active grant for this agent + service + action; create one (§13.3).
+- `401` → token expired; call `request_token` again.
+
+---
+
+## 14. Auth0 Management API
+
+Mintkey can broker the **Auth0 Management API** (`https://{tenantDomain}/api/v2`) so agents
+perform Auth0 tenant administration — manage applications/clients, users, connections, roles,
+actions, logs — without ever holding the M2M credential. The proxy exchanges your
+`client_id`/`client_secret` for a **24-hour Bearer access token** at your tenant's
+`/oauth/token` endpoint (with the required `audience` parameter) and injects it
+automatically.
+
+> **No versioned `Accept` header required.** Unlike MongoDB Atlas (§13.2), the Auth0
+> Management API uses plain `Authorization: Bearer <token>` with no dated `Accept` version
+> header. Mintkey forwards your request headers unchanged — you do not need to set a
+> version header as you would with Atlas.
+
+### 14.1 Prerequisites — create and authorize an M2M application in Auth0
+
+Perform these steps once in the [Auth0 Dashboard](https://manage.auth0.com) before
+registering the service in Mintkey:
+
+1. **Applications → Create Application** → choose **Machine to Machine Application**.
+2. **Authorize it for the Auth0 Management API**: on the authorization screen select the
+   **Auth0 Management API** and grant the least-privilege scopes your agents need. The
+   template's `test_path` is `/clients`, which requires **`read:clients`** at minimum. Add
+   other scopes (e.g. `read:users`, `update:users`, `create:clients`) as your use case
+   requires.
+3. Open the application's **Settings** tab — note the **Domain**, **Client ID**, and
+   **Client Secret**. These three values map to `YOUR_TENANT`, `client_id`, and
+   `client_secret` in the steps below.
+4. **Confirm the Token Endpoint Authentication Method.** Mintkey authenticates to
+   `/oauth/token` with HTTP Basic (`client_secret_basic`). Open the application's
+   **Credentials** tab (Applications → your app → Credentials) and confirm the
+   authentication method is **Client Secret (Basic)**. If it shows **Client Secret
+   (Post)**, change it to **Basic** — otherwise the token exchange will fail with
+   `401 invalid_client`.
+
+### 14.2 Instantiate the auth0-management template
+
+**Via Admin UI:** Services → New → **From Template** → choose **Auth0 Management API** →
+fill in a name → Create. Then edit the service and replace the `YOUR_TENANT` placeholder
+in `base_url` with your Auth0 domain.
+
+**Via curl:**
+
+```bash
+# Step 1 — create the service from the template's shape
+SVC=$(curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "name":        "Auth0 Management API",
+    "slug":        "auth0-mgmt",
+    "display_name":"Auth0 Management API",
+    "auth_scheme": "oauth2_client_credentials",
+    "base_url":    "https://YOUR_TENANT.auth0.com/api/v2"
+  }')
+SID=$(echo "$SVC" | jq -r '.id')
+```
+
+> **Replace `YOUR_TENANT` everywhere** — in `base_url`, `token_url`, and `audience`. Auth0
+> supports regional domains (e.g. `my-tenant.us.auth0.com`) and custom domains
+> (e.g. `auth.mycompany.com`). Use whichever domain appears in your Auth0 application's
+> **Domain** field.
+
+### 14.3 Store the credential
+
+```bash
+# Step 2 — store the M2M credential (token_url, client_id, client_secret, audience)
+# client_secret is never echoed back in any response, audit event, or log
+curl -s -X POST "http://localhost:8080/v1/tenants/$TENANT_ID/services/$SID/credentials" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d '{
+    "auth_scheme": "oauth2_client_credentials",
+    "value": {
+      "token_url":           "https://YOUR_TENANT.auth0.com/oauth/token",
+      "client_id":           "CLIENT_ID_HERE",
+      "client_secret":       "CLIENT_SECRET_HERE",
+      "audience":            "https://YOUR_TENANT.auth0.com/api/v2/",
+      "token_response_path": "$.access_token"
+    }
+  }' | jq .
+```
+
+> **Trailing slash on `audience` is mandatory.** Auth0's Management API identifier is
+> `https://{tenantDomain}/api/v2/` — the trailing slash is part of the identifier. A
+> slash-less value (e.g. `https://my-tenant.auth0.com/api/v2`) will not match, causing
+> Auth0 to reject the token request with an audience-mismatch error.
+
+The proxy exchanges the credential at `token_url` using form-encoded
+`grant_type=client_credentials` with HTTP Basic authentication, caches the returned
+24-hour access token (`expires_in 86400`), and auto-refreshes before expiry. Your agent
+never sees the token or the `client_secret`.
+
+**Via Admin UI:** service show page → **Set Credential** → fill `token_url`, `client_id`,
+`client_secret`, `audience` → Save.
+
+### 14.4 Grant the agent the `call` action
+
+```bash
+curl -s -X POST \
+  "http://localhost:8080/v1/tenants/$TENANT_ID/agents/$AGENT_ID/permissions" \
+  -H "Content-Type: application/json" -H "X-Mintkey-Csrf: $CSRF" \
+  -H "X-Platform-Admin: true" -b /tmp/mk_cookies.txt \
+  -d "{\"service_id\":\"$SID\",\"action\":\"call\"}" | jq .
+# Expected: {"id":"perm_01...","action":"call"}
+```
+
+**Via Admin UI:** Permission Grants → New → select Agent, Service (`auth0-mgmt`), Action
+(`call`) → Create.
+
+### 14.5 Agent calling the Auth0 Management API through the proxy
+
+```bash
+# Step 1 — request a token
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/tools/request_token \
+  -H "Authorization: Bearer $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"service_id\":\"$SID\",\"action\":\"call\"}" | jq -r '.token')
+
+# Step 2 — call the Management API through the proxy.
+# No dated Accept header needed — Auth0 uses plain Bearer auth (contrast §13.2).
+# URL pattern: http://localhost:8000/v1/call/<service_id>/<management_path>
+curl -s "http://localhost:8000/v1/call/$SID/clients" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+The proxy injects the cached Auth0 Bearer token and forwards your request headers
+unchanged. The `Authorization` header you send carries the short-lived Mintkey JWT; the
+proxy replaces it with the Auth0 access token before the request reaches `base_url`.
+
+**What could go wrong:**
+- `401 invalid_client` on token exchange → the M2M application's token-endpoint
+  authentication method is not **Client Secret (Basic)** — see §14.1 step 4.
+- `401 Unauthorized` from Auth0 on API calls → the audience may not match the Management
+  API identifier exactly, including the trailing slash (§14.3). Verify the stored
+  credential's `audience` field.
+- `403 Forbidden` from Auth0 → the Management API scope was not granted to the M2M
+  application (§14.1 step 2). Add the required scope in the Auth0 Dashboard.
+- `403 permission_not_found` → no active Mintkey grant for this agent + service + `call`;
+  create one (§14.4).
+- `401` with Mintkey → Mintkey JWT expired; call `request_token` again.
+
+---

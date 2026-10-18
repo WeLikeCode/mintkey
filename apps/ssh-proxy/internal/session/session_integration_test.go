@@ -116,7 +116,7 @@ func startBackendServer(t *testing.T) *ssh.Client {
 
 		for newChan := range chans {
 			if newChan.ChannelType() != "session" {
-				newChan.Reject(ssh.UnknownChannelType, "unknown")
+				_ = newChan.Reject(ssh.UnknownChannelType, "unknown")
 				continue
 			}
 			ch, requests, err := newChan.Accept()
@@ -148,23 +148,23 @@ func serveExecChannel(ch ssh.Channel, requests <-chan *ssh.Request) {
 	for req := range requests {
 		if req.Type != "exec" {
 			if req.WantReply {
-				req.Reply(false, nil)
+				_ = req.Reply(false, nil)
 			}
 			continue
 		}
 		if req.WantReply {
-			req.Reply(true, nil)
+			_ = req.Reply(true, nil)
 		}
 		// Parse command payload.
 		if len(req.Payload) >= 4 {
 			cmdLen := binary.BigEndian.Uint32(req.Payload[0:4])
 			if int(4+cmdLen) <= len(req.Payload) {
 				cmd := string(req.Payload[4 : 4+cmdLen])
-				ch.Write([]byte(cmd + "\n"))
+				_, _ = ch.Write([]byte(cmd + "\n"))
 			}
 		}
 		// Send exit-status 0 and return (closes the channel via defer).
-		ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+		_, _ = ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
 		return
 	}
 }
@@ -242,9 +242,9 @@ func TestSession_ExecHandler_EndToEnd(t *testing.T) {
 
 	// Collect output from the agent side until it is closed by the session
 	// handler (which happens when the backend sends exit-status).
-	agentSide.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = agentSide.SetDeadline(time.Now().Add(5 * time.Second))
 	var buf bytes.Buffer
-	io.Copy(&buf, agentSide)
+	_, _ = io.Copy(&buf, agentSide)
 
 	// 1. Connector was called.
 	connector.mu.Lock()
@@ -333,8 +333,8 @@ func TestSession_ExecHandler_FilterDeniesCommand(t *testing.T) {
 	}
 
 	// The handler closes the channel synchronously on filter deny; read until EOF.
-	agentSide.SetDeadline(time.Now().Add(2 * time.Second))
-	io.Copy(io.Discard, agentSide)
+	_ = agentSide.SetDeadline(time.Now().Add(2 * time.Second))
+	_, _ = io.Copy(io.Discard, agentSide)
 
 	// Connector must NOT have been called.
 	connector.mu.Lock()
@@ -404,7 +404,7 @@ func startShellBackendServer(t *testing.T) *ssh.Client {
 
 		for newChan := range chans {
 			if newChan.ChannelType() != "session" {
-				newChan.Reject(ssh.UnknownChannelType, "unknown")
+				_ = newChan.Reject(ssh.UnknownChannelType, "unknown")
 				continue
 			}
 			ch, requests, err := newChan.Accept()
@@ -437,19 +437,19 @@ func serveShellChannel(ch ssh.Channel, requests <-chan *ssh.Request) {
 		switch req.Type {
 		case "pty-req":
 			if req.WantReply {
-				req.Reply(true, nil)
+				_ = req.Reply(true, nil)
 			}
 		case "shell":
 			if req.WantReply {
-				req.Reply(true, nil)
+				_ = req.Reply(true, nil)
 			}
 			// Write one output frame so the recorder captures it.
-			ch.Write([]byte("hello from shell\r\n"))
-			ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
+			_, _ = ch.Write([]byte("hello from shell\r\n"))
+			_, _ = ch.SendRequest("exit-status", false, []byte{0, 0, 0, 0})
 			return
 		default:
 			if req.WantReply {
-				req.Reply(false, nil)
+				_ = req.Reply(false, nil)
 			}
 		}
 	}
@@ -518,8 +518,8 @@ func TestSession_ShellHandler_RecorderWritten(t *testing.T) {
 	}
 
 	// Drain agent side; the backend sends one frame then exits.
-	agentSide.SetDeadline(time.Now().Add(5 * time.Second))
-	io.Copy(io.Discard, agentSide)
+	_ = agentSide.SetDeadline(time.Now().Add(5 * time.Second))
+	_, _ = io.Copy(io.Discard, agentSide)
 
 	// Give the deferred recorder.Close() a moment to flush.
 	time.Sleep(50 * time.Millisecond)

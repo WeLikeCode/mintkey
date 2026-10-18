@@ -43,7 +43,7 @@ func jwksServer(t *testing.T, keys map[string]ed25519.PublicKey) *httptest.Serve
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"keys": ks})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"keys": ks})
 	}))
 }
 
@@ -269,7 +269,7 @@ func TestForceRefreshThrottle(t *testing.T) {
 		// Serve an empty JWKS — no known kids, so every validation will attempt
 		// a force-refresh (unknown kid path in ValidateBrokeredJWT).
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
 	}))
 	defer srv.Close()
 

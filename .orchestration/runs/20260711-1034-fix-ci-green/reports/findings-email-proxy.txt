@@ -1,0 +1,45 @@
+internal/smtp/client.go:391:11: Error return value of `qp.Write` is not checked (errcheck)
+		qp.Write([]byte(req.Body))
+		        ^
+internal/smtp/client.go:405:11: Error return value of `qp.Write` is not checked (errcheck)
+		qp.Write([]byte(req.Body))
+		        ^
+internal/smtp/client.go:414:11: Error return value of `qp.Write` is not checked (errcheck)
+		qp.Write([]byte(req.BodyHTML))
+		        ^
+internal/smtp/client.go:454:17: Error return value of `altPart.Write` is not checked (errcheck)
+			altPart.Write(altBuf.Bytes())
+			             ^
+internal/smtp/client.go:482:13: Error return value of `enc.Write` is not checked (errcheck)
+			enc.Write(att.Content)
+			         ^
+internal/oauth2/oauth2.go:57:5: var `supportedProviders` is unused (unused)
+var supportedProviders = map[string]struct{}{
+    ^
+internal/server/handlers/email.go:1101:3: ineffectual assignment to mailbox (ineffassign)
+		mailbox = defaultMailbox
+		^
+internal/vault/client_test.go:56:3: SA9003: empty branch (staticcheck)
+		if err := srv.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+		^
+tests/security/leak_redteam_test.go:203:6: func `assertNoLeak` is unused (unused)
+func assertNoLeak(t *testing.T, label, marker, logOutput, auditOutput, errorBody string) {
+     ^
+internal/auth/auth_test.go:46:28: Error return value of `(*encoding/json.Encoder).Encode` is not checked (errcheck)
+		json.NewEncoder(w).Encode(map[string]interface{}{"keys": ks})
+		                         ^
+internal/auth/auth_test.go:272:28: Error return value of `(*encoding/json.Encoder).Encode` is not checked (errcheck)
+		json.NewEncoder(w).Encode(map[string]interface{}{"keys": []interface{}{}})
+		                         ^
+internal/imap/client_test.go:99:6: func `dialWrapped` is unused (unused)
+func dialWrapped(t *testing.T, conn net.Conn) (*imapwrap.Client, *imapclient.Client) {
+     ^
+internal/server/handlers/handlers_email_test.go:142:6: func `passwordVaultCred` is unused (unused)
+func passwordVaultCred() *vault.Credential {
+     ^
+internal/smtp/smtp_test.go:880:11: Error return value of `fmt.Sscan` is not checked (errcheck)
+	fmt.Sscan(portStr, &port)
+	         ^
+internal/smtp/smtp_test.go:297:6: func `dialTargetInsecure` is unused (unused)
+func dialTargetInsecure(addr string) smtpclient.DialTarget {
+     ^

@@ -1,0 +1,7 @@
+ok  	github.com/mintkey/mintkey/packages/go/audit	0.285s
+ok  	github.com/mintkey/mintkey/packages/go/auditq	13.893s
+ok  	github.com/mintkey/mintkey/packages/go/changes	0.447s
+ok  	github.com/mintkey/mintkey/packages/go/otelinit	0.627s
+ok  	github.com/mintkey/mintkey/packages/go/svcid	0.779s
+ok  	github.com/mintkey/mintkey/packages/go/ulid	0.940s
+ok  	github.com/mintkey/mintkey/packages/go/vault/v1	1.115s

@@ -303,8 +303,15 @@ async def request_token(
             "auth_method": "password",
             "password_is_jwt": True,
             "hint": (
-                f"ssh -p {ext_port} {agent_id}@{ext_host} "
-                "— use the token above as the SSH password"
+                f"Connect: ssh -p {ext_port} "
+                f"-o PreferredAuthentications=password -o PubkeyAuthentication=no "
+                f"{agent_id}@{ext_host}. "
+                f"SSH username MUST be exactly '{agent_id}' (the ssh_user value shown "
+                f"above), used verbatim — do NOT substitute a service, target, or other "
+                f"user. SSH password is THIS response's 'token' value (a short-lived JWT) "
+                f"— NOT your mk_agent MCP key and NOT the 'Bearer mk_agent...' string. "
+                f"The token is fresh per request (~10-min TTL, single-use); call "
+                f"request_token again to get a new one."
             ),
         }
         return JSONResponse({

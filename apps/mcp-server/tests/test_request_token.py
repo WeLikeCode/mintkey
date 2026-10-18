@@ -695,6 +695,101 @@ def test_request_token_ssh_service_returns_ssh_connect_not_proxy_url() -> None:
     assert "action" in body, f"action missing: {body}"
 
 
+def test_request_token_ssh_hint_is_unambiguous() -> None:
+    """
+    The ssh_connect.hint for an SSH service must give agents unambiguous
+    connect guidance (ADR-0032; ssh-bastion-connect-guidance Req 1 AC1):
+      - names ssh_connect.ssh_user (== agent_id) as the SSH username, verbatim
+      - names THIS response's 'token' as the SSH password
+      - warns NOT to use the mk_agent MCP key / 'Bearer' string as the password
+      - includes PreferredAuthentications=password + PubkeyAuthentication=no
+      - notes the single-use / ~10-min TTL nature of the token
+
+    Guidance-text-only change: the ssh_connect shape is unchanged.
+    """
+    import asyncio
+    from httpx import AsyncClient, ASGITransport
+    from unittest.mock import patch, AsyncMock as _AsyncMock
+
+    _agent_id = "agent_TESTSSH0000000000000000002"
+    broker_resp = {
+        "token": "hdr.claims.sig",
+        "expires_at": 9999999999,
+    }
+
+    app, _orig, _main_mod = _build_app_ssh_service(
+        ssh_auth_scheme="ssh_password",
+        agent_id=_agent_id,
+    )
+    try:
+        async def _inner():
+            with patch(
+                "mcp_server.tools.request_token.httpx.AsyncClient",
+            ) as mock_client_cls:
+                mock_resp = MagicMock()
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = broker_resp
+                mock_ctx = _AsyncMock()
+                mock_ctx.__aenter__ = _AsyncMock(return_value=mock_ctx)
+                mock_ctx.__aexit__ = _AsyncMock(return_value=False)
+                mock_ctx.post = _AsyncMock(return_value=mock_resp)
+                mock_client_cls.return_value = mock_ctx
+
+                async with AsyncClient(
+                    transport=ASGITransport(app=app), base_url="http://test"
+                ) as client:
+                    return await client.post(
+                        "/v1/tools/request_token",
+                        json={"service_id": _TEST_SERVICE_UUID, "action": "call"},
+                        headers={"X-API-Key": "mk_agent_testkey"},
+                    )
+
+        resp = asyncio.run(_inner())
+    finally:
+        _main_mod.validate_agent_key = _orig
+
+    assert resp.status_code == 200, (
+        f"Expected 200 from SSH service request_token, got {resp.status_code}: {resp.text}"
+    )
+    ssh = resp.json()["ssh_connect"]
+    hint = ssh["hint"]
+
+    # (a) ssh_user named as the SSH username, used verbatim — and it is agent_id.
+    assert ssh["ssh_user"] == _agent_id, (
+        f"ssh_user must equal agent_id={_agent_id!r}, got: {ssh['ssh_user']!r}"
+    )
+    assert _agent_id in hint, (
+        f"hint must interpolate the ssh_user value {_agent_id!r}: {hint!r}"
+    )
+    assert "ssh_user" in hint, f"hint must reference ssh_user as the username: {hint!r}"
+    assert "verbatim" in hint.lower(), (
+        f"hint must state the username is used verbatim: {hint!r}"
+    )
+
+    # (b) 'token' named as the SSH password.
+    assert "token" in hint, f"hint must name 'token' as the password: {hint!r}"
+    assert "password" in hint.lower(), f"hint must mention the SSH password: {hint!r}"
+
+    # (c) warns against the mk_agent key / Bearer string.
+    assert "mk_agent" in hint, (
+        f"hint must warn against using the mk_agent key: {hint!r}"
+    )
+
+    # (d) the -o auth options are present.
+    assert "PreferredAuthentications=password" in hint, (
+        f"hint must include PreferredAuthentications=password: {hint!r}"
+    )
+    assert "PubkeyAuthentication=no" in hint, (
+        f"hint must include PubkeyAuthentication=no: {hint!r}"
+    )
+
+    # single-use / ~10-min TTL note.
+    assert "single-use" in hint.lower(), f"hint must note single-use: {hint!r}"
+    assert "10-min" in hint or "10 min" in hint, (
+        f"hint must note the ~10-min TTL: {hint!r}"
+    )
+
+
 def test_request_token_http_service_returns_no_ssh_connect() -> None:
     """
     For non-SSH services (e.g. bearer_token), the response must NOT include

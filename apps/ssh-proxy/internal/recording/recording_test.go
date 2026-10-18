@@ -2,6 +2,7 @@ package recording
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -186,9 +187,15 @@ func TestRecorder_IntegrityDigest(t *testing.T) {
 	}
 
 	// Write some frames
-	recorder.WriteOutput([]byte("hello"))
-	recorder.WriteInput([]byte("world"))
-	recorder.WriteOutput([]byte("more output"))
+	if err := recorder.WriteOutput([]byte("hello")); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
+	if err := recorder.WriteInput([]byte("world")); err != nil {
+		t.Fatalf("WriteInput: %v", err)
+	}
+	if err := recorder.WriteOutput([]byte("more output")); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
 
 	digest, err := recorder.Close()
 	if err != nil {
@@ -228,7 +235,9 @@ func TestRecorder_SidecarFile(t *testing.T) {
 		t.Fatalf("NewRecorder() error = %v", err)
 	}
 
-	recorder.WriteOutput([]byte("some output"))
+	if err := recorder.WriteOutput([]byte("some output")); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
 
 	digest, err := recorder.Close()
 	if err != nil {
@@ -286,8 +295,12 @@ func TestAsciicastReader(t *testing.T) {
 		t.Fatalf("NewAsciicastWriter() error = %v", err)
 	}
 
-	writer.WriteOutput([]byte("line 1"))
-	writer.WriteOutput([]byte("line 2"))
+	if err := writer.WriteOutput([]byte("line 1")); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
+	if err := writer.WriteOutput([]byte("line 2")); err != nil {
+		t.Fatalf("WriteOutput: %v", err)
+	}
 
 	// Read it back
 	reader, err := NewAsciicastReader(&buf)
@@ -339,7 +352,7 @@ func TestLocalStorage(t *testing.T) {
 
 	// Test Store
 	data := bytes.NewBufferString("test recording data")
-	path, err := storage.Store(nil, "test_session", data)
+	path, err := storage.Store(context.TODO(), "test_session", data)
 	if err != nil {
 		t.Fatalf("Store() error = %v", err)
 	}
@@ -349,7 +362,7 @@ func TestLocalStorage(t *testing.T) {
 	}
 
 	// Test List
-	paths, err := storage.List(nil)
+	paths, err := storage.List(context.TODO())
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -359,19 +372,19 @@ func TestLocalStorage(t *testing.T) {
 	}
 
 	// Test Retrieve
-	reader, err := storage.Retrieve(nil, path)
+	reader, err := storage.Retrieve(context.TODO(), path)
 	if err != nil {
 		t.Fatalf("Retrieve() error = %v", err)
 	}
 	defer reader.Close()
 
 	// Test Delete
-	if err := storage.Delete(nil, path); err != nil {
+	if err := storage.Delete(context.TODO(), path); err != nil {
 		t.Errorf("Delete() error = %v", err)
 	}
 
 	// Verify deleted
-	paths, err = storage.List(nil)
+	paths, err = storage.List(context.TODO())
 	if err != nil {
 		t.Fatalf("List() after delete error = %v", err)
 	}
@@ -408,7 +421,7 @@ func TestLocalStorage_Cleanup(t *testing.T) {
 	}
 
 	// Cleanup recordings older than 24 hours
-	deleted, err := storage.Cleanup(nil, 24*time.Hour)
+	deleted, err := storage.Cleanup(context.TODO(), 24*time.Hour)
 	if err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
 	}
@@ -445,12 +458,12 @@ func TestLocalStorage_PathTraversal(t *testing.T) {
 	}
 
 	for _, p := range traversalPaths {
-		_, err := storage.Retrieve(nil, p)
+		_, err := storage.Retrieve(context.TODO(), p)
 		if err == nil {
 			t.Errorf("Retrieve(%q) should have rejected path traversal, got nil error", p)
 		}
 
-		if err := storage.Delete(nil, p); err == nil {
+		if err := storage.Delete(context.TODO(), p); err == nil {
 			t.Errorf("Delete(%q) should have rejected path traversal, got nil error", p)
 		}
 	}

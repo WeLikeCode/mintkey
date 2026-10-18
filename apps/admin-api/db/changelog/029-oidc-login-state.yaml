@@ -1,0 +1,97 @@
+databaseChangeLog:
+  # -----------------------------------------------------------------------
+  # 029-oidc-login-state.yaml
+  #
+  # Creates the public.oidc_login_state table for the admin-api OIDC (PKCE)
+  # login flow (ADR-0009; ADR-0016.2; Req 2 AC6).
+  #
+  # oidc_login_state is a short-lived, single-use PKCE state store. One row
+  # per in-flight /v1/auth/oidc/login → /v1/auth/oidc/callback round trip;
+  # deleted (single-use) on callback. Opportunistic GC: DELETE WHERE
+  # expires_at < now() fires on each INSERT (see OidcStateRepository.put).
+  #
+  # Replaces the process-local in-memory `_state_store` dict in
+  # admin_api.auth.oidc, which broke OIDC login when admin-api runs at
+  # replicas > 1 (login and callback can land on different pods).
+  #
+  # NO Row Level Security / no tenant_id here — unlike 023-oauth2-state
+  # (post-login, tenant-scoped), this table holds pre-authentication
+  # login-flow state: no operator or tenant is known yet when the row is
+  # written. Security rests on the unguessable 256-bit `state` value,
+  # single-use consumption (DELETE ... RETURNING), and a short TTL.
+  #
+  # Idempotent: preConditions (MARK_RAN) guard each changeset.
+  #
+  # Source: ADR-0009; ADR-0016.2; Req 2 AC6; admin_api/auth/oidc.py;
+  #         admin_api/auth/oidc_state.py.
+  # -----------------------------------------------------------------------
+
+  # --- 1. Create oidc_login_state table -----------------------------------
+  - changeSet:
+      id: "029-oidc-login-state-1"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            tableExists:
+              schemaName: public
+              tableName: oidc_login_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE TABLE public.oidc_login_state (
+                state         TEXT        PRIMARY KEY NOT NULL,
+                code_verifier TEXT        NOT NULL,
+                redirect_uri  TEXT        NOT NULL,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                expires_at    TIMESTAMPTZ NOT NULL
+              );
+              COMMENT ON TABLE public.oidc_login_state IS
+                'Short-lived single-use PKCE state store for the OIDC login flow (ADR-0009; ADR-0016.2). Deleted on callback.';
+      rollback:
+        - sql:
+            sql: |
+              DROP TABLE IF EXISTS public.oidc_login_state;
+
+  # --- 2. Index on expires_at for opportunistic GC ------------------------
+  - changeSet:
+      id: "029-oidc-login-state-2"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          not:
+            indexExists:
+              schemaName: public
+              tableName: oidc_login_state
+              indexName: idx_oidc_login_state_expires
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              CREATE INDEX idx_oidc_login_state_expires
+                ON public.oidc_login_state (expires_at);
+      rollback:
+        - sql:
+            sql: |
+              DROP INDEX IF EXISTS public.idx_oidc_login_state_expires;
+
+  # --- 3. Grants for mintkey_app role --------------------------------------
+  - changeSet:
+      id: "029-oidc-login-state-3"
+      author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+          tableExists:
+            schemaName: public
+            tableName: oidc_login_state
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |
+              GRANT SELECT, INSERT, UPDATE, DELETE
+                ON public.oidc_login_state TO mintkey_app;
+      rollback:
+        - sql:
+            sql: |
+              REVOKE ALL ON public.oidc_login_state FROM mintkey_app;

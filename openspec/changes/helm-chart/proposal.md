@@ -21,7 +21,7 @@ All 12 first-party images are already published to `ghcr.io/welikecode/mintkey-<
   - **Never exposed**: Kong admin `:8001`, postgres, vault-adapter, kong-syncer, proxy-plugin, otel-collector, broker issue endpoint — ClusterIP only, optionally a NetworkPolicy (the compose `127.0.0.1`-bind has no k8s equivalent, so exposure is controlled by simply not creating a Service/Ingress).
 - **Replica policy in values**: admin-api `replicas: 1` with `Recreate` unless the OIDC-state fix is confirmed (guardrail comment referencing `kubernetes-readiness`); broker `replicas` ≥1 safe once key persistence lands.
 - **Drop from the k8s path**: `cadvisor` (host-mount DaemonSet pattern, redundant with cluster node metrics), `hashicorp-vault` dev profile, `mock-backend` (demo only) — documented as intentionally omitted.
-- Update `docs/DEPLOYMENT.md` to point at the chart and its `values.yaml` contract; new **ADR-0030** recording the k8s deployment topology and exposure model.
+- Update `docs/DEPLOYMENT.md` to point at the chart and its `values.yaml` contract; new **ADR-0033** recording the k8s deployment topology and exposure model.
 
 ## Capabilities
 
@@ -30,7 +30,7 @@ All 12 first-party images are already published to `ghcr.io/welikecode/mintkey-<
 
 ## Impact
 
-- **New**: `deploy/helm/mintkey/**`, ADR-0030 (+ symlink + index row).
+- **New**: `deploy/helm/mintkey/**`, ADR-0033 (+ symlink + index row).
 - **Docs**: `docs/DEPLOYMENT.md` (add the k8s/Helm path), a `deploy/helm/mintkey/README.md` (install, required Secrets, values reference), `PORTS.md` cross-reference.
 - **No application code change** beyond what `kubernetes-readiness` already delivers; if the chart surfaces a missing readiness/liveness endpoint or a `localhost`-defaulted URL that cannot be overridden, raise it as a defect against `kubernetes-readiness` rather than patching around it in templates.
 - **Out of scope**: production Keycloak HA topology; a production Vault cluster; multi-tenant per-tenant deploys; CI/CD delivery pipeline (the consuming cluster's ArgoCD/GitOps wraps this chart — e.g. the SpotUs DEV cluster references it as an Application).
@@ -41,7 +41,7 @@ All 12 first-party images are already published to `ghcr.io/welikecode/mintkey-<
 2. **User-visible symptom**: No `helm install` path; hand-written manifests get SSH bastion, Kong admin exposure, KEK mode, and startup ordering wrong.
 3. **Expected behavior**: `helm install mintkey deploy/helm/mintkey -f values.yaml` (with required Secrets pre-created) brings up a working core stack: migrations run, seed completes, an agent can `request_token` and proxy a call in-cluster; admin UI reachable via Ingress; SSH bastion on TCP; Kong admin unreachable.
 4. **Evidence**: no chart in repo (full-tree search); `docs/DEPLOYMENT.md` states it; compose exposure/ordering encoded only in `infra/compose/*` + shell tooling.
-5. **Scope**: chart + hook Jobs + PVCs + Secret references + ConfigMaps + exposure model + values + docs + ADR-0030.
+5. **Scope**: chart + hook Jobs + PVCs + Secret references + ConfigMaps + exposure model + values + docs + ADR-0033.
 6. **Out of scope**: see above; also the four code fixes (they are `kubernetes-readiness`).
 7. **Risk level**: MEDIUM — no new app code, but mis-templated Secrets/exposure are security-relevant. Independent review of the exposure model + a live smoke deploy required.
 8. **Verification target**: `helm lint` + `helm template | kubeconform` (or `kubectl apply --dry-run=server`) green; a live smoke deploy on a real cluster proving: migrations+seed Jobs Completed, core pods Ready, in-cluster `request_token`→proxy call returns `Via: kong`, admin-ui reachable via Ingress, `nc` to ssh-proxy TCP works while Kong admin `:8001` has no Service, KEK loaded from a mounted file.

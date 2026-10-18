@@ -1,0 +1,7 @@
+  [.] golangci issues: 0
+  [apps/broker] golangci issues: 0
+  [apps/email-proxy] golangci issues: 0
+  [apps/kong-syncer] golangci issues: 0
+  [apps/proxy-plugin] golangci issues: 0
+  [apps/ssh-proxy] golangci issues: 0
+  [apps/vault-adapter] golangci issues: 0

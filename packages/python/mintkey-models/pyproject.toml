@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=82.0.1"]
+requires = ["setuptools>=84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,8 +9,8 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.13.4",
     "sqlalchemy[asyncio]>=2.0.51",
-    "prometheus-client>=0.25.0",
-    "cryptography>=49.0.0",
+    "prometheus-client>=0.26.0",
+    "cryptography>=50.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -22,7 +22,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.18",
-    "mypy>=2.1.0",
+    "mypy>=2.4.0",
 ]
 
 [tool.uv]

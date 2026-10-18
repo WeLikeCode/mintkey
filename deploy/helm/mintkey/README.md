@@ -3,8 +3,8 @@
 Deploys the Mintkey credential broker to Kubernetes from published GHCR images
 (`ghcr.io/welikecode/mintkey-*`).
 
-**Status: pre-alpha.** Depends on kubernetes-readiness (ADR-0030). Not validated for production.
-See [ADR-0031](../../../docs/architecture/01-architecture/adr/0031-kubernetes-deployment-topology.md)
+**Status: pre-alpha.** Depends on kubernetes-readiness (ADR-0033). Not validated for production.
+See [ADR-0034](../../../docs/architecture/01-architecture/adr/0034-kubernetes-deployment-topology.md)
 for the full rationale behind the topology choices.
 
 ---
@@ -140,7 +140,7 @@ The Liquibase migration Job and seed-job hook run idempotently on each upgrade
 
 The Kong admin API (port 8001) is exposed only via a ClusterIP Service named `<release>-kong-admin`.
 `kong-syncer` reaches it in-cluster at `http://<release>-kong-admin:8001`. There is no Ingress
-or LoadBalancer for this Service. Per ADR-0031.
+or LoadBalancer for this Service. Per ADR-0034.
 
 ### SSH proxy — raw TCP, not HTTP Ingress
 
@@ -195,12 +195,12 @@ After install, confirm the following to validate the deployment:
 3. An in-cluster agent can complete the full `request_token` → proxy call flow and receive a
    response with `Via: kong` in the headers.
 
-Full smoke-test procedure: see ADR-0031 §8.
+Full smoke-test procedure: see ADR-0034 §8.
 
 ---
 
 ## Architecture
 
-See [ADR-0031](../../../docs/architecture/01-architecture/adr/0031-kubernetes-deployment-topology.md)
+See [ADR-0034](../../../docs/architecture/01-architecture/adr/0034-kubernetes-deployment-topology.md)
 for the full rationale: service topology, Kong admin isolation, SSH host-key lifecycle, PVC
 sizing, and multi-replica caveats.

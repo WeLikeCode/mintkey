@@ -538,6 +538,45 @@ def test_tools_call_invalid_key_returns_error():
     assert body["error"]["code"] == -32001
 
 
+def test_tools_list_service_unavailable_returns_32603():
+    """tools/list must return -32603 (transient), not -32001, when admin-api is down."""
+    async def _unavailable_validate(key):
+        return None, "service_unavailable"
+
+    resp = _post(
+        "/mcp",
+        {"jsonrpc": "2.0", "id": 14, "method": "tools/list"},
+        headers={"Authorization": "Bearer mk_agent_badkey"},
+        validate_fn=_unavailable_validate,
+    )
+    body = resp.json()
+    assert "error" in body
+    assert body["error"]["code"] == -32603
+    assert body["error"]["code"] != -32001
+
+
+def test_tools_call_service_unavailable_returns_32603():
+    """tools/call must return -32603 (transient), not -32001, when admin-api is down."""
+    async def _unavailable_validate(key):
+        return None, "service_unavailable"
+
+    resp = _post(
+        "/mcp",
+        {
+            "jsonrpc": "2.0",
+            "id": 15,
+            "method": "tools/call",
+            "params": {"name": "mintkey_bootstrap", "arguments": {}},
+        },
+        headers={"Authorization": "Bearer mk_agent_badkey"},
+        validate_fn=_unavailable_validate,
+    )
+    body = resp.json()
+    assert "error" in body
+    assert body["error"]["code"] == -32603
+    assert body["error"]["code"] != -32001
+
+
 def test_initialize_works_without_any_auth():
     """initialize must never require auth."""
     async def _reject_all(key):

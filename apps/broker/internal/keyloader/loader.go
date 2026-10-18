@@ -1,6 +1,6 @@
 // Package keyloader loads the broker's Ed25519 signing key from a persistent source.
 //
-// Source: kubernetes-readiness spec; ADR-0030.
+// Source: kubernetes-readiness spec; ADR-0033.
 package keyloader
 
 import (

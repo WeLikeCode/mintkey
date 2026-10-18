@@ -100,7 +100,7 @@ async def list_audit_events(
     to_ts: Optional[str] = None,
     after: Optional[str] = None,
     limit: int = 50,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """

@@ -55,11 +55,11 @@ is no tested procedure, no documented failure mode, and no support commitment fo
 
 | Path | Status | Notes |
 |---|---|---|
-| Production HA (multiple replicas of admin-api / broker / proxy) | Partially validated | Broker and admin-api are restart-safe and multi-replica-capable for the core auth flows (see ADR-0030). Remaining single-replica caveats apply to Kong/proxy-plugin in their current configuration. |
+| Production HA (multiple replicas of admin-api / broker / proxy) | Partially validated | Broker and admin-api are restart-safe and multi-replica-capable for the core auth flows (see ADR-0033). Remaining single-replica caveats apply to Kong/proxy-plugin in their current configuration. |
 | Managed secrets (Vault, AWS Secrets Manager, GCP Secret Manager) | NOT integrated | `data/bootstrap-secrets/` is the only supported secret source today. |
 | TLS ingress to the stack | NOT documented | Compose exposes plain HTTP; operators must front the stack with a reverse proxy (Caddy, nginx, cloud LB). See [`docs/NETWORK.md`](NETWORK.md) for the URL contracts. |
 | Database backup / restore / DR | NOT documented | Postgres data lives in the `postgres_data` Docker volume; no point-in-time recovery, no off-host backup automation. |
-| Kubernetes (Helm chart) | **Shipped** (pre-alpha) | `deploy/helm/mintkey/` — see [chart README](../deploy/helm/mintkey/README.md) and [ADR-0031](architecture/01-architecture/adr/0031-kubernetes-deployment-topology.md). Requires externally-managed Secrets (see README) and a pre-seeded SSH host key. Smoke deploy verification: migrations + seed Jobs Completed, core pods Ready, in-cluster agent `request_token` → proxy call returns `Via: kong`. |
+| Kubernetes (Helm chart) | **Shipped** (pre-alpha) | `deploy/helm/mintkey/` — see [chart README](../deploy/helm/mintkey/README.md) and [ADR-0034](architecture/01-architecture/adr/0034-kubernetes-deployment-topology.md). Requires externally-managed Secrets (see README) and a pre-seeded SSH host key. Smoke deploy verification: migrations + seed Jobs Completed, core pods Ready, in-cluster agent `request_token` → proxy call returns `Via: kong`. |
 | Multi-tenant production isolation | RLS only | Row-level isolation works; no per-tenant network isolation, no per-tenant rate limits. |
 | SOC2 / FedRAMP / HIPAA-grade audit | NOT certified | Audit chain is implemented (hash-linked); no third-party certification. |
 | Image signing / SBOM / SLSA provenance | NOT shipped | Tracked in OSS-4; deferred this session. See `docs/RELEASE.md` (forthcoming). |
@@ -155,7 +155,7 @@ Key constraints:
 - All secret material must be pre-created as externally-managed Kubernetes Secrets (no defaults in values.yaml)
 - The SSH proxy host key must be pre-seeded before the ssh-proxy pod starts
 - Observability (Grafana, Prometheus, Jaeger) is disabled by default — enable via `observability.enabled=true`
-- For smoke deploy validation see ADR-0031 §8
+- For smoke deploy validation see ADR-0034 §8
 
 ---
 

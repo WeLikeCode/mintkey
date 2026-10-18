@@ -71,8 +71,12 @@ def test_bootstrap_default_is_index() -> None:
     assert body["resource_uri"] == "mintkey://skill/agent-bootstrap"
     assert "bootstrap_version" in body
     assert body["bootstrap_version"] == "2.0"
-    assert len(body["sections"]) == 7
+    assert len(body["sections"]) == 15
     assert "skill_markdown" not in body, "Index payload must NOT include skill_markdown"
+    # New sections present
+    for expected in ("quick_start", "use_cases", "anti_patterns", "rest-api", "ssh",
+                     "secrets-guide", "email-guide", "quick-reference"):
+        assert expected in body["sections"], f"Expected {expected!r} in sections"
 
 
 def test_bootstrap_section_full_matches_legacy() -> None:
@@ -104,6 +108,42 @@ def test_bootstrap_unknown_section_is_index() -> None:
     body = _get_bootstrap("bogus_section_xyz")
     assert "sections" in body, f"Unknown section should fall back to index: {list(body)}"
     assert "skill_markdown" not in body
+
+
+def test_bootstrap_section_quick_start() -> None:
+    """?section=quick_start returns the <quick_start> XML block."""
+    body = _get_bootstrap("quick_start")
+    assert "content" in body, f"Named section must have 'content': {list(body)}"
+    assert body["section"] == "quick_start"
+    assert "<quick_start>" in body["content"], "Expected <quick_start> tag in content"
+    assert "skill_markdown" not in body
+
+
+def test_bootstrap_section_anti_patterns() -> None:
+    """?section=anti_patterns returns the <anti_patterns> XML block."""
+    body = _get_bootstrap("anti_patterns")
+    assert "content" in body
+    assert body["section"] == "anti_patterns"
+    assert "<anti_patterns>" in body["content"], "Expected <anti_patterns> tag in content"
+
+
+def test_bootstrap_section_rest_api_alias() -> None:
+    """?section=rest-api returns the REST guide and the guide resource_uri."""
+    body = _get_bootstrap("rest-api")
+    assert "content" in body
+    assert body["section"] == "rest-api"
+    assert body["resource_uri"] == "mintkey://guides/rest-api"
+    assert "mintkey_request_token" in body["content"], "REST guide must mention mintkey_request_token"
+    assert "proxy" in body["content"].lower(), "REST guide must mention proxy"
+
+
+def test_bootstrap_section_quick_reference() -> None:
+    """?section=quick-reference returns the quick-reference guide resource."""
+    body = _get_bootstrap("quick-reference")
+    assert "content" in body
+    assert body["section"] == "quick-reference"
+    assert body["resource_uri"] == "mintkey://quick-reference"
+    assert "svc_" in body["content"], "Quick reference must mention svc_ prefix"
 
 
 def test_bootstrap_section_via_tools_call() -> None:

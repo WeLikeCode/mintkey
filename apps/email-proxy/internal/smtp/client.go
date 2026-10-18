@@ -388,7 +388,7 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
 		fmt.Fprintf(&buf, "\r\n")
 		qp := quotedprintable.NewWriter(&buf)
-		qp.Write([]byte(req.Body))
+		_, _ = qp.Write([]byte(req.Body)) // writes to in-memory bytes.Buffer; cannot fail
 		qp.Close()
 
 	case hasHTML && !hasAttachments:
@@ -402,7 +402,7 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 		ph.Set("Content-Transfer-Encoding", "quoted-printable")
 		pw, _ := altW.CreatePart(ph)
 		qp := quotedprintable.NewWriter(pw)
-		qp.Write([]byte(req.Body))
+		_, _ = qp.Write([]byte(req.Body)) // writes to in-memory bytes.Buffer; cannot fail
 		qp.Close()
 
 		// text/html part.
@@ -411,7 +411,7 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 		ph.Set("Content-Transfer-Encoding", "quoted-printable")
 		pw, _ = altW.CreatePart(ph)
 		qp = quotedprintable.NewWriter(pw)
-		qp.Write([]byte(req.BodyHTML))
+		_, _ = qp.Write([]byte(req.BodyHTML)) // writes to in-memory bytes.Buffer; cannot fail
 		qp.Close()
 		altW.Close()
 
@@ -436,7 +436,7 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 			ph.Set("Content-Transfer-Encoding", "quoted-printable")
 			pw, _ := altW.CreatePart(ph)
 			qp := quotedprintable.NewWriter(pw)
-			qp.Write([]byte(req.Body))
+			_, _ = qp.Write([]byte(req.Body)) // writes to in-memory bytes.Buffer; cannot fail
 			qp.Close()
 
 			ph = make(textproto.MIMEHeader)
@@ -444,21 +444,21 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 			ph.Set("Content-Transfer-Encoding", "quoted-printable")
 			pw, _ = altW.CreatePart(ph)
 			qp = quotedprintable.NewWriter(pw)
-			qp.Write([]byte(req.BodyHTML))
+			_, _ = qp.Write([]byte(req.BodyHTML)) // writes to in-memory bytes.Buffer; cannot fail
 			qp.Close()
 			altW.Close()
 
 			altH := make(textproto.MIMEHeader)
 			altH.Set("Content-Type", fmt.Sprintf("multipart/alternative; boundary=%q", altW.Boundary()))
 			altPart, _ := mixedW.CreatePart(altH)
-			altPart.Write(altBuf.Bytes())
+			_, _ = altPart.Write(altBuf.Bytes()) // writes to in-memory bytes.Buffer; cannot fail
 		} else {
 			ph := make(textproto.MIMEHeader)
 			ph.Set("Content-Type", "text/plain; charset=UTF-8")
 			ph.Set("Content-Transfer-Encoding", "quoted-printable")
 			pw, _ := mixedW.CreatePart(ph)
 			qp := quotedprintable.NewWriter(pw)
-			qp.Write([]byte(req.Body))
+			_, _ = qp.Write([]byte(req.Body)) // writes to in-memory bytes.Buffer; cannot fail
 			qp.Close()
 		}
 
@@ -479,7 +479,7 @@ func buildMessage(req EmailSendRequest) ([]byte, string, error) {
 			ph.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, encodedFilename))
 			pw, _ := mixedW.CreatePart(ph)
 			enc := base64.NewEncoder(base64.StdEncoding, pw)
-			enc.Write(att.Content)
+			_, _ = enc.Write(att.Content) // writes to in-memory bytes.Buffer; cannot fail
 			enc.Close()
 		}
 		mixedW.Close()

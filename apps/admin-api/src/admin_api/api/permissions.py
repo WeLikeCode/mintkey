@@ -235,7 +235,7 @@ async def list_permissions(
     tenant_id: UUID,
     agent_id: str,
     service_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -322,7 +322,7 @@ async def list_tenant_permissions(
     service_id: Optional[str] = None,
     agent_id: Optional[str] = None,
     q: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -425,7 +425,7 @@ async def list_tenant_permissions(
 async def get_permission_budget(
     tenant_id: UUID,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     GET /v1/tenants/{tenant_id}/permissions/{permission_id}/budget
@@ -433,7 +433,7 @@ async def get_permission_budget(
     Returns current budget status: ceiling, used, period, period bounds.
     404 if permission not found or no budget configured.
 
-    Source: budget-management-ui spec R6.1; ADR-0029.
+    Source: budget-management-ui spec R6.1; ADR-0030.
     """
     await set_tenant_context(session, tenant_id)
 
@@ -486,7 +486,7 @@ async def get_permission_budget(
 async def get_permission(
     tenant_id: UUID,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     GET /v1/tenants/{tenant_id}/permissions/{permission_id}
@@ -538,7 +538,7 @@ async def grant_permission(
     tenant_id: UUID,
     agent_id: str,
     body: PermissionGrantRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -737,7 +737,7 @@ async def revoke_permission(
     tenant_id: UUID,
     agent_id: str,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """
@@ -852,7 +852,7 @@ async def update_permission(
     agent_id: str,
     permission_id: str,
     body: PermissionPatchRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Update permission grant constraints (budget configuration).
@@ -1102,7 +1102,7 @@ async def reset_budget_counter(
     tenant_id: UUID,
     agent_id: str,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     POST /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget/reset
@@ -1110,7 +1110,7 @@ async def reset_budget_counter(
     Resets the current-period budget counter to 0 so the agent can resume
     operations immediately.  Returns the updated used count (always 0).
 
-    Source: budget-management-ui spec R6.4; ADR-0029.
+    Source: budget-management-ui spec R6.4; ADR-0030.
     """
     await set_tenant_context(session, tenant_id)
 

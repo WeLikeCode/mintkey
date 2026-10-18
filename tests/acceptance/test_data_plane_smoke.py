@@ -19,11 +19,15 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import grpc
 import httpx
 import pytest
+
+from acceptance.oidc_login import admin_session
+from acceptance.wire_ids import uuid_to_wire, wire_to_uuid
 
 # ---------------------------------------------------------------------------
 # Import vault proto stubs from admin-api source tree (already generated)
@@ -57,6 +61,15 @@ BASE_KONG = os.getenv("MINTKEY_KONG_URL", "http://localhost:8000")
 KONG_ADMIN = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
 BROKER_URL = os.getenv("MINTKEY_BROKER_URL", "http://localhost:8083")
 VAULT_GRPC = os.getenv("MINTKEY_VAULT_GRPC", "localhost:8084")
+# vault-adapter authenticates callers by service identity + token (same defaults as docker-compose.yml).
+# Measured on the isolated stack (4 CPUs shared with two other compose projects): every
+# PutCredential / GetCredential takes 2-6 s (envelope encryption + key derivation in
+# vault-adapter), so the former 10 s per-call deadline flaked. 30 s leaves headroom.
+_VAULT_RPC_TIMEOUT_S = 30
+_VAULT_MD = (
+    ("x-mintkey-service-identity", os.getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID", "svcid_admin_api")),
+    ("x-mintkey-service-token", os.getenv("MINTKEY_VAULT_ADMIN_TOKEN", "mk_vault_admin_dev_shared_secret!")),
+)
 
 # Shared MCP service token injected by docker-compose.yml
 MCP_SERVICE_TOKEN = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "dev-mcp-service-token")
@@ -101,15 +114,8 @@ def _wire_to_uuid(wire_id: str, prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _admin_login(client: httpx.Client) -> tuple[str, str]:
-    """Login as bootstrap admin. Returns (tenant_id, csrf_token)."""
-    r = client.post(
-        f"{BASE_API}/v1/auth/internal-login",
-        json={"email": "admin@mintkey.internal", "password": BOOTSTRAP_PASSWORD},
-    )
-    assert r.status_code == 200, f"admin login failed: {r.status_code} {r.text}"
-    tenant_id = r.json()["tenant_id"]
-    csrf = client.cookies.get("csrf_token", "")
-    return tenant_id, csrf
+    """Login as bootstrap admin through Keycloak OIDC. Returns (tenant_id, csrf_token)."""
+    return admin_session(client, BASE_API, BOOTSTRAP_PASSWORD)
 
 
 def _create_agent_and_service(
@@ -189,7 +195,7 @@ def _wait_for_kong_route(service_uuid: str, timeout: int = 15) -> bool:
     Kong's route table is paginated (max 100/page). The kong-syncer may have
     pushed hundreds of routes already, so we paginate through all pages.
     """
-    expected_path = f"/v1/call/{service_uuid}"
+    expected_path = f"/v1/call/{uuid_to_wire(service_uuid, 'svc')}"
     for _ in range(timeout):
         try:
             found = _kong_route_exists(expected_path)
@@ -326,8 +332,10 @@ def test_vault_adapter_smoke() -> None:
     Sources: WS-4; ADR-0011; T-1.3.1.
     """
     ts = int(time.time())
-    tenant_id = f"tenant_VAULTSMOKE{ts:015d}"
-    service_id = f"svc_VAULTSMOKE{ts:015d}"
+    # vault-adapter keys credentials by UUID columns; the former "tenant_VAULTSMOKE<ts>" /
+    # "svc_VAULTSMOKE<ts>" ids fail with SQLSTATE 22P02 (invalid uuid).
+    tenant_id = str(uuid.uuid4())
+    service_id = str(uuid.uuid4())
     plaintext = f"vault-smoke-secret-{ts}"
 
     channel = grpc.insecure_channel(VAULT_GRPC)
@@ -344,7 +352,8 @@ def test_vault_adapter_smoke() -> None:
                 caller_actor_id="ws4-smoke-test",
                 target_url="http://mock-backend:8999",
             ),
-            timeout=10,
+            timeout=_VAULT_RPC_TIMEOUT_S,
+            metadata=_VAULT_MD,
         )
         assert put1.key_version >= 1, (
             f"PutCredential returned key_version={put1.key_version}, expected >= 1"
@@ -359,7 +368,8 @@ def test_vault_adapter_smoke() -> None:
                 key_version=0,  # 0 = current
                 caller_actor_id="ws4-smoke-test",
             ),
-            timeout=10,
+            timeout=_VAULT_RPC_TIMEOUT_S,
+            metadata=_VAULT_MD,
         )
         returned_plaintext = get1.value.decode()
         assert returned_plaintext == plaintext, (
@@ -380,7 +390,8 @@ def test_vault_adapter_smoke() -> None:
                 caller_actor_id="ws4-smoke-test",
                 target_url="http://mock-backend:8999",
             ),
-            timeout=10,
+            timeout=_VAULT_RPC_TIMEOUT_S,
+            metadata=_VAULT_MD,
         )
         assert put2.key_version == v1 + 1, (
             f"Rotation: expected key_version={v1+1}, got {put2.key_version}"
@@ -394,7 +405,8 @@ def test_vault_adapter_smoke() -> None:
                 key_version=0,
                 caller_actor_id="ws4-smoke-test",
             ),
-            timeout=10,
+            timeout=_VAULT_RPC_TIMEOUT_S,
+            metadata=_VAULT_MD,
         )
         assert get2.value.decode() == plaintext2, (
             f"After rotation, GetCredential returned {get2.value.decode()!r}, "
@@ -443,7 +455,7 @@ def test_proxy_plugin_smoke() -> None:
         assert disc_r.status_code == 200, f"discover failed: {disc_r.status_code} {disc_r.text}"
         disc_services = disc_r.json().get("services", [])
         svc_entry = next(
-            (s for s in disc_services if service_uuid in str(s.get("id", ""))),
+            (s for s in disc_services if s.get("id") == uuid_to_wire(service_uuid, "svc")),
             None,
         )
         # Fallback: match by name prefix
@@ -466,12 +478,12 @@ def test_proxy_plugin_smoke() -> None:
 
         # Wait for kong-syncer
         assert _wait_for_kong_route(service_uuid), (
-            f"Kong route /v1/call/{service_uuid} not pushed after 10s (check kong-syncer logs)"
+            f"Kong route /v1/call/{uuid_to_wire(service_uuid, 'svc')} not pushed after 10s (check kong-syncer logs)"
         )
 
         # Hit the proxy through Kong
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=15,
         )

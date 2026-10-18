@@ -12,9 +12,10 @@
  * Source: long-lived-api-keys tasks 9.1–9.3; Req 9.1–9.4; ADR-0013; ADR-0014.5; ADR-0018.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -49,7 +50,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
     listProperties: ["key_fingerprint", "service_id", "allowed_actions", "expires_at", "last_used_at", "status", "created_at"],
     showProperties: ["id", "key_fingerprint", "service_id", "allowed_actions", "constraints", "expires_at", "last_used_at", "created_at", "created_by", "status"],
     filterProperties: ["q", "service_id", "status"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (fingerprint prefix)",
@@ -65,9 +66,9 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         type: "mixed",
         components: { show: Components.JsonValue },
       },
-    },
+    }),
     editProperties: ["agent_id", "service_id", "allowed_actions", "expires_at"],
-    actions: {
+    actions: actionOptions({
       list: {
         component: Components.ApiKeysIntro,
       },
@@ -90,7 +91,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const agentId = request.payload?.agent_id as string | undefined;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -152,7 +153,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
@@ -193,7 +194,7 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
         },
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const agentId = record?.get("agent_id") as string;
           const keyId = record?.get("id") as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
@@ -226,6 +227,6 @@ export const ApiKeysResource: ResourceWithOptions & { adminResource: typeof _api
           };
         },
       },
-    },
+    }),
   },
 };

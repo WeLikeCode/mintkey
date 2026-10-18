@@ -1,13 +1,20 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mintkey/mintkey/services/ssh-proxy/internal/config"
+	"github.com/mintkey/mintkey/services/ssh-proxy/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -447,6 +454,113 @@ func TestSelfFlip_ChannelDenylist(t *testing.T) {
 	if !deniedChannelTypes["direct-tcpip"] {
 		t.Error("direct-tcpip was not restored to the denylist")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Auth-failure observability tests (ssh-bastion-observability)
+// ---------------------------------------------------------------------------
+
+// mockConnMetadata is a minimal ssh.ConnMetadata for driving the auth callbacks
+// directly (no TCP handshake needed).
+type mockConnMetadata struct {
+	user string
+}
+
+func (m *mockConnMetadata) User() string          { return m.user }
+func (m *mockConnMetadata) SessionID() []byte      { return nil }
+func (m *mockConnMetadata) ClientVersion() []byte  { return []byte("SSH-2.0-test") }
+func (m *mockConnMetadata) ServerVersion() []byte  { return []byte("SSH-2.0-Mintkey-1") }
+func (m *mockConnMetadata) RemoteAddr() net.Addr   { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345} }
+func (m *mockConnMetadata) LocalAddr() net.Addr    { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 2222} }
+
+// TestPasswordCallback_FailIncrementsMetricAndWarns verifies that a failed JWT
+// (password) auth logs at Warn with user+reason, records the AuthFailures metric,
+// and never leaks the presented password bytes.
+func TestPasswordCallback_FailIncrementsMetricAndWarns(t *testing.T) {
+	srv := newBastionServer(t)
+
+	metrics.AuthFailures.Reset()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	// "super-secret-password" is not a valid JWT → deterministic auth failure.
+	secret := "super-secret-password"
+	perms, err := srv.passwordCallback(&mockConnMetadata{user: "agent_bob"}, []byte(secret))
+	if err == nil {
+		t.Fatal("passwordCallback should have returned an error for a non-JWT password")
+	}
+	if perms != nil {
+		t.Error("passwordCallback should return nil permissions on failure")
+	}
+
+	// Metric incremented for the jwt method.
+	if got := testutil.ToFloat64(metrics.AuthFailures.WithLabelValues("jwt")); got != 1 {
+		t.Errorf("AuthFailures(jwt) = %v, want 1", got)
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, `"level":"WARN"`) {
+		t.Errorf("expected a WARN log line, got: %s", logged)
+	}
+	if !strings.Contains(logged, "agent_bob") {
+		t.Errorf("expected the username in the log line, got: %s", logged)
+	}
+	// The presented secret must NEVER appear in logs.
+	if strings.Contains(logged, secret) {
+		t.Errorf("SECURITY: presented password bytes leaked into logs: %s", logged)
+	}
+}
+
+// TestPublicKeyCallback_FailIncrementsMetricAndWarns verifies the public-key
+// path is observable: Warn log with user+reason and an AuthFailures increment.
+func TestPublicKeyCallback_FailIncrementsMetricAndWarns(t *testing.T) {
+	srv := newBastionServer(t)
+
+	metrics.AuthFailures.Reset()
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	// Generate an ephemeral public key; pubkey auth is unwired (C7) so this fails.
+	_, signer := newTestSigner(t)
+	perms, err := srv.publicKeyCallback(&mockConnMetadata{user: "agent_alice"}, signer.PublicKey())
+	if err == nil {
+		t.Fatal("publicKeyCallback should have returned an error (pubkey auth not wired)")
+	}
+	if perms != nil {
+		t.Error("publicKeyCallback should return nil permissions on failure")
+	}
+
+	if got := testutil.ToFloat64(metrics.AuthFailures.WithLabelValues("public_key")); got != 1 {
+		t.Errorf("AuthFailures(public_key) = %v, want 1", got)
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, `"level":"WARN"`) {
+		t.Errorf("expected a WARN log line, got: %s", logged)
+	}
+	if !strings.Contains(logged, "agent_alice") {
+		t.Errorf("expected the username in the log line, got: %s", logged)
+	}
+}
+
+// newTestSigner returns an ephemeral Ed25519 ssh.Signer for public-key tests.
+func newTestSigner(t *testing.T) (ssh.PublicKey, ssh.Signer) {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate ed25519 key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+	return signer.PublicKey(), signer
 }
 
 // Keep the config import accessible to tests.

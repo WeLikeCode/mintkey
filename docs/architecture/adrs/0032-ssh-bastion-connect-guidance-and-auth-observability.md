@@ -1,0 +1,1 @@
+../01-architecture/adr/0032-ssh-bastion-connect-guidance-and-auth-observability.md

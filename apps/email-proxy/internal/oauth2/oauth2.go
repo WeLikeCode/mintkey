@@ -52,13 +52,6 @@ import (
 // "email.oauth2.expired" audit event (TODO C-8).
 var ErrRefreshTokenRevoked = errors.New("oauth2: refresh_token revoked or not found")
 
-// supportedProviders lists the OAuth2 providers that email-proxy supports.
-// Any provider not in this set is rejected before the outbound call.
-var supportedProviders = map[string]struct{}{
-	"gmail":   {},
-	"outlook": {},
-}
-
 // VaultCredentialGetter is the vault interface required by Manager.
 // Implemented by *vault.Client in production; stubbed in tests.
 type VaultCredentialGetter interface {

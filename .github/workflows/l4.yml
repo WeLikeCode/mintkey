@@ -1,0 +1,93 @@
+# Written by `l4 init --ci github --action` (adoption-kit L4-ACT-004). The same job as `l4 init --ci github` writes, with
+# the harness delivered by the setup action: its `uses:` line is the only pin (a full commit sha; the comment names the
+# release it was resolved from), `l4 upgrade --harness-ref` moves it, and Dependabot can propose the moves. One job, `l4`,
+# decides for itself whether there is work: `l4 run` plans every unit and runs the actionable ones, and exits 0 with
+# "nothing to do" before any lease, worktree or probe when there are none. It starts on a push to the base branch (a
+# merge), on a push to the unit-branch prefix (a human's answer or spec edit), on a schedule and by hand. There is no
+# pull_request trigger, so a fork never runs it (L4-CI-003). A push whose message has an `L4-Run: ` trailer is the
+# harness's own and starts nothing, except on the base branch; with the workflow's own `GITHUB_TOKEN` no harness push
+# starts a run on any branch (GitHub's rule), the base branch included. Checkout keeps no credentials: the harness
+# hands git the token per command (L4-SEC-005).
+name: l4
+on:
+  push:
+    branches: ["staging", "l4/**"]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+  statuses: write
+  actions: write
+jobs:
+  l4:
+    if: "${{ github.event_name != 'push' || github.ref_name == 'staging' || !contains(github.event.head_commit.message, 'L4-Run: ') }}"
+    runs-on: ubuntu-24.04
+    # The forge token and the agent credentials are secrets of this GitHub Environment;
+    # repository secrets resolve too. Set ci.github_environment to null in .l4/config.yaml to leave it out.
+    environment: "l4"
+    timeout-minutes: 180
+    concurrency:
+      group: l4
+      cancel-in-progress: false
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      L4_JOB_TIMEOUT_MINUTES: "180"
+      L4_BASE_BRANCH: "staging"
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # on any other branch the harness and the config come from the head of the base branch, not from the pushed one
+      # (L4-GHP-005), from the branches the checkout already fetched (fetch-depth: 0), so the step needs no credential; the
+      # branch name reaches the shell only through the job env
+      - name: base checkout
+        if: ${{ github.ref_name != env.L4_BASE_BRANCH }}
+        run: |
+          if ! git rev-parse --verify --quiet "refs/remotes/origin/$L4_BASE_BRANCH^{commit}" > /dev/null; then
+            echo "::error::origin/$L4_BASE_BRANCH is not in the checkout: keep fetch-depth: 0 on actions/checkout, which fetches every branch"
+            exit 1
+          fi
+          git checkout --quiet --detach "origin/$L4_BASE_BRANCH"
+          echo "l4: base checkout $(git rev-parse HEAD)"
+      - name: set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: "go.work"
+          cache: false
+      - name: set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: "11"
+      - id: l4
+        uses: ciprianiacobescu/l4/.github/actions/l4@07769f33b282b87c5af514fbc7bcd085b64514a8 # v0.4.13
+        with:
+          self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
+      - name: doctor
+        run: l4 doctor --ci --fix || l4 ci map-exit $?
+      - name: save agent CLI cache
+        if: >-
+          ${{ success() && github.ref_name == env.L4_BASE_BRANCH && steps.l4.outputs.clis-cache-hit != 'true'
+          && steps.l4.outputs.clis-cache-paths != '' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.l4.outputs.clis-cache-paths }}
+          key: ${{ steps.l4.outputs.clis-cache-key }}
+      - name: plan
+        run: l4 plan --sweep || l4 ci map-exit $?
+      - name: run
+        run: l4 run || l4 ci map-exit $?
+      - name: status
+        if: ${{ always() && steps.l4.outcome == 'success' }}
+        run: l4 status

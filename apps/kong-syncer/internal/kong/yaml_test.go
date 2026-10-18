@@ -33,7 +33,7 @@ func TestYAMLGeneration_PathRoute(t *testing.T) {
 		BaseURL:    "https://api.openai.com",
 	}}
 
-	out, err := kong.GenerateDeclarativeYAML(services)
+	out, err := kong.GenerateDeclarativeYAML(services, "http://proxy-plugin:8086")
 	if err != nil {
 		t.Fatalf("GenerateDeclarativeYAML returned error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestYAMLGeneration_VirtualHostRoute(t *testing.T) {
 		BaseURL:    "https://api.openai.com",
 	}}
 
-	out, err := kong.GenerateDeclarativeYAML(services)
+	out, err := kong.GenerateDeclarativeYAML(services, "http://proxy-plugin:8086")
 	if err != nil {
 		t.Fatalf("GenerateDeclarativeYAML returned error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestYAMLGeneration_VirtualHostRoute(t *testing.T) {
 // TestYAMLGeneration_EmptyServicesIsValid asserts that an empty service list
 // produces valid YAML with the required _format_version header and no services.
 func TestYAMLGeneration_EmptyServicesIsValid(t *testing.T) {
-	out, err := kong.GenerateDeclarativeYAML([]kong.ServiceEntry{})
+	out, err := kong.GenerateDeclarativeYAML([]kong.ServiceEntry{}, "http://proxy-plugin:8086")
 	if err != nil {
 		t.Fatalf("GenerateDeclarativeYAML returned error on empty list: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestYAMLGeneration_MultipleServices(t *testing.T) {
 		},
 	}
 
-	out, err := kong.GenerateDeclarativeYAML(services)
+	out, err := kong.GenerateDeclarativeYAML(services, "http://proxy-plugin:8086")
 	if err != nil {
 		t.Fatalf("GenerateDeclarativeYAML returned error: %v", err)
 	}
@@ -104,4 +104,28 @@ func TestYAMLGeneration_MultipleServices(t *testing.T) {
 	mustContain(t, "svc1 vhost", out, "openai.t_default.proxy.local")
 	mustContain(t, "svc2 path", out, "/v1/call/svc_BBBBBBBBBBBBBBBBBBBBBBBBB2")
 	mustContain(t, "svc2 vhost", out, "stripe.t_default.proxy.local")
+}
+
+// TestYAMLGeneration_UsesProxyPluginURL asserts that the configured proxy-plugin
+// URL is used as every service's upstream, so deployments (e.g. Kubernetes, where
+// the Service is release-name-prefixed) can point Kong at the right host instead
+// of the hard-coded docker-compose name.
+func TestYAMLGeneration_UsesProxyPluginURL(t *testing.T) {
+	services := []kong.ServiceEntry{{
+		ID:         "svc_01HX1234567890ABCDEFGHIJKL",
+		TenantID:   "tenant_01HX1234567890ABCDEFGHIJKL",
+		TenantSlug: "t_default",
+		Slug:       "openai",
+		BaseURL:    "https://api.openai.com",
+	}}
+
+	out, err := kong.GenerateDeclarativeYAML(services, "http://mintkey-proxy-plugin:8086")
+	if err != nil {
+		t.Fatalf("GenerateDeclarativeYAML returned error: %v", err)
+	}
+
+	mustContain(t, "custom upstream", out, "url: http://mintkey-proxy-plugin:8086")
+	if strings.Contains(out, "http://proxy-plugin:8086") {
+		t.Errorf("expected the configured upstream to override the compose default; got:\n%s", out)
+	}
 }

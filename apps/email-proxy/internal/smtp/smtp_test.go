@@ -294,14 +294,6 @@ func dialTargetFor(addr string) smtpclient.DialTarget {
 	}
 }
 
-func dialTargetInsecure(addr string) smtpclient.DialTarget {
-	return smtpclient.DialTarget{
-		Host:               "127.0.0.1",
-		Port:               portOf(addr),
-		InsecureSkipVerify: true,
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -877,6 +869,6 @@ func TestSend_RejectsCleartext_25(t *testing.T) {
 func portOf(addr string) int {
 	_, portStr, _ := net.SplitHostPort(addr)
 	port := 0
-	fmt.Sscan(portStr, &port)
+	_, _ = fmt.Sscan(portStr, &port)
 	return port
 }

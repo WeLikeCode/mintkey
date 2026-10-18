@@ -11,10 +11,10 @@
  * Source: fix-show-page-react-31 chunk; ADR-0019.
  */
 
+import { TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 
 // Known record IDs from the bootstrap seed
-const TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
 
 const JS_ERROR_NEEDLES = [
   "Javascript Error",

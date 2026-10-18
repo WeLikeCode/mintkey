@@ -2,6 +2,7 @@
  * Base page — shared helpers for all AdminJS pages.
  */
 
+import { BASE_URL } from "../env.js";
 import { type Page, type Locator, expect } from "@playwright/test";
 
 export class BasePage {
@@ -10,7 +11,7 @@ export class BasePage {
 
   constructor(page: Page) {
     this.page = page;
-    this.baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081";
+    this.baseURL = BASE_URL;
   }
 
   async goto(path: string) {

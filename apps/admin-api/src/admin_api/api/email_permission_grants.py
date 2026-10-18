@@ -74,7 +74,7 @@ class EmailPermissionGrantCreate(BaseModel):
 async def create_email_permission_grant(
     tenant_id: UUID,
     body: EmailPermissionGrantCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -212,7 +212,7 @@ async def create_email_permission_grant(
 @router.get("", status_code=200)
 async def list_email_permission_grants(
     tenant_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -253,7 +253,7 @@ async def list_email_permission_grants(
 async def get_email_permission_grant(
     tenant_id: UUID,
     grant_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -296,7 +296,7 @@ async def get_email_permission_grant(
 async def delete_email_permission_grant(
     tenant_id: UUID,
     grant_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> Response:
     """

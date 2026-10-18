@@ -1,0 +1,9 @@
+cmd/vault-migrate-pg-to-hashicorp/main.go:403:6: func `isNotFoundErr` is unused (unused)
+func isNotFoundErr(err error) bool {
+     ^
+cmd/vault-migrate-pg-to-hashicorp/main.go:415:6: func `contains` is unused (unused)
+func contains(s, sub string) bool {
+     ^
+internal/store/store_test.go:85:2: SA9003: empty branch (staticcheck)
+	if errors.As(err, &target) {
+	^

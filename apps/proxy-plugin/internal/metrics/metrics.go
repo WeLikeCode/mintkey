@@ -107,7 +107,7 @@ func (m *Metrics) ObserveAddedLatency(serviceID string, seconds float64) {
 // WriteTo writes all proxy metrics to w in Prometheus text exposition format
 // (version 0.0.4).  Call this from the /metrics handler alongside other
 // metric writers (e.g. auditq.WriteMetricsTo).
-func (m *Metrics) WriteTo(w io.Writer) error {
+func (m *Metrics) WriteMetricsTo(w io.Writer) error {
 	// Collect all serviceIDs seen by hits, denied, or latency.
 	svcSet := make(map[string]struct{})
 	m.hits.Range(func(k, _ any) bool { svcSet[k.(string)] = struct{}{}; return true })

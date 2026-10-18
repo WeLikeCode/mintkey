@@ -18,13 +18,13 @@
  * Source: F-OP-01 → F-OP-04; T-1.11; Req 3-6 AC1-AC2; ADR-0014.5; S-SEC-1.
  */
 
+import { ADMIN_API, TENANT_ID } from "../env.js";
+import { getApiSession } from "../fixtures/session.js";
 import { test, expect, type Page } from "@playwright/test";
 import { importPKCS8, SignJWT } from "jose";
 import { readFileSync } from "fs";
 import { v4 as uuidv4 } from "uuid";
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
-const TENANT_ID = process.env.PLAYWRIGHT_TENANT_ID ?? "";
 const ADMIN_PASS = process.env.PLAYWRIGHT_PASS ?? "";
 const PRIVATE_KEY_PATH = process.env.ADMIN_UI_PRIVATE_KEY_PATH ?? "";
 
@@ -65,35 +65,20 @@ async function buildJwt(): Promise<string | null> {
   }
 }
 
-/** Login to admin-api using the session+CSRF+JWT pattern (same as admin-ui server-side) */
+/**
+ * Session + CSRF for admin-api writes. Reuses the Keycloak (OIDC) session that global-setup
+ * stored in state.json: /v1/auth/internal-login answers 404 for the OIDC-provisioned bootstrap
+ * operator, so the old password login could never succeed. The tenant is the one named by
+ * PLAYWRIGHT_TENANT_ID.
+ */
 async function getSession(): Promise<void> {
   if (sessionToken && csrfToken) return;
-
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@mintkey.internal", password: ADMIN_PASS }),
-  });
-
-  if (!resp.ok) throw new Error(`Login failed: ${resp.status}`);
-
-  const data = await resp.json() as { operator_id?: string; tenant_id?: string };
-  operatorId = data.operator_id ?? TENANT_ID;
-  tenantId = data.tenant_id ?? TENANT_ID;
-
-  const cookieHeaders: string[] =
-    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
-      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
-      : [resp.headers.get("set-cookie") ?? ""];
-
-  for (const c of cookieHeaders) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/);
-    if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/);
-    if (cm) csrfToken = cm[1];
-  }
-
-  if (!sessionToken || !csrfToken) throw new Error("Login response missing session/csrf cookies");
+  const s = getApiSession();
+  if (!s) throw new Error("no API session: global-setup did not write e2e/state.json (is PLAYWRIGHT_PASS set?)");
+  sessionToken = s.sessionToken;
+  csrfToken = s.csrfToken;
+  operatorId = TENANT_ID;
+  tenantId = TENANT_ID;
 }
 
 async function apiPost(path: string, body?: unknown): Promise<Response> {
@@ -114,7 +99,10 @@ async function apiPost(path: string, body?: unknown): Promise<Response> {
 }
 
 async function apiGet(path: string): Promise<unknown> {
-  const resp = await fetch(`${ADMIN_API}${path}`);
+  await getSession();
+  const resp = await fetch(`${ADMIN_API}${path}`, {
+    headers: { Cookie: `mintkey_session=${sessionToken}; csrf_token=${csrfToken}` },
+  });
   if (!resp.ok) throw new Error(`GET ${path} → ${resp.status}`);
   return resp.json();
 }
@@ -189,8 +177,8 @@ test.describe.serial("E2E service-onboarding flow (F-OP-01→04)", () => {
   test("Step 4 — grant permission (agent → service)", async () => {
     test.skip(!agentId || !serviceId, "agentId or serviceId not set");
 
-    const resp = await apiPost(`/v1/tenants/${TENANT_ID}/permissions`, {
-      agent_id: agentId,
+    // Grants are created agent-scoped; the flat POST /v1/tenants/{tid}/permissions answers 405.
+    const resp = await apiPost(`/v1/tenants/${TENANT_ID}/agents/${agentId}/permissions`, {
       service_id: serviceId,
       action: "*",
       constraints: {},

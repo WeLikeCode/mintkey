@@ -26,9 +26,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VAULT_CLIENT_GO = (
     REPO_ROOT / "apps" / "proxy-plugin" / "internal" / "vault" / "client.go"
 )
+# services/ was moved to apps/ in ce3870d (C-2); this path was left behind.
 AGENT_SET_GO = (
     REPO_ROOT
-    / "services"
+    / "apps"
     / "proxy-plugin"
     / "internal"
     / "revocation"

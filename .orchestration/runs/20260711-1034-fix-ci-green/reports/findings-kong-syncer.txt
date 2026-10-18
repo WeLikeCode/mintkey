@@ -1,0 +1,3 @@
+internal/changes/subscriber.go:497:19: Error return value of `tx.Rollback` is not checked (errcheck)
+	defer tx.Rollback()
+	                 ^

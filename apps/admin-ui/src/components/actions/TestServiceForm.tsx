@@ -268,7 +268,7 @@ const SSHTestPanel = ({
   // Show planned connection. The actual SSH user lives in the credential's
   // ssh_user metadata (not the service record); the planned-connection display
   // stays credential-free — the SSH user is resolved server-side from vault.
-  const sshCommand = `ssh ${baseUrl.replace(/^ssh:\/\//, "")}  # SSH user + key/password from vault credential`;
+  const sshCommand = `ssh ${baseUrl.replace(/^ssh:\/\//, "")}  # SSH user + credential from vault`;
 
   const handleRun = async () => {
     setSubmitting(true);

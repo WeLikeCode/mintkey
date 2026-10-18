@@ -183,3 +183,89 @@ class TestEnsureSecretFileDispatch:
         # Should not raise InvalidToken
         plaintext = f.decrypt(raw).decode()
         assert plaintext == password
+
+
+class TestAdminPasswordHandedToAdminUi:
+    """admin-ui (uid 1000, USER node) must be able to read the 0o400 admin_password.
+
+    The seed-job runs as root, so the file used to be root:root 0o400 and admin-ui got EACCES
+    (every BFF call that needs the service session answered 500). The file keeps its 0o400 mode and
+    is chowned to the admin-ui uid instead of being made world-readable, on every seed run
+    (including when the operator already exists and the file is not rewritten).
+    """
+
+    @staticmethod
+    def _file(tmp_path: Path) -> Path:
+        p = tmp_path / "admin_password"
+        p.write_bytes(b"gAAAA-ciphertext")
+        p.chmod(0o400)
+        return p
+
+    def test_root_owned_file_is_chowned_and_stays_0o400(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import main as m
+
+        p = self._file(tmp_path)
+        chowned: list[tuple[str, int, int]] = []
+        monkeypatch.setattr(m.os, "chown", lambda path, uid, gid: chowned.append((str(path), uid, gid)))
+        # the test runs as a normal user, so the file is "not owned by the admin-ui uid"
+        monkeypatch.setattr(m, "ADMIN_UI_UID", p.stat().st_uid + 1)
+
+        assert m._hand_admin_password_to_admin_ui(p) is True
+        assert chowned == [(str(p), m.ADMIN_UI_UID, -1)]
+        assert p.stat().st_mode & 0o777 == 0o400
+
+    def test_already_owned_file_is_left_alone(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import main as m
+
+        p = self._file(tmp_path)
+        monkeypatch.setattr(m, "ADMIN_UI_UID", p.stat().st_uid)
+        monkeypatch.setattr(m.os, "chown", lambda *a: pytest.fail("chown must not be called"))
+
+        assert m._hand_admin_password_to_admin_ui(p) is False
+
+    def test_missing_file_is_a_noop(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import main as m
+
+        monkeypatch.setattr(m.os, "chown", lambda *a: pytest.fail("chown must not be called"))
+        assert m._hand_admin_password_to_admin_ui(tmp_path / "admin_password") is False
+
+    def test_chown_failure_is_not_fatal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import main as m
+
+        p = self._file(tmp_path)
+        monkeypatch.setattr(m, "ADMIN_UI_UID", p.stat().st_uid + 1)
+
+        def _deny(*_a: object) -> None:
+            raise PermissionError("not root")
+
+        monkeypatch.setattr(m.os, "chown", _deny)
+        assert m._hand_admin_password_to_admin_ui(p) is False  # must not raise
+
+    def test_main_hands_over_when_operator_exists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """main(): run_steps_1_to_5 returns password "" (operator row exists) -> file still handed over."""
+        import main as m
+
+        p = self._file(tmp_path)
+        monkeypatch.setattr(m, "BOOTSTRAP_SECRETS_DIR", tmp_path)
+        monkeypatch.setattr(m, "ADMIN_UI_UID", p.stat().st_uid + 1)
+        calls: list[Path] = []
+        monkeypatch.setattr(m, "_hand_admin_password_to_admin_ui", lambda path: calls.append(path) or True)
+        monkeypatch.setattr(m, "wait_for_postgres", lambda *a, **k: None)
+        fake_conn = MagicMock()
+        monkeypatch.setattr(m.psycopg2, "connect", lambda *a, **k: fake_conn)
+        monkeypatch.setattr(m, "run_steps_1_to_5", lambda conn: {"tenant_id": "t", "operator_id": "o", "password": ""})
+        monkeypatch.setattr(m, "seed_keycloak_realm_and_admin", lambda *a, **k: None)
+        monkeypatch.setattr(m, "_ensure_admin_password_file", lambda *a, **k: pytest.fail("not rewritten"))
+        monkeypatch.setattr(m.sys, "argv", ["main.py"])
+
+        try:
+            m.main()
+        except SystemExit:
+            pass
+        assert calls == [tmp_path / "admin_password"]

@@ -148,6 +148,6 @@ func TestInject_StripAgentAuthAlways(t *testing.T) {
 		Value:      []byte("backend_key"),
 		HeaderName: "X-API-Key",
 	}
-	credential.Inject(req, cred)
+	_ = credential.Inject(req, cred)
 	assert(t, req.Header.Get("Authorization") == "")
 }

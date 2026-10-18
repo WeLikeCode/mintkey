@@ -25,6 +25,7 @@
  * Source: UX-BL4 spec; TenantServicesPanel.tsx; tenants.ts crossTenantServicesList.
  */
 
+import { TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -32,7 +33,7 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Bootstrap tenant — the PA's OWN session tenant; known from seed data.
-const SESSION_TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
+const SESSION_TENANT_ID = TENANT_ID;
 
 const JS_ERROR_NEEDLES = [
   "Javascript Error",

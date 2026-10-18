@@ -15,6 +15,7 @@
 
 import { createDecipheriv, createHmac, timingSafeEqual } from "crypto";
 import { readFileSync } from "fs";
+import type { CurrentAdmin } from "adminjs";
 import { signedFetch } from "./signed-request.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
@@ -197,6 +198,23 @@ export function operatorOptsFromAdmin(
   const csrfToken    = (currentAdmin["csrfToken"]    ?? "") as string;
   if (!operatorId || !tenantId || !sessionToken) return null;
   return { operatorId, tenantId, sessionToken, csrfToken };
+}
+
+/**
+ * Return the tenant id of the logged-in operator from context.currentAdmin.
+ *
+ * requireSession (index.ts) stores tenantId on req.session.adminUser; AdminJS
+ * exposes it as context.currentAdmin. CurrentAdmin has an index signature, so
+ * the value is read and checked here instead of cast at every call site.
+ * Throws when the session carries no tenant: the alternative is a request to
+ * /v1/tenants/undefined/... that admin-api rejects with a confusing 4xx.
+ */
+export function tenantIdFromAdmin(currentAdmin: CurrentAdmin | null | undefined): string {
+  const tenantId = currentAdmin?.["tenantId"];
+  if (typeof tenantId !== "string" || tenantId === "") {
+    throw new Error("admin-ui: no tenantId on the current admin session");
+  }
+  return tenantId;
 }
 
 /**

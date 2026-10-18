@@ -7,9 +7,10 @@
  * Source: T-1.4.3; Req 6; ADR-0013; ADR-0014.5.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -73,7 +74,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
     showProperties: ["id", "agent_id", "agent_name", "service_id", "service_name", "service_slug", "action", "constraints", "created_at", "created_by", "_budgetPanel"],
     editProperties: ["agent_id", "service_id", "action", "constraints"],
     filterProperties: ["q", "agent_id", "service_id", "action"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (action)",
@@ -121,8 +122,8 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         description:
           "Optional JSON object restricting this grant. Closed schema — unknown keys return 422.\n\nAllowed keys (all optional, mix freely):\n• rate_limit: {\"requests_per_second\": 10, \"burst\": 5}\n• time_window: {\"timezone\": \"America/New_York\", \"days\": [\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\"], \"start_local\": \"09:00\", \"end_local\": \"17:00\"}\n• request_path_prefix: {\"prefix\": \"/v2/orders\"}\n• source_ip_allowlist: {\"cidrs\": [\"1.2.3.4/32\", \"10.0.0.0/8\"]}\n\nLeave empty for no restrictions.",
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         component: Components.PermissionsIntro,
       },
@@ -140,7 +141,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
             request.payload = { ...(request.payload ?? {}), action: "call" };
           }
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           let constraints: Record<string, unknown> = {};
@@ -220,7 +221,7 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
         isVisible: true,
         handler: async (request, response, context) => {
           const { currentAdmin, record } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const permissionId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -259,6 +260,6 @@ export const PermissionsResource: ResourceWithOptions & { adminResource: typeof 
           return { record: await recordJSON(context) };
         },
       },
-    },
+    }),
   },
 };

@@ -1096,11 +1096,6 @@ func (h *EmailHandlers) HandleDownloadAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 
-	mailbox := r.URL.Query().Get("mailbox")
-	if mailbox == "" {
-		mailbox = defaultMailbox
-	}
-
 	if err := h.rateLimiter.Allow(r.Context(), claims.Subject, serviceID, rateLimitPerMin); err != nil {
 		writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 		return

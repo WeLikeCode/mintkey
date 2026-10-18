@@ -8,6 +8,7 @@
  * The admin-ui shows it in a one-time notice — never again.
  */
 
+import { ADMIN_API } from "../env.js";
 import { test, expect, type Page } from "@playwright/test";
 import { AgentsPage } from "../pages/agents.js";
 import { createTestAgent, resetCleanupQueue } from "../fixtures/test-data.js";
@@ -29,7 +30,7 @@ test.describe("Tier 2 — Agents (F-OP-04)", () => {
     const agentName = "TestAgent-" + Date.now();
     const result = await agents.createAgent({ name: agentName, description: "E2E test agent" });
 
-    expect(result.agentId).toMatch(/^agent_[0-9a-f]{32}$/);
+    expect(result.agentId).toMatch(/^agent_[0-9A-HJKMNP-TV-Z]{26}$/);
     expect(result.apiKey.length).toBeGreaterThan(20);
 
     await agents.gotoList();
@@ -64,7 +65,7 @@ test.describe("Tier 2 — Agents (F-OP-04)", () => {
     const agentName = "RevokeAuthTest-" + Date.now();
     const { agentId } = await agents.createAgent({ name: agentName });
 
-    await fetch(`${process.env.ADMIN_API_URL ?? "http://localhost:8080"}/v1/tenants/${tenantId}/agents/${agentId}/revoke`, {
+    await fetch(`${ADMIN_API}/v1/tenants/${tenantId}/agents/${agentId}/revoke`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });

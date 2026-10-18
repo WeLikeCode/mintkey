@@ -12,10 +12,11 @@
  * Source: T-1.2.3; Req 3; ADR-0013; ADR-0014.5.
  */
 
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
 import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { AUTH_SCHEMES } from "../lib/auth-scheme.js";
-import { apiWrite, getApiSession, operatorOptsFromAdmin } from "../lib/api-client.js";
+import { apiWrite, getApiSession, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 import { resolveProxyPublicUrl } from "../lib/public-urls.js";
@@ -69,7 +70,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
     editProperties: ["name", "slug", "base_url", "auth_scheme", "description", "openapi_url"],
     showProperties: ["_credential_warning", "id", "name", "slug", "base_url", "auth_scheme", "description", "openapi_url", "proxy_url", "status", "current_key_version", "created_at", "updated_at"],
     filterProperties: ["q", "name", "slug", "auth_scheme", "status"],
-    properties: {
+    properties: propertyOptions({
       auth_scheme: {
         availableValues: AUTH_SCHEMES,
       },
@@ -97,8 +98,8 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           show: Components.CredentialMissingWarning,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         component: Components.ServicesIntro,
       },
@@ -112,7 +113,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -145,7 +146,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           if (request.method === "get") {
             return { record: await recordJSON(context, request.payload ?? {}) };
           }
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -171,7 +172,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
         component: Components.ConfirmAction,
         handler: async (request, response, context) => {
           const { currentAdmin, h, resource } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -346,7 +347,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const resp = await apiWrite(
@@ -409,7 +410,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           // request.payload contains the TransientTestRequest shaped body
@@ -493,7 +494,7 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           }
 
           const { currentAdmin } = context;
-          const tenantId = (currentAdmin as { tenantId: string }).tenantId;
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -529,6 +530,6 @@ export const ServicesResource: ResourceWithOptions & { adminResource: typeof _se
           };
         },
       },
-    },
+    }),
   },
 };

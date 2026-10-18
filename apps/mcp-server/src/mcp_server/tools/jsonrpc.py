@@ -35,7 +35,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
 from mcp_server.auth.agent_key import validate_agent_key
-from mcp_server.tools.bootstrap import _RESOURCE_URI, _SKILL_MARKDOWN as _BOOTSTRAP_FULL_MD
+from mcp_server.tools.bootstrap import (
+    _RESOURCE_URI,
+    _SKILL_MARKDOWN as _BOOTSTRAP_FULL_MD,
+    _GUIDE_RESOURCES,
+)
 
 router = APIRouter()
 
@@ -95,15 +99,22 @@ TOOLS: list[dict] = [
         "description": (
             "Onboarding skill for the credential broker. By default returns a compact "
             "index (section table + resource URI). Pass section to fetch one block: "
-            "index|auth|discover|proxy_call|email|secrets|full. Use 'full' for the entire "
-            "skill, or read the MCP resource mintkey://skill/agent-bootstrap."
+            "index|quick_start|use_cases|anti_patterns|auth|discover|proxy_call|email|secrets"
+            "|rest-api|ssh|secrets-guide|email-guide|quick-reference|full. "
+            "Use 'full' for the entire skill, or read the MCP resource "
+            "mintkey://skill/agent-bootstrap."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "section": {
                     "type": "string",
-                    "enum": ["index", "auth", "discover", "proxy_call", "email", "secrets", "full"],
+                    "enum": [
+                        "index", "quick_start", "use_cases", "anti_patterns",
+                        "auth", "discover", "proxy_call", "email", "secrets",
+                        "rest-api", "ssh", "secrets-guide", "email-guide",
+                        "quick-reference", "full",
+                    ],
                     "default": "index",
                     "description": "Which bootstrap section to return. Default 'index'.",
                 }
@@ -254,8 +265,46 @@ _RESOURCES: list[dict] = [
         "title": "Mintkey Agent Bootstrap Skill",
         "description": "Full vendor-agnostic onboarding skill (markdown).",
         "mimeType": "text/markdown",
-    }
+    },
+    {
+        "uri": "mintkey://guides/rest-api",
+        "name": "guide-rest-api",
+        "title": "Mintkey REST/HTTP Service Guide",
+        "description": "discover -> token -> proxy call; never add upstream auth.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/ssh",
+        "name": "guide-ssh",
+        "title": "Mintkey SSH Service Guide",
+        "description": "SSH bastion, JWT-as-password, ssh:// base_url.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/secrets",
+        "name": "guide-secrets",
+        "title": "Mintkey Agent Secrets Guide",
+        "description": "secret_put/get/list/delete; agent-owned vs operator-managed.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://guides/email",
+        "name": "guide-email",
+        "title": "Mintkey Email Service Guide",
+        "description": "9 email_* tools -> IMAP/SMTP via email-proxy.",
+        "mimeType": "text/markdown",
+    },
+    {
+        "uri": "mintkey://quick-reference",
+        "name": "quick-reference",
+        "title": "Mintkey Quick Reference",
+        "description": "One-page cheat sheet.",
+        "mimeType": "text/markdown",
+    },
 ]
+
+# Map of URI → text for resources/read dispatch.
+_READABLE: dict[str, str] = {_RESOURCE_URI: _BOOTSTRAP_FULL_MD, **_GUIDE_RESOURCES}
 
 
 def _handle_resources_list(request_id: Any) -> JSONResponse:
@@ -264,14 +313,15 @@ def _handle_resources_list(request_id: Any) -> JSONResponse:
 
 def _handle_resources_read(request_id: Any, params: dict) -> JSONResponse:
     uri = params.get("uri", "")
-    if uri != _RESOURCE_URI:
+    text = _READABLE.get(uri)
+    if text is None:
         return _jsonrpc_error(
             request_id, -32602, f"Unknown resource URI: {uri!r}",
             data={"hint": "Call resources/list for available resources."},
         )
     return _jsonrpc_result(
         request_id,
-        {"contents": [{"uri": _RESOURCE_URI, "mimeType": "text/markdown", "text": _BOOTSTRAP_FULL_MD}]},
+        {"contents": [{"uri": uri, "mimeType": "text/markdown", "text": text}]},
     )
 
 
@@ -337,12 +387,20 @@ def _helpful_400() -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
-async def _require_agent(request: Request) -> tuple[dict | None, str | None]:
+async def _require_agent(request: Request) -> tuple[dict | None, str | None, str | None]:
     """
     Extract and validate the agent key from the incoming request.
 
     Tries Authorization: Bearer mk_agent_<key> first, then X-API-Key: mk_agent_<key>.
-    Returns (agent_ctx, agent_key) on success, (None, None) on failure.
+    Returns (agent_ctx, agent_key, None) on success and (None, None, reason)
+    on failure, where reason is:
+      - "unauthorized"        — no/invalid-format token, or admin-api judged
+                               the key bad (4xx). Maps to JSON-RPC -32001.
+      - "service_unavailable" — admin-api timed out / 5xx: the key was never
+                               judged, so this is transient and retryable.
+                               Maps to JSON-RPC -32603 so a client's initial
+                               discovery burst does not permanently mark the
+                               key as unauthorized when admin-api is briefly overloaded.
 
     Mirrors the prefix logic in main.py:agent_key_middleware so both paths
     always agree on which header takes precedence and which prefix is required.
@@ -358,11 +416,13 @@ async def _require_agent(request: Request) -> tuple[dict | None, str | None]:
         if x_api_key.startswith("mk_agent_"):
             token = x_api_key
     if token is None:
-        return None, None
-    ctx, _err = await validate_agent_key(token)
+        return None, None, "unauthorized"
+    ctx, err = await validate_agent_key(token)
     if ctx is None:
-        return None, None
-    return ctx, token
+        # "service_unavailable" is transient; anything else is a real auth fail.
+        reason = "service_unavailable" if err == "service_unavailable" else "unauthorized"
+        return None, None, reason
+    return ctx, token, None
 
 
 # ---------------------------------------------------------------------------
@@ -654,8 +714,14 @@ async def _dispatch(request: Request) -> Response:
         return Response(status_code=202)
 
     if method == "tools/list":
-        agent_ctx, _key = await _require_agent(request)
+        agent_ctx, _key, auth_err = await _require_agent(request)
         if agent_ctx is None:
+            if auth_err == "service_unavailable":
+                return _jsonrpc_error(
+                    request_id,
+                    -32603,
+                    "Auth service temporarily unavailable; retry",
+                )
             return _jsonrpc_error(
                 request_id,
                 -32001,
@@ -670,8 +736,14 @@ async def _dispatch(request: Request) -> Response:
         return _handle_resources_read(request_id, params)
 
     if method == "tools/call":
-        agent_ctx, agent_key = await _require_agent(request)
+        agent_ctx, agent_key, auth_err = await _require_agent(request)
         if agent_ctx is None:
+            if auth_err == "service_unavailable":
+                return _jsonrpc_error(
+                    request_id,
+                    -32603,
+                    "Auth service temporarily unavailable; retry",
+                )
             return _jsonrpc_error(
                 request_id,
                 -32001,

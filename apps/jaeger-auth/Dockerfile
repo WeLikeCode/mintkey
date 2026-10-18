@@ -1,13 +1,24 @@
-# SSO-E: Jaeger auth proxy — oauth2-proxy v7.15.2 on Alpine (shell needed to
+# SSO-E: Jaeger auth proxy — oauth2-proxy v7.15.5 on Alpine (shell needed to
 # read the cookie secret from a volume-mounted file at startup).
-# The upstream distroless image has no shell; we copy the binary onto Alpine
+# The upstream distroless image has no shell; we put the binary onto Alpine
 # so that entrypoint.sh can read the bootstrap secret and exec into it.
 
-# Pinned 2026-05-18; re-pin every quarter.
-FROM quay.io/oauth2-proxy/oauth2-proxy:v7.15.3@sha256:10a1165743a192e1940b4708fb9647027185ce11a681a1c5519b442ff7f1f561 AS proxy
+# oauth2-proxy is built from source (the same pattern as vault-adapter's grpc_health_probe), so that it carries the
+# builder's Go 1.26.9 and golang.org/x/net v0.61.0: the upstream v7.15.5 binary is built with Go 1.26.8 and x/net
+# v0.59.0 (2026-10: CVE-2026-78667, CVE-2026-78669, CVE-2026-97031, all HIGH, denial of service on the HTTP/2,
+# Range-header and TLS paths this proxy serves). Upstream v7.15.5 has no replace directives, so only x/net and what
+# it requires move. Go back to the upstream image once it ships a build with a fixed Go.
+# Pinned 2026-10-17; re-pin every quarter.
+FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS proxy
+RUN mkdir -p /tmp/build && cd /tmp/build && \
+    printf 'module oauth2-proxy-build\ngo 1.26\n' > go.mod && \
+    GOWORK=off go get github.com/oauth2-proxy/oauth2-proxy/v7@v7.15.5 golang.org/x/net@v0.61.0 && \
+    CGO_ENABLED=0 GOWORK=off go build -trimpath \
+      -ldflags "-s -w -X github.com/oauth2-proxy/oauth2-proxy/v7/pkg/version.VERSION=v7.15.5" \
+      -o /bin/oauth2-proxy github.com/oauth2-proxy/oauth2-proxy/v7
 
-# Pinned 2026-05-18; re-pin every quarter.
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+# Pinned 2026-10-17; re-pin every quarter.
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 # wget is needed for the HEALTHCHECK; xxd is no longer needed (cookie secret
 # is passed via --cookie-secret-file, not read/decoded in the entrypoint).

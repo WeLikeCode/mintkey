@@ -1,0 +1,1 @@
+(eval):8: no such file or directory: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8

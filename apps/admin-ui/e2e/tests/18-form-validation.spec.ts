@@ -46,37 +46,19 @@ test.describe("18 — Form validation rendering", () => {
     page,
     consoleErrors,
   }) => {
+    // ServiceCreateForm (0b04288) validates required fields client-side and shows the message in
+    // [data-testid=create-error]; there is no slug input and no request is sent.
     await page.goto("/admin/resources/services/actions/new", { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle");
+    await page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
 
-    // Clear name (should be empty by default), fill only slug, leave name blank
-    const slugField = page.getByLabel("slug");
-    if ((await slugField.count()) > 0) {
-      await slugField.fill("e2e-validation-test-" + Date.now().toString(36));
-    }
-    // Submit with missing required field (name)
-    const [resp] = await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          r.url().includes("/admin/api/resources/services/actions/new") &&
-          r.request().method() === "POST",
-        { timeout: 15_000 },
-      ),
-      page.getByRole("button", { name: /save|create/i }).click(),
-    ]);
+    await page.locator("[data-testid='field-input-base_url']").fill("https://validation.example.com");
+    // Leave name blank and submit.
+    await page.locator("[data-testid='service-create-submit']").click();
 
-    // AdminJS always returns 200; check the notice/record for an error
-    const body = await bodyText(page);
+    const err = page.locator("[data-testid='create-error']");
+    await expect(err, "missing name must render the inline validation error").toBeVisible({ timeout: 5_000 });
+    await expect(err).toContainText(/name is required/i);
     await expectNoJsError(page, "services new (missing name)");
-
-    // Either a notice banner or inline field error should appear
-    const hasNotice = (await page.locator('[data-testid="notice-wrapper"], .alert, [role="alert"]').count()) > 0;
-    const hasFieldError = /required|invalid|must|error/i.test(body);
-    const isOnListPage = page.url().includes("/admin/resources/services") && !page.url().includes("/actions/");
-
-    // Accept: stayed on form with error OR redirected to list (if server accepted empty name)
-    // The key assertion is no JS-error box
-    expect(hasNotice || hasFieldError || isOnListPage, "form must show error or redirect cleanly").toBe(true);
 
     void consoleErrors;
   });
@@ -87,29 +69,16 @@ test.describe("18 — Form validation rendering", () => {
     consoleErrors,
   }) => {
     await page.goto("/admin/resources/services/actions/new", { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle");
+    await page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
 
-    await page.getByLabel("name").fill("e2e-validation-test");
-    await page.getByLabel("slug").fill("e2e-validation-test-" + Date.now().toString(36));
+    await page.locator("[data-testid='field-input-name']").fill("e2e-validation-test");
     // Deliberately leave base_url empty
+    await page.locator("[data-testid='service-create-submit']").click();
 
-    await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          r.url().includes("/admin/api/resources/services/actions/new") &&
-          r.request().method() === "POST",
-        { timeout: 15_000 },
-      ),
-      page.getByRole("button", { name: /save|create/i }).click(),
-    ]);
-
+    const err = page.locator("[data-testid='create-error']");
+    await expect(err, "missing base_url must render the inline validation error").toBeVisible({ timeout: 5_000 });
+    await expect(err).toContainText(/base url is required/i);
     await expectNoJsError(page, "services new (missing base_url)");
-
-    const body = await bodyText(page);
-    const hasNotice = (await page.locator('[data-testid="notice-wrapper"], .alert, [role="alert"]').count()) > 0;
-    const hasFieldError = /required|invalid|must|error/i.test(body);
-    const isOnListPage = page.url().includes("/admin/resources/services") && !page.url().includes("/actions/");
-    expect(hasNotice || hasFieldError || isOnListPage, "form must show error or redirect cleanly after missing base_url").toBe(true);
 
     void consoleErrors;
   });
