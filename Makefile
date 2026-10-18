@@ -19,7 +19,7 @@ COMPOSE_TEST := docker compose -f infra/compose/docker-compose.yml -f infra/comp
         test test-unit test-arch test-integration test-acceptance \
         test\:e2e test\:e2e\:headed test\:e2e\:ci \
         smoke test-golden test-data-plane test-data-plane-smoke test-data-plane-resilience \
-        e2e-isolated-up e2e-isolated-test e2e-isolated-down e2e-isolated-check \
+        e2e-isolated-up e2e-isolated-test e2e-isolated-down e2e-isolated-check test-e2e-tools \
         lint lint-python lint-go lint-ts lint-contracts \
         proto-gen \
         deps bootstrap doctor stack-doctor audit-steering vibe-check spec-trace contract-lint \
@@ -286,6 +286,10 @@ test-data-plane: test-data-plane-smoke test-data-plane-resilience
 #   E2E_PROJECT=mintkey-e2e make e2e-isolated-up
 #   E2E_PROJECT=mintkey-e2e make e2e-isolated-test            # E2E_BROWSERS="chromium firefox webkit", E2E_SUITES="playwright smoke ..."
 #   E2E_PROJECT=mintkey-e2e make e2e-isolated-down
+# Guard tests for tools/e2e-isolated.sh (stub docker; touches nothing)
+test-e2e-tools:
+	@tools/e2e-isolated.test.sh
+
 e2e-isolated-check:
 	@tools/e2e-isolated.sh check
 

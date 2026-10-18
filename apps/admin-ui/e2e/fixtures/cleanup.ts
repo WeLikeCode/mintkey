@@ -14,7 +14,10 @@ import { fileURLToPath } from "url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export const CLEANUP_FILE = path.resolve(here, "..", ".cleanup.ndjson");
+// One file per isolated project / run, so two stacks (or a stack and CI) run from the same checkout never
+// replay or clear each other's entries. The runner and its workers share the environment, so they agree.
+const RUN_ID = (process.env.E2E_PROJECT || "default").replace(/[^A-Za-z0-9_.-]/g, "_");
+export const CLEANUP_FILE = path.resolve(here, "..", `.cleanup.${RUN_ID}.ndjson`);
 
 export interface CleanupEntry {
   method: "DELETE";

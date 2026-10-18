@@ -9,4 +9,4 @@
 # EvidenceRef: EV-APP-002 / EV-ENV-005 (2026-05-18-dev-settings-backup-recovery)
 .env.local
 /e2e/.env.local
-/e2e/.cleanup.ndjson
+/e2e/.cleanup.*.ndjson

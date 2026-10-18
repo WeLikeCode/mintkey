@@ -276,6 +276,18 @@ cmd_pw() {
   ( cd apps/admin-ui && CI=true npx playwright test --config e2e/playwright.config.ts "$@" )
 }
 
+# The compose passthrough must stay scoped to $E2E_PROJECT and the isolated files: refuse every flag that
+# could retarget it (a later -p wins over the one the script passes), in all spellings.
+reject_scope_flags() {
+  local a
+  for a in "$@"; do
+    case "$a" in
+      -p|-p*|--project-name|--project-name=*|-f|-f*|--file|--file=*|--env-file|--env-file=*|--project-directory|--project-directory=*)
+        die "refusing '$a': 'compose' is always scoped to project '$PROJECT' with the isolated files; -p/--project-name, -f/--file, --env-file and --project-directory are not allowed" ;;
+    esac
+  done
+}
+
 # Run pytest (root-level acceptance tests) with the isolated stack's environment, e.g.
 #   E2E_PROJECT=mintkey-e2e tools/e2e-isolated.sh py tests/acceptance/test_golden_path.py -k ws9 -x
 cmd_py() {
@@ -287,7 +299,7 @@ cmd_py() {
 
 case "${1:-}" in
   check) check_config ;;
-  compose) shift; check_config >/dev/null; compose "$@" ;;   # raw docker compose, always scoped to -p $E2E_PROJECT
+  compose) shift; reject_scope_flags "$@"; check_config >/dev/null; compose "$@" ;;   # raw docker compose, always scoped to -p $E2E_PROJECT
   py)    shift; cmd_py "$@" ;;
   pw)    shift; cmd_pw "$@" ;;
   up)    cmd_up ;;

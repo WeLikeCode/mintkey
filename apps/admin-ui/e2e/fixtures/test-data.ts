@@ -92,6 +92,7 @@ export async function createTestAgent(opts: {
     { name: opts.name, description: opts.description ?? "" },
     token
   );
+  if (!resp.ok) throw new Error(`createTestAgent(${opts.name}) failed: HTTP ${resp.status} ${await resp.text()}`);
   const data = await resp.json() as { id?: string; agent_id?: string; api_key?: string };
   const agentId = data.id ?? data.agent_id ?? "";
   enqueueCleanup({ method: "DELETE", url: `/v1/tenants/${opts.tenantId}/agents/${agentId}` });
@@ -160,6 +161,7 @@ export async function getAuditEvents(tenantId: string, token?: string): Promise<
 export async function createTestTenant(name: string = "test-tenant", token?: string): Promise<{ tenantId: string; slug: string }> {
   const slug = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
   const resp = await apiPost("/v1/tenants", { slug, display_name: name }, token);
+  if (!resp.ok) throw new Error(`createTestTenant(${name}) failed: HTTP ${resp.status} ${await resp.text()}`);
   const data = await resp.json();
   enqueueCleanup({ method: "DELETE", url: `/v1/tenants/${data.id}` });
   return { tenantId: data.id, slug };

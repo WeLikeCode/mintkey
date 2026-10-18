@@ -62,9 +62,12 @@ Other tests in `tests/acceptance/` hard-code the live stack's container names (`
 
 ## Cleanup
 
-Fixtures record what they create in `e2e/.cleanup.ndjson` (`fixtures/cleanup.ts`); `global-teardown.ts` deletes it
+Fixtures record what they create in `e2e/.cleanup.<E2E_PROJECT|default>.ndjson` (`fixtures/cleanup.ts`); `global-teardown.ts` deletes it
 (LIFO) with the OIDC session saved in `state.json`. Entities that cannot be hard-deleted (e.g. a service with a
 credential) are reported, not fatal.
+
+The `compose` helper refuses `-p/--project-name`, `-f/--file`, `--env-file` and `--project-directory` anywhere in its
+arguments (so use `logs --follow`, `run --publish`); guard tests: `make test-e2e-tools`.
 
 Helpers: `tools/e2e-isolated.sh pw <playwright args>`, `py <pytest args>` and `compose <docker compose args>` run with the
 isolated stack's environment / project.

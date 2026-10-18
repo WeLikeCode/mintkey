@@ -6,8 +6,9 @@
  *      protected resource redirects to /admin/login. This is a CLIENT-SIDE guarantee only: the
  *      handler clears the mintkey_session / csrf_token cookies and asks admin-api to log out, but
  *      admin-api's POST /v1/auth/logout merely deletes the cookie, so a copy of the old cookie stays
- *      valid server-side until the session row expires. XX *      invalidate the server-side session"; a spec replaying the old cookie against
- *      /v1/auth/whoami (expecting 401) belongs with that fix.
+ *      valid server-side until the session row expires.
+ *      Issue #345 tracks making admin-api invalidate the server-side session; a spec replaying the old
+ *      cookie against /v1/auth/whoami (expecting 401) belongs with that fix.
  *  (b) Deleting the session cookie and navigating to a protected page redirects
  *      to /admin/login (no crash, no blank page, no JS error box).
  *
