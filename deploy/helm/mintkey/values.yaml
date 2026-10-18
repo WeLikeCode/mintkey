@@ -46,8 +46,8 @@ vaultAdapter:
 adminApi:
   image: mintkey-admin-api
   replicas: 1
-  # NOTE: Increase replicas only after confirming OIDC state store (kubernetes-readiness A2)
-  # and signed-request keypair (A3) are stable in your environment.
+  # NOTE: OIDC login state lives in Postgres (oidc_login_state), so more than one replica is safe.
+  # Confirm the signed-request keypair (kubernetes-readiness A3) is provisioned before scaling.
   resources:
     requests: {cpu: "100m", memory: "128Mi"}
     limits: {cpu: "500m", memory: "256Mi"}
