@@ -6,7 +6,7 @@
 # Or from repo root: docker build -f apps/ssh-proxy/Dockerfile -t mintkey-ssh-proxy .
 
 # Pinned 2026-06-19; re-pin every quarter.
-FROM golang:1.26-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS builder
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 
 WORKDIR /workspace
 
