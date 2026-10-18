@@ -78,6 +78,9 @@ jobs:
           #   - react-router-dom, tinyglobby, tldts, tldts-core, tsx: MIT (scanner reports
           #     "could not detect" after pnpm lockfile regen in PR #140); all confirmed via
           #     `pnpm view <pkg> license` from apps/admin-ui/.
+          #   - axe-core, @axe-core/playwright: MPL-2.0 (file-level weak copyleft), admin-ui
+          #     accessibility e2e test-only dev deps, never shipped in the image (same rationale as
+          #     rapid/hypothesis). Dependabot #305 (4.11 -> 4.13/4.14) failed 'incompatible licenses' without this.
           #   - tinymce: GPL-2.0-or-later (dual-licensed; pnpm view tinymce@7.9.3 license).
           #     Transitive dep pulled by @adminjs/design-system (MIT). The GPL applies to the
           #     TinyMCE editor library itself; it does not propagate copyleft obligations to
@@ -129,6 +132,8 @@ jobs:
             pkg:npm/tldts-core,
             pkg:npm/tsx,
             pkg:npm/caniuse-lite,
+            pkg:npm/axe-core,
+            pkg:npm/@axe-core/playwright,
             pkg:pypi/uv
 
           # Post a comment on the PR with the review summary
