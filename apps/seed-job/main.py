@@ -970,20 +970,29 @@ def run_steps_1_to_5(conn: psycopg2.extensions.connection) -> dict:
 ADMIN_UI_UID = int(os.environ.get("MINTKEY_ADMIN_UI_UID", "1000"))
 
 
-def _hand_admin_password_to_admin_ui(path: Path) -> None:
+def _hand_admin_password_to_admin_ui(path: Path) -> bool:
     """Let admin-ui read the Fernet-encrypted admin_password without loosening its 0o400 mode.
 
     admin-ui decrypts this file (MINTKEY_BOOTSTRAP_KEK + ADMIN_PASSWORD_FILE) to sign its
     server-to-server calls to admin-api. The seed-job runs as root and wrote the file 0o400
     root:root, so the admin-ui process (uid 1000) got EACCES and every BFF call that needs the
     service session (service templates, template-detail, ...) answered 500. Giving the file to
-    that uid keeps it owner-read-only. Best effort: non-root runs (unit tests) cannot chown.
+    that uid keeps it owner-read-only.
+
+    Idempotent and independent of how the file got there: main() calls it on every run whenever the
+    file exists (the file is only (re)written when the operator is first created, so existing
+    deployments are fixed by their next seed run). Returns True when ownership was changed.
+    Best effort: non-root runs (unit tests) cannot chown.
     """
     try:
+        if not path.exists() or path.stat().st_uid == ADMIN_UI_UID:
+            return False
         os.chown(path, ADMIN_UI_UID, -1)
+        return True
     except OSError as exc:
         # (no file name / path in the message: CodeQL treats the admin_password name as a secret)
         print(f"WARN: could not hand the bootstrap secret to uid {ADMIN_UI_UID}: {type(exc).__name__}")
+        return False
 
 
 def _ensure_admin_password_file(
@@ -1024,7 +1033,6 @@ def _ensure_admin_password_file(
         chmod_mode=0o400,
         label="admin_password",
     )
-    _hand_admin_password_to_admin_ui(secrets_dir / "admin_password")
 
     # Mirror admin_password to the host-visible path when bound (operator UX).
     # Without this, the host file at data/bootstrap-secrets/admin_password
@@ -1097,6 +1105,11 @@ def main(argv: list[str] | None = None) -> int:
                 f"Bootstrap admin password: written to bootstrap-secrets volume "
                 f"(fingerprint sha256:{hashlib.sha256(password.encode()).hexdigest()[:8]})"
             )
+
+        # The operator row (and so `password`) only exists on the very first run; admin-ui must be able
+        # to read the file on every deployment, including ones seeded before this fix.
+        if _hand_admin_password_to_admin_ui(BOOTSTRAP_SECRETS_DIR / "admin_password"):
+            print("Bootstrap admin password: ownership handed to the admin-ui user")
 
         print(f"Seed steps 1-5 complete. tenant={tenant_id} operator={operator_id}")
         print("NOTE: Steps 6-8 (Vault Adapter keypairs) pending T-1.0.4.")
