@@ -85,12 +85,22 @@ export async function dashboardHandler(
 
   if (!tenantId) return empty;
 
+  // admin-api only answers these list calls for an authenticated session. They used to be sent
+  // without any credentials, so every one was rejected and the dashboard showed zero services,
+  // agents and permissions (and the empty-state "Register your first backend service" instead
+  // of the quick-start checklist) for every operator. Forward the operator's own session.
+  const sessionToken = typeof admin?.sessionToken === "string" ? admin.sessionToken : "";
+  const csrfToken = typeof admin?.csrfToken === "string" ? admin.csrfToken : "";
+  const headers: Record<string, string> = sessionToken
+    ? { Cookie: `mintkey_session=${sessionToken}${csrfToken ? `; csrf_token=${csrfToken}` : ""}` }
+    : {};
+
   try {
     const [svcResp, agentResp, permResp, auditResp] = await Promise.allSettled([
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/services`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/agents`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/audit`),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/services`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/agents`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/audit`, { headers }),
     ]);
 
     const services = svcResp.status === "fulfilled" && svcResp.value.ok
@@ -105,9 +115,9 @@ export async function dashboardHandler(
       ? ((await permResp.value.json()) as { permissions?: unknown[] }).permissions ?? []
       : [];
 
-    // admin-api's audit list envelope is { items: [...], next_cursor }.
+    // admin-api's audit list envelope is { events: [...], next_cursor } (older builds: { items }).
     const events = auditResp.status === "fulfilled" && auditResp.value.ok
-      ? ((await auditResp.value.json()) as { items?: unknown[] }).items ?? []
+      ? await auditResp.value.json().then((b: { events?: unknown[]; items?: unknown[] }) => b.events ?? b.items ?? [])
       : [];
 
     // hasCredentials: any service with current_key_version > 0

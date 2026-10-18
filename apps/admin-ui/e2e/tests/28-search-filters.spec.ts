@@ -5,20 +5,28 @@
  * Verifies that filter inputs cause real data narrowing — not just URL param
  * presence.
  *
- * Baseline counts (from reviewer curls against live admin-api):
- *   services unfiltered=126, services ?q=crm=1 (demo-crm), services ?q=%=0
- *   agents unfiltered≈480, agents ?q=smoke=12
- *   tenants ?q=t_default=1
- *   audit ?event_type=service.registered=0 (bootstrap tenant)
+ * The original baselines (services unfiltered=126 with one demo-crm, agents unfiltered≈480 with
+ * 12 "smoke" agents) came from a long-lived dev database. A fresh stack has none of those rows, so
+ * beforeAll seeds what the assertions need: a demo-crm service plus a non-matching one, and a smoke
+ * agent plus a non-matching one.
  *
  * Source: admin-ui-search-filter-wiring acceptance criteria #3, #4.
  */
 
 import { test, expect } from "../fixtures/test.js";
+import { TENANT_ID } from "../env.js";
+import { createTestAgent, createTestService } from "../fixtures/test-data.js";
 
 test.describe("28 — Search and filters", () => {
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     expect(process.env.PLAYWRIGHT_PASS ?? "", "PLAYWRIGHT_PASS env var is required").not.toEqual("");
+    expect(TENANT_ID, "PLAYWRIGHT_TENANT_ID is required to seed the search fixtures").not.toEqual("");
+    const uniq = Date.now().toString(36);
+    // createTestService appends a unique suffix, so these names are "demo-crm-<suffix>" / "billing-<suffix>".
+    await createTestService({ tenantId: TENANT_ID, name: "demo-crm", baseUrl: "https://crm.example.com" });
+    await createTestService({ tenantId: TENANT_ID, name: "billing-api", baseUrl: "https://billing.example.com" });
+    await createTestAgent({ tenantId: TENANT_ID, name: `smoke-agent-${uniq}` });
+    await createTestAgent({ tenantId: TENANT_ID, name: `reporting-agent-${uniq}` });
   });
 
   async function countTableRows(page: Parameters<typeof test>[1] extends (...args: infer A) => unknown ? A[0]["page"] : never): Promise<number> {

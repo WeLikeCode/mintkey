@@ -233,7 +233,7 @@ async def create_api_key(
     tenant_id: UUID,
     agent_id: str,
     body: ServiceApiKeyCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -426,7 +426,7 @@ async def list_api_keys(
     agent_id: str,
     q: Optional[str] = None,
     service_id: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -549,7 +549,7 @@ async def get_api_key(
     tenant_id: UUID,
     agent_id: str,
     api_key_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -609,7 +609,7 @@ async def revoke_api_key(
     agent_id: str,
     api_key_id: str,
     body: RevokeRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -704,7 +704,7 @@ async def rotate_api_key(
     tenant_id: UUID,
     agent_id: str,
     api_key_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """

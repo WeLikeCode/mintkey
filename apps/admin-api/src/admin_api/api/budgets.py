@@ -48,7 +48,7 @@ async def get_budget_status(
     tenant_id: UUID,
     agent_id: str,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Return current-period budget status for a permission grant.
@@ -149,7 +149,7 @@ async def reset_budget(
     tenant_id: UUID,
     agent_id: str,
     permission_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Reset budget for a permission grant mid-period.

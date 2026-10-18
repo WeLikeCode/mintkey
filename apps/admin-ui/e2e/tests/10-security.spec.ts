@@ -11,6 +11,7 @@
  *  4. Unauthenticated access redirects to login
  */
 
+import { ADMIN_API } from "../env.js";
 import { test, expect, type Page } from "@playwright/test";
 import { CredentialsPage } from "../pages/credentials.js";
 import { AgentsPage } from "../pages/agents.js";
@@ -90,7 +91,7 @@ test.describe("Tier 4 — Security", () => {
     const agentName = "RevokedAgent-" + Date.now();
     const { agentId } = await agents.createAgent({ name: agentName });
 
-    await fetch(`${process.env.ADMIN_API_URL ?? "http://localhost:8080"}/v1/tenants/${tenantId}/agents/${agentId}/revoke`, {
+    await fetch(`${ADMIN_API}/v1/tenants/${tenantId}/agents/${agentId}/revoke`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });

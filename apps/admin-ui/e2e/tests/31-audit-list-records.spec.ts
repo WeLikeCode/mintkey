@@ -10,6 +10,8 @@
  * Source: Phase 1a of action-grid completion; ADMIN_UI_ACTION_MATRIX.md.
  */
 
+import { TENANT_ID } from "../env.js";
+import { createTestService } from "../fixtures/test-data.js";
 import { test, expect } from "../fixtures/test.js";
 import { AuditPage } from "../pages/audit.js";
 
@@ -28,6 +30,9 @@ test.describe("Phase 1a — audit_events list shows records (listKey fix)", () =
   });
 
   test("audit_events list rows contain expected columns (event_type visible)", async ({ page }) => {
+    // Seed a service.registered event so the assertion does not depend on what ran before.
+    await createTestService({ tenantId: TENANT_ID, name: "audit-seed", baseUrl: "https://audit-seed.example.com" });
+
     const audit = new AuditPage(page);
     await audit.gotoList();
     await page.waitForLoadState("networkidle");
@@ -39,8 +44,12 @@ test.describe("Phase 1a — audit_events list shows records (listKey fix)", () =
     // Guard: only assert column content when rows are actually populated.
     expect(count, "Need rows to verify column content").toBeGreaterThanOrEqual(1);
 
-    // At least one row should contain a recognisable event_type pattern (e.g. "service." or "agent.")
-    const firstRowText = await rows.first().textContent();
-    expect(firstRowText ?? "").toMatch(/service\.|agent\.|credential\.|permission\.|api_key\./i);
+    // At least one row should contain a recognisable event_type pattern. (The list is not
+    // ordered by entity type: on a fresh stack the first row can be an operator.session.created
+    // event, so look at the whole page, as this comment always intended.)
+    // The list renders known event types as human labels ("Agent Created", "Agent Permission Granted")
+    // and unknown ones raw ("service.permission_grants.cascade_deleted"), so accept both spellings.
+    const allRowsText = (await rows.allTextContents()).join("\n");
+    expect(allRowsText).toMatch(/(service|agent|credential|permission|api[_ ]key)[. ]/i);
   });
 });

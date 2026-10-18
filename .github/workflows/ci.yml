@@ -285,6 +285,12 @@ jobs:
             --ignore=../../tests/acceptance/test_metrics.py \
             --ignore=../../tests/acceptance/test_grafana.py \
             --ignore=../../tests/acceptance/test_mock_backend_registered.py
+      - name: Run e2e-isolated guard tests
+        run: tools/e2e-isolated.test.sh
+      - name: Run seed-job tests
+        # The seed-job has its own requirements (tenacity, psycopg2, ...) that the admin-api env lacks.
+        working-directory: apps/admin-api
+        run: uv run --with-requirements ../seed-job/requirements.txt python -m pytest ../seed-job/tests -v --tb=short
 
   # ────────────────────────────────────────────────────────────────────────────
   # Integration tests (Docker required — only on main / PRs to main)

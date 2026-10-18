@@ -26,13 +26,14 @@
  *   needed or present in this spec — the production code handles it correctly.
  */
 
+import { createTestService } from "../fixtures/test-data.js";
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -85,18 +86,9 @@ function wireFormToUuid(wireId: string): string {
 
 /** Login to admin-api; returns {sessionCookie, csrfToken}. */
 async function login(): Promise<{ sessionCookie: string; csrfToken: string }> {
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  const r = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!r.ok) throw new Error(`Login failed: ${r.status} ${await r.text()}`);
-  const setCookie = r.headers.get("set-cookie") ?? "";
-  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
-  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
-  if (!smatch || !cmatch) throw new Error("Login: missing cookies in response");
-  return { sessionCookie: smatch[1], csrfToken: cmatch[1] };
+  const s = getApiSession();
+  if (!s) throw new Error("no API session: global-setup did not write e2e/state.json (is PLAYWRIGHT_PASS set?)");
+  return { sessionCookie: s.sessionToken, csrfToken: s.csrfToken };
 }
 
 /** POST to admin-api with session cookies. */
@@ -254,16 +246,17 @@ test.describe("32 — createApiKey show-once flow", () => {
     test.setTimeout(90_000);
 
     // ── Step 1: Synthesise agent + permission grant via admin-api ────────────
-    // We use an existing service (twilio-sms, UUID: 688bb02f-d90e-404a-953c-d497e3b03e54)
-    // to avoid the Crockford-ULID ↔ UUID format issue with newly created services.
-    // Newly created agents have ULID IDs (agent_<26Crockford>) from the POST response,
-    // but AdminJS normalises them to hex wire-form (agent_<32hex>) for dropdown options.
+    // The service is created here too: the suite used to rely on a "twilio-sms" row that only
+    // exists in a long-lived dev database. Post-#13 (ADR-0017.11) agents and services use the
+    // same Crockford wire form (agent_/svc_ + 26 chars) in the API and in the dropdown options.
     const auth = await login();
     const ts = uid();
     const keyName = `r10-redux-${ts}`;
 
     // Known existing service — avoids service creation format issues
-    const serviceUuid = "688bb02f-d90e-404a-953c-d497e3b03e54"; // twilio-sms
+    // A real service created for this test (no dependency on rows that only exist in a long-lived dev database).
+    const serviceUuid = await createTestService({ tenantId: TENANT_ID, name: `r10-e2e-svc-${ts}`, baseUrl: "https://r10.example.com" });
+    expect(serviceUuid, "createTestService must return an id").toBeTruthy();
 
     // Create agent
     const agentResp = await apiPost(
@@ -380,7 +373,7 @@ test.describe("32 — createApiKey show-once flow", () => {
 
     // ── Step 6: Select the synthesised service via combobox ──────────────────
     // Post-#13: permissions list returns service_id as svc_<Crockford> (ADR-0017.11 / #13).
-    const svcWireId = dbUuidToWire(serviceUuid, "svc");
+    const svcWireId = serviceUuid; // createTestService already returns the svc_ wire id
     const serviceInput = page.locator('[data-testid="combobox-service-input"]');
     await serviceInput.click();
     await page.locator('[data-testid="combobox-service-dropdown"]').waitFor({ state: "visible", timeout: 10_000 });

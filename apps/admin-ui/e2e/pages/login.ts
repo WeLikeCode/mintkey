@@ -13,10 +13,10 @@
  * Source: F-OP-01; T-1.1.4.
  */
 
+import { BASE_URL } from "../env.js";
 import { type Page, type Locator, expect } from "@playwright/test";
 import { BasePage } from "./base.js";
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081";
 
 export class LoginPage extends BasePage {
   /** Keycloak username input */

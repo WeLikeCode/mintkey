@@ -43,11 +43,12 @@ test.describe("30 — PlatformAdmin: operator promotion", () => {
   }) => {
     const operators = new OperatorsPage(page);
 
-    // Resolve a valid home tenant id (t_default) from the Tenants list — the id
-    // column is the first cell of each row and carries the tenant_ wire ID.
+    // Resolve a valid home tenant id (t_default) from the Tenants list. The first <td> of a row is
+    // the (empty) row-select cell, so read the id out of the row text instead of taking cell 0.
     await page.goto("/admin/resources/tenants", { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 30_000 });
-    const tenantId = (await page.locator("table tbody tr td").first().innerText()).trim();
+    const rowText = await page.locator("table tbody tr").first().innerText();
+    const tenantId = rowText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)?.[0] ?? "";
     expect(tenantId, "Expected a tenant id from the tenants list").not.toEqual("");
 
     const email = `e2e-op-${Date.now()}@corp.example`;

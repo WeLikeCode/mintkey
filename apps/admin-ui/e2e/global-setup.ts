@@ -11,6 +11,8 @@
  *  5. Save storageState to e2e/state.json
  */
 
+import { BASE_URL } from "./env.js";
+import { clearCleanupFile } from "./fixtures/cleanup.js";
 import { chromium } from "@playwright/test";
 import * as process from "process";
 import * as path from "path";
@@ -22,11 +24,11 @@ const __dirname = path.dirname(__filename);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const env = process.env as any;
 
-const BASE_URL = env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8081";
 const USER_EMAIL = env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 const USER_PASS = env.PLAYWRIGHT_PASS ?? "";
 
 export default async function globalSetup() {
+  clearCleanupFile(); // a previous aborted run may have left entries behind
   if (!USER_PASS) {
     console.warn("PLAYWRIGHT_PASS not set — skipping global login. Tests must set storageState themselves.");
     return;

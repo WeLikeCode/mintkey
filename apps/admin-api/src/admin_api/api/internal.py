@@ -127,7 +127,7 @@ class ValidateAgentKeyRequest(BaseModel):
 @router.post("/validate-agent-key")
 async def validate_agent_key(
     body: ValidateAgentKeyRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Validate an agent API key for the MCP Server.
@@ -254,7 +254,7 @@ class ProxyHitRequest(BaseModel):
 @router.post("/proxy-hit")
 async def proxy_hit(
     body: ProxyHitRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Record a proxy.hit audit event from the Egress Proxy.
@@ -367,7 +367,7 @@ class AuditEmitRequest(BaseModel):
 async def audit_emit_endpoint(
     request: Request,
     body: AuditEmitRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _rate_limiter: AuditEmitRateLimiter = Depends(get_rate_limiter),
 ) -> JSONResponse:
     """

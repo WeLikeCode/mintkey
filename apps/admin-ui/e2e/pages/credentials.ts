@@ -9,7 +9,7 @@
  * the UI list or show views.
  */
 
-import { type Page, type Locator } from "@playwright/test";
+import { type Page } from "@playwright/test";
 import { BasePage } from "./base.js";
 
 export class CredentialsPage extends BasePage {
@@ -27,52 +27,49 @@ export class CredentialsPage extends BasePage {
   }
 
   // ── Register credential (new action) ───────────────────
+  /**
+   * Register a credential through the real CredentialNewForm (data-testid selectors).
+   *
+   * The AdminJS default credentials "new" form (free-text auth-scheme + "plaintext" inputs, a
+   * "Save/Register" button, a "shown once" notice) was replaced by CredentialNewForm: the service
+   * is locked from `?service_id=`, the auth scheme is a native <select>, the secret is a password
+   * input (`field-input-value`) and success is an in-page banner followed by a redirect to the list.
+   * The plaintext is never echoed back; the security assertions live in the callers (list/show
+   * pages must not contain it).
+   */
   async registerCredential(options: {
     serviceId: string;
     authScheme: string;
     plaintext: string;
   }): Promise<{ success: boolean; plaintext?: string; noticeText: string }> {
-    // Navigate directly — AdminJS "new" action button is a link, not a <button>
-    await this.goto("/admin/resources/credentials/actions/new");
+    await this.goto(`/admin/resources/credentials/actions/new?service_id=${encodeURIComponent(options.serviceId)}`);
+    await this.page.locator("[data-testid='credential-new-form']").waitFor({ state: "visible", timeout: 15_000 });
 
-    const authSchemeField = this.page.getByLabel(/auth.scheme/i);
-    if (await authSchemeField.isVisible()) {
-      await authSchemeField.fill(options.authScheme);
-    }
-    const plaintextField = this.getPlaintextField();
-    if (await plaintextField.isVisible()) {
-      await plaintextField.fill(options.plaintext);
-    }
-
-    // Capture the notice — this is the ONLY place the plaintext key may appear
-    let noticeText = "";
-    let plaintextKey: string | undefined;
+    await this.page.locator("[data-testid='field-select-auth_scheme']").selectOption(options.authScheme);
+    await this.page.locator("[data-testid='field-input-value']").fill(options.plaintext);
 
     const [response] = await Promise.all([
       this.page.waitForResponse(
         (r) => r.url().includes("/admin/api/resources/credentials/actions/new") && r.request().method() === "POST",
         { timeout: 10_000 }
       ),
-      this.page.getByRole("button", { name: /save|register/i }).click(),
+      this.page.locator("[data-testid='credential-new-submit']").click(),
     ]);
 
+    let noticeText = "";
+    let failed = !response.ok();
     try {
-      const body = await response.json() as { notice?: { message?: string } };
+      const body = await response.json() as { notice?: { message?: string; type?: string } };
       noticeText = body.notice?.message ?? "";
-      const keyMatch = noticeText.match(/shown once[^:]*:\s*(\S+)/i);
-      if (keyMatch) plaintextKey = keyMatch[1];
+      if (body.notice?.type === "error") failed = true;
     } catch {
       // response may not be JSON
     }
+    if (!failed) {
+      await this.page.locator("[data-testid='credential-new-form-success']").waitFor({ state: "visible", timeout: 10_000 });
+    }
 
-    return { success: true, plaintext: plaintextKey, noticeText };
-  }
-
-  /**
-   * Get the plaintext input field (only present on the credential form).
-   */
-  private getPlaintextField(): Locator {
-    return this.page.getByLabel(/plaintext|secret|password|credential/i, { exact: false });
+    return { success: !failed, noticeText };
   }
 
   // ── Rotate credential ──────────────────────────────────

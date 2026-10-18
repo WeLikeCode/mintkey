@@ -18,9 +18,10 @@
  * Source: C-10; ADMIN_UI_SPEC.md §2.x; Playwright Extension Plan.
  */
 
+import { BASE_URL } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 
-const ADMIN_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const ADMIN_URL = BASE_URL;
 
 test.describe("42 — Email Services resource smoke", () => {
   test.beforeAll(() => {
@@ -52,21 +53,25 @@ test.describe("42 — Email Services resource smoke", () => {
     await page.goto(`${ADMIN_URL}/admin/resources/email_services/actions/new`);
     await page.waitForLoadState("networkidle");
 
-    // Provider dropdown should be present
-    const providerSelect = page.locator("select").filter({
-      has: page.locator("option[value='gmail']"),
-    });
+    // The form (EmailServiceNewForm) uses design-system react-select controls, not native
+    // <select>s: open each one and check the offered options.
+    const form = page.locator("[data-testid='email-service-new-form']");
+    await expect(form).toBeVisible();
+
+    const providerSelect = page.locator("#es-provider");
     await expect(providerSelect).toBeVisible();
+    await providerSelect.click();
+    for (const label of ["Gmail", "Outlook", "Generic"]) {
+      await expect(page.getByRole("option", { name: new RegExp(label, "i") })).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
 
-    // auth_scheme dropdown should have email_password option
-    const authSchemeSelect = page.locator("select").filter({
-      has: page.locator("option[value='email_password']"),
-    });
+    const authSchemeSelect = page.locator("#es-auth-scheme");
     await expect(authSchemeSelect).toBeVisible();
-
-    // oauth2 option should also be present
-    const oauth2Option = page.locator("option[value='email_oauth2']");
-    await expect(oauth2Option).toHaveCount(1);
+    await authSchemeSelect.click();
+    await expect(page.getByRole("option", { name: /Email \+ Password/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /OAuth2/ })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // No browser console errors
     expect(consoleErrors.errors).toHaveLength(0);

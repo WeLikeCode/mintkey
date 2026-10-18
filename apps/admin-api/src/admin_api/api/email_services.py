@@ -385,7 +385,7 @@ class EmailServiceCredentialBody(BaseModel):
 async def create_email_service(
     tenant_id: UUID,
     body: EmailServiceCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -505,7 +505,7 @@ async def create_email_service(
 async def create_email_service_from_template(
     tenant_id: UUID,
     body: EmailServiceFromTemplate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -646,7 +646,7 @@ async def oauth2_authorize(
     service_id: str,
     provider: str,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -1212,7 +1212,7 @@ async def oauth2_callback(
     service_id: str,
     provider: str,
     body: OAuth2CallbackBody,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """
@@ -1323,7 +1323,7 @@ async def oauth2_callback_view(
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> HTMLResponse:
     """Handle Google/Outlook OAuth2 GET browser redirect after consent (C-9 callback view).
@@ -1484,7 +1484,7 @@ async def oauth2_refresh(
     service_id: str,
     tenant_id: str,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """
@@ -1682,7 +1682,7 @@ async def set_email_service_credential(
     tenant_id: UUID,
     service_id: str,
     body: EmailServiceCredentialBody,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -1819,7 +1819,7 @@ async def set_email_service_credential(
 async def delete_email_service_credential(
     tenant_id: UUID,
     service_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -1929,7 +1929,7 @@ async def list_email_services(
     tenant_id: UUID,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -2009,7 +2009,7 @@ async def list_email_services(
 async def get_email_service(
     tenant_id: UUID,
     service_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -2106,7 +2106,7 @@ async def patch_email_service(
     service_id: str,
     body: EmailServicePatch,
     request: Request,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -2266,7 +2266,7 @@ async def patch_email_service(
 async def delete_email_service(
     tenant_id: UUID,
     service_id: str,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -2345,7 +2345,7 @@ async def oauth2_callback_per_tenant_view(
     state: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> HTMLResponse:
     """Handle OAuth2 GET browser redirect at the per-(provider, tenant) callback URL (C-9).
@@ -2494,7 +2494,7 @@ async def oauth2_callback_per_tenant(
     tenant_id: UUID,
     provider: str,
     body: OAuth2CallbackPerTenantBody,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
 ) -> JSONResponse:
     """Complete the OAuth2 flow at the per-(provider, tenant) callback URL (programmatic).

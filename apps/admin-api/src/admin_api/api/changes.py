@@ -28,7 +28,7 @@ router = APIRouter()
 @router.get("/v1/changes")
 async def get_changes(
     since: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Return change events after the given cursor.

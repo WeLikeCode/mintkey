@@ -31,12 +31,17 @@ test.describe("Tier 1 — Permissions (F-OP-04)", () => {
     const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
     if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
 
-    const svcId = await createTestService({ tenantId, name: "PermSvc", slug: "perm-svc" }, token);
-    const { agentId } = await agents.createAgent({ name: "PermAgent" });
+    const uniq = Date.now().toString(36);
+    const svcName = `PermSvc-${uniq}`;
+    const agentName = `PermAgent-${uniq}`;
+    const svcId = await createTestService({ tenantId, name: svcName, slug: `perm-svc-${uniq}` }, token);
+    const { agentId } = await agents.createAgent({ name: agentName });
 
     await perms.grantPermission({
       agent_id: agentId,
+      agent_search: agentName,
       service_id: svcId,
+      service_search: svcName,
       action: "read:health",
     });
 
@@ -47,12 +52,17 @@ test.describe("Tier 1 — Permissions (F-OP-04)", () => {
     const tenantId = process.env.PLAYWRIGHT_TENANT_ID ?? "";
     if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
 
-    const svcId = await createTestService({ tenantId, name: "RevokePermSvc", slug: "revoke-perm-svc" }, token);
-    const { agentId } = await agents.createAgent({ name: "RevokePermAgent" });
+    const uniq = Date.now().toString(36);
+    const svcName = `RevokePermSvc-${uniq}`;
+    const agentName = `RevokePermAgent-${uniq}`;
+    const svcId = await createTestService({ tenantId, name: svcName, slug: `revoke-perm-svc-${uniq}` }, token);
+    const { agentId } = await agents.createAgent({ name: agentName });
 
     await perms.grantPermission({
       agent_id: agentId,
+      agent_search: agentName,
       service_id: svcId,
+      service_search: svcName,
       action: "read:echo",
     });
 

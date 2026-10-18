@@ -33,10 +33,14 @@ import base64
 import json
 import os
 import time
+import uuid
 from pathlib import Path
 
 import httpx
 import pytest
+
+from acceptance.oidc_login import admin_session
+from acceptance.wire_ids import uuid_to_wire, wire_to_uuid
 
 from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password
 
@@ -133,7 +137,7 @@ def _kong_route_exists(expected_path: str) -> bool:
 
 def _wait_for_kong_route(service_uuid: str, timeout: int = 10) -> bool:
     """Poll Kong admin until the /v1/call/{service_uuid} route appears (paginated)."""
-    expected_path = f"/v1/call/{service_uuid}"
+    expected_path = f"/v1/call/{uuid_to_wire(service_uuid, 'svc')}"
     for _ in range(timeout):
         try:
             if _kong_route_exists(expected_path):
@@ -335,17 +339,8 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
 
         # ── Setup: login → create agent + service + credential + permission ─
 
-        # Login as bootstrap admin
-        login_r = client.post(
-            f"{BASE_API}/v1/auth/internal-login",
-            json={"email": "admin@mintkey.internal", "password": BOOTSTRAP_PASSWORD},
-        )
-        assert login_r.status_code == 200, (
-            f"Setup login failed: {login_r.status_code} {login_r.text}"
-        )
-        login_body = login_r.json()
-        tenant_id = login_body["tenant_id"]
-        csrf_token = client.cookies.get("csrf_token", "")
+        # Login as bootstrap admin (OIDC: the seeded operator has no internal password)
+        tenant_id, csrf_token = admin_session(client, BASE_API, BOOTSTRAP_PASSWORD)
 
         # Create agent
         agent_r = client.post(
@@ -523,7 +518,7 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
         kong_route_ready = _wait_for_kong_route(service_uuid, timeout=10)
 
         assert kong_route_ready, (
-            f"Hop 4: Kong route /v1/call/{service_uuid} not found after 10s. "
+            f"Hop 4: Kong route /v1/call/{uuid_to_wire(service_uuid, 'svc')} not found after 10s. "
             "kong-syncer may not have pushed the config (check mintkey-kong-syncer-1 logs)."
         )
 
@@ -531,7 +526,7 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
         # (registered by kong-syncer; route strips /v1/call/{service_id} and
         # forwards to proxy-plugin at http://proxy-plugin:8086)
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=15,
         )
@@ -606,14 +601,8 @@ def test_ws9_vault_grpc_end_to_end() -> None:
     secret_value = "ws8-reproducer-secret"
 
     with httpx.Client(timeout=30) as client:
-        # Login
-        login_r = client.post(
-            f"{BASE_API}/v1/auth/internal-login",
-            json={"email": "admin@mintkey.internal", "password": BOOTSTRAP_PASSWORD},
-        )
-        assert login_r.status_code == 200, f"Login failed: {login_r.status_code}"
-        tenant_id = login_r.json()["tenant_id"]
-        csrf = client.cookies.get("csrf_token", "")
+        # Login (OIDC: the seeded operator has no internal password)
+        tenant_id, csrf = admin_session(client, BASE_API, BOOTSTRAP_PASSWORD)
 
         # Create minimal service
         svc_r = client.post(
@@ -683,7 +672,7 @@ def test_ws9_vault_grpc_end_to_end() -> None:
 
         # WS-9: real gRPC wiring means proxy now succeeds (was 502 in WS-8)
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=15,
         )
@@ -761,11 +750,19 @@ def test_ws10_list_versions_end_to_end() -> None:
     #   - Inside docker-compose network (make test-golden / CI): set
     #     VAULT_GRPC_ADDR=vault-adapter:8084 so the Docker hostname resolves.
     vault_addr = os.getenv("VAULT_GRPC_ADDR", "localhost:8084")
+    # vault-adapter authenticates callers by service identity + token (scopeInterceptor); use the
+    # admin-api identity the compose stack provisions (same defaults as docker-compose.yml).
+    vault_md = (
+        ("x-mintkey-service-identity", os.getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID", "svcid_admin_api")),
+        ("x-mintkey-service-token", os.getenv("MINTKEY_VAULT_ADMIN_TOKEN", "mk_vault_admin_dev_shared_secret!")),
+    )
     channel = grpc.insecure_channel(vault_addr)
     stub = vault_pb2_grpc.VaultAdapterStub(channel)
 
-    tenant_id = f"tenant_ws10_{ts}"
-    service_id = f"svc_ws10_{ts}"
+    # vault-adapter's postgres store keys credentials by UUID columns; the old synthetic
+    # "tenant_ws10_<ts>" / "svc_ws10_<ts>" ids fail with SQLSTATE 22P02 (invalid uuid).
+    tenant_id = str(uuid.uuid4())
+    service_id = str(uuid.uuid4())
 
     # Put version 1.
     r1 = stub.PutCredential(vault_pb2.PutCredentialRequest(
@@ -773,7 +770,7 @@ def test_ws10_list_versions_end_to_end() -> None:
         service_id=service_id,
         auth_scheme=1,  # API_KEY_HEADER
         value=secret_a.encode(),
-    ))
+    ), metadata=vault_md)
     assert r1.key_version == 1, f"Expected key_version=1, got {r1.key_version}"
 
     # Put version 2 (rotation).
@@ -782,14 +779,14 @@ def test_ws10_list_versions_end_to_end() -> None:
         service_id=service_id,
         auth_scheme=1,
         value=secret_b.encode(),
-    ))
+    ), metadata=vault_md)
     assert r2.key_version == 2, f"Expected key_version=2, got {r2.key_version}"
 
     # ListVersions.
     lv = stub.ListVersions(vault_pb2.ListVersionsRequest(
         tenant_id=tenant_id,
         service_id=service_id,
-    ))
+    ), metadata=vault_md)
 
     assert len(lv.versions) == 2, (
         f"WS-10: expected 2 versions from ListVersions, got {len(lv.versions)}"

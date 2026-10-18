@@ -64,7 +64,12 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
     navigation: { name: "Operators", icon: "Users" },
     listProperties: ["id", "email", "display_name", "is_platform_admin", "status", "created_at"],
     showProperties: ["id", "email", "display_name", "tenant_id", "oidc_sub", "is_platform_admin", "status", "created_at"],
-    editProperties: ["display_name", "is_platform_admin", "status"],
+    // AdminJS has no per-action property list: `new` and `edit` both render `editProperties`
+    // (the former `newProperties` option does not exist in AdminJS 7, so the promote form never
+    // showed email / home tenant / oidc_sub). email, tenant_id and oidc_sub are therefore listed
+    // here so the "Promote operator" (new) form can capture them; the edit handler below only
+    // PATCHes display_name / is_platform_admin / status and ignores them.
+    editProperties: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin", "status"],
     filterProperties: ["q", "tenant_id", "status"],
     properties: propertyOptions({
       q: {
@@ -73,11 +78,11 @@ export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _o
         description: "Case-insensitive substring match on operator email and display_name.",
       },
       email: {
-        description: "The operator's login email. Must match the Keycloak realm-mintkey user you are promoting. Unique within the home tenant.",
+        description: "The operator's login email. Must match the Keycloak realm-mintkey user you are promoting. Unique within the home tenant. Set when promoting; not changed by edit.",
       },
       tenant_id: {
         label: "Home tenant (tenant_ ID)",
-        description: "The operator's home tenant. Paste a tenant_… wire ID or a bare tenant UUID. The operator is granted an Admin membership in this tenant on creation.",
+        description: "The operator's home tenant. Paste a tenant_… wire ID or a bare tenant UUID. The operator is granted an Admin membership in this tenant on creation. Set when promoting; not changed by edit.",
       },
       oidc_sub: {
         description: "Keycloak subject claim. Optional — leave blank and it binds lazily on the operator's first 'Sign in with Keycloak' (ADR-0020). Supply it only if you already know the sub; it must be unique.",

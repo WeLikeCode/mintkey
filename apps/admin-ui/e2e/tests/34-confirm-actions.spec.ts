@@ -13,6 +13,8 @@
  * Source: ADMIN_UI_ACTION_MATRIX.md Phase 1d.
  */
 
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import { AgentsPage } from "../pages/agents.js";
 import { createTestService } from "../fixtures/test-data.js";
@@ -23,41 +25,14 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const skipWebkit = ({ browserName }: { browserName: string }) => browserName === "webkit";
 
 // Bootstrap tenant (t_default) — known from seed data.
-const TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 const PLAYWRIGHT_PASS_ENV = process.env.PLAYWRIGHT_PASS ?? "";
 
 // ── Shared session helper for direct admin-api calls ─────────────────────────
 interface Session { sessionToken: string; csrfToken: string }
-let _session: Session | null = null;
 
 async function getSession(): Promise<Session | null> {
-  if (_session) return _session;
-  if (!PLAYWRIGHT_PASS_ENV) return null;
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: PLAYWRIGHT_PASS_ENV }),
-  });
-  if (!resp.ok) return null;
-  // Node.js fetch returns multiple Set-Cookie headers as separate entries.
-  // getSetCookie() returns all; fall back to get("set-cookie") for older runtimes.
-  const cookieHeaders: string[] =
-    typeof (resp.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
-      ? (resp.headers as { getSetCookie: () => string[] }).getSetCookie()
-      : [resp.headers.get("set-cookie") ?? ""];
-  let sessionToken = "";
-  let csrfToken = "";
-  for (const c of cookieHeaders) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/);
-    if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/);
-    if (cm) csrfToken = cm[1];
-  }
-  if (!sessionToken || !csrfToken) return null;
-  _session = { sessionToken, csrfToken };
-  return _session;
+  return getApiSession();
 }
 
 async function apiGet(path: string): Promise<unknown> {
@@ -104,6 +79,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
     // Get any service ID from the list
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -146,6 +124,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
   }) => {
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -187,6 +168,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
   }) => {
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -270,9 +254,14 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     await page.waitForLoadState("load", { timeout: 10_000 }).catch(() => {});
 
     // Verify the service is gone — its show page must render "not found" or redirect to list
+    // AdminJS redirects the show page of a missing record to the list client-side. With
+    // waitUntil "load" that redirect interrupts goto() itself ("Navigation ... is interrupted by
+    // another navigation"; deterministic on the CI runner, never locally), so resolve goto at
+    // response commit and let the redirect settle afterwards.
     await page.goto(`/admin/resources/services/records/${serviceId}/show`, {
-      waitUntil: "load",
+      waitUntil: "commit",
     });
+    await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => {});
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     const showBody = await page.locator("body").innerText();
     // AdminJS returns a "not found" error notice or redirects to the resource list

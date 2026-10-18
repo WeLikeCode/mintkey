@@ -160,7 +160,7 @@ async def create_agent_secret(
     tenant_id: UUID,
     body: CreateAgentSecretRequest,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
@@ -357,7 +357,7 @@ async def list_agent_secrets(
     after: str | None = None,
     limit: int = 50,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     List agent secret metadata for a tenant (cursor paginated).
@@ -429,7 +429,7 @@ async def get_agent_secret(
     tenant_id: UUID,
     secret_id: str,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Get agent secret metadata by ID.
@@ -478,7 +478,7 @@ async def update_agent_secret(
     secret_id: str,
     body: UpdateAgentSecretRequest,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
@@ -628,7 +628,7 @@ async def delete_agent_secret(
     tenant_id: UUID,
     secret_id: str,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault_client: AgentSecretsVaultClient = Depends(get_agent_secrets_vault_client),
     ctx: Any = Depends(get_session_context),
 ) -> Response:
@@ -730,7 +730,7 @@ async def create_agent_secret_grant(
     secret_id: str,
     body: CreateAgentSecretGrantRequest,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """
@@ -893,7 +893,7 @@ async def list_agent_secret_grants(
     after: str | None = None,
     limit: int = 50,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     List share grants for an agent secret (cursor paginated).
@@ -983,7 +983,7 @@ async def delete_agent_secret_grant(
     secret_id: str,
     grant_id: str,
     _authz: None = Depends(require_tenant_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     ctx: Any = Depends(get_session_context),
 ) -> Response:
     """

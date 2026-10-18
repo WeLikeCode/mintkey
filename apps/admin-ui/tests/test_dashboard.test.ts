@@ -30,7 +30,7 @@ describe("dashboardHandler", () => {
   });
 
   it("returns zeroed counts when API returns empty lists", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], items: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], events: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -47,12 +47,12 @@ describe("dashboardHandler", () => {
 
   it("returns correct counts from API data", async () => {
     // admin-api's list envelopes: services -> {services}, agents -> {agents},
-    // permissions -> {permissions}, audit -> {items, next_cursor}.
+    // permissions -> {permissions}, audit -> {events, next_cursor}.
     mockFetch
       .mockResolvedValueOnce(makeFetchResponse({ services: [{ id: "s1" }, { id: "s2" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ agents: [{ id: "a1" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ permissions: [{ id: "p1" }, { id: "p2" }, { id: "p3" }] }))
-      .mockResolvedValueOnce(makeFetchResponse({ items: [{ id: "e1" }, { id: "e2" }] }));
+      .mockResolvedValueOnce(makeFetchResponse({ events: [{ id: "e1" }, { id: "e2" }] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -72,7 +72,7 @@ describe("dashboardHandler", () => {
       .mockResolvedValueOnce(makeFetchResponse({ services: [{ id: "s1" }] }))
       .mockResolvedValueOnce(makeFetchResponse({ agents: [] }))
       .mockResolvedValueOnce(makeFetchResponse({ permissions: [] }))
-      .mockResolvedValueOnce(makeFetchResponse({ items: [] }));
+      .mockResolvedValueOnce(makeFetchResponse({ events: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -86,7 +86,7 @@ describe("dashboardHandler", () => {
   });
 
   it("checklist all false for empty state", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], items: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -101,7 +101,7 @@ describe("dashboardHandler", () => {
   });
 
   it("includes email and tenantId from currentAdmin", async () => {
-    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], items: [] }));
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
 
     const result = await dashboardHandler(
       {} as never,
@@ -125,5 +125,56 @@ describe("dashboardHandler", () => {
     // Should not throw — returns zero counts
     expect(result.servicesCount).toBe(0);
     expect(result.agentsCount).toBe(0);
+  });
+
+  it("still reads the audit count from the legacy { items } envelope", async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeFetchResponse({ services: [] }))
+      .mockResolvedValueOnce(makeFetchResponse({ agents: [] }))
+      .mockResolvedValueOnce(makeFetchResponse({ permissions: [] }))
+      .mockResolvedValueOnce(makeFetchResponse({ items: [{ id: "e1" }] }));
+
+    const data = await dashboardHandler(
+      {} as never,
+      {} as never,
+      { currentAdmin: { tenantId: "tenant_abc", email: "op@test.com" } } as never
+    ) as DashboardData;
+
+    expect(data.auditCount24h).toBe(1);
+  });
+
+  it("forwards the operator's session cookie on all four admin-api list calls", async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
+
+    await dashboardHandler(
+      {} as never,
+      {} as never,
+      { currentAdmin: { tenantId: "tenant_abc", email: "op@test.com", sessionToken: "sess123", csrfToken: "csrf456" } } as never
+    );
+
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    for (const call of mockFetch.mock.calls) {
+      expect(call[1]).toEqual({ headers: { Cookie: "mintkey_session=sess123; csrf_token=csrf456" } });
+    }
+    expect(mockFetch.mock.calls.map((c) => String(c[0]))).toEqual([
+      expect.stringMatching(/\/v1\/tenants\/tenant_abc\/services$/),
+      expect.stringMatching(/\/v1\/tenants\/tenant_abc\/agents$/),
+      expect.stringMatching(/\/v1\/tenants\/tenant_abc\/permissions$/),
+      expect.stringMatching(/\/v1\/tenants\/tenant_abc\/audit$/),
+    ]);
+  });
+
+  it("sends no Cookie header when the session has no token", async () => {
+    mockFetch.mockResolvedValue(makeFetchResponse({ services: [], agents: [], permissions: [], events: [] }));
+
+    await dashboardHandler(
+      {} as never,
+      {} as never,
+      { currentAdmin: { tenantId: "tenant_abc", email: "op@test.com" } } as never
+    );
+
+    for (const call of mockFetch.mock.calls) {
+      expect(call[1]).toEqual({ headers: {} });
+    }
   });
 });
