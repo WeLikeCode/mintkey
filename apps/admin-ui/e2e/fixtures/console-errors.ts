@@ -22,10 +22,14 @@ export interface ConsoleErrorTracker {
  * Benign error patterns that do not indicate application code failures.
  * These are filtered out to prevent false-positive cross-browser failures:
  *  - Firefox reports Google Font CDN download failures as console errors
- *    when the test environment has no external network access.
+ *    when the test environment has no external network access, and font
+ *    sanitizer rejections for the Keycloak login page's own web fonts.
  */
 const BENIGN_PATTERNS: RegExp[] = [
   /downloadable font: download failed/i,
+  // Firefox's font sanitizer rejects the patternfly woff2 files Keycloak serves on its login page
+  // ("downloadable font: kern: Too large subtable", "Table discarded"); not an application error.
+  /downloadable font:/i,
   /fonts\.gstatic\.com/i,
   /fonts\.googleapis\.com/i,
 ];

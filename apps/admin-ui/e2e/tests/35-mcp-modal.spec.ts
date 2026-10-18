@@ -19,7 +19,6 @@
  * Source: UI-MCP-modal chunk; Dashboard.tsx McpConfigModal component.
  */
 
-import { BASE_URL } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -86,10 +85,18 @@ test.describe("35 — MCP config modal", () => {
     await expect(copyBtn).toBeVisible();
 
     // ── 6. Copy button writes JSON to clipboard ──────────────────────────────
-    // Grant clipboard-read permission so we can verify the content
-    const context = page.context();
-    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-      origin: new URL(BASE_URL).origin,
+    // Record what the page hands to navigator.clipboard.writeText instead of reading the system
+    // clipboard back: the "clipboard-read" permission only exists in Chromium
+    // (browserContext.grantPermissions throws "Unknown permission" in Firefox), and this check
+    // is about the copied content, not about the OS clipboard.
+    await page.evaluate(() => {
+      const w = window as unknown as { __copied?: string };
+      w.__copied = "";
+      const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
+      navigator.clipboard.writeText = async (text: string) => {
+        w.__copied = text;
+        await orig(text).catch(() => undefined);
+      };
     });
 
     await copyBtn.click();
@@ -97,10 +104,8 @@ test.describe("35 — MCP config modal", () => {
     // Button should show "Copied!" feedback
     await expect(copyBtn).toHaveText("Copied!", { timeout: 3_000 });
 
-    // Verify clipboard content contains the expected shape
-    const clipboardText = await page.evaluate(() =>
-      navigator.clipboard.readText()
-    );
+    // Verify the copied content contains the expected shape
+    const clipboardText = await page.evaluate(() => (window as unknown as { __copied?: string }).__copied ?? "");
     expect(clipboardText).toContain("mcpServers");
     expect(clipboardText).toContain("mintkey");
     // OPS-FF Fix 1: copied JSON must include the Authorization header + placeholder
