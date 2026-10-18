@@ -68,6 +68,13 @@ jobs:
           #     SSH credential validation. LGPL-2.1 permits use as a library without
           #     copyleft obligation on the consuming application (weak copyleft).
           #   - pytest-asyncio: Apache-2.0 (scanner reports "unknown" for some versions).
+          #   - protobuf (PyPI): BSD-3-Clause ("3-Clause BSD License" on PyPI); 7.x is reported as
+          #     "BSD-3-Clause AND LicenseRef-scancode-protobuf", the same pattern as google.golang.org/protobuf.
+          #   - typing-extensions: PSF-2.0 (PyPI license_expression); 4.16.0 (required by pydantic 2.14) is
+          #     misreported as a compound expression with GPL-1.0-or-later taken from the Python license history.
+          #   - psycopg2-binary: LGPL-3.0-or-later with exceptions (reported "LGPL-2.0-or-later AND
+          #     LGPL-3.0-or-later"); same rationale as asyncssh: used unmodified as a library (admin-api's
+          #     audit append-only acceptance test connects with it). In the tree before this entry.
           #   - ssh-proxy Go transitive deps (beorn7/perks, cespare/xxhash/v2, go-logr/logr,
           #     go-logr/stdr, golang-jwt/jwt/v5, google/uuid, pmezard/go-difflib,
           #     prometheus/client_golang, prometheus/client_model, prometheus/common,
@@ -78,6 +85,11 @@ jobs:
           #   - react-router-dom, tinyglobby, tldts, tldts-core, tsx: MIT (scanner reports
           #     "could not detect" after pnpm lockfile regen in PR #140); all confirmed via
           #     `pnpm view <pkg> license` from apps/admin-ui/.
+          #   - axe-core, @axe-core/playwright: MPL-2.0 (file-level weak copyleft), admin-ui
+          #     accessibility e2e test-only dev deps (same rationale as rapid/hypothesis). Already in
+          #     the tree before this entry; the runtime never loads them (they sit unmodified in the
+          #     image's node_modules only because the Dockerfile runs a full pnpm install). Dependabot
+          #     #305 (4.11 -> 4.13/4.14) failed 'incompatible licenses' without this.
           #   - tinymce: GPL-2.0-or-later (dual-licensed; pnpm view tinymce@7.9.3 license).
           #     Transitive dep pulled by @adminjs/design-system (MIT). The GPL applies to the
           #     TinyMCE editor library itself; it does not propagate copyleft obligations to
@@ -104,6 +116,9 @@ jobs:
             pkg:pypi/types-pyyaml,
             pkg:pypi/asyncssh,
             pkg:pypi/pytest-asyncio,
+            pkg:pypi/protobuf,
+            pkg:pypi/typing-extensions,
+            pkg:pypi/psycopg2-binary,
             pkg:golang/github.com/beorn7/perks,
             pkg:golang/github.com/cespare/xxhash/v2,
             pkg:golang/github.com/go-logr/logr,
@@ -129,6 +144,8 @@ jobs:
             pkg:npm/tldts-core,
             pkg:npm/tsx,
             pkg:npm/caniuse-lite,
+            pkg:npm/axe-core,
+            pkg:npm/@axe-core/playwright,
             pkg:pypi/uv
 
           # Post a comment on the PR with the review summary
