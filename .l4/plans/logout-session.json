@@ -1,0 +1,13 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "logout-session",
+  "target": "staging",
+  "merge": "human",
+  "limits": {"max_cost_usd": 8, "max_unit_attempts": 2, "max_runs": 8},
+  "external_dependencies": [],
+  "batches": [
+    {"id": "logout", "depends_on": [], "units": [
+      {"id": "openspec:fix-logout-session", "depends_on": []}
+    ]}
+  ]
+}
