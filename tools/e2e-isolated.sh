@@ -39,6 +39,20 @@ case "$PROJECT" in
 esac
 [[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "invalid project name '$PROJECT'"
 
+# The caller's shell must not leak into the stack: for docker compose an exported variable beats
+# --env-file, so a stray MINTKEY_KEYCLOAK_PUBLIC_URL / MINTKEY_ADMIN_API_PUBLIC_URL / COMPOSE_FILE /
+# KC_* ... (very common on a dev machine that also runs the live stack) would silently repoint the
+# isolated stack at the live ports or services. Unset every variable the compose files interpolate,
+# plus all COMPOSE_* and MINTKEY_*; the isolated values come from $ENV_FILE and the E2E_* variables.
+unset_leaky_env() {
+  local v
+  for v in $(grep -hoE '\$\{[A-Za-z_][A-Za-z0-9_]*' "$ROOT/infra/compose/docker-compose.yml" "$ROOT/infra/compose/docker-compose.e2e.yml" | sed 's/^\${//' | sort -u); do
+    case "$v" in E2E_*) ;; *) unset "$v" ;; esac
+  done
+  for v in $(compgen -e | grep -E '^(COMPOSE_|MINTKEY_|SSH_PROXY_|KC_|KEYCLOAK_)'); do unset "$v"; done
+}
+unset_leaky_env
+
 STATE_DIR="${E2E_STATE_DIR:-$ROOT/data/e2e/$PROJECT}"
 export E2E_PROJECT="$PROJECT"
 export E2E_SECRETS_DIR="${E2E_SECRETS_DIR:-$STATE_DIR/bootstrap-secrets}"
@@ -132,13 +146,16 @@ print(f"e2e-isolated: config ok for project {project} ({len(cfg['services'])} se
 PY
 }
 
+# Every port must be free, or be published by a container of THIS project (re-running `up`).
+# Ownership is checked per port, so one of our own containers on port A never excuses a stranger on B.
 ports_free() {
-  local busy=0 p
+  local busy=0 p owners
   for p in "$P_ADMIN_API" "$P_ADMIN_UI" "$P_MCP" "$P_BROKER" "$P_VAULT_GRPC" "$P_KONG" "$P_KONG_ADMIN" "$P_KEYCLOAK" "$P_GRAFANA" "$P_JAEGER"; do
     if lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
-      # fine if it is already our own stack
-      if ! compose ps --format '{{.Name}}' 2>/dev/null | grep -q .; then
-        echo "e2e-isolated: port $p is already in use by something else" >&2; busy=1
+      owners="$(docker ps --filter "publish=$p" --format '{{.Label "com.docker.compose.project"}}' | sort -u)"
+      if [ "$owners" != "$PROJECT" ]; then
+        echo "e2e-isolated: port $p is already in use by ${owners:-a non-docker process}" >&2
+        busy=1
       fi
     fi
   done
@@ -167,7 +184,7 @@ admin_password() {
 import sys
 from cryptography.fernet import Fernet
 print(Fernet(sys.argv[2].encode()).decrypt(open(sys.argv[1], "rb").read()).decode().strip())
-' "$f" "${MINTKEY_BOOTSTRAP_KEK:-TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=}"
+' "$f" "$(grep -E '^MINTKEY_BOOTSTRAP_KEK=' "$ENV_FILE" | cut -d= -f2- | grep . || echo TUQpz9CUkfOvVJiM0yBUL8J9xAgrzE__JkNnwcocVas=)"
 }
 
 tenant_id() {
@@ -270,11 +287,12 @@ cmd_py() {
 
 case "${1:-}" in
   check) check_config ;;
+  compose) shift; check_config >/dev/null; compose "$@" ;;   # raw docker compose, always scoped to -p $E2E_PROJECT
   py)    shift; cmd_py "$@" ;;
   pw)    shift; cmd_pw "$@" ;;
   up)    cmd_up ;;
   test)  cmd_test ;;
   down)  cmd_down ;;
   creds) check_config >/dev/null; export_env; env | grep -E '^(PLAYWRIGHT_|ADMIN_API_URL|MINTKEY_)' | sed -E 's/(PASS(WORD)?|TOKEN)=.*/\1=***/' ;;
-  *) die "usage: E2E_PROJECT=<name> $0 up|test|down|check|creds|pw [playwright args]|py [pytest args]" ;;
+  *) die "usage: E2E_PROJECT=<name> $0 up|test|down|check|creds|pw [playwright args]|py [pytest args]|compose [args]" ;;
 esac
