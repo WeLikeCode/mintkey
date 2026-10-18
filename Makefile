@@ -232,7 +232,7 @@ test-acceptance:
 		--ignore=$(REPO_ROOT)/tests/acceptance/test_mock_backend_registered.py
 	@echo "── Acceptance: seed-job (needs the seed-job requirements, not in the admin-api env) ──"
 	cd apps/admin-api && $(UV) run --with-requirements ../seed-job/requirements.txt python -m pytest \
-		$(REPO_ROOT)/tests/acceptance/test_mock_backend_registered.py -v
+		$(REPO_ROOT)/tests/acceptance/test_mock_backend_registered.py $(REPO_ROOT)/apps/seed-job/tests -v
 
 test-integration:
 	@echo "── Integration tests (requires Docker) ──"
