@@ -68,6 +68,13 @@ jobs:
           #     SSH credential validation. LGPL-2.1 permits use as a library without
           #     copyleft obligation on the consuming application (weak copyleft).
           #   - pytest-asyncio: Apache-2.0 (scanner reports "unknown" for some versions).
+          #   - protobuf (PyPI): BSD-3-Clause ("3-Clause BSD License" on PyPI); 7.x is reported as
+          #     "BSD-3-Clause AND LicenseRef-scancode-protobuf", the same pattern as google.golang.org/protobuf.
+          #   - typing-extensions: PSF-2.0 (PyPI license_expression); 4.16.0 (required by pydantic 2.14) is
+          #     misreported as a compound expression with GPL-1.0-or-later taken from the Python license history.
+          #   - psycopg2-binary: LGPL-3.0-or-later with exceptions (reported "LGPL-2.0-or-later AND
+          #     LGPL-3.0-or-later"); same rationale as asyncssh: used unmodified as a library (admin-api's
+          #     audit append-only acceptance test connects with it). In the tree before this entry.
           #   - ssh-proxy Go transitive deps (beorn7/perks, cespare/xxhash/v2, go-logr/logr,
           #     go-logr/stdr, golang-jwt/jwt/v5, google/uuid, pmezard/go-difflib,
           #     prometheus/client_golang, prometheus/client_model, prometheus/common,
@@ -109,6 +116,9 @@ jobs:
             pkg:pypi/types-pyyaml,
             pkg:pypi/asyncssh,
             pkg:pypi/pytest-asyncio,
+            pkg:pypi/protobuf,
+            pkg:pypi/typing-extensions,
+            pkg:pypi/psycopg2-binary,
             pkg:golang/github.com/beorn7/perks,
             pkg:golang/github.com/cespare/xxhash/v2,
             pkg:golang/github.com/go-logr/logr,
