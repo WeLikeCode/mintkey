@@ -177,9 +177,12 @@ jobs:
         working-directory: apps/admin-ui
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers (${{ matrix.browser }})
+      # e2e/global-setup.ts logs in once with chromium whatever --project is used, so chromium is
+      # always needed in addition to the browser under test (without it firefox/webkit failed with
+      # "Executable doesn't exist ... chrome-headless-shell" before any test ran).
+      - name: Install Playwright browsers (chromium + ${{ matrix.browser }})
         working-directory: apps/admin-ui
-        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+        run: pnpm exec playwright install --with-deps chromium ${{ matrix.browser }}
 
       - name: Start Mintkey stack
         run: |
