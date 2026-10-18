@@ -64,6 +64,38 @@ export class ServicesPage extends BasePage {
     return response;
   }
 
+  /**
+   * Create a service through the real ServiceCreateForm (data-testid selectors).
+   *
+   * The AdminJS default "new" form (name/slug/base url fields + react-select) was replaced by the
+   * custom ServiceCreateForm in 0b04288 (UX-C6 Phase 3): no slug field (the server derives it),
+   * a native <select> for the auth scheme, and an in-page success banner instead of a redirect.
+   * Returns the wire id of the created service (from the success banner's "View service" link).
+   */
+  async createServiceViaForm(data: {
+    name: string;
+    baseUrl: string;
+    authScheme?: string;
+    description?: string;
+  }): Promise<string> {
+    await this.gotoNew();
+    await this.page.locator("[data-testid='service-create-form']").waitFor({ state: "visible", timeout: 15_000 });
+    await this.page.locator("[data-testid='field-input-name']").fill(data.name);
+    await this.page.locator("[data-testid='field-input-base_url']").fill(data.baseUrl);
+    if (data.authScheme) {
+      await this.page.locator("[data-testid='field-select-auth_scheme']").selectOption(data.authScheme);
+    }
+    if (data.description) {
+      await this.page.locator("[data-testid='field-input-description']").fill(data.description);
+    }
+    await this.page.locator("[data-testid='service-create-submit']").click();
+    await this.page.locator("[data-testid='service-create-success']").waitFor({ state: "visible", timeout: 15_000 });
+    const href = await this.page.locator("[data-testid='skip-to-service-btn']").getAttribute("href");
+    const id = href?.match(/\/records\/([^/]+)\/show/)?.[1] ?? "";
+    if (!id) throw new Error(`could not read the new service id from the success banner (href=${href})`);
+    return id;
+  }
+
   // ── Show / detail view ─────────────────────────────────
   async gotoShow(serviceId: string) {
     await this.goto(`/admin/resources/services/records/${serviceId}/show`);

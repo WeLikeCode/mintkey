@@ -9,9 +9,10 @@
  * Source: T-1.3.4; T-1.8.4; Req 4; ADR-0013; ADR-0014.4; ADR-0014.5.
  */
 
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -39,7 +40,7 @@ const _credentialsResource = new RestResource({
   ],
 });
 
-export const CredentialsResource: LabeledResource<typeof _credentialsResource> = {
+export const CredentialsResource: ResourceWithOptions & { adminResource: typeof _credentialsResource } = {
   resource: _credentialsResource.resource,
   adminResource: _credentialsResource,
   options: {
@@ -49,7 +50,7 @@ export const CredentialsResource: LabeledResource<typeof _credentialsResource> =
     showProperties: ["_credentialShowPanel", "id", "name", "slug", "auth_scheme", "current_key_version", "status"],
     editProperties: ["service_id", "auth_scheme"],
     filterProperties: ["q", "auth_scheme", "status"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (service name / slug)",
@@ -62,13 +63,13 @@ export const CredentialsResource: LabeledResource<typeof _credentialsResource> =
       // Virtual show-page intro panel — renders above the property table (OPS-Y)
       _credentialShowPanel: {
         label: "About this credential",
-        isVisible: { show: true, list: false, edit: false, filter: false },
+        isVisible: { show: true, list: false, edit: false, new: false, filter: false },
         components: {
           show: Components.CredentialShowPanel,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         component: Components.CredentialsIntro,
       },
@@ -84,7 +85,7 @@ export const CredentialsResource: LabeledResource<typeof _credentialsResource> =
             return { record: await recordJSON(context, {}) };
           }
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.payload?.service_id as string;
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -140,7 +141,7 @@ export const CredentialsResource: LabeledResource<typeof _credentialsResource> =
             return { record: await recordJSON(context) };
           }
           const { currentAdmin, record } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           // record.id is the service wire-form id (svc_…); the record here is a
           // service record (credentials list reuses services endpoint).
           const serviceId = record?.get("id") as string;
@@ -182,6 +183,6 @@ export const CredentialsResource: LabeledResource<typeof _credentialsResource> =
           };
         },
       },
-    },
+    }),
   },
 };

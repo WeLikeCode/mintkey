@@ -116,36 +116,56 @@ updates:
       docker-jaeger-auth-minor-patch:
         update-types: [minor, patch]
 
-  # ── pip (Python) ──────────────────────────────────────────────────────────
-  - package-ecosystem: pip
+  # ── uv (Python) ───────────────────────────────────────────────────────────
+  # The three uv projects: the uv ecosystem updates pyproject.toml and uv.lock together, so a raised floor
+  # never leaves a stale lock behind (CI lints and tests with `uv sync --locked`).
+  - package-ecosystem: uv
     directory: /apps/admin-api
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-admin-api-minor-patch:
+      uv-admin-api-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.16 and later report about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.16"]
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /apps/mcp-server
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-mcp-server-minor-patch:
+      uv-mcp-server-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.16 and later report about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.16"]
 
-  - package-ecosystem: pip
+  - package-ecosystem: uv
     directory: /packages/python/mintkey-models
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
     groups:
-      pip-mintkey-models-minor-patch:
+      uv-mintkey-models-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # ruff 0.16 and later report about 650 new findings across the three projects (UP045, B008 for FastAPI Depends
+      # defaults, I001, BLE001, ...): adopting it needs a ruff rule decision and a fix pass of its own, not a
+      # lock bump. CI lints with the locked ruff (`uv sync --locked`), so a group PR carrying it fails Lint Python.
+      - dependency-name: ruff
+        versions: [">=0.16"]
 
   # ── npm (Node / TypeScript) ───────────────────────────────────────────────
   - package-ecosystem: npm

@@ -16,9 +16,10 @@
  * Source: C-10; email-proxy contracts.
  */
 
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -65,7 +66,9 @@ const _emailServicesResource = new RestResource({
   ],
 });
 
-export const EmailServicesResource: LabeledResource<typeof _emailServicesResource> = {
+export const EmailServicesResource: ResourceWithOptions & {
+  adminResource: typeof _emailServicesResource;
+} = {
   resource: _emailServicesResource.resource,
   adminResource: _emailServicesResource,
   options: {
@@ -110,7 +113,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
       "updated_at",
     ],
     filterProperties: ["q", "provider", "auth_scheme"],
-    properties: {
+    properties: propertyOptions({
       provider: {
         availableValues: EMAIL_PROVIDERS,
       },
@@ -156,6 +159,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
           show: true,
           list: false,
           edit: false,
+          new: false,
           filter: false,
         },
         label: "OAuth2 Authorization",
@@ -165,8 +169,8 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
           show: Components.EmailServiceOAuth2Setup,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       // Explicit show action — AdminJS 7.x will not auto-generate show when other
       // actions are declared. Without this the show page 404s with:
       // "Resource ... does not have an action with name: show or you are not authorized to use it!"
@@ -194,7 +198,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -247,7 +251,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
             return { record: await recordJSON(context, {}) };
           }
 
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -291,7 +295,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
             };
           }
 
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -329,7 +333,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
             return { record: await recordJSON(context) };
           }
 
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const serviceId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -376,7 +380,7 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
           }
 
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -439,6 +443,6 @@ export const EmailServicesResource: LabeledResource<typeof _emailServicesResourc
           };
         },
       },
-    },
+    }),
   },
 };

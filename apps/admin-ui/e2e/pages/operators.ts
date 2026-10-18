@@ -48,7 +48,7 @@ export class OperatorsPage extends BasePage {
     await this.page.getByLabel("email").waitFor({ state: "visible", timeout: 20_000 });
 
     await this.page.getByLabel("email").fill(data.email);
-    await this.page.getByLabel(/home tenant/i).fill(data.tenantId);
+    await this.page.getByLabel(/tenant.?id/i).fill(data.tenantId);
     if (data.displayName) {
       await this.page.getByLabel(/display name/i).fill(data.displayName);
     }

@@ -11,31 +11,17 @@
  * Source: OPS-DDEE reporting format.
  */
 
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? process.env.PLAYWRIGHT_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
 
 interface Session { sessionToken: string; csrfToken: string; }
 
 async function getSession(): Promise<Session | null> {
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  if (!pass) return null;
-  const resp = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!resp.ok) return null;
-  const headers = [resp.headers.get("set-cookie") ?? ""];
-  let sessionToken = "", csrfToken = "";
-  for (const c of headers) {
-    const sm = c.match(/mintkey_session=([^;,\s]+)/); if (sm) sessionToken = sm[1];
-    const cm = c.match(/csrf_token=([^;,\s]+)/); if (cm) csrfToken = cm[1];
-  }
-  if (!sessionToken || !csrfToken) return null;
-  return { sessionToken, csrfToken };
+  return getApiSession();
 }
 
 test.describe("DDEE screenshots", () => {

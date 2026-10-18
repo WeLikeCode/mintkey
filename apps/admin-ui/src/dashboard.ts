@@ -7,7 +7,7 @@
  * Source: ADMIN_UI_SPEC.md §2.1; T-1.1.4; ADR-0013; ADR-0014.5.
  */
 
-import type { CurrentAdmin } from "adminjs";
+import type { ActionRequest, PageContext } from "adminjs";
 import { resolveMcpPublicUrl, resolveProxyPublicUrl } from "./lib/public-urls.js";
 
 const ADMIN_API_URL = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
@@ -48,16 +48,19 @@ export interface DashboardData {
  * falls back to the legacy AdminJS session shape for backward compatibility.
  */
 export async function dashboardHandler(
-  _request: unknown,
+  _request: ActionRequest,
   _response: unknown,
-  context: { currentAdmin?: CurrentAdmin }
+  context: PageContext
 ): Promise<DashboardData> {
-  // auth.ts puts these into the session; AdminJS types the rest of CurrentAdmin as any, so they are narrowed here
+  // CurrentAdmin carries the session fields through an index signature, so
+  // each one is narrowed here rather than cast.
   const admin = context.currentAdmin;
   const tenantId = typeof admin?.tenantId === "string" ? admin.tenantId : "";
   const email = typeof admin?.email === "string" ? admin.email : "";
-  const method: unknown = admin?.authMethod;
-  const authMethod = method === "keycloak" || method === "internal" ? method : undefined;
+  const authMethod =
+    admin?.authMethod === "keycloak" || admin?.authMethod === "internal"
+      ? admin.authMethod
+      : undefined;
 
   const empty: DashboardData = {
     email,
@@ -82,12 +85,22 @@ export async function dashboardHandler(
 
   if (!tenantId) return empty;
 
+  // admin-api only answers these list calls for an authenticated session. They used to be sent
+  // without any credentials, so every one was rejected and the dashboard showed zero services,
+  // agents and permissions (and the empty-state "Register your first backend service" instead
+  // of the quick-start checklist) for every operator. Forward the operator's own session.
+  const sessionToken = typeof admin?.sessionToken === "string" ? admin.sessionToken : "";
+  const csrfToken = typeof admin?.csrfToken === "string" ? admin.csrfToken : "";
+  const headers: Record<string, string> = sessionToken
+    ? { Cookie: `mintkey_session=${sessionToken}${csrfToken ? `; csrf_token=${csrfToken}` : ""}` }
+    : {};
+
   try {
     const [svcResp, agentResp, permResp, auditResp] = await Promise.allSettled([
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/services`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/agents`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions`),
-      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/audit`),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/services`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/agents`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/permissions`, { headers }),
+      fetch(`${ADMIN_API_URL}/v1/tenants/${tenantId}/audit`, { headers }),
     ]);
 
     const services = svcResp.status === "fulfilled" && svcResp.value.ok
@@ -102,9 +115,9 @@ export async function dashboardHandler(
       ? ((await permResp.value.json()) as { permissions?: unknown[] }).permissions ?? []
       : [];
 
-    // admin-api's audit list envelope is { items: [...], next_cursor }.
+    // admin-api's audit list envelope is { events: [...], next_cursor } (older builds: { items }).
     const events = auditResp.status === "fulfilled" && auditResp.value.ok
-      ? ((await auditResp.value.json()) as { items?: unknown[] }).items ?? []
+      ? await auditResp.value.json().then((b: { events?: unknown[]; items?: unknown[] }) => b.events ?? b.items ?? [])
       : [];
 
     // hasCredentials: any service with current_key_version > 0

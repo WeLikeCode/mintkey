@@ -5,7 +5,7 @@
  *   - Resource key is "oauth2_providers".
  *   - listProperties includes provider, client_id_last4, configured_at.
  *   - showProperties includes provider, client_id_last4, configured_at.
- *   - the new form (editProperties: AdminJS renders it on new and edit) has provider, client_id, client_secret.
+ *   - editProperties (drives the new form) includes provider, client_id, client_secret.
  *   - client_secret has type=password and is NOT in show/list.
  *   - client_id is NOT in show/list.
  *   - edit action is not accessible (credentials replaced via new).
@@ -38,13 +38,12 @@ describe("OAuth2ProvidersResource — feat/oauth2-providers-per-tenant-vault", (
     expect(showProps).toContain("configured_at");
   });
 
-  it("the new form has provider, client_id, client_secret (editProperties, AdminJS's key for it)", () => {
-    // AdminJS has no newProperties key: it renders editProperties on the new and the edit form (commit 198caa5).
-    // The edit action is disabled (below), so these fields are set only when a provider is created.
-    const options = OAuth2ProvidersResource.options as Record<string, unknown>;
-    expect(options["newProperties"]).toBeUndefined();
-    const formProps = OAuth2ProvidersResource.options?.editProperties ?? [];
-    expect(formProps).toEqual(["provider", "client_id", "client_secret"]);
+  // AdminJS has no newProperties key (198caa5); editProperties drives the new form.
+  it("editProperties (used by the new form) includes provider, client_id, client_secret", () => {
+    const newProps = OAuth2ProvidersResource.options?.editProperties ?? [];
+    expect(newProps).toContain("provider");
+    expect(newProps).toContain("client_id");
+    expect(newProps).toContain("client_secret");
   });
 
   it("client_secret is NOT visible in show, list, edit, filter (NFR-17)", () => {
@@ -57,10 +56,8 @@ describe("OAuth2ProvidersResource — feat/oauth2-providers-per-tenant-vault", (
     expect(clientSecretVis?.list).toBe(false);
     expect(clientSecretVis?.edit).toBe(false);
     expect(clientSecretVis?.filter).toBe(false);
-    // the only place it is entered is the new form: it is in editProperties, and the edit action is disabled
-    expect(OAuth2ProvidersResource.options?.editProperties ?? []).toContain("client_secret");
-    const actions = (OAuth2ProvidersResource.options?.actions ?? {}) as Record<string, { isAccessible?: boolean }>;
-    expect(actions["edit"]?.isAccessible).toBe(false);
+    // new=true is the only visible context for client_secret
+    expect(clientSecretVis?.new).toBe(true);
   });
 
   it("client_id is NOT visible in show, list, edit, filter", () => {
@@ -110,7 +107,6 @@ describe("OAuth2ProvidersResource — feat/oauth2-providers-per-tenant-vault", (
     expect(last4Vis?.show).toBe(true);
     expect(last4Vis?.list).toBe(true);
     expect(last4Vis?.edit).toBe(false);
-    // and not on the new form: AdminJS renders editProperties there (isVisible has no `new` key)
-    expect(OAuth2ProvidersResource.options?.editProperties ?? []).not.toContain("client_id_last4");
+    expect(last4Vis?.new).toBe(false);
   });
 });

@@ -65,7 +65,7 @@ async def verify_chain_endpoint(
     tenant_id: str,
     request: Request,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     On-demand audit chain verification for a given tenant.
@@ -155,7 +155,7 @@ async def acknowledge_tamper(
     tenant_id: str,
     event_id: str,
     _authz: None = Depends(require_platform_admin_session),
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """
     Record acknowledgment of a tampered audit chain event.

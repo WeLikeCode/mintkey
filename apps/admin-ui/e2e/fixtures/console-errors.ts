@@ -22,16 +22,31 @@ export interface ConsoleErrorTracker {
  * Benign error patterns that do not indicate application code failures.
  * These are filtered out to prevent false-positive cross-browser failures:
  *  - Firefox reports Google Font CDN download failures as console errors
- *    when the test environment has no external network access.
+ *    when the test environment has no external network access, and font
+ *    sanitizer rejections for the Keycloak login page's own web fonts.
  */
 const BENIGN_PATTERNS: RegExp[] = [
   /downloadable font: download failed/i,
+  // Firefox's font sanitizer rejects the patternfly woff2 files Keycloak serves on its login page
+  // ("downloadable font: kern: Too large subtable", "Table discarded"); not an application error.
+  /downloadable font:/i,
   /fonts\.gstatic\.com/i,
   /fonts\.googleapis\.com/i,
 ];
 
 function isBenign(message: string): boolean {
   return BENIGN_PATTERNS.some((p) => p.test(message));
+}
+
+/**
+ * A permission grant without a budget is the normal case: admin-api answers
+ * GET /v1/tenants/{tid}/permissions/{pid}/budget with 404 "No budget configured" and
+ * BudgetStatusPanel renders its empty state for exactly that status. The browser still logs
+ * "Failed to load resource: ... 404" for it, which is not an application error. Only that
+ * request (the BFF's /admin/api/budget/<permission id>) and only status 404 are ignored.
+ */
+function isExpectedEmptyBudget(message: string, url: string): boolean {
+  return /\/admin\/api\/budget\/[^/?]+$/.test(url) && /status of 404/.test(message);
 }
 
 /** Attach listeners and return the tracker. Call before any navigation. */
@@ -45,7 +60,7 @@ export function attachConsoleErrorTracker(page: Page): ConsoleErrorTracker {
   });
 
   page.on("console", (msg) => {
-    if (msg.type() === "error" && !isBenign(msg.text())) {
+    if (msg.type() === "error" && !isBenign(msg.text()) && !isExpectedEmptyBudget(msg.text(), msg.location().url)) {
       tracker.errors.push({ type: "console", message: msg.text() });
     }
   });

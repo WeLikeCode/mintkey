@@ -11,9 +11,10 @@
  * Source: feat/email-permission-grants.
  */
 
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -34,7 +35,9 @@ const _emailPermissionGrantsResource = new RestResource({
   ],
 });
 
-export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermissionGrantsResource> = {
+export const EmailPermissionGrantsResource: ResourceWithOptions & {
+  adminResource: typeof _emailPermissionGrantsResource;
+} = {
   resource: _emailPermissionGrantsResource.resource,
   adminResource: _emailPermissionGrantsResource,
   options: {
@@ -55,7 +58,7 @@ export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermiss
     ],
     editProperties: ["agent_id", "email_service_id"],
     filterProperties: ["agent_id", "email_service_id"],
-    properties: {
+    properties: propertyOptions({
       // UX pickers: replace raw UUID text inputs with typeahead comboboxes
       // matching the HTTP Permission Grants flow (permissions.ts lines 83-90).
       agent_id: {
@@ -76,8 +79,8 @@ export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermiss
           filter: Components.EmailServiceCombobox,
         },
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       list: {
         isVisible: true,
       },
@@ -95,7 +98,7 @@ export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermiss
           }
 
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
           );
@@ -151,7 +154,7 @@ export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermiss
         isVisible: true,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const grantId = request.params.recordId;
           const operatorOpts = operatorOptsFromAdmin(
             currentAdmin as Record<string, unknown>
@@ -175,6 +178,6 @@ export const EmailPermissionGrantsResource: LabeledResource<typeof _emailPermiss
         },
       },
       edit: { isVisible: false },
-    },
+    }),
   },
 };

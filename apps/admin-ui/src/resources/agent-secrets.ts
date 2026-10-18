@@ -12,9 +12,10 @@
  * Source: Chunk C6; D10; D11; D13; ADR-0013; ADR-0014.4; ADR-0019.
  */
 
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
-import { apiWrite, operatorOptsFromAdmin, tenantIdOf } from "../lib/api-client.js";
+import { apiWrite, operatorOptsFromAdmin, tenantIdFromAdmin } from "../lib/api-client.js";
 import { recordJSON } from "../lib/record-helpers.js";
 import { Components } from "../components/index.js";
 
@@ -41,7 +42,7 @@ const _agentSecretsResource = new RestResource({
   ],
 });
 
-export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource> = {
+export const AgentSecretsResource: ResourceWithOptions & { adminResource: typeof _agentSecretsResource } = {
   resource: _agentSecretsResource.resource,
   adminResource: _agentSecretsResource,
   options: {
@@ -49,11 +50,11 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
     listProperties: ["name", "agent_id", "content_type", "size_bytes", "version", "created_at"],
     showProperties: ["id", "agent_id", "name", "content_type", "size_bytes", "version", "created_at", "updated_at", "created_by"],
     filterProperties: ["agent_id"],
-    properties: {
+    properties: propertyOptions({
       agent_id: {
         label: "Agent ID",
         description: "The agent this secret belongs to.",
-        isVisible: { list: true, show: true, edit: false, filter: true },
+        isVisible: { list: true, show: true, edit: false, new: false, filter: true },
       },
       name: {
         label: "Name",
@@ -76,11 +77,11 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
         description: "Operator who created this secret.",
       },
       _agent_id_filter: {
-        isVisible: { list: false, show: false, edit: false, filter: true },
+        isVisible: { list: false, show: false, edit: false, new: false, filter: true },
         label: "Filter by Agent ID",
       },
-    },
-    actions: {
+    }),
+    actions: actionOptions({
       // Custom create form with reveal-once panel (D11)
       new: {
         isVisible: true,
@@ -92,7 +93,7 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
           }
 
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
           const payload = request.payload as {
@@ -150,7 +151,7 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
           }
 
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -204,7 +205,7 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
           }
 
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
 
@@ -244,7 +245,7 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
         component: Components.AgentSecretGrantsPanel,
         handler: async (request, _response, context) => {
           const { currentAdmin } = context;
-          const tenantId = tenantIdOf(currentAdmin);
+          const tenantId = tenantIdFromAdmin(currentAdmin);
           const secretId = request.params.recordId ?? "";
           const adminApiUrl = process.env.ADMIN_API_URL ?? "http://admin-api:8080";
           const operatorOpts = operatorOptsFromAdmin(currentAdmin as Record<string, unknown>);
@@ -369,6 +370,6 @@ export const AgentSecretsResource: LabeledResource<typeof _agentSecretsResource>
       },
 
       edit: { isVisible: false },
-    },
+    }),
   },
 };

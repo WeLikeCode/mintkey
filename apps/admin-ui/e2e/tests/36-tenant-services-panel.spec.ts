@@ -24,6 +24,7 @@
  * Source: UX-E spec; TenantServicesPanel.tsx; tenants.ts _services_panel property.
  */
 
+import { TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -31,7 +32,6 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Bootstrap tenant — known from seed data (same ID used in 30-show-pages.spec.ts).
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
 
 const JS_ERROR_NEEDLES = [
   "Javascript Error",

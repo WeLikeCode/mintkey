@@ -82,9 +82,8 @@ describe("CopyableValue — services.ts integration (OPS-X)", () => {
 
   it("proxy_url is visible only on show page", () => {
     expect(servicesSrc).toContain("show: true");
-    // The visibility block lists list: false, edit: false, filter: false (edit also covers AdminJS's new form;
-    // isVisible has no `new` key)
-    expect(servicesSrc).toContain("isVisible: { show: true, list: false, edit: false, filter: false }");
+    // The visibility block lists list: false, edit: false, new: false, filter: false
+    expect(servicesSrc).toContain("isVisible: { show: true, list: false, edit: false, new: false, filter: false }");
   });
 
   it("proxy_url uses CopyableValue component for show", () => {

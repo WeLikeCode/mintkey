@@ -105,8 +105,7 @@ describe("credentials.ts — _credentialShowPanel wiring", () => {
   });
 
   it("_credentialShowPanel is only visible on show (not list/edit/new/filter)", () => {
-    // edit: false also keeps it off AdminJS's new form (isVisible has no `new` key)
-    expect(credSrc).toContain("show: true, list: false, edit: false, filter: false");
+    expect(credSrc).toContain("show: true, list: false, edit: false, new: false, filter: false");
   });
 
   it("_credentialShowPanel component is set to Components.CredentialShowPanel", () => {

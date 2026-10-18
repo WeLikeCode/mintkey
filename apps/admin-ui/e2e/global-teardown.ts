@@ -1,52 +1,55 @@
 /**
- * Global teardown — clean up test data via admin-api.
+ * Global teardown -- delete the entities the fixtures created, via admin-api.
  *
- * Reads a file written by tests that records created entity IDs
- * so we can delete them in reverse order.
+ * fixtures/test-data.ts persists every created entity to e2e/.cleanup.ndjson (see
+ * fixtures/cleanup.ts); here they are deleted in reverse order with the OIDC session that
+ * global-setup saved in state.json (mintkey_session + csrf_token). Best effort: a service that
+ * already has a credential cannot be hard-deleted (FK) and is reported, not fatal.
  */
 
-import { writeFileSync, existsSync, readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const CLEANUP_FILE = join(__dirname, "tests", "_cleanup.json");
-
-interface CleanupEntry {
-  method: string;
-  url: string;
-}
+import { existsSync, readFileSync } from "fs";
+import { ADMIN_API } from "./env.js";
+import { CLEANUP_FILE, clearCleanupFile, type CleanupEntry } from "./fixtures/cleanup.js";
+import { getApiSession } from "./fixtures/session.js";
 
 export default async function globalTeardown() {
   if (!existsSync(CLEANUP_FILE)) return;
 
-  const raw = readFileSync(CLEANUP_FILE, "utf-8");
-  let entries: CleanupEntry[] = [];
-  try {
-    entries = JSON.parse(raw);
-  } catch {
-    // ignore malformed files
+  const entries: CleanupEntry[] = [];
+  for (const line of readFileSync(CLEANUP_FILE, "utf-8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      entries.push(JSON.parse(line) as CleanupEntry);
+    } catch {
+      // ignore a torn line
+    }
+  }
+  clearCleanupFile();
+
+  const session = getApiSession();
+  if (!session) {
+    console.warn(`Global teardown: no saved session; ${entries.length} entities left behind`);
+    return;
   }
 
-  const adminApi = process.env.ADMIN_API_URL ?? "http://localhost:8080";
-  const token = process.env.PLAYWRIGHT_API_JWT ?? "";
-
+  let deleted = 0;
+  let kept = 0;
   // Delete in reverse order (teardown LIFO)
   for (const entry of entries.reverse()) {
     try {
-      await fetch(`${adminApi}${entry.url}`, {
-        method: entry.method as string,
+      const resp = await fetch(`${ADMIN_API}${entry.url}`, {
+        method: entry.method,
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          Cookie: `mintkey_session=${session.sessionToken}; csrf_token=${session.csrfToken}`,
+          "X-Mintkey-Csrf": session.csrfToken,
         },
       });
+      if (resp.ok || resp.status === 404) deleted++;
+      else kept++;
     } catch {
-      // best-effort cleanup
+      kept++; // best-effort cleanup
     }
   }
 
-  console.log(`🧹 Global teardown — cleaned up ${entries.length} entities`);
+  console.log(`Global teardown -- deleted ${deleted} of ${entries.length} entities (${kept} could not be deleted)`);
 }

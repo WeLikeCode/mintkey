@@ -36,6 +36,11 @@ vi.mock("../src/lib/signed-request.js", () => ({
   }),
 }));
 
+// Load the AdminJS-backed resource once at collection time. Its first import
+// pulls in the whole adminjs graph (seconds under a parallel run) and would
+// otherwise be charged to the first test's 5s timeout.
+await import("../src/resources/agent-secrets.js");
+
 // ── source loaders ────────────────────────────────────────────────────────────
 let resourceSrc: string;
 let grantsPanelSrc: string;

@@ -29,7 +29,7 @@ router = APIRouter(prefix="/v1/tenants/{tenant_id}/budget-consumers")
 @router.get("")
 async def list_budget_consumers(
     tenant_id: UUID,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     """List all budget-configured permission grants with consumption data.
 

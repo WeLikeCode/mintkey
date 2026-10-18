@@ -17,8 +17,8 @@
  * Source: operator-management OpenSpec change; ADR-0031; ADR-0019; ADR-0017.10.
  */
 
-import type { ActionContext } from "adminjs";
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions, ActionContext } from "adminjs";
 import { apiWrite, operatorOptsFromAdmin } from "../lib/api-client.js";
 import { RestResource } from "../lib/rest-resource.js";
 import { recordJSON } from "../lib/record-helpers.js";
@@ -57,27 +57,32 @@ const _operatorsResource = new RestResource({
   ],
 });
 
-export const OperatorsResource: LabeledResource<typeof _operatorsResource> = {
+export const OperatorsResource: ResourceWithOptions & { adminResource: typeof _operatorsResource } = {
   resource: _operatorsResource.resource,
   adminResource: _operatorsResource,
   options: {
     navigation: { name: "Operators", icon: "Users" },
     listProperties: ["id", "email", "display_name", "is_platform_admin", "status", "created_at"],
     showProperties: ["id", "email", "display_name", "tenant_id", "oidc_sub", "is_platform_admin", "status", "created_at"],
-    editProperties: ["display_name", "is_platform_admin", "status"],
+    // AdminJS has no per-action property list: `new` and `edit` both render `editProperties`
+    // (the former `newProperties` option does not exist in AdminJS 7, so the promote form never
+    // showed email / home tenant / oidc_sub). email, tenant_id and oidc_sub are therefore listed
+    // here so the "Promote operator" (new) form can capture them; the edit handler below only
+    // PATCHes display_name / is_platform_admin / status and ignores them.
+    editProperties: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin", "status"],
     filterProperties: ["q", "tenant_id", "status"],
-    properties: {
+    properties: propertyOptions({
       q: {
         isVisible: { list: false, show: false, edit: false, filter: true },
         label: "Search (email / name)",
         description: "Case-insensitive substring match on operator email and display_name.",
       },
       email: {
-        description: "The operator's login email. Must match the Keycloak realm-mintkey user you are promoting. Unique within the home tenant.",
+        description: "The operator's login email. Must match the Keycloak realm-mintkey user you are promoting. Unique within the home tenant. Set when promoting; not changed by edit.",
       },
       tenant_id: {
         label: "Home tenant (tenant_ ID)",
-        description: "The operator's home tenant. Paste a tenant_… wire ID or a bare tenant UUID. The operator is granted an Admin membership in this tenant on creation.",
+        description: "The operator's home tenant. Paste a tenant_… wire ID or a bare tenant UUID. The operator is granted an Admin membership in this tenant on creation. Set when promoting; not changed by edit.",
       },
       oidc_sub: {
         description: "Keycloak subject claim. Optional — leave blank and it binds lazily on the operator's first 'Sign in with Keycloak' (ADR-0020). Supply it only if you already know the sub; it must be unique.",
@@ -93,13 +98,13 @@ export const OperatorsResource: LabeledResource<typeof _operatorsResource> = {
         ],
         description: "`active` operators can establish a session. `disabled` (soft-deactivated) operators cannot log in; deactivation never hard-deletes the row.",
       },
-    },
+    }),
 
     // Resource is visible only to PlatformAdmin (mirrors Tenants).
     // Non-PlatformAdmin sessions get an empty list and blocked writes.
-    actions: {
+    actions: actionOptions({
       list: {
-        isVisible: ({ currentAdmin }: ActionContext) => currentAdmin?.isPlatformAdmin === true,
+        isVisible: ({ currentAdmin }) => currentAdmin?.isPlatformAdmin === true,
         before: [
           async (request, context) => {
             assertPlatformAdmin(context);
@@ -109,9 +114,6 @@ export const OperatorsResource: LabeledResource<typeof _operatorsResource> = {
       },
       new: {
         isVisible: true,
-        // the promote form's own fields: AdminJS renders an action's layout, else editProperties, on the new form
-        // (it has no newProperties key, so these used to be ignored and the form showed the edit fields)
-        layout: ["email", "tenant_id", "display_name", "oidc_sub", "is_platform_admin"],
         handler: async (request, response, context) => {
           assertPlatformAdmin(context);
           if (request.method === "get") {
@@ -216,6 +218,6 @@ export const OperatorsResource: LabeledResource<typeof _operatorsResource> = {
           };
         },
       },
-    },
+    }),
   },
 };

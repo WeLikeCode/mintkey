@@ -31,6 +31,12 @@ test.describe("Tier 2 — Service CRUD (F-OP-02)", () => {
   });
 
   test("1. list services renders table", async () => {
+    // The list only renders a <table> when there is at least one row, so seed one
+    // instead of relying on whatever the stack happens to contain.
+    if (!tenantId) { test.skip(true, "PLAYWRIGHT_TENANT_ID not set"); return; }
+    await createTestService(
+      { tenantId, name: "ListTest", slug: `list-test-${Date.now()}`, baseUrl: "https://list.example.com" }, ""
+    );
     await svc.gotoList();
     expect(page.url()).toContain("/admin/resources/services");
     await expect(page.locator("table")).toBeVisible();
@@ -38,32 +44,21 @@ test.describe("Tier 2 — Service CRUD (F-OP-02)", () => {
 
   test("2. create service — happy path", async () => {
     const svcName = "TestService-" + Date.now();
-    const svcSlug = "test-service-" + Date.now();
 
-    await svc.gotoNew();
-    await page.waitForLoadState("networkidle");
+    // Real ServiceCreateForm (0b04288): fill by data-testid, submit, success banner (no redirect).
+    const id = await svc.createServiceViaForm({
+      name: svcName,
+      baseUrl: "https://test.example.com/api",
+      authScheme: "api_key_header",
+    });
+    await expect(page.locator("[data-testid='success-banner']")).toContainText(/registered successfully/i);
 
-    await page.getByLabel("name").fill(svcName);
-    await page.getByLabel("slug").fill(svcSlug);
-    await page.getByLabel(/base url/i).fill("https://test.example.com/api");
-
-    // AdminJS uses React Select (not native <select>) for properties with availableValues
-    await svc.selectFromReactSelect(/auth.scheme/i, /api key.*header/i);
-
-    // Submit: AdminJS POSTs to /admin/api/resources/services/actions/new (server-side)
-    // then redirects the browser to the list. Watch for the AdminJS API call.
-    await Promise.all([
-      page.waitForResponse(
-        (r) => r.url().includes("/admin/api/resources/services/actions/new") && r.request().method() === "POST",
-        { timeout: 15_000 }
-      ),
-      page.getByRole("button", { name: /save|create/i }).click(),
-    ]);
-
-    // AdminJS redirects to list on success
-    await page.waitForURL(/\/admin\/resources\/services/, { timeout: 10_000 });
-    await page.waitForLoadState("networkidle");
+    // The service is persisted: it shows up in the list and its show page carries the values.
+    await svc.gotoList();
     await expect(svc.getRowByName(svcName)).toBeVisible({ timeout: 10_000 });
+    await svc.gotoShow(id);
+    await expect(page.locator("body")).toContainText(svcName);
+    await expect(page.locator("body")).toContainText("https://test.example.com/api");
   });
 
   test("3. view service detail shows all fields", async () => {

@@ -148,7 +148,7 @@ async def create_credential(
     tenant_id: UUID,
     service_id: str,
     body: CredentialCreate,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -805,7 +805,7 @@ async def rotate_credential(
     tenant_id: UUID,
     service_id: str,
     body: CredentialRotateRequest,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -1343,7 +1343,7 @@ async def delete_credential_version(
     tenant_id: UUID,
     service_id: str,
     key_version: int,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
@@ -1430,7 +1430,7 @@ async def list_credential_versions(
     tenant_id: UUID,
     service_id: str,
     q: Optional[str] = None,
-    session: AsyncSession = Depends(get_db_session),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
     vault: VaultAdapterClient = Depends(get_vault_client),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:

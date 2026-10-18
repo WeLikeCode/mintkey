@@ -14,6 +14,9 @@
  * Source: UX-A spec; AsyncCombobox.tsx; AgentCombobox.tsx; ServiceCombobox.tsx.
  */
 
+import { createTestService } from "../fixtures/test-data.js";
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -28,25 +31,14 @@ if (!fs.existsSync(RESULTS_DIR)) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 async function login(): Promise<{ sessionCookie: string; csrfToken: string }> {
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  const r = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!r.ok) throw new Error(`Login failed: ${r.status} ${await r.text()}`);
-  const setCookie = r.headers.get("set-cookie") ?? "";
-  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
-  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
-  if (!smatch || !cmatch) throw new Error("Login: missing cookies in response");
-  return { sessionCookie: smatch[1], csrfToken: cmatch[1] };
+  const s = getApiSession();
+  if (!s) throw new Error("no API session: global-setup did not write e2e/state.json (is PLAYWRIGHT_PASS set?)");
+  return { sessionCookie: s.sessionToken, csrfToken: s.csrfToken };
 }
 
 async function apiPost(
@@ -140,7 +132,8 @@ test.describe("38 — Typeahead combobox for agent + service pickers (UX-A)", ()
     // Synthesise an agent + service + permission grant so the service combobox has options
     const auth = await login();
     const ts = uid();
-    const serviceUuid = "688bb02f-d90e-404a-953c-d497e3b03e54"; // twilio-sms (known existing)
+    // A real service created for this test (no dependency on rows that only exist in a long-lived dev database).
+    const serviceUuid = await createTestService({ tenantId: TENANT_ID, name: `ux-a-svc-${ts}`, baseUrl: "https://ux-a.example.com" });
 
     const agentResp = await apiPost(
       `/v1/tenants/${TENANT_ID}/agents`,

@@ -48,6 +48,7 @@ test.describe("Tier 2 — API Keys", () => {
 
     await apiKeys.gotoList();
     const plaintextKey = await apiKeys.createApiKey(agentId, {
+      agentSearch: agentName,
       service_id: serviceId,
       allowed_actions: "read:health",
     });
@@ -64,7 +65,7 @@ test.describe("Tier 2 — API Keys", () => {
     const { agentId } = await agents.createAgent({ name: agentName });
 
     await apiKeys.gotoList();
-    await apiKeys.createApiKey(agentId, {});
+    await apiKeys.createApiKey(agentId, { agentSearch: agentName });
     await apiKeys.revokeApiKey("key-to-revoke");
   });
 
@@ -73,7 +74,7 @@ test.describe("Tier 2 — API Keys", () => {
     const { agentId } = await agents.createAgent({ name: agentName });
 
     await apiKeys.gotoList();
-    await apiKeys.createApiKey(agentId, {});
+    await apiKeys.createApiKey(agentId, { agentSearch: agentName });
 
     const newKey = await apiKeys.rotateApiKey("key-to-rotate");
     expect(newKey.length).toBeGreaterThanOrEqual(0);

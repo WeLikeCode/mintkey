@@ -18,6 +18,8 @@
  * Source: UX-B; InlineSearchList.tsx.
  */
 
+import { TENANT_ID } from "../env.js";
+import { createTestService } from "../fixtures/test-data.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -159,6 +161,9 @@ test.describe("37 — Inline search: search box renders on all 7 list pages", ()
     page,
     consoleErrors,
   }) => {
+    // Seed the row the assertion needs (a fresh stack has no "demo-crm" service).
+    await createTestService({ tenantId: TENANT_ID, name: "demo-crm", baseUrl: "https://crm.example.com" });
+
     // Navigate directly to the filtered URL — this is the canonical approach used by
     // test 28 (search-filters.spec.ts) and ensures the filter is applied before the
     // list renders.

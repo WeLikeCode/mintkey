@@ -24,6 +24,7 @@ import rateLimit from "express-rate-limit";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
 import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
+import { createLogoutHandler } from "./routes/logout.js";
 import { dashboardHandler } from "./dashboard.js";
 import { componentLoader, Components } from "./components/index.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
@@ -41,7 +42,6 @@ import { OAuth2ProvidersResource } from "./resources/oauth2-providers.js";
 import { budgetGetHandler, budgetEditHandler, budgetRemoveHandler, budgetResetHandler } from "./routes/budget.js";
 import { budgetConsumersHandler } from "./routes/budget-consumers.js";
 import { AgentSecretsResource } from "./resources/agent-secrets.js";
-import { withLabelTranslations } from "./lib/labels.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
@@ -94,6 +94,7 @@ async function requireSession(
   // Exempt unauthenticated paths.
   if (
     req.path.startsWith("/admin/login") ||
+    req.path === "/admin/logout" ||
     req.path.startsWith("/auth/") ||
     req.path === "/health"
   ) {
@@ -149,27 +150,26 @@ async function main() {
       handler: dashboardHandler,
     },
     pages: {
-      // the sidebar shows startCase(name), "Budget Consumers" (AdminJS pages take no label option)
       "budget-consumers": {
+        // AdminJS 7 takes the sidebar title from the page key / locale; AdminPage has no label option.
         component: Components.BudgetConsumersPage,
         icon: "Activity",
       },
     },
     // Nav order: Dashboard → Services → Email Services → Agents → Permissions → API Keys → Audit → Tenants
-    // withLabelTranslations: each resource's `label`s go into options.translations, which AdminJS reads
     resources: [
-      { resource: ServicesResource.adminResource, options: withLabelTranslations(ServicesResource.options) },
-      { resource: EmailServicesResource.adminResource, options: withLabelTranslations(EmailServicesResource.options) },
-      { resource: OAuth2ProvidersResource.adminResource, options: withLabelTranslations(OAuth2ProvidersResource.options) },
-      { resource: EmailPermissionGrantsResource.adminResource, options: withLabelTranslations(EmailPermissionGrantsResource.options) },
-      { resource: AgentsResource.adminResource, options: withLabelTranslations(AgentsResource.options) },
-      { resource: AgentSecretsResource.adminResource, options: withLabelTranslations(AgentSecretsResource.options) },
-      { resource: PermissionsResource.adminResource, options: withLabelTranslations(PermissionsResource.options) },
-      { resource: ApiKeysResource.adminResource, options: withLabelTranslations(ApiKeysResource.options) },
-      { resource: CredentialsResource.adminResource, options: withLabelTranslations(CredentialsResource.options) },
-      { resource: AuditResource.adminResource, options: withLabelTranslations(AuditResource.options) },
-      { resource: TenantsResource.adminResource, options: withLabelTranslations(TenantsResource.options) },
-      { resource: OperatorsResource.adminResource, options: withLabelTranslations(OperatorsResource.options) },
+      { resource: ServicesResource.adminResource, options: ServicesResource.options },
+      { resource: EmailServicesResource.adminResource, options: EmailServicesResource.options },
+      { resource: OAuth2ProvidersResource.adminResource, options: OAuth2ProvidersResource.options },
+      { resource: EmailPermissionGrantsResource.adminResource, options: EmailPermissionGrantsResource.options },
+      { resource: AgentsResource.adminResource, options: AgentsResource.options },
+      { resource: AgentSecretsResource.adminResource, options: AgentSecretsResource.options },
+      { resource: PermissionsResource.adminResource, options: PermissionsResource.options },
+      { resource: ApiKeysResource.adminResource, options: ApiKeysResource.options },
+      { resource: CredentialsResource.adminResource, options: CredentialsResource.options },
+      { resource: AuditResource.adminResource, options: AuditResource.options },
+      { resource: TenantsResource.adminResource, options: TenantsResource.options },
+      { resource: OperatorsResource.adminResource, options: OperatorsResource.options },
     ],
     rootPath: "/admin",
     branding: {
@@ -257,6 +257,26 @@ async function main() {
   app.get("/auth/start", (_req, res) => {
     res.redirect(302, `${ADMIN_API_PUBLIC_URL}/v1/auth/oidc/login`);
   });
+
+  // GET /admin/logout — end the operator session and return to the login page.
+  // The AdminJS router is built without authentication (buildRouter, not
+  // buildAuthenticatedRouter), so it has no /admin/logout of its own: before this route a
+  // visit to /admin/logout fell through to the SPA and the mintkey_session cookie stayed valid
+  // (e2e 21-logout-session). Tell admin-api to drop the cookie, clear the session + CSRF cookies
+  // here too (cookies are host-scoped, so this also covers the admin-api origin on localhost),
+  // and send the browser to /admin/login.
+  //
+  // It gets its own limiter: sharing loginRateLimit (20 requests / 15 min / IP) meant that after
+  // enough /admin/login hits (a full e2e run makes dozens) the logout answered 429 and the session
+  // survived.
+  const logoutRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many logout requests. Please try again later." },
+  });
+  app.get("/admin/logout", logoutRateLimit, createLogoutHandler(ADMIN_API_URL));
 
   // POST /auth/internal-login-proxy — server-side relay for break-glass form.
   // Forwards credentials to admin-api /v1/auth/internal-login and relays any

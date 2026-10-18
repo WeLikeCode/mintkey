@@ -11,6 +11,7 @@
  * Source: F-OP-03; T-1.3.4; PLAYWRIGHT_EXTENSION_PLAN.md W1.
  */
 
+import { TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import { CredentialsPage } from "../pages/credentials.js";
 import { createTestService } from "../fixtures/test-data.js";
@@ -18,7 +19,6 @@ import { createTestService } from "../fixtures/test-data.js";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
 // Bootstrap tenant (t_default) — known from seed data (same as TENANT_ID in 30-show-pages.spec.ts)
-const TENANT_ID = "9593e3ba-4102-4235-9748-28d35b473214";
 
 test.describe("13 — Credentials round-trip (security invariant)", () => {
   test.beforeAll(() => {

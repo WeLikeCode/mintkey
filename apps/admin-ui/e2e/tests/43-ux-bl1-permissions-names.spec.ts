@@ -11,6 +11,9 @@
  * Source: UX-BL1.
  */
 
+import { createTestService } from "../fixtures/test-data.js";
+import { getApiSession } from "../fixtures/session.js";
+import { ADMIN_API, TENANT_ID } from "../env.js";
 import { test, expect } from "../fixtures/test.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -22,25 +25,14 @@ if (!fs.existsSync(RESULTS_DIR)) {
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
 }
 
-const ADMIN_API = process.env.ADMIN_API_URL ?? "http://localhost:8080";
 const PLAYWRIGHT_USER = process.env.PLAYWRIGHT_USER ?? "admin@mintkey.internal";
-const TENANT_ID = process.env.MINTKEY_TENANT_ID ?? "9593e3ba-4102-4235-9748-28d35b473214";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 async function login(): Promise<{ sessionCookie: string; csrfToken: string }> {
-  const pass = process.env.PLAYWRIGHT_PASS ?? "";
-  const r = await fetch(`${ADMIN_API}/v1/auth/internal-login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: PLAYWRIGHT_USER, password: pass }),
-  });
-  if (!r.ok) throw new Error(`Login failed: ${r.status} ${await r.text()}`);
-  const setCookie = r.headers.get("set-cookie") ?? "";
-  const smatch = setCookie.match(/mintkey_session=([^;]+)/);
-  const cmatch = setCookie.match(/csrf_token=([^;]+)/);
-  if (!smatch || !cmatch) throw new Error("Login: missing cookies in response");
-  return { sessionCookie: smatch[1], csrfToken: cmatch[1] };
+  const s = getApiSession();
+  if (!s) throw new Error("no API session: global-setup did not write e2e/state.json (is PLAYWRIGHT_PASS set?)");
+  return { sessionCookie: s.sessionToken, csrfToken: s.csrfToken };
 }
 
 async function apiPost(
@@ -114,7 +106,7 @@ test.describe("43 — UX-BL1: permissions list enriched with service_name/agent_
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
     test.setTimeout(90_000);
 
-    // Seed: create agent + use an existing known service (twilio-sms) + grant permission
+    // Seed: create agent + service + grant permission
     const auth = await login();
     const ts = uid();
 
@@ -129,8 +121,8 @@ test.describe("43 — UX-BL1: permissions list enriched with service_name/agent_
     const agentBody = await agentResp.json() as { id: string };
     const wireAgentId = agentBody.id;
 
-    // Use the "twilio-sms" service which is seeded in every dev/CI stack
-    const serviceUuid = "688bb02f-d90e-404a-953c-d497e3b03e54";
+    // A real service created for this test (no dependency on rows that only exist in a long-lived dev database).
+    const serviceUuid = await createTestService({ tenantId: TENANT_ID, name: `bl1-svc-${ts}`, baseUrl: "https://bl1.example.com" });
 
     const permResp = await apiPost(
       `/v1/tenants/${TENANT_ID}/agents/${wireAgentId}/permissions`,
@@ -205,8 +197,8 @@ test.describe("43 — UX-BL1: permissions list enriched with service_name/agent_
     const agentBody = await agentResp.json() as { id: string };
     const wireAgentId = agentBody.id;
 
-    // Grant permission to a known seeded service
-    const serviceUuid = "688bb02f-d90e-404a-953c-d497e3b03e54";
+    // A real service created for this test (no dependency on rows that only exist in a long-lived dev database).
+    const serviceUuid = await createTestService({ tenantId: TENANT_ID, name: `bl1-svc-${uid()}`, baseUrl: "https://bl1.example.com" });
     const permResp = await apiPost(
       `/v1/tenants/${TENANT_ID}/agents/${wireAgentId}/permissions`,
       { service_id: serviceUuid, action: "call", constraints: {} },

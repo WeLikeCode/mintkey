@@ -21,7 +21,8 @@
  * Source: T-1.7.4; Req 8 AC1–AC5; ADR-0013; ADR-0014.7; OpenAPI AuditEvent.
  */
 
-import type { LabeledResource } from "../lib/labels.js";
+import { actionOptions, propertyOptions } from "../lib/admin-options.js";
+import type { ResourceWithOptions } from "adminjs";
 import { RestResource } from "../lib/rest-resource.js";
 import { Components } from "../components/index.js";
 
@@ -54,7 +55,7 @@ const _auditResource = new RestResource({
   ],
 });
 
-export const AuditResource: LabeledResource<typeof _auditResource> = {
+export const AuditResource: ResourceWithOptions & { adminResource: typeof _auditResource } = {
   resource: _auditResource.resource,
   adminResource: _auditResource,
   options: {
@@ -62,7 +63,7 @@ export const AuditResource: LabeledResource<typeof _auditResource> = {
     listProperties: ["created_at", "event_type", "actor_type", "actor_id", "target_type", "target_id", "tenant_id"],
     showProperties: ["id", "created_at", "event_type", "actor_type", "actor_id", "target_type", "target_id", "payload", "prev_hash", "hash", "request_id", "trace_id", "tenant_id"],
     filterProperties: ["q", "event_type", "actor_id", "actor_type", "target_id", "target_type", "from_ts", "to_ts"],
-    properties: {
+    properties: propertyOptions({
       payload: {
         type: "mixed",
         isArray: false,
@@ -144,9 +145,9 @@ export const AuditResource: LabeledResource<typeof _auditResource> = {
         label: "To",
         description: "Exclusive upper bound on event time.",
       },
-    },
+    }),
     // All write actions disabled — audit log is append-only
-    actions: {
+    actions: actionOptions({
       list: {
         component: Components.AuditIntro,
       },
@@ -154,7 +155,7 @@ export const AuditResource: LabeledResource<typeof _auditResource> = {
       edit: { isVisible: false },
       delete: { isVisible: false },
       bulkDelete: { isVisible: false },
-    },
+    }),
     sort: {
       direction: "desc",
       sortBy: "created_at",

@@ -46,6 +46,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+from acceptance.oidc_login import admin_session
+from acceptance.wire_ids import uuid_to_wire, wire_to_uuid
+
 from mintkey_models.bootstrap_password import BootstrapPasswordError, read_bootstrap_password
 
 # ---------------------------------------------------------------------------
@@ -67,6 +70,7 @@ BASE_MCP = os.getenv("MINTKEY_MCP_URL", "http://localhost:8082")
 BASE_KONG = os.getenv("MINTKEY_KONG_URL", "http://localhost:8000")
 KONG_ADMIN = os.getenv("MINTKEY_KONG_ADMIN_URL", "http://localhost:8001")
 BROKER_URL = os.getenv("MINTKEY_BROKER_URL", "http://localhost:8083")
+VAULT_ADAPTER_METRICS_URL = os.getenv("MINTKEY_VAULT_ADAPTER_METRICS_URL", "http://localhost:8087")
 MCP_SERVICE_TOKEN = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "dev-mcp-service-token")
 
 _pwd_file = _REPO_ROOT / "data" / "bootstrap-secrets" / "admin_password"
@@ -84,12 +88,8 @@ except BootstrapPasswordError:
 # ---------------------------------------------------------------------------
 
 def _admin_login(client: httpx.Client) -> tuple[str, str]:
-    r = client.post(
-        f"{BASE_API}/v1/auth/internal-login",
-        json={"email": "admin@mintkey.internal", "password": BOOTSTRAP_PASSWORD},
-    )
-    assert r.status_code == 200, f"admin login: {r.status_code} {r.text}"
-    return r.json()["tenant_id"], client.cookies.get("csrf_token", "")
+    """Login as bootstrap admin through Keycloak OIDC. Returns (tenant_id, csrf_token)."""
+    return admin_session(client, BASE_API, BOOTSTRAP_PASSWORD)
 
 
 def _create_full_setup(
@@ -137,11 +137,7 @@ def _create_full_setup(
     svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
     services_list = svcs_r.json().get("services", [])
     svc_wire = next(s["id"] for s in services_list if s.get("name") == svc_name)
-    hex_part = svc_wire[4:]
-    service_uuid = (
-        f"{hex_part[:8]}-{hex_part[8:12]}-{hex_part[12:16]}"
-        f"-{hex_part[16:20]}-{hex_part[20:]}"
-    )
+    service_uuid = wire_to_uuid(svc_wire, "svc")
 
     csrf = client.cookies.get("csrf_token", csrf)
     cred_r = client.post(
@@ -188,7 +184,7 @@ def _kong_route_exists(expected_path: str) -> bool:
 
 def _wait_for_kong_route(service_uuid: str, timeout: int = 15) -> bool:
     """Poll Kong admin until the /v1/call/{service_uuid} route appears (paginated)."""
-    expected_path = f"/v1/call/{service_uuid}"
+    expected_path = f"/v1/call/{uuid_to_wire(service_uuid, 'svc')}"
     for _ in range(timeout):
         if _kong_route_exists(expected_path):
             return True
@@ -285,7 +281,7 @@ def test_revoked_agent_cannot_issue_jwt() -> None:
         )
         services = disc_r.json().get("services", [])
         svc_entry = next(
-            (s for s in services if service_uuid.replace("-", "") in str(s.get("id", "")).replace("-", "")),
+            (s for s in services if s.get("id") == uuid_to_wire(service_uuid, "svc")),
             None,
         )
         assert svc_entry is not None, (
@@ -409,7 +405,7 @@ def test_expired_jwt_rejected_by_proxy() -> None:
         assert disc_r.status_code == 200
         services = disc_r.json().get("services", [])
         svc_entry = next(
-            (s for s in services if service_uuid.replace("-", "") in str(s.get("id", "")).replace("-", "")),
+            (s for s in services if s.get("id") == uuid_to_wire(service_uuid, "svc")),
             None,
         )
         assert svc_entry is not None, f"Service not found in discover: {services}"
@@ -464,7 +460,7 @@ def test_expired_jwt_rejected_by_proxy() -> None:
 
         # Send forged/expired JWT to proxy
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {expired_jwt}"},
             timeout=10,
         )
@@ -525,7 +521,7 @@ def test_vault_down_returns_502_no_cred_leak() -> None:
         assert disc_r_c.status_code == 200
         services_c = disc_r_c.json().get("services", [])
         svc_entry_c = next(
-            (s for s in services_c if service_uuid.replace("-", "") in str(s.get("id", "")).replace("-", "")),
+            (s for s in services_c if s.get("id") == uuid_to_wire(service_uuid, "svc")),
             None,
         )
         assert svc_entry_c is not None, f"Service not found in discover for baseline: {services_c}"
@@ -539,7 +535,7 @@ def test_vault_down_returns_502_no_cred_leak() -> None:
         jwt = baseline_tok_r.json()["token"]
 
         baseline_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt}"},
             timeout=15,
         )
@@ -566,10 +562,14 @@ def test_vault_down_returns_502_no_cred_leak() -> None:
         # Give a moment for in-flight gRPC connections to time out
         time.sleep(1)
 
+        # proxy-plugin bounds its vault GetCredential call at 60 s (apps/proxy-plugin/internal/vault/
+        # client.go: a 5 s deadline produced spurious 502s on legitimate 2-6 s vault calls, #260),
+        # so with the adapter paused the 502 arrives after ~60 s. The old 15 s client timeout cut
+        # the request off first (Kong logged 499) and the test saw a ReadTimeout instead of a 502.
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{service_uuid}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {fresh_jwt}"},
-            timeout=15,
+            timeout=90,
         )
 
         # Proxy must return 502 (vault unreachable)
@@ -605,7 +605,7 @@ def test_vault_down_returns_502_no_cred_leak() -> None:
             # Wait for vault-adapter metrics endpoint to respond (confirms it's up)
             for _attempt in range(30):
                 try:
-                    va_r = httpx.get("http://localhost:8087/metrics", timeout=5)
+                    va_r = httpx.get(f"{VAULT_ADAPTER_METRICS_URL}/metrics", timeout=5)
                     if va_r.status_code == 200:
                         break
                 except httpx.RequestError:
@@ -665,11 +665,7 @@ def test_wrong_scope_jwt_rejected() -> None:
         svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
         services_list = svcs_r.json().get("services", [])
         svc_b_wire = next(s["id"] for s in services_list if s.get("name") == svc_b_name)
-        hex_b = svc_b_wire[4:]
-        svc_uuid_b = (
-            f"{hex_b[:8]}-{hex_b[8:12]}-{hex_b[12:16]}"
-            f"-{hex_b[16:20]}-{hex_b[20:]}"
-        )
+        svc_uuid_b = wire_to_uuid(svc_b_wire, "svc")
 
         # Register a credential for svcB too (so the route exists in Kong)
         csrf = client.cookies.get("csrf_token", csrf)
@@ -688,7 +684,7 @@ def test_wrong_scope_jwt_rejected() -> None:
         assert disc_r.status_code == 200
         services = disc_r.json().get("services", [])
         svc_a_entry = next(
-            (s for s in services if svc_uuid_a.replace("-", "") in str(s.get("id", "")).replace("-", "")),
+            (s for s in services if s.get("id") == uuid_to_wire(svc_uuid_a, "svc")),
             None,
         )
         assert svc_a_entry is not None, f"svcA not found in discover: {services}"
@@ -714,7 +710,7 @@ def test_wrong_scope_jwt_rejected() -> None:
         # injects it, and forwards to mock-backend — which echoes it back.
         # The important assertion is that svcB's credential is NOT served.
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{svc_uuid_b}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(svc_uuid_b, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt_for_svc_a}"},
             timeout=15,
         )
@@ -801,11 +797,7 @@ def test_wrong_scope_strict_mode_rejects_with_403() -> None:
         svcs_r = client.get(f"{BASE_API}/v1/tenants/{tenant_id}/services")
         services_list = svcs_r.json().get("services", [])
         svc_b_wire = next(s["id"] for s in services_list if s.get("name") == svc_b_name)
-        hex_b = svc_b_wire[4:]
-        svc_uuid_b = (
-            f"{hex_b[:8]}-{hex_b[8:12]}-{hex_b[12:16]}"
-            f"-{hex_b[16:20]}-{hex_b[20:]}"
-        )
+        svc_uuid_b = wire_to_uuid(svc_b_wire, "svc")
 
         # Register credential for svcB so its Kong route exists
         csrf = client.cookies.get("csrf_token", csrf)
@@ -828,7 +820,7 @@ def test_wrong_scope_strict_mode_rejects_with_403() -> None:
 
         # Under strict enforcement: JWT(aud=svcA) against /v1/call/{svcB} → 403
         proxy_r = httpx.get(
-            f"{BASE_KONG}/v1/call/{svc_uuid_b}/api-key-header",
+            f"{BASE_KONG}/v1/call/{uuid_to_wire(svc_uuid_b, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {jwt_for_svc_a}"},
             timeout=15,
         )
