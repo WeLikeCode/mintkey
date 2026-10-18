@@ -9,6 +9,7 @@
  *   PLAYWRIGHT_API_JWT — signed JWT with PlatformAdmin claims for cleanup calls
  */
 
+import { recordCleanup, type CleanupEntry } from "./cleanup.js";
 import { getApiSession } from "./session.js";
 import { ADMIN_API } from "../env.js";
 
@@ -37,12 +38,9 @@ async function apiPost(path: string, body: unknown, _token?: string): Promise<Re
 
 // ── Enqueue cleanup ─────────────────────────────────────────────────────────
 
-interface CleanupEntry { method: "DELETE"; url: string }
-
-const CLEANUP_FILE = "./tests/_cleanup.json";
-
 function enqueueCleanup(entry: CleanupEntry) {
   _cleanupQueue.push(entry);
+  recordCleanup(entry); // persisted for global-teardown (see fixtures/cleanup.ts)
 }
 
 let _cleanupQueue: CleanupEntry[] = [];
@@ -51,6 +49,7 @@ export function getCleanupQueue(): CleanupEntry[] {
   return _cleanupQueue;
 }
 
+/** Clears the in-memory view only; the persisted queue is consumed by global-teardown. */
 export function resetCleanupQueue() {
   _cleanupQueue = [];
 }

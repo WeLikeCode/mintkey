@@ -10,7 +10,7 @@
  *   PLAYWRIGHT_TENANT_ID tenant used by the API-driven fixtures
  *
  * CI (CI=true) and E2E_ALLOW_DEFAULT_STACK=1 keep the old defaults (8081 / 8080) because the
- * workflow boots a throw-away stack on exactly those ports. `make test-e2e-isolated` always
+ * workflow boots a throw-away stack on exactly those ports. `make e2e-isolated-test` always
  * passes explicit values for the isolated stack.
  */
 
@@ -37,7 +37,7 @@ function resolveBaseUrl(): string {
   throw new Error(
     "PLAYWRIGHT_BASE_URL is not set. The e2e suite no longer falls back to http://localhost:8081 " +
       "(that is the live dev stack on a developer machine). Point it at the stack under test, " +
-      "e.g. via `make test-e2e-isolated`, or set E2E_ALLOW_DEFAULT_STACK=1 to opt in to the default ports.",
+      "e.g. via `make e2e-isolated-test`, or set E2E_ALLOW_DEFAULT_STACK=1 to opt in to the default ports.",
   );
 }
 

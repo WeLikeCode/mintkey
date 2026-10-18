@@ -48,6 +48,10 @@ What `tools/e2e-isolated.sh` guards against:
   (never the shared `mintkey-<service>` tags), volumes and network are scoped to the project, no host port from
   the primary (8000-8092, 8443, 8999, 3003, 16686, 4317, 2222) or +100 test-namespace set, and the seed-job's host
   bind is not the checkout's `data/bootstrap-secrets` (it holds the live stack's admin password mirror);
+* variables exported in your shell (`MINTKEY_*`, `COMPOSE_*`, `KC_*`, anything the compose files interpolate) are
+  unset first: for docker compose an exported variable beats `--env-file`, so e.g. a stray
+  `MINTKEY_KEYCLOAK_PUBLIC_URL` would repoint the isolated stack at the live one;
+* each port is checked individually and must be free or published by this project;
 * all test URLs are derived from the same port variables, so no test can fall back to a default port.
 
 Do not use `make smoke`, `make test-golden` or `make test-data-plane*` for this: they look for "the stack" with
@@ -55,6 +59,15 @@ Do not use `make smoke`, `make test-golden` or `make test-data-plane*` for this:
 
 Other tests in `tests/acceptance/` hard-code the live stack's container names (`mintkey-postgres-1`,
 `mintkey-admin-api-1`); never run the whole directory with `MINTKEY_INTEGRATION_TEST=true`.
+
+## Cleanup
+
+Fixtures record what they create in `e2e/.cleanup.ndjson` (`fixtures/cleanup.ts`); `global-teardown.ts` deletes it
+(LIFO) with the OIDC session saved in `state.json`. Entities that cannot be hard-deleted (e.g. a service with a
+credential) are reported, not fatal.
+
+Helpers: `tools/e2e-isolated.sh pw <playwright args>`, `py <pytest args>` and `compose <docker compose args>` run with the
+isolated stack's environment / project.
 
 ## CI
 

@@ -2,14 +2,18 @@
  * W5: Logout and session expiry.
  *
  * Verifies:
- *  (a) Logout invalidates the session — navigating to a protected resource after
- *      logout redirects to /admin/login.
+ *  (a) After visiting /admin/logout, this browser context no longer has a session: navigating to a
+ *      protected resource redirects to /admin/login. This is a CLIENT-SIDE guarantee only: the
+ *      handler clears the mintkey_session / csrf_token cookies and asks admin-api to log out, but
+ *      admin-api's POST /v1/auth/logout merely deletes the cookie, so a copy of the old cookie stays
+ *      valid server-side until the session row expires. XX *      invalidate the server-side session"; a spec replaying the old cookie against
+ *      /v1/auth/whoami (expecting 401) belongs with that fix.
  *  (b) Deleting the session cookie and navigating to a protected page redirects
  *      to /admin/login (no crash, no blank page, no JS error box).
  *
  * Session-isolation note: test (a) must NOT use the shared storageState session
- * because calling /admin/logout invalidates the server-side session, which would
- * break all other tests that share the same cookie via global storageState.
+ * because the logout clears the cookies of its browser context, which would break all other tests
+ * that share the same cookie via global storageState.
  * Instead, test (a) performs a fresh form login within the test context, logs out
  * that fresh session, and leaves the shared session intact.
  *
@@ -25,7 +29,7 @@ test.describe("21 — Logout and session expiry", () => {
     expect(process.env.PLAYWRIGHT_PASS ?? "", "PLAYWRIGHT_PASS is required").not.toEqual("");
   });
 
-  // ── (a) Logout invalidates the session ───────────────────────────────────────
+  // ── (a) Logout ends the browser session (client side) ───────────────────────────────────────
   // Uses a FRESH login (not storageState) to avoid invalidating the shared session.
   test("logout redirects to /admin/login on next visit (fresh session)", async ({
     page,
