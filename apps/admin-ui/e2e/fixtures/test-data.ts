@@ -160,7 +160,7 @@ export async function getAuditEvents(tenantId: string, token?: string): Promise<
 
 export async function createTestTenant(name: string = "test-tenant", token?: string): Promise<{ tenantId: string; slug: string }> {
   const slug = name.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
-  const resp = await apiPost("/v1/tenants", { slug, display_name: name }, token);
+  const resp = await apiPost("/v1/tenants", { name, slug, display_name: name }, token);
   if (!resp.ok) throw new Error(`createTestTenant(${name}) failed: HTTP ${resp.status} ${await resp.text()}`);
   const data = await resp.json();
   enqueueCleanup({ method: "DELETE", url: `/v1/tenants/${data.id}` });
