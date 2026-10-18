@@ -122,6 +122,8 @@ jobs:
         run: pnpm test:e2e --project=chromium
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:8081
+          # The bootstrap admin is a PlatformAdmin; without this 08-tenants skips its 2 PlatformAdmin tests.
+          PLAYWRIGHT_IS_PLATFORM_ADMIN: "true"
           CI: "true"
 
       - name: Upload Playwright HTML report
@@ -237,6 +239,8 @@ jobs:
         run: pnpm test:e2e --project=${{ matrix.browser }}
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:8081
+          # The bootstrap admin is a PlatformAdmin; without this 08-tenants skips its 2 PlatformAdmin tests.
+          PLAYWRIGHT_IS_PLATFORM_ADMIN: "true"
           CI: "true"
 
       - name: Upload Playwright HTML report

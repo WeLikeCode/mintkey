@@ -201,6 +201,7 @@ export_env() {
   export PLAYWRIGHT_USER="admin@mintkey.internal"
   export PLAYWRIGHT_PASS="$password"
   export PLAYWRIGHT_TENANT_ID="$tenant"
+  export PLAYWRIGHT_IS_PLATFORM_ADMIN=true   # the bootstrap admin is a PlatformAdmin (08-tenants)
 }
 
 assert_stack_is_ours() {
