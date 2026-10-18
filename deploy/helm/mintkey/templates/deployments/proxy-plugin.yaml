@@ -69,6 +69,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: MINTKEY_VAULT_PROXY_TOKEN
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.proxyPlugin) | nindent 12 }}
           volumeMounts:
             - name: proxy-wal
               mountPath: /var/lib/mintkey

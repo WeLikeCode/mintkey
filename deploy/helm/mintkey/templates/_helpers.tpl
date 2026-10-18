@@ -105,6 +105,42 @@ Format: postgresql://mintkey:mintkey@<fullname>-postgres:5432/mintkey
 {{- end }}
 
 {{/*
+Extra environment variables — GitOps env-injection hook. Merges
+.Values.global.extraEnv (applied to every Go service that calls this helper)
+with a per-service extraEnv list (e.g. .Values.broker.extraEnv), in that
+order, so a values override can add vars (e.g. OTEL_EXPORTER_OTLP_ENDPOINT)
+without a code or template change. Each entry is a normal env-var object:
+{name, value} or {name, valueFrom: {...}}. Kubernetes does not de-dupe env
+entries by name — avoid setting the same name in both global and
+service-level extraEnv.
+
+Usage (append inside a container's env: list, after the hardcoded entries):
+  {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.broker) | nindent 12 }}
+*/}}
+{{- define "mintkey.extraEnv" -}}
+{{- $root := .root -}}
+{{- $service := .service -}}
+{{- range (default (list) $root.Values.global.extraEnv) }}
+- name: {{ .name }}
+  {{- if hasKey . "value" }}
+  value: {{ .value | quote }}
+  {{- else if hasKey . "valueFrom" }}
+  valueFrom:
+    {{- toYaml .valueFrom | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- range (default (list) $service.extraEnv) }}
+- name: {{ .name }}
+  {{- if hasKey . "value" }}
+  value: {{ .value | quote }}
+  {{- else if hasKey . "valueFrom" }}
+  valueFrom:
+    {{- toYaml .valueFrom | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
 Ensure a host value is non-empty for ingress rules.
 Fails template rendering with a descriptive error when the host is blank.
 

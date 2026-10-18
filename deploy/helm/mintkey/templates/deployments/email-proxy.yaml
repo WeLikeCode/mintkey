@@ -78,6 +78,7 @@ spec:
               value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
             - name: LOG_LEVEL
               value: info
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.emailProxy) | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /healthz

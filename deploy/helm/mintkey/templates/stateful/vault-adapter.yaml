@@ -103,6 +103,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secretName }}
                   key: MINTKEY_VAULT_MCP_TOKEN
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.vaultAdapter) | nindent 12 }}
           volumeMounts:
             - name: vault-data
               mountPath: /var/lib/mintkey
