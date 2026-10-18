@@ -2,7 +2,7 @@
 
 > **Status:** Proposed — 2026-07-05
 > **Branch:** `feat/kubernetes-readiness` (implementer creates)
-> **Canonical plan:** this folder (`proposal.md` + `specs/` + `tasks.md`) + ADR-0029.
+> **Canonical plan:** this folder (`proposal.md` + `specs/` + `tasks.md`) + ADR-0033.
 > **Origin:** external readiness analysis for deploying Mintkey to the SpotUs DEV k3s cluster; this document is the design record the specs reference.
 
 ## 1. Goal

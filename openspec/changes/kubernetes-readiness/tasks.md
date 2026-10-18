@@ -4,7 +4,7 @@ Each chunk is dispatched to a Sonnet IMPLEMENTER (test-first, surgical) and inde
 
 ## 1. ADR & contract (land first)
 
-- [ ] 1.1 Write **ADR-0029** `docs/architecture/01-architecture/adr/0029-kubernetes-readiness-restart-safety.md` (status Proposed): the four fixes, the broker key-source priority (Vault → file, prod fails closed), OIDC state → Postgres TTL store, admin-ui keypair bootstrap + prod signed-write enforcement, DB-role password parameterization. State explicitly that JWKS/REST/MCP wire shapes are unchanged. Add `docs/architecture/adrs/0029-…` symlink + `adr/README.md` index row.
+- [ ] 1.1 Write **ADR-0033** `docs/architecture/01-architecture/adr/0033-kubernetes-readiness-restart-safety.md` (status Proposed): the four fixes, the broker key-source priority (Vault → file, prod fails closed), OIDC state → Postgres TTL store, admin-ui keypair bootstrap + prod signed-write enforcement, DB-role password parameterization. State explicitly that JWKS/REST/MCP wire shapes are unchanged. Add `docs/architecture/adrs/0033-…` symlink + `adr/README.md` index row.
 - [ ] 1.2 `openspec validate kubernetes-readiness --strict` passes.
 - [ ] 1.3 Confirm no change needed to `docs/architecture/contracts/rest/openapi.yaml`, `mcp/tools.yaml`, or `vault-adapter/vault.proto` (the broker↔vault signing-key read reuses existing vault RPCs — cite which); note the finding in the ADR.
 

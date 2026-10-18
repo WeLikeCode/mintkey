@@ -3,7 +3,7 @@
 Sonnet IMPLEMENTER (test-first where testable: `helm lint`, `helm template | kubeconform`), fresh Opus REVIEWER per chunk, 3-strike hard-stop. **Prerequisite: `kubernetes-readiness` has landed** (broker key, OIDC state, admin-ui keypair, DB-role secrets). Land in order: §1 ADR → §2 chart skeleton → §3 core workloads → §4 ordering/jobs → §5 persistence → §6 secrets/config → §7 exposure → §8 smoke deploy.
 
 ## 1. ADR
-- [ ] 1.1 Write **ADR-0033** `docs/architecture/01-architecture/adr/0033-kubernetes-deployment-topology.md` (Proposed): the deployment topology, hook-Job ordering, PVC set, externally-managed Secrets, ConfigMap config, and the exposure model (Ingress-eligible vs raw-TCP ssh-proxy vs never-exposed Kong-admin/internal). Symlink + index row. `openspec validate helm-chart --strict`.
+- [ ] 1.1 Write **ADR-0034** `docs/architecture/01-architecture/adr/0034-kubernetes-deployment-topology.md` (Proposed): the deployment topology, hook-Job ordering, PVC set, externally-managed Secrets, ConfigMap config, and the exposure model (Ingress-eligible vs raw-TCP ssh-proxy vs never-exposed Kong-admin/internal). Symlink + index row. `openspec validate helm-chart --strict`.
 
 ## 2. Chart skeleton
 - [ ] 2.1 `deploy/helm/mintkey/Chart.yaml` + `values.yaml` (image registry/tag pinned to GHCR, per-service `replicas`/`resources`, feature flags: `observability.enabled`, `database.mode: chart|external`, `sshProxy.serviceType`, `imagePullSecret`). `helm lint` green.
