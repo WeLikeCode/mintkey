@@ -79,6 +79,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
     // Get any service ID from the list
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -121,6 +124,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
   }) => {
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -162,6 +168,9 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
   }) => {
     test.skip(skipWebkit({ browserName }), "webkit CORS W8");
 
+    // Seed a row: the list has no <table> on a stack without services (and global-teardown now removes
+    // what earlier specs created).
+    await createTestService({ tenantId: TENANT_ID, name: "confirm-seed", baseUrl: "https://confirm-seed.example.com" });
     await page.goto("/admin/resources/services", { waitUntil: "domcontentloaded" });
     await page.locator("table tbody tr").first().waitFor({ state: "visible", timeout: 20_000 });
 
@@ -245,9 +254,14 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     await page.waitForLoadState("load", { timeout: 10_000 }).catch(() => {});
 
     // Verify the service is gone — its show page must render "not found" or redirect to list
+    // AdminJS redirects the show page of a missing record to the list client-side. With
+    // waitUntil "load" that redirect interrupts goto() itself ("Navigation ... is interrupted by
+    // another navigation"; deterministic on the CI runner, never locally), so resolve goto at
+    // response commit and let the redirect settle afterwards.
     await page.goto(`/admin/resources/services/records/${serviceId}/show`, {
-      waitUntil: "load",
+      waitUntil: "commit",
     });
+    await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => {});
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     const showBody = await page.locator("body").innerText();
     // AdminJS returns a "not found" error notice or redirects to the resource list
