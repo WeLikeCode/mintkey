@@ -66,7 +66,7 @@ Both files are created **if absent** (idempotent). Existing files are not overwr
 
 `admin-api/db/changelog/015-app-role-passwords.yaml` is updated to use Liquibase property substitution (`${db_app_password}` / `${db_subscriber_password}`) referencing the properties `MINTKEY_DB_APP_PASSWORD` and `MINTKEY_DB_SUBSCRIBER_PASSWORD`. These variables are injected at migration time via the Liquibase `liquibase.properties` file or the container's env.
 
-Default values for the property substitution **are not provided** in the changeset — missing env vars cause Liquibase to abort the migration, which is the correct fail-closed behaviour. Existing deployments that already applied changeset `015` are not re-run (the Liquibase `DATABASECHANGELOG` lock is unchanged); the change only affects fresh installs and CI.
+The changeset itself carries no default values: the compose files pass `-Ddb_app_password=${MINTKEY_DB_APP_PASSWORD:-mintkey_app_password}` (and the subscriber equivalent) as options of `liquibase update` (Liquibase 4.27 rejects `-D` before the command), the Helm Job passes them through `JAVA_OPTS`. A Liquibase property that is not supplied is NOT an error: the token stays literal, so callers must always pass both properties. Existing deployments that already applied changeset `015` are not re-run, and because the changeset text now depends on the supplied values, `015` declares `validCheckSum: ANY` so that supplying a non-default password to an existing database does not fail Liquibase's checksum validation (verified against liquibase 4.27.0: without it the update aborts with a ValidationFailedException). The change therefore only takes effect on fresh installs and CI.
 
 ---
 
@@ -81,7 +81,7 @@ Default values for the property substitution **are not provided** in the changes
 ### Costs
 - Vault Adapter must be reachable before the broker can start in production (`svcid_broker` path). A retry-with-backoff is required at broker startup.
 - `MINTKEY_DB_APP_PASSWORD` and `MINTKEY_DB_SUBSCRIBER_PASSWORD` must be supplied to the migration container; existing compose and Helm values must be updated.
-- Upgrading an existing install that already ran changeset `015` with the old literal passwords: operators must manually rotate the Postgres roles after setting the new env vars (no automated migration path — the changeset checksum is unchanged, so Liquibase will not re-run it).
+- Upgrading an existing install that already ran changeset `015` with the old literal passwords: operators must manually rotate the Postgres roles after setting the new env vars (no automated migration path — Liquibase does not re-run `015`).
 
 ### Wire-shape invariants preserved
 - JWKS endpoint response: unchanged (public key content may differ but format is identical).
