@@ -1,4 +1,4 @@
-# Vault Adapter — Go 1.26, multi-stage, distroless (ADR-0011)
+# Vault Adapter — Go 1.27, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
 FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
@@ -25,7 +25,7 @@ WORKDIR /workspace/apps/vault-adapter
 RUN go build -o /vault-adapter ./cmd/vault-adapter
 
 # Build grpc_health_probe from source so it inherits the same Go stdlib as the
-# builder image (Go 1.26.9), avoiding the stdlib CVEs of any pre-built binary.
+# builder image (Go 1.27.2), avoiding the stdlib CVEs of any pre-built binary.
 # Use a throwaway module to pin golang.org/x/net, x/text and google.golang.org/grpc
 # to the versions the services use, overriding grpc-health-probe's own go.mod
 # (2026-10: CVE-2026-46600, CVE-2026-56852, CVE-2026-78669, CVE-2026-84304, CVE-2026-84445).

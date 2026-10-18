@@ -4,7 +4,7 @@
 # so that entrypoint.sh can read the bootstrap secret and exec into it.
 
 # oauth2-proxy is built from source (the same pattern as vault-adapter's grpc_health_probe), so that it carries the
-# builder's Go 1.26.9 and golang.org/x/net v0.61.0: the upstream v7.15.5 binary is built with Go 1.26.8 and x/net
+# builder's Go 1.27.2 and golang.org/x/net v0.61.0: the upstream v7.15.5 binary is built with Go 1.26.8 and x/net
 # v0.59.0 (2026-10: CVE-2026-78667, CVE-2026-78669, CVE-2026-97031, all HIGH, denial of service on the HTTP/2,
 # Range-header and TLS paths this proxy serves). Upstream v7.15.5 has no replace directives, so only x/net and what
 # it requires move. Go back to the upstream image once it ships a build with a fixed Go.

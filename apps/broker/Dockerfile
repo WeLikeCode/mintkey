@@ -1,4 +1,4 @@
-# Credential Broker — Go 1.26, multi-stage, distroless (ADR-0011)
+# Credential Broker — Go 1.27, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
 FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder

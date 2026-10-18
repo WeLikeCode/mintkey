@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-# Email Proxy — Go 1.26, multi-stage, distroless (ADR-0011 shared Go stack).
+# Email Proxy — Go 1.27, multi-stage, distroless (ADR-0011 shared Go stack).
 # Build context must be repo root so the workspace can resolve packages/go/ deps.
 #
 # Build from repo root: docker build -f apps/email-proxy/Dockerfile -t mintkey-email-proxy .

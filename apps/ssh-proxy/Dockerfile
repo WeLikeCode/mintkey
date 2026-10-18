@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-# SSH Proxy — Go 1.26, multi-stage, distroless (ADR-0011 shared Go stack).
+# SSH Proxy — Go 1.27, multi-stage, distroless (ADR-0011 shared Go stack).
 # Build context must be repo root so the workspace can resolve packages/go/ deps.
 #
 # Build via compose: docker compose --env-file .env -f infra/compose/docker-compose.yml build ssh-proxy
