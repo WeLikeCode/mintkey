@@ -24,6 +24,7 @@ import rateLimit from "express-rate-limit";
 
 import { RestDatabase, RestResource } from "./lib/rest-resource.js";
 import { adminJSAuthOptions, renderLoginPage } from "./auth.js";
+import { createLogoutHandler } from "./routes/logout.js";
 import { dashboardHandler } from "./dashboard.js";
 import { componentLoader, Components } from "./components/index.js";
 import { platformAdminMiddleware } from "./middleware/platform-admin.js";
@@ -275,19 +276,7 @@ async function main() {
     legacyHeaders: false,
     message: { error: "Too many logout requests. Please try again later." },
   });
-  app.get("/admin/logout", logoutRateLimit, async (req, res) => {
-    try {
-      await fetch(`${ADMIN_API_URL}/v1/auth/logout`, {
-        method: "POST",
-        headers: { Cookie: req.headers.cookie ?? "" },
-      });
-    } catch {
-      // admin-api unreachable: still clear the browser-side cookies below.
-    }
-    res.clearCookie("mintkey_session", { path: "/" });
-    res.clearCookie("csrf_token", { path: "/" });
-    res.redirect(302, "/admin/login");
-  });
+  app.get("/admin/logout", logoutRateLimit, createLogoutHandler(ADMIN_API_URL));
 
   // POST /auth/internal-login-proxy — server-side relay for break-glass form.
   // Forwards credentials to admin-api /v1/auth/internal-login and relays any
