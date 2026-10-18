@@ -79,8 +79,10 @@ jobs:
           #     "could not detect" after pnpm lockfile regen in PR #140); all confirmed via
           #     `pnpm view <pkg> license` from apps/admin-ui/.
           #   - axe-core, @axe-core/playwright: MPL-2.0 (file-level weak copyleft), admin-ui
-          #     accessibility e2e test-only dev deps, never shipped in the image (same rationale as
-          #     rapid/hypothesis). Dependabot #305 (4.11 -> 4.13/4.14) failed 'incompatible licenses' without this.
+          #     accessibility e2e test-only dev deps (same rationale as rapid/hypothesis). Already in
+          #     the tree before this entry; the runtime never loads them (they sit unmodified in the
+          #     image's node_modules only because the Dockerfile runs a full pnpm install). Dependabot
+          #     #305 (4.11 -> 4.13/4.14) failed 'incompatible licenses' without this.
           #   - tinymce: GPL-2.0-or-later (dual-licensed; pnpm view tinymce@7.9.3 license).
           #     Transitive dep pulled by @adminjs/design-system (MIT). The GPL applies to the
           #     TinyMCE editor library itself; it does not propagate copyleft obligations to
