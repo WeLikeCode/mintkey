@@ -108,7 +108,7 @@ ci:
   continuation: dispatch
   time_budget: 21m
   soft_deadline_margin: 20m
-  upload_artifacts: true    # TEMPORARY (one diagnostic run of the setup gate, reverted next); a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
+  upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
 yolo:
   review:
     accept_by_agents: true  # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
