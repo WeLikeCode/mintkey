@@ -91,3 +91,65 @@ func TestLoadKey_MissingFile_ProductionFails(t *testing.T) {
 		t.Fatal("expected error for production with no file, got nil")
 	}
 }
+
+func writeSeedFile(t *testing.T, seed []byte) string {
+	t.Helper()
+	p := t.TempDir() + "/signing-key"
+	if err := os.WriteFile(p, seed, 0o400); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return p
+}
+
+func TestLoadKey_SameFileSameKID(t *testing.T) {
+	seed := make([]byte, ed25519.SeedSize)
+	if _, err := rand.Read(seed); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	p := writeSeedFile(t, seed)
+	_, kid1, err := keyloader.LoadKey("production", p)
+	if err != nil {
+		t.Fatalf("LoadKey #1: %v", err)
+	}
+	_, kid2, err := keyloader.LoadKey("production", p)
+	if err != nil {
+		t.Fatalf("LoadKey #2: %v", err)
+	}
+	if kid1 != kid2 {
+		t.Fatalf("kid differs across loads of the same file: %q vs %q", kid1, kid2)
+	}
+	if len(kid1) != len("kid_")+26 || !strings.HasPrefix(kid1, "kid_") {
+		t.Fatalf("kid %q is not kid_ + 26 chars", kid1)
+	}
+}
+
+func TestLoadKey_DifferentFilesDifferentKID(t *testing.T) {
+	a := make([]byte, ed25519.SeedSize)
+	b := make([]byte, ed25519.SeedSize)
+	b[0] = 1
+	_, kidA, _ := keyloader.LoadKey("dev", writeSeedFile(t, a))
+	_, kidB, _ := keyloader.LoadKey("dev", writeSeedFile(t, b))
+	if kidA == kidB {
+		t.Fatalf("different keys share kid %q", kidA)
+	}
+}
+
+func TestLoadKey_FileSet_BadFile_FailsInEveryMode(t *testing.T) {
+	for _, env := range []string{"dev", "production"} {
+		t.Run(env+"/missing", func(t *testing.T) {
+			_, _, err := keyloader.LoadKey(env, t.TempDir()+"/nope")
+			if err == nil {
+				t.Fatal("expected error for unreadable key file, got nil")
+			}
+		})
+		t.Run(env+"/wrong-length", func(t *testing.T) {
+			_, _, err := keyloader.LoadKey(env, writeSeedFile(t, []byte("short")))
+			if err == nil {
+				t.Fatal("expected error for wrong-length key file, got nil")
+			}
+			if !strings.Contains(err.Error(), "MINTKEY_BROKER_SIGNING_KEY_FILE") {
+				t.Fatalf("error should name the variable: %v", err)
+			}
+		})
+	}
+}

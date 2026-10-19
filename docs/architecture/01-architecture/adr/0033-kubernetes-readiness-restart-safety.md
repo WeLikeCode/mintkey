@@ -35,6 +35,8 @@ The broker resolves its Ed25519 signing key at startup using the following prior
 
 3. **Fail closed in production** — When `MINTKEY_ENV=production` and neither source yields a key, startup aborts with a structured log error and a non-zero exit code. The pod enters `CrashLoopBackOff`, which is the correct signal to the operator. In non-production environments a generated ephemeral key is used (preserving the existing dev-only behaviour).
 
+**Key id and bad files:** the `kid` of a persisted key is derived from its public key (`kid_` + the first 26 Crockford base32 characters of `sha256(public key)`), so a restart or a second replica loading the same key file yields the same `kid` and tokens issued before the restart still verify. The ephemeral dev key keeps a random `kid`. When `MINTKEY_BROKER_SIGNING_KEY_FILE` is set but the file is unreadable or not a 32-byte seed (raw or PEM), the broker fails to start in every mode with an error naming the variable; it never falls back to an ephemeral key.
+
 **Key rotation / replica coherence:** The `KeyRing` (already supports multi-key JWKS via `KeyRing.Add(kid, pub)`) retains all public keys for verification until the token max-TTL (10 minutes, ADR-0006) has elapsed. Retiring a key: write the new key to Vault Adapter under a new `kid`, update `MINTKEY_ACTIVE_KID` env, roll pods. Old pods verify with their cached JWKS; new pods sign with the new key. JWKS and REST/MCP wire shapes are unchanged.
 
 ### D2 — OIDC state: Postgres table `oidc_login_state` (addresses A2)
