@@ -66,6 +66,14 @@ profiles:
     adapter: claude-code
     auth: subscription
     vendor: anthropic
+  deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
+    adapter: opencode
+    model: opencode/deepseek-v4.1-flash-free
+    vendor: deepseek
+  glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
+    adapter: opencode
+    model: opencode/glm-5.3-flash-free
+    vendor: zhipu
   nemotron-judge:           # OpenCode Zen's free NVIDIA Nemotron 3.5 Super, no key: the judge when Claude is unavailable or out of quota
     adapter: opencode
     model: opencode/nemotron-3.5-super-vl-free
@@ -74,6 +82,8 @@ roles:
   implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
   - deepseek
   - glm
+  - deepseek-free           # no key: when the OpenCode Go key is rejected or out of credit
+  - glm-free
   judges:
   - claude-judge
   - nemotron-judge          # the free fallback judge (NVIDIA: independent of the DeepSeek and GLM implementers)
