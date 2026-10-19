@@ -10,7 +10,7 @@ unless a task names them.
 
 ## 1. admin-api: delete a session row
 
-- [ ] 1.1 Add `delete_session(token: str) -> bool` to `apps/admin-api/src/admin_api/auth/sessions.py`
+- [x] 1.1 Add `delete_session(token: str) -> bool` to `apps/admin-api/src/admin_api/auth/sessions.py`
   - Red: `tests/unit/admin_api/test_delete_session.py` with a fake `AsyncSessionLocal` that records statements and
     params: "A session row is deleted", "No row to delete", "A token that is not a UUID".
   - Green: lazy imports and `text()` with string literals and a bound `token`, as `validate_session` does.
