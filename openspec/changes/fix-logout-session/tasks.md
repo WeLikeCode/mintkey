@@ -84,7 +84,7 @@ unless a task names them.
   - Green: plain `div`, `span`, `form`, `input` and `button` elements (no `@adminjs/design-system` import), props
     `session` and `paths` as AdminJS passes them to `LoggedIn`; the hidden input uses `defaultValue`, and the form's
     `onSubmit` writes the `csrf_token` value parsed from `document.cookie` into it when present (no `preventDefault`).
-- [ ] 5.2 Mount `createLogoutRouter(ADMIN_API_URL, logoutRateLimit)` in `apps/admin-ui/src/index.ts` in place of `app.get("/admin/logout", ...)`, and write the e2e spec `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`
+- [x] 5.2 Mount `createLogoutRouter(ADMIN_API_URL, logoutRateLimit)` in `apps/admin-ui/src/index.ts` in place of `app.get("/admin/logout", ...)`, and write the e2e spec `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`
   - Red: append to `apps/admin-ui/tests/test_logout_wiring.test.ts`: "The server mounts the routes". In the same red
     step write the Playwright files; the L4 gates do not run them (`playwright.yml` does):
     - `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`, structured as `21-logout-session.spec.ts` (imports from
