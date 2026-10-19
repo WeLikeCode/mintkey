@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | golangci-lint cache path is on the read-only filesystem |
+| Q-001 | answered | 1.1 | technical | golangci-lint cache path is on the read-only filesystem |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: golangci-lint cache path is on the read-only filesystem
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-19T15:46Z by deepseek, run r-20261019T1313Z-104d, task 1.1
@@ -33,3 +33,4 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ### Answer
 <!-- write below this line -->
+Option 1, applied by the owner: the lint gate script now exports GOLANGCI_LINT_CACHE=.l4-out/golangci-lint-cache (staging e5d0c8d), and staging is merged into this unit branch. No change in this unit is needed for it; run verification again.
