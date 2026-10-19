@@ -107,3 +107,8 @@
 {"ts": "2026-10-19T16:27:58.779579Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 107, "type": "verify.verdict", "round": 2, "verdict": "PASS", "findings": 2, "criteria_passed": 32, "criteria_total": 32}
 {"ts": "2026-10-19T16:27:58.803980Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 108, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-19T16:28:02.022656Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 109, "type": "pr.labels", "number": 354, "labels": ["l4:verified"]}
+{"ts": "2026-10-19T16:28:08.573203Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 110, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/354", "number": 354, "head": "f01464894d9883c6ff5fd111578f371638eea84a"}
+{"ts": "2026-10-19T16:28:08.574205Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 111, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-19T16:28:11.718234Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 112, "type": "pr.labels", "number": 354, "labels": ["l4:in_review"]}
+{"ts": "2026-10-19T16:28:13.069829Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 113, "type": "lock.released"}
+{"ts": "2026-10-19T16:28:13.070492Z", "run_id": "r-20261019T1615Z-2b83", "unit": "openspec:fix-logout-session", "seq": 114, "type": "run.finished", "exit_code": 0}
