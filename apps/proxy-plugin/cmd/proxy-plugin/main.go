@@ -577,10 +577,8 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			safeErr := safeInjectErr(injectErr)
 			log.Printf("proxy-plugin: inject error: %s", safeErr)
 		}
-		// Auto-inject X-Request-Id if absent (required by some APIs, e.g. Contabo).
-		if req.Header.Get("X-Request-Id") == "" {
-			req.Header.Set("X-Request-Id", uuid.New().String())
-		}
+		// Contabo requires a unique X-Request-Id; set it for that service only.
+		ensureRequestID(req, targetURL)
 	}
 
 	// Plugin logic is complete: record added latency (JWT verify + credential
@@ -1000,10 +998,8 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 			safeErr := safeInjectErr(injectErr)
 			log.Printf("proxy-plugin: oauth2 inject error: %s", safeErr)
 		}
-		// Auto-inject X-Request-Id if absent (required by some APIs, e.g. Contabo).
-		if req.Header.Get("X-Request-Id") == "" {
-			req.Header.Set("X-Request-Id", uuid.New().String())
-		}
+		// Contabo requires a unique X-Request-Id; set it for that service only.
+		ensureRequestID(req, targetURL)
 	}
 
 	// Plugin logic complete: record added latency.
@@ -1141,10 +1137,8 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 			safeErr := safeInjectErr(injectErr)
 			log.Printf("proxy-plugin: classical key inject error: %s", safeErr)
 		}
-		// Auto-inject X-Request-Id if absent (required by some APIs, e.g. Contabo).
-		if req.Header.Get("X-Request-Id") == "" {
-			req.Header.Set("X-Request-Id", uuid.New().String())
-		}
+		// Contabo requires a unique X-Request-Id; set it for that service only.
+		ensureRequestID(req, targetURL)
 	}
 
 	proxy.ServeHTTP(w, r)
@@ -1313,4 +1307,22 @@ func (s *statusCapture) WriteHeader(code int) {
 // work through the wrapper.
 func (s *statusCapture) Unwrap() http.ResponseWriter {
 	return s.ResponseWriter
+}
+
+// contaboAPIHost is the registered base_url host of the Contabo service
+// template. The proxy has no template id in its request context; the vault
+// returns the service's registered base_url, which is what identifies it.
+const contaboAPIHost = "api.contabo.com"
+
+// ensureRequestID sets X-Request-Id: <uuid> on an outbound upstream request
+// that lacks one, for the Contabo service only (its API requires it). Every
+// other service's data plane is unchanged, and an existing header is never
+// overwritten.
+func ensureRequestID(req *http.Request, target *url.URL) {
+	if target == nil || !strings.EqualFold(target.Hostname(), contaboAPIHost) {
+		return
+	}
+	if req.Header.Get("X-Request-Id") == "" {
+		req.Header.Set("X-Request-Id", uuid.New().String())
+	}
 }
