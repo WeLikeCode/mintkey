@@ -10,6 +10,12 @@
 # which starts from the repository's go.work.sum and keeps whatever it adds to itself.
 set -e
 R=$PWD
+# Go keeps the checksum-database cache under GOPATH/pkg/sumdb, and the gate sandbox mounts the runner's GOPATH
+# read-only: the module cache stays where it is (GOMODCACHE, which L4 makes writable for this gate), and GOPATH
+# moves to a writable folder of the worktree (.l4-out is ignored), so `go mod download` and `go install pkg@version`
+# can verify new modules against sum.golang.org.
+GOMODCACHE="$(go env GOMODCACHE)"; export GOMODCACHE
+export GOPATH="$R/.l4-out/gopath"
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 { awk '/^go /{print; exit}' go.work; echo "use ("; go list -m -f '	{{.Dir}}'; echo ")"; } > "$W/go.work"
