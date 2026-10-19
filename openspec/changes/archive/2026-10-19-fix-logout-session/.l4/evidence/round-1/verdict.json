@@ -1,0 +1,760 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 1,
+  "verdict": "FAIL",
+  "base_sha": "26caa837b78f8dea782089c6bf7d7dfd6ebd2937",
+  "head_sha": "984e47f2841c5fc50294cfea34768b0012e17072",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "ok",
+      "seconds": 0.4,
+      "note": "base staging@26caa837b7 contained"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "ok",
+      "seconds": 0.5,
+      "note": "7 sub-checks; scope: 33 changed file(s)"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "failed",
+      "seconds": 4.5,
+      "note": "`sh .l4/gates/lint-go.sh` failed: exit code 1"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [
+    {
+      "name": "setup",
+      "command": "uv sync --frozen --directory apps/admin-api",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/505-setup.log",
+      "digest": null
+    },
+    {
+      "name": "setup",
+      "command": "uv sync --frozen --directory packages/python/mintkey-models",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/506-setup.log",
+      "digest": null
+    },
+    {
+      "name": "setup",
+      "command": "uv sync --frozen --directory apps/mcp-server",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/507-setup.log",
+      "digest": null
+    },
+    {
+      "name": "setup",
+      "command": "sh .l4/gates/setup-go.sh",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/508-setup.log",
+      "digest": null
+    },
+    {
+      "name": "setup",
+      "command": "pnpm --dir apps/admin-ui install --frozen-lockfile",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/509-setup.log",
+      "digest": null
+    },
+    {
+      "name": "lint",
+      "command": "uv run --frozen --directory apps/admin-api ruff check src/",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/510-lint.log",
+      "digest": null
+    },
+    {
+      "name": "lint",
+      "command": "uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/511-lint.log",
+      "digest": null
+    },
+    {
+      "name": "lint",
+      "command": "uv run --frozen --directory apps/mcp-server ruff check src/",
+      "status": "pass",
+      "reason": "",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/512-lint.log",
+      "digest": null
+    },
+    {
+      "name": "lint",
+      "command": "sh .l4/gates/lint-go.sh",
+      "status": "fail",
+      "reason": "exit code 1",
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/513-lint.log",
+      "digest": "dbad44518011"
+    }
+  ],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "blocker",
+      "title": "lint gate failed",
+      "detail": "`sh .l4/gates/lint-go.sh` failed: exit code 1",
+      "source": "deterministic",
+      "criterion": null,
+      "log": ".l4-out/gates/r-20261019T1313Z-104d/513-lint.log",
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-5964e3de",
+      "feedback": null
+    }
+  ],
+  "holds": [],
+  "subject_sha": "984e47f2841c5fc50294cfea34768b0012e17072",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": {
+    "checks": [
+      {
+        "name": "protected paths",
+        "status": "ok",
+        "note": "no protected path differs from the base"
+      },
+      {
+        "name": "pre-existing tests",
+        "status": "ok",
+        "note": "5 test file(s) compared with the base"
+      },
+      {
+        "name": "red-green freeze",
+        "status": "ok",
+        "note": "9 task(s): red and green compared"
+      },
+      {
+        "name": "test path freeze",
+        "status": "ok",
+        "note": "9 harness step commit(s) checked"
+      },
+      {
+        "name": "content scan",
+        "status": "ok",
+        "note": "no result-manipulating construct in the changed support and runner files"
+      },
+      {
+        "name": "suppressions",
+        "status": "skipped",
+        "note": "not checked: python only; changed files outside it: apps/admin-ui/e2e/tests/21-logout-replay.spec.ts, apps/admin-ui/e2e/tests/21-logout-session.spec.ts, apps/admin-ui/src/components/app/LoggedIn.tsx, apps/admin-ui/src/components/index.ts, apps/admin-ui/src/index.ts (+6 more)"
+      },
+      {
+        "name": "tdd history",
+        "status": "ok",
+        "note": "9 task(s); red tests passing at head: step 3"
+      }
+    ],
+    "findings": [],
+    "declared": [],
+    "human_protected": [],
+    "human_tests": [],
+    "unfrozen": [],
+    "human_suppressions": [],
+    "human_scan": []
+  },
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": {
+    "schema": "l4/evidence@1",
+    "holds": [],
+    "items": {},
+    "scope": {
+      "declared": [
+        "apps/admin-api/Dockerfile",
+        "apps/admin-ui/src/index.ts",
+        "src/components/index.ts",
+        "Path=",
+        "tests/acceptance/test_no_sql_injection.py",
+        "#/components/responses/ServiceUnavailable",
+        "tests/integration/admin_api/test_auth.py",
+        "apps/admin-ui/tests/test_logout.test.ts",
+        "src/components/app/LoggedIn.tsx",
+        "tests/unit/admin_api",
+        "tests/integration",
+        "@testing-library/react",
+        ".l4/config.yaml",
+        "apps/admin-ui/e2e/tests/01-login.spec.ts",
+        "apps/admin-api/src/admin_api/auth/sessions.py",
+        "apps/admin-api/src/admin_api/api/auth.py",
+        "docs/architecture/contracts/rest/openapi.yaml",
+        "apps/admin-ui/src/routes/logout.ts",
+        "apps/admin-ui/src/components/index.ts",
+        "apps/admin-ui/src/components/app/LoggedIn.tsx",
+        "tests/unit/admin_api/test_delete_session.py",
+        "apps/admin-ui/tests/test_logout_guard.test.ts",
+        "apps/admin-ui/e2e/tests/21-logout-session.spec.ts",
+        "tests/acceptance/test_audit_coverage.py",
+        ".l4/criteria.json",
+        "tests/unit/admin_api/test_whoami_eviction.py",
+        "tests/unit/admin_api/test_logout_session.py",
+        "tests/unit/admin_api/test_logout_store_failure.py",
+        "text/plain",
+        "apps/admin-ui/tests/test_logout_session.test.ts",
+        "apps/admin-ui/tests/test_logout_router.test.ts",
+        "apps/admin-ui/tests/LoggedIn.render.test.tsx",
+        "apps/admin-ui/tests/test_logout_wiring.test.ts",
+        "@adminjs/design-system",
+        "apps/admin-ui/e2e/tests/21-logout-replay.spec.ts",
+        "${ADMIN_API}/v1/auth/whoami",
+        "**/test_logout.test.ts",
+        "**/index.ts",
+        "**/test_index_security_config.test.ts",
+        "**/test_oauth2_bff_route.test.ts",
+        "e2e/**",
+        "**/test_auth.py",
+        "**/auth.py",
+        "tests/**/*.test.ts",
+        "**/test_budget_bff.test.ts",
+        "tests/**/*.render.test.tsx",
+        "**/playwright.yml",
+        "apps/admin-ui/**",
+        "apps/admin-api/**",
+        "apps/admin-ui/e2e/**",
+        "**/tsconfig.json",
+        "src/**",
+        "**/test_whoami_eviction.py",
+        "**/test_logout_session.py",
+        "**/test_logout_store_failure.py",
+        "**/test_logout_session.test.ts",
+        "**/test_logout_router.test.ts",
+        "**/test_logout_wiring.test.ts",
+        "**/LoggedIn.render.test.tsx",
+        "**/req.session?.adminUser",
+        "**/req.body?._csrf",
+        "**/[data-testid=\"logout\"]",
+        "**/[data-testid=\"logout-confirm\"]",
+        "**/logout.ts",
+        "module #",
+        "module ${ADMIN_API}",
+        "module .l4",
+        "module @adminjs",
+        "module @testing-library",
+        "module admin-api",
+        "module admin-ui",
+        "module components",
+        "module docs",
+        "module tests",
+        "module text"
+      ],
+      "skipped": false,
+      "note": "",
+      "holds": [],
+      "files": [
+        {
+          "path": "apps/admin-api/src/admin_api/api/auth.py",
+          "module": "admin-api",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-api/src/admin_api/auth/sessions.py",
+          "module": "admin-api",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/e2e/tests/21-logout-replay.spec.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "apps/admin-ui/e2e/tests/21-logout-session.spec.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/src/components/app/LoggedIn.tsx",
+          "module": "admin-ui",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/src/components/index.ts",
+          "module": "admin-ui",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/src/index.ts",
+          "module": "admin-ui",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/src/routes/logout.ts",
+          "module": "admin-ui",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "apps/admin-ui/tests/LoggedIn.render.test.tsx",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "apps/admin-ui/tests/test_logout_guard.test.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "apps/admin-ui/tests/test_logout_router.test.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "apps/admin-ui/tests/test_logout_session.test.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "apps/admin-ui/tests/test_logout_wiring.test.ts",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "docs/architecture/contracts/rest/openapi.yaml",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1246Z-38f3.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1247Z-1460.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1248Z-cdea.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1250Z-2273.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1251Z-db38.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1253Z-94f0.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1255Z-b911.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1301Z-6147.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1303Z-8159.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1304Z-1c90.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1305Z-6c11.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1307Z-e8b3.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1313Z-104d.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/fix-logout-session/tasks.md",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "tests/unit/admin_api/conftest.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/unit/admin_api/test_delete_session.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/unit/admin_api/test_logout_session.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/unit/admin_api/test_logout_store_failure.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/unit/admin_api/test_whoami_eviction.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        }
+      ]
+    },
+    "diff_coverage": null,
+    "tests_ran": null
+  },
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 1,
+    "tasks": [
+      "F-5964e3de lint gate failed"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "cx_runs": {},
+  "tests": {},
+  "red_green": {
+    "tests.unit.admin_api.test_delete_session::test_delete_session_deletes_row_and_returns_true": "1.1",
+    "tests.unit.admin_api.test_delete_session::test_delete_session_non_uuid_opens_no_database": "1.1",
+    "tests.unit.admin_api.test_delete_session::test_delete_session_returns_false_when_no_row": "1.1",
+    "tests.unit.admin_api.test_whoami_eviction::test_evicting_cached_token_removes_only_it": "2.1",
+    "tests.unit.admin_api.test_whoami_eviction::test_evicting_uncached_token_keeps_other_entries": "2.1",
+    "tests.unit.admin_api.test_whoami_eviction::test_lookup_in_flight_during_logout_is_not_cached": "2.1",
+    "tests.unit.admin_api.test_logout_session::test_concurrent_logouts_with_same_cookie": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_logout_clears_both_cookies": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_logout_of_expired_session_deletes_by_token": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_logout_twice_with_same_cookie": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_logout_with_non_uuid_cookie_clears_both_cookies": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_logout_without_session_cookie_does_not_delete_or_evict": "3.1",
+    "tests.unit.admin_api.test_logout_session::test_old_cookie_refused_after_logout_inside_cache_window": "3.1",
+    "tests.unit.admin_api.test_logout_store_failure::test_delete_session_failure_answers_503_and_still_evicts": "3.2",
+    "tests.unit.admin_api.test_logout_store_failure::test_openapi_logout_lists_204_and_503": "3.2",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-de8201d5 wrong token > C-de8201d5: refuses a token of another length": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-de8201d5 wrong token > C-de8201d5: refuses a token of the same length that differs": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-e629437b nothing to log out > C-e629437b: redirects to login when the session has no adminUser and there is no cookie": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-e629437b nothing to log out > C-e629437b: redirects to login when there is no session object and no cookie": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-f475d740 missing token > C-f475d740: refuses a request without the _csrf field": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — C-f475d740 missing token > C-f475d740: refuses a request without the csrf_token cookie": "4.1",
+    "tests/test_logout_guard.test.ts::logoutGuard — valid token > calls next() once when _csrf equals the csrf_token cookie": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-de8201d5: does not percent-decode the value": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-de8201d5: keeps every '=' after the first one in the value": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-de8201d5: returns the first occurrence of a repeated name": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-de8201d5: trims surrounding spaces from the value": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-f475d740: matches the exact cookie name (xcsrf_token is not csrf_token)": "4.1",
+    "tests/test_logout_guard.test.ts::readCookie > C-f475d740: returns undefined for a missing header, missing name or empty value": "4.1",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-3cb4c380 a request with no session object > C-3cb4c380: calls no admin-api, clears only the operator cookies and redirects": "4.2",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-5dc3374d admin-api is unreachable or refuses > C-5dc3374d: destroys the AdminJS session and clears the cookies when admin-api answers 503": "4.2",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-5dc3374d admin-api is unreachable or refuses > C-5dc3374d: destroys the AdminJS session and clears the cookies when fetch rejects": "4.2",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-a4f02538 the session store fails to destroy > C-a4f02538: still clears the three cookies and redirects when destroy reports an error": "4.2",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-a6ef632a a full logout > C-a6ef632a: calls admin-api, destroys the AdminJS session, clears all three cookies and redirects": "4.2",
+    "tests/test_logout_session.test.ts::createLogoutHandler — C-e0bc4928 two concurrent logouts > C-e0bc4928: both redirect, both clear adminjs.sid and the store ends empty": "4.2",
+    "tests/test_logout_router.test.ts::GET /admin/logout — C-12db9b82 without a CSRF cookie > C-12db9b82: renders the same form with an empty _csrf value and changes nothing": "4.3",
+    "tests/test_logout_router.test.ts::GET /admin/logout — C-4749db35 renders a confirmation form > C-4749db35: renders an escaped _csrf form without side effects": "4.3",
+    "tests/test_logout_router.test.ts::GET /admin/logout — C-f7e06575 without a session > C-f7e06575: redirects to /admin/login when there is no session": "4.3",
+    "tests/test_logout_router.test.ts::createLogoutRouter — C-6a1cff5f serves both methods behind the limiter > C-6a1cff5f: the limiter runs for GET and both POSTs, and each answer is right": "4.3",
+    "tests/LoggedIn.render.test.tsx::LoggedIn override — C-5f6816da no CSRF token > C-5f6816da: renders and submits an empty _csrf when session and cookie have no token": "5.1",
+    "tests/LoggedIn.render.test.tsx::LoggedIn override — C-6d2b5e54 top bar form > C-6d2b5e54: shows the email and a POST form with hidden _csrf and logout button, without a logout link": "5.1",
+    "tests/LoggedIn.render.test.tsx::LoggedIn override — C-d34b4cb5 current CSRF cookie on submit > C-d34b4cb5: submit replaces the rendered _csrf with the current csrf_token cookie": "5.1",
+    "tests/test_logout_wiring.test.ts::components/index.ts — C-7ab935e2 LoggedIn override registration > C-7ab935e2: registers the LoggedIn override with ./app/LoggedIn": "5.1",
+    "tests/test_logout_wiring.test.ts::src/index.ts — C-234b2839 mounts the logout router > C-234b2839: mounts createLogoutRouter before requireSession and keeps no GET logout handler": "5.2"
+  },
+  "guards": [
+    "guard.violation: apps/admin-api/.hypothesis/.gitignore",
+    "guard.violation: apps/admin-api/.hypothesis/constants/005cb2d0b75b9414",
+    "guard.violation: apps/admin-api/.hypothesis/constants/036533ff311156f8",
+    "guard.violation: apps/admin-api/.hypothesis/constants/0442a4f9ff664719",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04b7d9b483ff416a",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04e20610335c1efd",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04ed1b57880398d1",
+    "guard.violation: apps/admin-api/.hypothesis/constants/0d3a9017498e3f12",
+    "guard.violation: apps/admin-api/.hypothesis/constants/14ef6ba5c8afc3e7",
+    "guard.violation: apps/admin-api/.hypothesis/constants/19c615b0a90adb19",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1b881106c94d3162",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1b8d833b1bb06b3c",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1d6aa44528bb5e5b",
+    "guard.violation: apps/admin-api/.hypothesis/constants/2ba4c0b09b43d140",
+    "guard.violation: apps/admin-api/.hypothesis/constants/334e2cd35334a535",
+    "guard.violation: apps/admin-api/.hypothesis/constants/33a8e71f1cf846ad",
+    "guard.violation: apps/admin-api/.hypothesis/constants/3407634a43eb80e3",
+    "guard.violation: apps/admin-api/.hypothesis/constants/3f1fcc632dadb1fb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/41e441930e6c3f19",
+    "guard.violation: apps/admin-api/.hypothesis/constants/430558def4d4d762",
+    "guard.violation: apps/admin-api/.hypothesis/constants/45b43bc4cd7408d6",
+    "guard.violation: apps/admin-api/.hypothesis/constants/45e7300cb0b8c359",
+    "guard.violation: apps/admin-api/.hypothesis/constants/477c89f2694a04a7",
+    "guard.violation: apps/admin-api/.hypothesis/constants/47ecc356f6e12ff0",
+    "guard.violation: apps/admin-api/.hypothesis/constants/4848be6476209b5a",
+    "guard.violation: apps/admin-api/.hypothesis/constants/4ad84b7fa02c7c08",
+    "guard.violation: apps/admin-api/.hypothesis/constants/59db66ad4bbd29cb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/675eaafa7040a6ef",
+    "guard.violation: apps/admin-api/.hypothesis/constants/67b0a8ccf18bf5d2",
+    "guard.violation: apps/admin-api/.hypothesis/constants/68c2001795193bfb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/6e823fefe683e026",
+    "guard.violation: apps/admin-api/.hypothesis/constants/6fb98dde3112dfad",
+    "guard.violation: apps/admin-api/.hypothesis/constants/783b996bd7418477",
+    "guard.violation: apps/admin-api/.hypothesis/constants/7920a2051ef23688",
+    "guard.violation: apps/admin-api/.hypothesis/constants/7e64b0f62de0d79e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/82db23fd656472a4",
+    "guard.violation: apps/admin-api/.hypothesis/constants/894a586d5f2ed4bf",
+    "guard.violation: apps/admin-api/.hypothesis/constants/8993f21eb5fba8fd",
+    "guard.violation: apps/admin-api/.hypothesis/constants/8d8ee59068d4113f",
+    "guard.violation: apps/admin-api/.hypothesis/constants/91b1032f0cb7da5b",
+    "guard.violation: apps/admin-api/.hypothesis/constants/972dd3a4af379804",
+    "guard.violation: apps/admin-api/.hypothesis/constants/9845bd703d94aabc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a39392c1d25db545",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a4a4bfc444a036a6",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a939faedc6eb633e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/b06d435bdec50977",
+    "guard.violation: apps/admin-api/.hypothesis/constants/b68093d4142c13cf",
+    "guard.violation: apps/admin-api/.hypothesis/constants/bcea3d9f0ea3aad2",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c50e4315a75123bc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c59c3c3d0ab38a43",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c5e393b944f93e17",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c854cc07e76b8294",
+    "guard.violation: apps/admin-api/.hypothesis/constants/cc354972bffdf65c",
+    "guard.violation: apps/admin-api/.hypothesis/constants/cf52bfc4d6d4552d",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d03f30b52f4b5e99",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d07acab8241772bc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d51cb5d1491a2e75",
+    "guard.violation: apps/admin-api/.hypothesis/constants/da39a3ee5e6b4b0d",
+    "guard.violation: apps/admin-api/.hypothesis/constants/e155377647d3a41f",
+    "guard.violation: apps/admin-api/.hypothesis/constants/e22ce368906cab3e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/ef119a92d73a4038",
+    "guard.violation: apps/admin-api/.hypothesis/constants/ef9d4f4ea0f23d80",
+    "guard.violation: apps/admin-api/.hypothesis/constants/f1b88638987c5dc7",
+    "guard.violation: apps/admin-api/.hypothesis/unicode_data/15.0.0/charmap.json.gz",
+    "guard.violation: apps/admin-api/.hypothesis/unicode_data/15.0.0/codec-v2-utf-8.json.gz",
+    "guard.violation: apps/admin-api/.hypothesis/constants/005cb2d0b75b9414",
+    "guard.violation: apps/admin-api/.hypothesis/constants/036533ff311156f8",
+    "guard.violation: apps/admin-api/.hypothesis/constants/0442a4f9ff664719",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04b7d9b483ff416a",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04e20610335c1efd",
+    "guard.violation: apps/admin-api/.hypothesis/constants/04ed1b57880398d1",
+    "guard.violation: apps/admin-api/.hypothesis/constants/0d3a9017498e3f12",
+    "guard.violation: apps/admin-api/.hypothesis/constants/14ef6ba5c8afc3e7",
+    "guard.violation: apps/admin-api/.hypothesis/constants/19c615b0a90adb19",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1b881106c94d3162",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1b8d833b1bb06b3c",
+    "guard.violation: apps/admin-api/.hypothesis/constants/1d6aa44528bb5e5b",
+    "guard.violation: apps/admin-api/.hypothesis/constants/2ba4c0b09b43d140",
+    "guard.violation: apps/admin-api/.hypothesis/constants/334e2cd35334a535",
+    "guard.violation: apps/admin-api/.hypothesis/constants/3407634a43eb80e3",
+    "guard.violation: apps/admin-api/.hypothesis/constants/3f1fcc632dadb1fb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/41e441930e6c3f19",
+    "guard.violation: apps/admin-api/.hypothesis/constants/430558def4d4d762",
+    "guard.violation: apps/admin-api/.hypothesis/constants/45b43bc4cd7408d6",
+    "guard.violation: apps/admin-api/.hypothesis/constants/45e7300cb0b8c359",
+    "guard.violation: apps/admin-api/.hypothesis/constants/477c89f2694a04a7",
+    "guard.violation: apps/admin-api/.hypothesis/constants/47ecc356f6e12ff0",
+    "guard.violation: apps/admin-api/.hypothesis/constants/4848be6476209b5a",
+    "guard.violation: apps/admin-api/.hypothesis/constants/4ad84b7fa02c7c08",
+    "guard.violation: apps/admin-api/.hypothesis/constants/59db66ad4bbd29cb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/675eaafa7040a6ef",
+    "guard.violation: apps/admin-api/.hypothesis/constants/67b0a8ccf18bf5d2",
+    "guard.violation: apps/admin-api/.hypothesis/constants/68c2001795193bfb",
+    "guard.violation: apps/admin-api/.hypothesis/constants/6e823fefe683e026",
+    "guard.violation: apps/admin-api/.hypothesis/constants/6fb98dde3112dfad",
+    "guard.violation: apps/admin-api/.hypothesis/constants/7920a2051ef23688",
+    "guard.violation: apps/admin-api/.hypothesis/constants/7e64b0f62de0d79e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/82db23fd656472a4",
+    "guard.violation: apps/admin-api/.hypothesis/constants/894a586d5f2ed4bf",
+    "guard.violation: apps/admin-api/.hypothesis/constants/8993f21eb5fba8fd",
+    "guard.violation: apps/admin-api/.hypothesis/constants/8d8ee59068d4113f",
+    "guard.violation: apps/admin-api/.hypothesis/constants/91b1032f0cb7da5b",
+    "guard.violation: apps/admin-api/.hypothesis/constants/972dd3a4af379804",
+    "guard.violation: apps/admin-api/.hypothesis/constants/9845bd703d94aabc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/9bff7cb592d55a76",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a39392c1d25db545",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a4a4bfc444a036a6",
+    "guard.violation: apps/admin-api/.hypothesis/constants/a939faedc6eb633e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/b06d435bdec50977",
+    "guard.violation: apps/admin-api/.hypothesis/constants/b68093d4142c13cf",
+    "guard.violation: apps/admin-api/.hypothesis/constants/bcea3d9f0ea3aad2",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c50e4315a75123bc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c59c3c3d0ab38a43",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c5e393b944f93e17",
+    "guard.violation: apps/admin-api/.hypothesis/constants/c854cc07e76b8294",
+    "guard.violation: apps/admin-api/.hypothesis/constants/cc354972bffdf65c",
+    "guard.violation: apps/admin-api/.hypothesis/constants/cf52bfc4d6d4552d",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d03f30b52f4b5e99",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d07acab8241772bc",
+    "guard.violation: apps/admin-api/.hypothesis/constants/d51cb5d1491a2e75",
+    "guard.violation: apps/admin-api/.hypothesis/constants/da39a3ee5e6b4b0d",
+    "guard.violation: apps/admin-api/.hypothesis/constants/e155377647d3a41f",
+    "guard.violation: apps/admin-api/.hypothesis/constants/e22ce368906cab3e",
+    "guard.violation: apps/admin-api/.hypothesis/constants/ef119a92d73a4038",
+    "guard.violation: apps/admin-api/.hypothesis/constants/ef9d4f4ea0f23d80",
+    "guard.violation: apps/admin-api/.hypothesis/constants/f1b88638987c5dc7",
+    "guard.violation: apps/admin-api/.hypothesis/unicode_data/15.0.0/charmap.json.gz",
+    "guard.violation: apps/admin-api/.hypothesis/unicode_data/15.0.0/codec-v2-utf-8.json.gz",
+    "guard.violation: apps/admin-ui/src/routes/logout.ts",
+    "guard.violation: apps/admin-ui/src/routes/logout.ts",
+    "guard.violation: apps/admin-ui/src/components/app/LoggedIn.tsx"
+  ],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "b72b584b3ade4ee3b55b1e38ab14dab66ff8e787",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek",
+      "glm"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}

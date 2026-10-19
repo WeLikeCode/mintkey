@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import HTTPException, Request
+from sqlalchemy.engine import CursorResult
 
 
 async def create_session(
@@ -206,3 +207,41 @@ async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
                 "title": "Session tenant does not match the requested tenant",
             },
         )
+
+
+async def delete_session(token: str) -> bool:
+    """
+    Delete the session row whose id is the token, whatever its expires_at,
+    and return whether a row was deleted.
+
+    Runs under the same RLS settings as validate_session (the tenant_isolation
+    policy of the sessions table): without the set_config lines the policy
+    would hide every row and the delete would remove nothing silently.
+
+    Source: operator-logout (issue #345).
+    """
+    from admin_api.db.session import AsyncSessionLocal
+    from sqlalchemy import text
+
+    try:
+        _uuid.UUID(token)
+    except ValueError:
+        return False
+
+    async with AsyncSessionLocal() as db:
+        async with db.begin():
+            # RLS requires a valid UUID for current_tenant even when unused.
+            await db.execute(
+                text("SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true)")
+            )
+            await db.execute(
+                text("SELECT set_config('app.platform_admin_view', 'on', true)")
+            )
+            row = cast(
+                CursorResult[Any],
+                await db.execute(
+                    text("DELETE FROM sessions WHERE id = CAST(:token AS uuid)"),
+                    {"token": token},
+                ),
+            )
+    return row.rowcount > 0

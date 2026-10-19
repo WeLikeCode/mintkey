@@ -5,32 +5,45 @@ version: 1
 harness:
   delivery: action
 spec:
-  # OpenSpec only for now. `kiro` waits for a harness that accepts the finished legacy specs of .kiro/specs: with it,
-  # L4 0.4.10 fails doctor row SPEC-002 (an error, so every L4 job stops) on done tasks without `_Requirements:_` lines,
-  # whole-requirement refs (`_Requirements: 1_`), `## Requirement N` headings and a mermaid Task Dependency Graph.
+  # OpenSpec changes and Kiro specs. Harness 0.4.13 reads the finished Kiro specs as history (L4-KSP-006): a done task
+  # without a `_Requirements:_` line or a mermaid Task Dependency Graph is a warning, not an error. yolo.hold keeps
+  # every spec opt-in by plan.
   frameworks:
   - openspec
+  - kiro
 gates:
-  # the Python jobs of .github/workflows/ci.yml: "Lint Python", "Python Unit Tests", "Acceptance Tests" (three uv
-  # projects). The Go, contract, Docker-stack and browser jobs stay with the repository's own CI: the L4 job has no Go
-  # toolchain and its sandbox no Docker daemon.
+  # The jobs of .github/workflows/ci.yml that the L4 job can run: "Lint Python", "Lint Go", "Python Unit Tests",
+  # "Go Unit Tests" and "Acceptance Tests", plus the admin-ui Vitest suite (which ci.yml does not run). The Docker-stack, browser, contract and scan jobs stay with the repository's own CI: the L4 gate sandbox has
+  # no Docker daemon. The toolchains come from ci.toolchains below.
   setup:
   - uv sync --frozen --directory apps/admin-api
   - uv sync --frozen --directory packages/python/mintkey-models
   - uv sync --frozen --directory apps/mcp-server
+  - sh .l4/gates/setup-go.sh                              # the go.work modules, golangci-lint and gotestsum
+  - pnpm --dir apps/admin-ui install --frozen-lockfile
   lint:
   - uv run --frozen --directory apps/admin-api ruff check src/
   - uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/
   - uv run --frozen --directory apps/mcp-server ruff check src/
+  - sh .l4/gates/lint-go.sh                               # go vet and golangci-lint, every go.work module
   typecheck:
   - uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/
   - uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/
+  - pnpm --dir apps/admin-ui exec tsc --noEmit                  # ci.yml does not type-check admin-ui; L4 does
   test:
     command: sh .l4/gates/test.sh   # what it runs, and what it leaves out, is written in the script
-    reports:
+    reports:                        # one per suite: L4 reads them all (harness 0.4.11, L4-GAT-005)
     - .l4-out/junit-admin-api.xml
     - .l4-out/junit-mintkey-models.xml
     - .l4-out/junit-mcp-server.xml
+    - .l4-out/junit-go-root.xml
+    - .l4-out/junit-go-broker.xml
+    - .l4-out/junit-go-email-proxy.xml
+    - .l4-out/junit-go-kong-syncer.xml
+    - .l4-out/junit-go-proxy-plugin.xml
+    - .l4-out/junit-go-ssh-proxy.xml
+    - .l4-out/junit-go-vault-adapter.xml
+    - .l4-out/junit-admin-ui.xml
 profiles:
   deepseek:                 # OpenCode Go, the key in OPENCODE_API_KEY
     adapter: opencode
@@ -53,12 +66,27 @@ profiles:
     adapter: claude-code
     auth: subscription
     vendor: anthropic
+  deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
+    adapter: opencode
+    model: opencode/deepseek-v4.1-flash-free
+    vendor: deepseek
+  glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
+    adapter: opencode
+    model: opencode/glm-5.3-flash-free
+    vendor: zhipu
+  nemotron-judge:           # OpenCode Zen's free NVIDIA Nemotron 3.5 Super, no key: the judge when Claude is unavailable or out of quota
+    adapter: opencode
+    model: opencode/nemotron-3.5-super-vl-free
+    vendor: nvidia
 roles:
   implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
   - deepseek
   - glm
+  - deepseek-free           # no key: when the OpenCode Go key is rejected or out of credit
+  - glm-free
   judges:
   - claude-judge
+  - nemotron-judge          # the free fallback judge (NVIDIA: independent of the DeepSeek and GLM implementers)
   s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
   - jev
 forge:
@@ -68,6 +96,13 @@ forge:
   merge_policy: auto        # only units of an active `merge: auto` delivery plan are merged by L4; other PRs a person merges
 ci:
   platform: github
+  toolchains:               # set up before L4 in the workflow (harness 0.4.13, L4-CI-005): the versions ci.yml and playwright.yml use
+    go:
+      version_file: go.work
+    node:
+      version: "22"
+    pnpm:
+      version: "11"
   runner_tags: []
   self_provision: true
   continuation: dispatch

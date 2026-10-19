@@ -89,7 +89,17 @@ test.describe("21 — Logout and session expiry", () => {
       await logoutEl.click();
       await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     } else {
+      // GET /admin/logout only renders a confirmation form; submit it.
       await page.goto("/admin/logout", { waitUntil: "domcontentloaded" });
+      const confirm = page.locator('[data-testid="logout-confirm"]');
+      if ((await confirm.count()) > 0) {
+        await Promise.all([
+          page
+            .waitForURL((url) => /\/login/i.test(url.href), { timeout: 10_000 })
+            .catch(() => {}),
+          confirm.click(),
+        ]);
+      }
       await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     }
 

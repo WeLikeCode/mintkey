@@ -39,13 +39,14 @@ test("DIAGNOSE submit tenants new", async ({ page }) => {
   // fill the form
   const inputs = page.locator("section[data-css] input, form input");
   console.log("input count:", await inputs.count());
-  const slug = page.locator('input[name="slug"], input').first();
+  // the top bar's logout form carries a hidden _csrf input before the form fields: skip hidden inputs
+  const slug = page.locator('input[name="slug"], input:not([type="hidden"])').first();
   await slug.fill("diag-test-tenant-x");
   // there is a display_name input
   const all = await page.locator("input").all();
   for (const i of all) { const n = await i.getAttribute("name"); console.log("input name:", n); }
   // pick by label proximity is hard; just fill display_name if it exists
-  const dn = page.locator('input').nth(1);
+  const dn = page.locator('input:not([type="hidden"])').nth(1);
   await dn.fill("Diag Test Tenant X");
   await page.getByRole("button", { name: /save/i }).click();
   await page.waitForTimeout(2500);

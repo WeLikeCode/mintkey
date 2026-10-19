@@ -86,7 +86,7 @@ test.describe("26 — Smoke regression: 7 resource lists + tenants new-form", ()
 
   test("tenants new-form renders without record.errors TypeError", async ({ page, consoleErrors }) => {
     await page.goto("/admin/resources/tenants/actions/new", { waitUntil: "domcontentloaded" });
-    await page.locator("form").first().waitFor({ state: "visible", timeout: 25_000 }).catch(() => {});
+    await page.locator('form:not([action="/admin/logout"])').first().waitFor({ state: "visible", timeout: 25_000 }).catch(() => {});
 
     const body = await bodyText(page);
     for (const needle of JS_ERROR_NEEDLES) {
@@ -97,3 +97,4 @@ test.describe("26 — Smoke regression: 7 resource lists + tenants new-form", ()
     void consoleErrors;
   });
 });
+
