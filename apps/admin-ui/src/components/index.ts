@@ -89,3 +89,6 @@ componentLoader.override(
   "DefaultShowProperty",
   "./properties/DescriptiveShowProperty"
 );
+
+// Top-bar logout is a CSRF-protected POST form instead of the default GET link.
+componentLoader.override("LoggedIn", "./app/LoggedIn");

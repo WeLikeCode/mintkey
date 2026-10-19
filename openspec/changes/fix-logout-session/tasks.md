@@ -10,14 +10,14 @@ unless a task names them.
 
 ## 1. admin-api: delete a session row
 
-- [ ] 1.1 Add `delete_session(token: str) -> bool` to `apps/admin-api/src/admin_api/auth/sessions.py`
+- [x] 1.1 Add `delete_session(token: str) -> bool` to `apps/admin-api/src/admin_api/auth/sessions.py`
   - Red: `tests/unit/admin_api/test_delete_session.py` with a fake `AsyncSessionLocal` that records statements and
     params: "A session row is deleted", "No row to delete", "A token that is not a UUID".
   - Green: lazy imports and `text()` with string literals and a bound `token`, as `validate_session` does.
 
 ## 2. admin-api: evict a token from the whoami cache
 
-- [ ] 2.1 Add `_evict_whoami(session_token: str) -> None` and the counter `_WHOAMI_EVICTIONS` to `apps/admin-api/src/admin_api/api/auth.py`, and make `_whoami_lookup` skip the store when the counter moved
+- [x] 2.1 Add `_evict_whoami(session_token: str) -> None` and the counter `_WHOAMI_EVICTIONS` to `apps/admin-api/src/admin_api/api/auth.py`, and make `_whoami_lookup` skip the store when the counter moved
   - Red: `tests/unit/admin_api/test_whoami_eviction.py`: "Eviction removes only that token", "Evicting a token that
     is not cached", "A lookup in flight during logout is not cached" (patch `admin_api.api.auth.validate_session` with
     a coroutine that calls `_evict_whoami(T)` and then returns a context with `operator_id` and `tenant_id`; the fake
@@ -26,7 +26,7 @@ unless a task names them.
 
 ## 3. admin-api: logout ends the session
 
-- [ ] 3.1 Rewrite `logout` in `apps/admin-api/src/admin_api/api/auth.py` (keep the name `logout`, listed in `AUDIT_EXEMPT` of `tests/acceptance/test_audit_coverage.py`, and keep `csrf_exempt("/v1/auth/logout")`): delete the row, evict the token, answer 204 that clears both cookies
+- [x] 3.1 Rewrite `logout` in `apps/admin-api/src/admin_api/api/auth.py` (keep the name `logout`, listed in `AUDIT_EXEMPT` of `tests/acceptance/test_audit_coverage.py`, and keep `csrf_exempt("/v1/auth/logout")`): delete the row, evict the token, answer 204 that clears both cookies
   - Red: `tests/unit/admin_api/test_logout_session.py`: "The old cookie is refused after logout inside the cache
     window" (internal login, whoami 200, assert the cache entry, logout, whoami 401), "Logout clears both cookies",
     "Logout without a session cookie", "Logout twice with the same cookie", "Concurrent logouts with the same cookie",
@@ -36,7 +36,7 @@ unless a task names them.
     `delete_session(token)` (imported from `admin_api.auth.sessions` next to `create_session`), calls
     `_evict_whoami(token)`, and returns `Response(status_code=204)` after `delete_cookie("mintkey_session", path="/")`
     and `delete_cookie("csrf_token", path="/")` on that same response object. No cookie: no delete, no eviction.
-- [ ] 3.2 Answer 503 `session_store_unavailable` when `delete_session` raises, and add the 503 of `POST /v1/auth/logout` to `docs/architecture/contracts/rest/openapi.yaml`
+- [x] 3.2 Answer 503 `session_store_unavailable` when `delete_session` raises, and add the 503 of `POST /v1/auth/logout` to `docs/architecture/contracts/rest/openapi.yaml`
   - Red: `tests/unit/admin_api/test_logout_store_failure.py`: "The session store raises" (`delete_session` raises
     `OSError`; `caplog.set_level(logging.ERROR, logger="admin_api.api.auth")`) and "The contract lists the outcomes"
     (`yaml.safe_load` of the contract file).
@@ -47,7 +47,7 @@ unless a task names them.
 
 ## 4. admin-ui: logout routes in `apps/admin-ui/src/routes/logout.ts`
 
-- [ ] 4.1 Add `readCookie(header: string | undefined, name: string): string | undefined` and `logoutGuard(req, res, next)`
+- [x] 4.1 Add `readCookie(header: string | undefined, name: string): string | undefined` and `logoutGuard(req, res, next)`
   - Red: `apps/admin-ui/tests/test_logout_guard.test.ts` with fake `req`/`res`/`next`: "A missing token is refused",
     "A wrong token is refused" (same length and another length), "Nothing to log out", a valid token calls `next()`
     once; `readCookie` matches the exact name (`xcsrf_token=a` is not `csrf_token`), keeps a value's later `=`
@@ -56,7 +56,7 @@ unless a task names them.
   - Green: the session test is `readCookie(cookie, "mintkey_session")` or `req.session?.adminUser`; the token is
     `req.body?._csrf` when it is a string; compare with `crypto.timingSafeEqual` on equal-length buffers; 403 is
     `text/plain` `Logout refused: missing or invalid CSRF token` and sets no cookie.
-- [ ] 4.2 Make `createLogoutHandler(adminApiUrl)` destroy the AdminJS session and clear `adminjs.sid` (export `ADMINJS_SESSION_COOKIE = "adminjs.sid"`), keeping its name, its admin-api call and its 302
+- [x] 4.2 Make `createLogoutHandler(adminApiUrl)` destroy the AdminJS session and clear `adminjs.sid` (export `ADMINJS_SESSION_COOKIE = "adminjs.sid"`), keeping its name, its admin-api call and its 302
   - Red: `apps/admin-ui/tests/test_logout_session.test.ts` with supertest and `express-session` (name `adminjs.sid`,
     a `MemoryStore`, a test route that sets `req.session.adminUser`), the handler at `POST /admin/logout` behind
     `express.urlencoded` only: "A full logout", "admin-api is unreachable or refuses" (fetch rejects; fetch answers
@@ -66,7 +66,7 @@ unless a task names them.
   - Green: call admin-api only when `readCookie(req.headers.cookie, "mintkey_session")` is set; await
     `req.session.destroy` (wrapped in a promise) when `req.session` exists, then `res.clearCookie(ADMINJS_SESSION_COOKIE,
     { path: "/" })`; then clear `mintkey_session` and `csrf_token` as today; warnings go to `console.warn`.
-- [ ] 4.3 Add `renderLogoutPage(csrfToken: string): string`, `logoutPageHandler(req, res)` and `createLogoutRouter(adminApiUrl: string, rateLimiter: RequestHandler): Router`
+- [x] 4.3 Add `renderLogoutPage(csrfToken: string): string`, `logoutPageHandler(req, res)` and `createLogoutRouter(adminApiUrl: string, rateLimiter: RequestHandler): Router`
   - Red: `apps/admin-ui/tests/test_logout_router.test.ts` (supertest, `express-session`, the router with a counting
     limiter): "GET renders a confirmation form", "GET without a CSRF cookie", "GET without a session", "The router serves
     both methods behind the limiter".
@@ -76,7 +76,7 @@ unless a task names them.
 
 ## 5. admin-ui: top bar, wiring, end-to-end spec
 
-- [ ] 5.1 Add the `LoggedIn` override `apps/admin-ui/src/components/app/LoggedIn.tsx` and register it in `apps/admin-ui/src/components/index.ts` with `componentLoader.override("LoggedIn", "./app/LoggedIn")`
+- [x] 5.1 Add the `LoggedIn` override `apps/admin-ui/src/components/app/LoggedIn.tsx` and register it in `apps/admin-ui/src/components/index.ts` with `componentLoader.override("LoggedIn", "./app/LoggedIn")`
   - Red: `apps/admin-ui/tests/LoggedIn.render.test.tsx` (jsdom project; `fireEvent.submit(form)` fires the submit
     event): "The top bar renders the form", "Submit sends the current CSRF cookie", "A session without a CSRF token";
     and in `apps/admin-ui/tests/test_logout_wiring.test.ts` (reads the source, as
@@ -84,7 +84,7 @@ unless a task names them.
   - Green: plain `div`, `span`, `form`, `input` and `button` elements (no `@adminjs/design-system` import), props
     `session` and `paths` as AdminJS passes them to `LoggedIn`; the hidden input uses `defaultValue`, and the form's
     `onSubmit` writes the `csrf_token` value parsed from `document.cookie` into it when present (no `preventDefault`).
-- [ ] 5.2 Mount `createLogoutRouter(ADMIN_API_URL, logoutRateLimit)` in `apps/admin-ui/src/index.ts` in place of `app.get("/admin/logout", ...)`, and write the e2e spec `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`
+- [x] 5.2 Mount `createLogoutRouter(ADMIN_API_URL, logoutRateLimit)` in `apps/admin-ui/src/index.ts` in place of `app.get("/admin/logout", ...)`, and write the e2e spec `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`
   - Red: append to `apps/admin-ui/tests/test_logout_wiring.test.ts`: "The server mounts the routes". In the same red
     step write the Playwright files; the L4 gates do not run them (`playwright.yml` does):
     - `apps/admin-ui/e2e/tests/21-logout-replay.spec.ts`, structured as `21-logout-session.spec.ts` (imports from

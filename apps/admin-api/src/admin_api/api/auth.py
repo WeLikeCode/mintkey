@@ -28,7 +28,7 @@ from admin_api.auth.oidc import (
     oidc_token_exchange,
 )
 from admin_api.auth.oidc_state import OidcStateRepository
-from admin_api.auth.sessions import create_session, validate_session
+from admin_api.auth.sessions import create_session, delete_session, validate_session
 from admin_api.middleware.csrf import no_csrf
 
 _logger = logging.getLogger(__name__)
@@ -117,9 +117,39 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
 
 
 @router.post("/logout")
-async def logout(response: Response) -> Response:
-    response.delete_cookie("mintkey_session")
-    return Response(status_code=204)
+async def logout(request: Request) -> Response:
+    """Delete the server-side session row, evict its whoami cache entry and
+    answer 204 with both session cookies cleared.
+
+    Source: operator-logout (issue #345).
+    """
+    session_token = request.cookies.get("mintkey_session")
+    delete_failed = False
+    if session_token:
+        try:
+            await delete_session(session_token)
+        except Exception as exc:
+            delete_failed = True
+            _logger.error(
+                "auth.logout_session_delete_failed error_type=%s",
+                type(exc).__name__,
+            )
+        _evict_whoami(session_token)
+
+    resp: Response
+    if delete_failed:
+        resp = JSONResponse(
+            status_code=503,
+            content={
+                "mintkey:code": "session_store_unavailable",
+                "title": "Session store unavailable",
+            },
+        )
+    else:
+        resp = Response(status_code=204)
+    resp.delete_cookie("mintkey_session", path="/")
+    resp.delete_cookie("csrf_token", path="/")
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +159,16 @@ async def logout(response: Response) -> Response:
 # (session_token → (result_dict, fetched_at)) simple TTL cache
 _WHOAMI_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _WHOAMI_TTL = 15.0
+# Bumped on every eviction so a lookup in flight during logout cannot re-cache
+# a token that was just deleted from the session store.
+_WHOAMI_EVICTIONS = 0
+
+
+def _evict_whoami(session_token: str) -> None:
+    """Remove a token from the whoami cache and mark the cache as changed."""
+    global _WHOAMI_EVICTIONS
+    _WHOAMI_CACHE.pop(session_token, None)
+    _WHOAMI_EVICTIONS += 1
 
 
 async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
@@ -138,6 +178,7 @@ async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
     if cached is not None and (now - cached[1]) < _WHOAMI_TTL:
         return cached[0]
 
+    evictions_at_start = _WHOAMI_EVICTIONS
     ctx = await validate_session(session_token)
     if ctx is None:
         return None
@@ -187,11 +228,14 @@ async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
         "is_platform_admin": bool(row[3]),
         "auth_method": auth_method,
     }
-    _WHOAMI_CACHE[session_token] = (data, now)
-    # Prune cache: evict entries older than TTL to avoid unbounded growth
-    stale = [k for k, v in _WHOAMI_CACHE.items() if (now - v[1]) >= _WHOAMI_TTL]
-    for k in stale:
-        _WHOAMI_CACHE.pop(k, None)
+    # A logout that evicted this token while the lookup was in flight must not
+    # be undone by this store.
+    if _WHOAMI_EVICTIONS == evictions_at_start:
+        _WHOAMI_CACHE[session_token] = (data, now)
+        # Prune cache: evict entries older than TTL to avoid unbounded growth
+        stale = [k for k, v in _WHOAMI_CACHE.items() if (now - v[1]) >= _WHOAMI_TTL]
+        for k in stale:
+            _WHOAMI_CACHE.pop(k, None)
 
     return data
 
@@ -387,3 +431,4 @@ async def _emit_session_created_audit(
                     "ip": ip,
                 },
             )
+

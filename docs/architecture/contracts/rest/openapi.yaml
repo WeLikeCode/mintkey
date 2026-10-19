@@ -361,6 +361,8 @@ paths:
               schema:
                 type: string
               description: Cookie cleared with `Max-Age=0`.
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /v1/auth/whoami:
     get:
