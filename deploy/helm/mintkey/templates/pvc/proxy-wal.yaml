@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mintkey.fullname" . }}-proxy-wal
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy-plugin
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.proxyPlugin.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.proxyPlugin.storage }}

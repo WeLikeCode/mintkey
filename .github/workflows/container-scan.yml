@@ -99,6 +99,11 @@ jobs:
             context: apps/jaeger-auth
             dockerfile: apps/jaeger-auth/Dockerfile
             image: mintkey-jaeger-auth
+          # liquibase: migration image (apps/liquibase/Dockerfile), published by publish.yml
+          - service: liquibase
+            context: .
+            dockerfile: apps/liquibase/Dockerfile
+            image: mintkey-liquibase
           # ssh-proxy added in fix/ssh-proxy-integration (PR #138)
           - service: ssh-proxy
             context: .

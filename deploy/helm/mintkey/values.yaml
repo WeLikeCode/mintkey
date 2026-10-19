@@ -1,0 +1,186 @@
+global:
+  imageRegistry: ghcr.io/welikecode
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+  imagePullSecret: ""  # name of an existing pull secret, or ""
+  env: production      # MINTKEY_ENV
+  # Env vars appended to every Go-service container below (broker, proxyPlugin,
+  # kongSyncer, vaultAdapter, sshProxy, emailProxy) — e.g. OTEL_* exporter
+  # config set via GitOps Helm values, no chart/code change required.
+  # List of {name, value} or {name, valueFrom: {...}}.
+  extraEnv: []
+
+database:
+  mode: chart  # "chart" = manage postgres in-cluster; "external" = provide DSN via secret
+  # For mode=external, create a Secret with key DATABASE_URL and reference below
+  externalSecretName: ""
+
+postgres:
+  image: postgres:16@sha256:b6ccf02e9b47eac0d67b5eaa0ef56fd59163bffa5506f64e96ceb5053130ec86
+  storage: 10Gi
+  storageClassName: ""
+  resources:
+    requests: {cpu: "250m", memory: "256Mi"}
+    limits: {cpu: "1000m", memory: "512Mi"}
+
+keycloak:
+  image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+  resources:
+    requests: {cpu: "250m", memory: "512Mi"}
+    limits: {cpu: "1000m", memory: "1Gi"}
+
+vaultAdapter:
+  image: mintkey-vault-adapter
+  resources:
+    requests: {cpu: "50m", memory: "64Mi"}
+    limits: {cpu: "250m", memory: "128Mi"}
+  storage:
+    data: 1Gi
+    kek: 100Mi
+  storageClassName: ""
+  # Production: KEK loaded from mounted file (env-var form rejected in production)
+  # Create a Secret named mintkey-secrets with key MINTKEY_VAULT_KEK containing 32 raw bytes
+  secretName: mintkey-secrets
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+adminApi:
+  image: mintkey-admin-api
+  replicas: 1
+  # NOTE: OIDC login state lives in Postgres (oidc_login_state), so more than one replica is safe.
+  # Confirm the signed-request keypair (kubernetes-readiness A3) is provisioned before scaling.
+  resources:
+    requests: {cpu: "100m", memory: "128Mi"}
+    limits: {cpu: "500m", memory: "256Mi"}
+
+adminUi:
+  image: mintkey-admin-ui
+  replicas: 1
+  resources:
+    requests: {cpu: "100m", memory: "256Mi"}
+    limits: {cpu: "500m", memory: "512Mi"}
+
+mcpServer:
+  image: mintkey-mcp-server
+  replicas: 1
+  resources:
+    requests: {cpu: "100m", memory: "128Mi"}
+    limits: {cpu: "500m", memory: "256Mi"}
+
+broker:
+  image: mintkey-broker
+  replicas: 1
+  resources:
+    requests: {cpu: "50m", memory: "64Mi"}
+    limits: {cpu: "250m", memory: "128Mi"}
+  storage: 1Gi
+  storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+kong:
+  image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
+  replicas: 1
+  resources:
+    requests: {cpu: "100m", memory: "256Mi"}
+    limits: {cpu: "500m", memory: "512Mi"}
+
+kongSyncer:
+  image: mintkey-kong-syncer
+  replicas: 1
+  resources:
+    requests: {cpu: "50m", memory: "64Mi"}
+    limits: {cpu: "250m", memory: "128Mi"}
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+proxyPlugin:
+  image: mintkey-proxy-plugin
+  replicas: 1
+  resources:
+    requests: {cpu: "50m", memory: "64Mi"}
+    limits: {cpu: "250m", memory: "128Mi"}
+  storage: 1Gi
+  storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+sshProxy:
+  image: mintkey-ssh-proxy
+  replicas: 1
+  serviceType: ClusterIP  # Use LoadBalancer or NodePort for external reach; see README
+  resources:
+    requests: {cpu: "50m", memory: "256Mi"}
+    limits: {cpu: "250m", memory: "512Mi"}
+  storage:
+    hostKey: 100Mi
+    recordings: 10Gi
+  storageClassName: ""
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+emailProxy:
+  image: mintkey-email-proxy
+  replicas: 1
+  resources:
+    requests: {cpu: "50m", memory: "64Mi"}
+    limits: {cpu: "250m", memory: "128Mi"}
+  extraEnv: []  # see global.extraEnv — service-specific overrides/additions
+
+observability:
+  enabled: false  # Set to true to deploy prometheus/grafana/jaeger/otel-collector
+  grafana:
+    image: grafana/grafana:10.3.3@sha256:8640e5038e83ca4554ed56b9d76375158bcd51580238c6f5d8adaf3f20dd5379
+    storage: 5Gi
+    storageClassName: ""
+  prometheus:
+    image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
+    storage: 10Gi
+    storageClassName: ""
+  jaeger:
+    image: jaegertracing/all-in-one:1.56@sha256:d2cd4c226624bdc116decd3106091b4df9882da8db42f8550293596cab79b8ea
+  jaegerAuth:
+    image: mintkey-jaeger-auth
+  otelCollector:
+    image: otel/opentelemetry-collector-contrib:0.104.0@sha256:e07e325e303e86f4a87a617491e921b579a92da6d404007394757ac910bf9587
+
+ingress:
+  enabled: true
+  className: ""  # e.g. nginx, traefik
+  annotations: {}
+  # Each service host — no defaults to localhost (operators must provide real hostnames)
+  adminApi:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  adminUi:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  mcpServer:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  kongProxy:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  keycloak:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  grafana:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  emailProxy:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+  jaegerAuth:
+    host: ""
+    tls: false
+    tlsSecretName: ""
+
+# Name of the externally-created Kubernetes Secret containing all Mintkey secrets.
+# See README.md for the complete list of required keys.
+secretName: mintkey-secrets
+
+# Bootstrap secrets volume — populated by seed-job hook Job
+bootstrapSecretsStorage: 1Gi
+bootstrapSecretsStorageClassName: ""

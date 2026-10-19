@@ -1,0 +1,8 @@
+apiVersion: v2
+name: mintkey
+description: Mintkey credential broker for AI agents
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords: ["mintkey", "credential-broker", "ai-agents"]
+home: https://github.com/WeLikeCode/mintkey

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -918,6 +919,98 @@ func TestExchangeTimeout_DefaultIsZeroMeansDefault(t *testing.T) {
 	}
 	if result.Token != "default-timeout-token" {
 		t.Errorf("expected 'default-timeout-token', got %q", result.Token)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Form-encoded body / JSON backward-compat tests
+// ---------------------------------------------------------------------------
+
+func TestExchange_FormEncoded_SendsUrlEncodedBody(t *testing.T) {
+	// Verify that when token_request_headers sets Content-Type: application/x-www-form-urlencoded,
+	// the exchanger posts a form-encoded body (not JSON) to the token endpoint.
+	var gotBody string
+	var gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"access_token":"tok123","expires_in":3600}`)
+	}))
+	defer srv.Close()
+
+	te := &TokenExchanger{httpClient: srv.Client(), allowPrivate: true}
+	result, err := te.Exchange(context.Background(), ExchangeRequest{
+		TokenURL: srv.URL,
+		CredentialFields: map[string]string{
+			"client_id":     "cid",
+			"client_secret": "csec",
+			"username":      "user@example.com",
+			"password":      "pass",
+			"grant_type":    "password",
+		},
+		TokenResponsePath:   "$.access_token",
+		TokenRequestHeaders: map[string]string{"Content-Type": "application/x-www-form-urlencoded"},
+	})
+	if err != nil {
+		t.Fatalf("Exchange returned error: %v", err)
+	}
+	if result.Token != "tok123" {
+		t.Errorf("expected token tok123, got %q", result.Token)
+	}
+	if gotContentType != "application/x-www-form-urlencoded" {
+		t.Errorf("expected Content-Type application/x-www-form-urlencoded, got %q", gotContentType)
+	}
+	// Parse form body and verify all fields are present.
+	vals, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("body is not valid form encoding: %v (body: %q)", err, gotBody)
+	}
+	wantFields := map[string]string{
+		"client_id": "cid", "client_secret": "csec",
+		"username": "user@example.com", "password": "pass", "grant_type": "password",
+	}
+	for k, want := range wantFields {
+		if got := vals.Get(k); got != want {
+			t.Errorf("form field %q: want %q, got %q", k, want, got)
+		}
+	}
+}
+
+func TestExchange_JSON_BackwardCompat_NoContentTypeHeader(t *testing.T) {
+	// Verify that when token_request_headers is nil/empty the body is still JSON.
+	var gotBody string
+	var gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"access_token":"json-tok","expires_in":1800}`)
+	}))
+	defer srv.Close()
+
+	te := &TokenExchanger{httpClient: srv.Client(), allowPrivate: true}
+	result, err := te.Exchange(context.Background(), ExchangeRequest{
+		TokenURL:            srv.URL,
+		CredentialFields:    map[string]string{"user": "alice", "password": "secret"},
+		TokenResponsePath:   "$.access_token",
+		TokenRequestHeaders: nil,
+	})
+	if err != nil {
+		t.Fatalf("Exchange returned error: %v", err)
+	}
+	if result.Token != "json-tok" {
+		t.Errorf("expected json-tok, got %q", result.Token)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", gotContentType)
+	}
+	// Body must be valid JSON.
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(gotBody), &parsed); err != nil {
+		t.Errorf("body is not valid JSON: %v (body: %q)", err, gotBody)
 	}
 }
 

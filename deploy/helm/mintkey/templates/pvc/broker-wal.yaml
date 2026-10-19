@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mintkey.fullname" . }}-broker-wal
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: broker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.broker.storageClassName | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.broker.storage }}

@@ -111,6 +111,11 @@ def apply_migrations(postgres_container: PostgresContainer):
         f"--password={password}",
         "--changeLogFile=changelog/db.changelog-master.yaml",
         "update",
+        # changeset 015 substitutes these (kubernetes-readiness D4); without them
+        # Liquibase would set the role passwords to the literal "${db_app_password}".
+        # -D is an option of `update`, so it must follow the command.
+        "-Ddb_app_password=mintkey_app_password",
+        "-Ddb_subscriber_password=mintkey_subscriber_password",
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)

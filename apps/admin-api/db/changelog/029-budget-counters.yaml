@@ -2,6 +2,12 @@ databaseChangeLog:
   - changeSet:
       id: "029-budget-counters"
       author: mintkey
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            tableExists:
+              tableName: budget_counters
+              schemaName: public
       changes:
         - createTable:
             tableName: budget_counters

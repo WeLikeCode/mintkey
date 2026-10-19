@@ -1,0 +1,284 @@
+{{- if .Values.ingress.enabled }}
+{{- if .Values.ingress.adminApi.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-admin-api
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-api
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.adminApi.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.adminApi.host }}
+      secretName: {{ .Values.ingress.adminApi.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.adminApi.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-admin-api
+                port:
+                  number: 8080
+{{- end }}
+{{- if .Values.ingress.adminUi.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-admin-ui
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin-ui
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.adminUi.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.adminUi.host }}
+      secretName: {{ .Values.ingress.adminUi.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.adminUi.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-admin-ui
+                port:
+                  number: 8081
+{{- end }}
+{{- if .Values.ingress.mcpServer.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-mcp-server
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-server
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.mcpServer.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.mcpServer.host }}
+      secretName: {{ .Values.ingress.mcpServer.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.mcpServer.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-mcp-server
+                port:
+                  number: 8082
+{{- end }}
+{{- if .Values.ingress.kongProxy.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong-proxy
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.kongProxy.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.kongProxy.host }}
+      secretName: {{ .Values.ingress.kongProxy.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.kongProxy.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-kong
+                port:
+                  number: 8000
+{{- end }}
+{{- if .Values.ingress.keycloak.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-keycloak
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.keycloak.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.keycloak.host }}
+      secretName: {{ .Values.ingress.keycloak.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.keycloak.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-keycloak
+                port:
+                  number: 8443
+{{- end }}
+{{- if .Values.ingress.emailProxy.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-email-proxy
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: email-proxy
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.emailProxy.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.emailProxy.host }}
+      secretName: {{ .Values.ingress.emailProxy.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.emailProxy.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-email-proxy
+                port:
+                  number: 8088
+{{- end }}
+{{- if .Values.observability.enabled }}
+{{- if .Values.ingress.grafana.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.grafana.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.grafana.host }}
+      secretName: {{ .Values.ingress.grafana.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.grafana.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-grafana
+                port:
+                  number: 3000
+{{- end }}
+{{- if .Values.ingress.jaegerAuth.host }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "mintkey.fullname" . }}-jaeger-auth
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger-auth
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.jaegerAuth.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.jaegerAuth.host }}
+      secretName: {{ .Values.ingress.jaegerAuth.tlsSecretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.jaegerAuth.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintkey.fullname" . }}-jaeger-auth
+                port:
+                  number: 4180
+{{- end }}
+{{- end }}
+{{- end }}

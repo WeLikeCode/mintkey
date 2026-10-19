@@ -1,0 +1,391 @@
+{{- if .Values.observability.enabled }}
+{{- $keycloakScheme := ternary "https" "http" .Values.ingress.keycloak.tls -}}
+{{- $keycloakHost := .Values.ingress.keycloak.host -}}
+{{- $grafanaScheme := ternary "https" "http" .Values.ingress.grafana.tls -}}
+{{- $grafanaHost := .Values.ingress.grafana.host -}}
+{{- $grafanaRootUrl := ternary (printf "%s://%s" $grafanaScheme $grafanaHost) "http://localhost:3000" (ne $grafanaHost "") -}}
+{{- $keycloakBaseUrl := ternary (printf "%s://%s" $keycloakScheme $keycloakHost) "http://keycloak:8080" (ne $keycloakHost "") -}}
+---
+# Grafana Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: grafana
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: grafana
+          image: {{ .Values.observability.grafana.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: GF_SERVER_HTTP_PORT
+              value: "3000"
+            - name: GF_SERVER_ROOT_URL
+              value: {{ $grafanaRootUrl | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+              value: "true"
+            - name: GF_AUTH_GENERIC_OAUTH_NAME
+              value: "Mintkey (Keycloak)"
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              value: "grafana"
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE
+              value: /run/secrets/mintkey/bootstrap-secrets/grafana_oidc_client_secret
+            - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+              value: "openid profile email"
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              value: {{ printf "%s/realms/mintkey/protocol/openid-connect/auth" $keycloakBaseUrl | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              value: {{ printf "%s/realms/mintkey/protocol/openid-connect/token" $keycloakBaseUrl | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              value: {{ printf "%s/realms/mintkey/protocol/openid-connect/userinfo" $keycloakBaseUrl | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH
+              value: "contains(groups[*], 'grafana-admin') && 'Admin' || 'Viewer'"
+          ports:
+            - containerPort: 3000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+            - name: bootstrap-secrets
+              mountPath: /run/secrets/mintkey/bootstrap-secrets
+              readOnly: true
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: grafana-dashboards
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-grafana-data
+        - name: bootstrap-secrets
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-bootstrap-secrets
+        - name: grafana-datasources
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-grafana-datasources
+        - name: grafana-dashboards
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-grafana-dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+# Prometheus Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-prometheus
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prometheus
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: prometheus
+          image: {{ .Values.observability.prometheus.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+          ports:
+            - containerPort: 9090
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: prometheus-config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+            - name: prometheus-alerts
+              mountPath: /etc/prometheus/alert_rules.yml
+              subPath: alert_rules.yml
+            - name: prometheus-data
+              mountPath: /prometheus
+      volumes:
+        - name: prometheus-config
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-prometheus-config
+        - name: prometheus-alerts
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-prometheus-alerts
+        - name: prometheus-data
+          persistentVolumeClaim:
+            claimName: {{ include "mintkey.fullname" . }}-prometheus-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-prometheus
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+---
+# Jaeger Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-jaeger
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: jaeger
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: jaeger
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: jaeger
+          image: {{ .Values.observability.jaeger.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 16686
+              name: ui
+            - containerPort: 4318
+              name: otlp-http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-jaeger
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+---
+# Jaeger-auth (oauth2-proxy) Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-jaeger-auth
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: jaeger-auth
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: jaeger-auth
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: jaeger-auth
+          image: {{ include "mintkey.image" (dict "image" .Values.observability.jaegerAuth.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: UPSTREAM_URL
+              value: http://{{ include "mintkey.fullname" . }}-jaeger:16686
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:4180"
+            - name: KEYCLOAK_BASE_URL
+              value: {{ $keycloakBaseUrl | quote }}
+            - name: KEYCLOAK_REALM
+              value: "mintkey"
+            - name: JAEGER_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JAEGER_OIDC_CLIENT_SECRET
+          ports:
+            - containerPort: 4180
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-jaeger-auth
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger-auth
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: jaeger-auth
+  ports:
+    - name: http
+      port: 4180
+      targetPort: 4180
+---
+# OTel Collector Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-otel-collector
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: otel-collector
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: otel-collector
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: otel-collector
+          image: {{ .Values.observability.otelCollector.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - --config=/etc/otelcol/config.yaml
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 8889
+              name: prometheus
+            - containerPort: 13133
+              name: health
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: otel-config
+              mountPath: /etc/otelcol/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: otel-config
+          configMap:
+            name: {{ include "mintkey.fullname" . }}-otel-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-otel-collector
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: prometheus
+      port: 8889
+      targetPort: 8889
+    - name: health
+      port: 13133
+      targetPort: 13133
+{{- end }}

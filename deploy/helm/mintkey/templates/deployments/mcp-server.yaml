@@ -1,0 +1,101 @@
+{{- $mcpScheme := ternary "https" "http" .Values.ingress.mcpServer.tls -}}
+{{- $mcpPublicUrl := ternary (printf "%s://%s" $mcpScheme .Values.ingress.mcpServer.host) "" (ne .Values.ingress.mcpServer.host "") -}}
+{{- $kongScheme := ternary "https" "http" .Values.ingress.kongProxy.tls -}}
+{{- $kongPublicUrl := ternary (printf "%s://%s" $kongScheme .Values.ingress.kongProxy.host) "" (ne .Values.ingress.kongProxy.host "") -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-mcp-server
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-server
+spec:
+  replicas: {{ .Values.mcpServer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mcp-server
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-server
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-admin-api
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://{{ include "mintkey.fullname" . }}-admin-api:8080/v1/health > /dev/null 2>&1; do
+                echo "Waiting for admin-api..."
+                sleep 5
+              done
+      containers:
+        - name: mcp-server
+          image: {{ include "mintkey.image" (dict "image" .Values.mcpServer.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATABASE_URL
+            - name: ADMIN_API_BASE_URL
+              value: http://{{ include "mintkey.fullname" . }}-admin-api:8080
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: BROKER_BASE_URL
+              value: http://{{ include "mintkey.fullname" . }}-broker:8083
+            - name: MINTKEY_MCP_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_MCP_SERVICE_TOKEN
+            - name: VAULT_GRPC_ADDR
+              value: {{ include "mintkey.fullname" . }}-vault-adapter:8084
+            - name: MINTKEY_VAULT_MCP_IDENTITY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_MCP_IDENTITY_ID
+            - name: MINTKEY_VAULT_MCP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINTKEY_VAULT_MCP_TOKEN
+            - name: MINTKEY_MCP_PUBLIC_URL
+              value: {{ $mcpPublicUrl | quote }}
+            - name: MINTKEY_PROXY_PUBLIC_URL
+              value: {{ $kongPublicUrl | quote }}
+            - name: MINTKEY_SSH_PROXY_PUBLIC_URL
+              value: ""
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.mcpServer.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-mcp-server
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-server
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-server
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082

@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong-syncer
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong-syncer
+spec:
+  replicas: {{ .Values.kongSyncer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "mintkey.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kong-syncer
+  template:
+    metadata:
+      labels:
+        {{- include "mintkey.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: kong-syncer
+    spec:
+      serviceAccountName: {{ include "mintkey.serviceAccountName" . }}
+      {{- include "mintkey.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        - name: wait-for-kong
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "mintkey.fullname" . }}-kong 8000; do
+                echo "Waiting for kong..."
+                sleep 2
+              done
+        - name: wait-for-admin-api
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://{{ include "mintkey.fullname" . }}-admin-api:8080/v1/health > /dev/null 2>&1; do
+                echo "Waiting for admin-api..."
+                sleep 5
+              done
+      containers:
+        - name: kong-syncer
+          image: {{ include "mintkey.image" (dict "image" .Values.kongSyncer.image "root" .) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: MINTKEY_ENV
+              value: {{ .Values.global.env }}
+            - name: KONG_ADMIN_URL
+              value: http://{{ include "mintkey.fullname" . }}-kong-admin:8001
+            - name: PROXY_PLUGIN_URL
+              # Upstream every generated Kong service routes to. On k8s this MUST be
+              # the release-prefixed proxy-plugin Service; the kong-syncer's built-in
+              # default "http://proxy-plugin:8086" only resolves under docker-compose,
+              # so without this Kong returns "name resolution failed" for every
+              # brokered call. Requires a kong-syncer image with WeLikeCode/mintkey#264
+              # (PROXY_PLUGIN_URL support); with an older image this env is ignored and
+              # the proxy-plugin alias Service is still needed.
+              value: http://{{ include "mintkey.fullname" . }}-proxy-plugin:8086
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  # Go (lib/pq) can't parse the SQLAlchemy `postgresql+asyncpg://`
+                  # DSN the Python services use — it needs a plain `postgres://`
+                  # DSN, same as the broker. Using DATABASE_URL (the asyncpg form)
+                  # broke the pq.Listener ('missing "=" in connection info string'),
+                  # so the syncer never processed the service.registered NOTIFY and
+                  # never published Kong routes for newly-registered services.
+                  key: BROKER_DATABASE_URL
+            - name: KONG_SYNCER_HTTP_PORT
+              value: "8085"
+            {{- include "mintkey.extraEnv" (dict "root" . "service" .Values.kongSyncer) | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: 8085
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.kongSyncer.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintkey.fullname" . }}-kong-syncer
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kong-syncer
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mintkey.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kong-syncer
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085

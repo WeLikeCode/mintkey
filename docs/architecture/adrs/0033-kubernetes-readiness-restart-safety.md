@@ -1,0 +1,1 @@
+../01-architecture/adr/0033-kubernetes-readiness-restart-safety.md
