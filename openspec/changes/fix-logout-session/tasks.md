@@ -56,7 +56,7 @@ unless a task names them.
   - Green: the session test is `readCookie(cookie, "mintkey_session")` or `req.session?.adminUser`; the token is
     `req.body?._csrf` when it is a string; compare with `crypto.timingSafeEqual` on equal-length buffers; 403 is
     `text/plain` `Logout refused: missing or invalid CSRF token` and sets no cookie.
-- [ ] 4.2 Make `createLogoutHandler(adminApiUrl)` destroy the AdminJS session and clear `adminjs.sid` (export `ADMINJS_SESSION_COOKIE = "adminjs.sid"`), keeping its name, its admin-api call and its 302
+- [x] 4.2 Make `createLogoutHandler(adminApiUrl)` destroy the AdminJS session and clear `adminjs.sid` (export `ADMINJS_SESSION_COOKIE = "adminjs.sid"`), keeping its name, its admin-api call and its 302
   - Red: `apps/admin-ui/tests/test_logout_session.test.ts` with supertest and `express-session` (name `adminjs.sid`,
     a `MemoryStore`, a test route that sets `req.session.adminUser`), the handler at `POST /admin/logout` behind
     `express.urlencoded` only: "A full logout", "admin-api is unreachable or refuses" (fetch rejects; fetch answers

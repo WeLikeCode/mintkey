@@ -16,6 +16,8 @@ import type { NextFunction, Request, Response } from "express";
 
 const REFUSED_BODY = "Logout refused: missing or invalid CSRF token";
 
+export const ADMINJS_SESSION_COOKIE = "adminjs.sid";
+
 /**
  * Read a cookie value from a raw Cookie header.
  *
@@ -72,16 +74,39 @@ export function logoutGuard(req: Request, res: Response, next: NextFunction): vo
   next();
 }
 
+function destroySession(session: Request["session"]): Promise<void> {
+  return new Promise((resolve) => {
+    if (!session) {
+      resolve();
+      return;
+    }
+    session.destroy((error: unknown) => {
+      if (error) {
+        console.warn("logout: failed to destroy the AdminJS session", error);
+      }
+      resolve();
+    });
+  });
+}
+
 export function createLogoutHandler(adminApiUrl: string) {
   return async function logoutHandler(req: Request, res: Response): Promise<void> {
-    try {
-      await fetch(`${adminApiUrl}/v1/auth/logout`, {
-        method: "POST",
-        headers: { Cookie: req.headers.cookie ?? "" },
-      });
-    } catch {
-      // admin-api unreachable: still clear the browser-side cookies below.
+    if (readCookie(req.headers.cookie, "mintkey_session") !== undefined) {
+      try {
+        await fetch(`${adminApiUrl}/v1/auth/logout`, {
+          method: "POST",
+          headers: { Cookie: req.headers.cookie ?? "" },
+        });
+      } catch {
+        // admin-api unreachable: still clear the browser-side cookies below.
+      }
     }
+
+    if (req.session) {
+      await destroySession(req.session);
+      res.clearCookie(ADMINJS_SESSION_COOKIE, { path: "/" });
+    }
+
     res.clearCookie("mintkey_session", { path: "/" });
     res.clearCookie("csrf_token", { path: "/" });
     res.redirect(302, "/admin/login");
