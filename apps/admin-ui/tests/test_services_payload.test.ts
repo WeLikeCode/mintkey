@@ -17,6 +17,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ServicesResource } from "../src/resources/services.js";
 
+// vitest hoists vi.mock; keep it at module top level (required by vitest 5).
+vi.mock("../src/lib/signed-request.js", () => ({
+  buildSignedRequest: vi.fn().mockResolvedValue("fake.jwt"),
+}));
+
 // ── Global fetch mock ────────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
@@ -74,9 +79,6 @@ function getHandler(): ActionHandler {
 describe("testService handler — payload threading (UX-CLARITY P0)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mock("../src/lib/signed-request.js", () => ({
-      buildSignedRequest: vi.fn().mockResolvedValue("fake.jwt"),
-    }));
   });
 
   // ── 1. component registration ─────────────────────────────────────────────
