@@ -36,7 +36,7 @@ unless a task names them.
     `delete_session(token)` (imported from `admin_api.auth.sessions` next to `create_session`), calls
     `_evict_whoami(token)`, and returns `Response(status_code=204)` after `delete_cookie("mintkey_session", path="/")`
     and `delete_cookie("csrf_token", path="/")` on that same response object. No cookie: no delete, no eviction.
-- [ ] 3.2 Answer 503 `session_store_unavailable` when `delete_session` raises, and add the 503 of `POST /v1/auth/logout` to `docs/architecture/contracts/rest/openapi.yaml`
+- [x] 3.2 Answer 503 `session_store_unavailable` when `delete_session` raises, and add the 503 of `POST /v1/auth/logout` to `docs/architecture/contracts/rest/openapi.yaml`
   - Red: `tests/unit/admin_api/test_logout_store_failure.py`: "The session store raises" (`delete_session` raises
     `OSError`; `caplog.set_level(logging.ERROR, logger="admin_api.api.auth")`) and "The contract lists the outcomes"
     (`yaml.safe_load` of the contract file).

@@ -124,11 +124,29 @@ async def logout(request: Request) -> Response:
     Source: operator-logout (issue #345).
     """
     session_token = request.cookies.get("mintkey_session")
+    delete_failed = False
     if session_token:
-        await delete_session(session_token)
+        try:
+            await delete_session(session_token)
+        except Exception as exc:
+            delete_failed = True
+            _logger.error(
+                "auth.logout_session_delete_failed error_type=%s",
+                type(exc).__name__,
+            )
         _evict_whoami(session_token)
 
-    resp = Response(status_code=204)
+    resp: Response
+    if delete_failed:
+        resp = JSONResponse(
+            status_code=503,
+            content={
+                "mintkey:code": "session_store_unavailable",
+                "title": "Session store unavailable",
+            },
+        )
+    else:
+        resp = Response(status_code=204)
     resp.delete_cookie("mintkey_session", path="/")
     resp.delete_cookie("csrf_token", path="/")
     return resp
