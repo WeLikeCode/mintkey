@@ -206,3 +206,7 @@ async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
                 "title": "Session tenant does not match the requested tenant",
             },
         )
+
+
+async def delete_session(token: str) -> bool:
+    raise NotImplementedError
