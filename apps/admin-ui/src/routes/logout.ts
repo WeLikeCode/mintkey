@@ -12,7 +12,13 @@
  */
 
 import { timingSafeEqual } from "crypto";
-import type { NextFunction, Request, Response } from "express";
+import express, {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from "express";
 
 const REFUSED_BODY = "Logout refused: missing or invalid CSRF token";
 
@@ -87,6 +93,83 @@ function destroySession(session: Request["session"]): Promise<void> {
       resolve();
     });
   });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Confirmation page for GET /admin/logout. It only renders the POST form; it
+ * never submits by itself, so a cross-site navigation cannot end the session.
+ */
+export function renderLogoutPage(csrfToken: string): string {
+  const token = escapeHtml(csrfToken);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log out</title>
+</head>
+<body>
+<main>
+<h1>Log out</h1>
+<p>Confirm that you want to log out of the admin console.</p>
+<form method="post" action="/admin/logout">
+<input type="hidden" name="_csrf" value="${token}">
+<button type="submit" data-testid="logout-confirm">Log out</button>
+</form>
+</main>
+</body>
+</html>
+`;
+}
+
+/**
+ * GET /admin/logout: show the confirmation form, or go to the login page when
+ * there is no session to end. It changes nothing (no cookie is set or cleared).
+ */
+export function logoutPageHandler(req: Request, res: Response): void {
+  const header = req.headers.cookie;
+  const hasSessionCookie = readCookie(header, "mintkey_session") !== undefined;
+  const hasAdminUser = Boolean(req.session?.adminUser);
+
+  if (!hasSessionCookie && !hasAdminUser) {
+    res.redirect(302, "/admin/login");
+    return;
+  }
+
+  const csrfToken = readCookie(header, "csrf_token") ?? "";
+  res.set("Cache-Control", "no-store");
+  res.status(200).type("text/html").send(renderLogoutPage(csrfToken));
+}
+
+/**
+ * Mount both logout methods: the GET confirmation page and the CSRF-protected
+ * POST that ends the session, both behind the caller's rate limiter.
+ */
+export function createLogoutRouter(
+  adminApiUrl: string,
+  rateLimiter: RequestHandler
+): Router {
+  const router = Router();
+
+  router.get("/admin/logout", rateLimiter, logoutPageHandler);
+  router.post(
+    "/admin/logout",
+    rateLimiter,
+    express.urlencoded({ extended: false }),
+    logoutGuard,
+    createLogoutHandler(adminApiUrl)
+  );
+
+  return router;
 }
 
 export function createLogoutHandler(adminApiUrl: string) {

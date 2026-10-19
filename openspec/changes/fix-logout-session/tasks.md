@@ -66,7 +66,7 @@ unless a task names them.
   - Green: call admin-api only when `readCookie(req.headers.cookie, "mintkey_session")` is set; await
     `req.session.destroy` (wrapped in a promise) when `req.session` exists, then `res.clearCookie(ADMINJS_SESSION_COOKIE,
     { path: "/" })`; then clear `mintkey_session` and `csrf_token` as today; warnings go to `console.warn`.
-- [ ] 4.3 Add `renderLogoutPage(csrfToken: string): string`, `logoutPageHandler(req, res)` and `createLogoutRouter(adminApiUrl: string, rateLimiter: RequestHandler): Router`
+- [x] 4.3 Add `renderLogoutPage(csrfToken: string): string`, `logoutPageHandler(req, res)` and `createLogoutRouter(adminApiUrl: string, rateLimiter: RequestHandler): Router`
   - Red: `apps/admin-ui/tests/test_logout_router.test.ts` (supertest, `express-session`, the router with a counting
     limiter): "GET renders a confirmation form", "GET without a CSRF cookie", "GET without a session", "The router serves
     both methods behind the limiter".
