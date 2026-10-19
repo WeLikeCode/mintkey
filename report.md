@@ -1,28 +1,28 @@
 # Delivery plan logout-session
 
-- Status: stopped
+- Status: completed
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at 26caa837b78f8dea782089c6bf7d7dfd6ebd2937
+- Target: staging at 8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b
 - Merge: human
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-19T13:08:28Z
-- Stopped: limit_runs: 20 run(s) used of 20
+- Written: 2026-10-19T17:53:13Z
+- Completed at: 8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b
 
 ## Units
 
 ### openspec:fix-logout-session
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 20 run(s), 1 attempt(s)
+- Result: integrated at 8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b
+- Pull request: <forge>/WeLikeCode/mintkey/pull/354
+- Merge commit: 8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.41, 22 run(s), 1 attempt(s)
 
 ## Batches
 
-- logout (profile none): not checked
+- logout (profile none): accepted at 8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b
 
 ## Usage
 
-- Cost: $0.10
+- Cost: $1.52
 - Of which the readiness review: $0.10
-- Runs that dispatched a unit: 20
+- Runs that dispatched a unit: 22

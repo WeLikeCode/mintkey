@@ -55,3 +55,4 @@
 {"at":"2026-10-19T16:54:50Z","revision":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","type":"unit.integrated","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T16:54:50Z","attempt":1,"cost_usd":1.41433,"runs":22,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T17:52:19Z","batch":"logout","profile":"none","revision":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","type":"batch.accepted"}
+{"at":"2026-10-19T17:53:13Z","revision":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","type":"plan.completed"}
