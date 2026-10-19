@@ -19,3 +19,4 @@
 {"at":"2026-10-19T12:42:14Z","attempt":1,"cost_usd":0.0,"runs":8,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T12:42:14Z","run":"r-20261019T1242Z-f8e7","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T12:43:21Z","detail":"8 run(s) used of 8","reason":"limit_runs","type":"plan.stopped"}
+{"at":"2026-10-19T12:45:28Z","by":"the+github@ciprianiacobescu.com","extend":{"runs":12},"reason":"the owner's delegate: the 8 runs were used while the implementers' OpenCode key was stale (now re-sealed) and the plan chained a run every minute; free fallbacks added","type":"plan.resumed"}
