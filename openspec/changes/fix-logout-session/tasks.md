@@ -17,7 +17,7 @@ unless a task names them.
 
 ## 2. admin-api: evict a token from the whoami cache
 
-- [ ] 2.1 Add `_evict_whoami(session_token: str) -> None` and the counter `_WHOAMI_EVICTIONS` to `apps/admin-api/src/admin_api/api/auth.py`, and make `_whoami_lookup` skip the store when the counter moved
+- [x] 2.1 Add `_evict_whoami(session_token: str) -> None` and the counter `_WHOAMI_EVICTIONS` to `apps/admin-api/src/admin_api/api/auth.py`, and make `_whoami_lookup` skip the store when the counter moved
   - Red: `tests/unit/admin_api/test_whoami_eviction.py`: "Eviction removes only that token", "Evicting a token that
     is not cached", "A lookup in flight during logout is not cached" (patch `admin_api.api.auth.validate_session` with
     a coroutine that calls `_evict_whoami(T)` and then returns a context with `operator_id` and `tenant_id`; the fake

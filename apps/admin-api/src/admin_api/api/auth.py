@@ -129,6 +129,16 @@ async def logout(response: Response) -> Response:
 # (session_token → (result_dict, fetched_at)) simple TTL cache
 _WHOAMI_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _WHOAMI_TTL = 15.0
+# Bumped on every eviction so a lookup in flight during logout cannot re-cache
+# a token that was just deleted from the session store.
+_WHOAMI_EVICTIONS = 0
+
+
+def _evict_whoami(session_token: str) -> None:
+    """Remove a token from the whoami cache and mark the cache as changed."""
+    global _WHOAMI_EVICTIONS
+    _WHOAMI_CACHE.pop(session_token, None)
+    _WHOAMI_EVICTIONS += 1
 
 
 async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
@@ -138,6 +148,7 @@ async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
     if cached is not None and (now - cached[1]) < _WHOAMI_TTL:
         return cached[0]
 
+    evictions_at_start = _WHOAMI_EVICTIONS
     ctx = await validate_session(session_token)
     if ctx is None:
         return None
@@ -187,11 +198,14 @@ async def _whoami_lookup(session_token: str) -> dict[str, Any] | None:
         "is_platform_admin": bool(row[3]),
         "auth_method": auth_method,
     }
-    _WHOAMI_CACHE[session_token] = (data, now)
-    # Prune cache: evict entries older than TTL to avoid unbounded growth
-    stale = [k for k, v in _WHOAMI_CACHE.items() if (now - v[1]) >= _WHOAMI_TTL]
-    for k in stale:
-        _WHOAMI_CACHE.pop(k, None)
+    # A logout that evicted this token while the lookup was in flight must not
+    # be undone by this store.
+    if _WHOAMI_EVICTIONS == evictions_at_start:
+        _WHOAMI_CACHE[session_token] = (data, now)
+        # Prune cache: evict entries older than TTL to avoid unbounded growth
+        stale = [k for k, v in _WHOAMI_CACHE.items() if (now - v[1]) >= _WHOAMI_TTL]
+        for k in stale:
+            _WHOAMI_CACHE.pop(k, None)
 
     return data
 
@@ -388,6 +402,3 @@ async def _emit_session_created_audit(
                 },
             )
 
-
-def _evict_whoami(session_token: str) -> None:
-    raise NotImplementedError
