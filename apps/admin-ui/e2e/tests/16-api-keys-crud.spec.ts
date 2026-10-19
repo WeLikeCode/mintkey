@@ -56,7 +56,7 @@ test.describe("16 — Service API Keys round-trip (plaintext shown once)", () =>
     });
     await page.waitForLoadState("networkidle");
 
-    const formVisible = await page.locator("form").first().isVisible({ timeout: 5_000 }).catch(() => false);
+    const formVisible = await page.locator('form:not([action="/admin/logout"])').first().isVisible({ timeout: 5_000 }).catch(() => false);
     if (!formVisible) {
       // createApiKey form may not render — verify no crash and exit gracefully
       const body = (await page.locator("body").innerText().catch(() => "")) ?? "";
@@ -143,3 +143,4 @@ test.describe("16 — Service API Keys round-trip (plaintext shown once)", () =>
     void consoleErrors;
   });
 });
+
