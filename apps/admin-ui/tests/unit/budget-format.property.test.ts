@@ -22,6 +22,7 @@ describe("Property 2: Period formatter produces valid output", () => {
     .date({
       min: new Date("2000-01-01T00:00:00Z"),
       max: new Date("2099-12-31T23:59:59Z"),
+      noInvalidDate: true,
     })
     .map((d) => d.toISOString());
 
