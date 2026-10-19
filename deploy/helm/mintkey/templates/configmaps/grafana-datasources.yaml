@@ -1,0 +1,21 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mintkey.fullname" . }}-grafana-datasources
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ include "mintkey.fullname" . }}-prometheus:9090
+        isDefault: true
+        editable: false
+        uid: prometheus
+{{- end }}

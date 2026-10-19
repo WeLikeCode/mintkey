@@ -1,0 +1,102 @@
+{{- if .Values.observability.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mintkey.fullname" . }}-otel-config
+  labels:
+    {{- include "mintkey.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+data:
+  config.yaml: |
+    # OTel Collector config — from design §13.
+    # Two-layer redaction: SDK-level (T-1.0.14) + this Collector layer (T-1.10.1).
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 1000
+
+      # Filter traces to only the spans that feed spanmetrics.
+      # Replaces the invalid `include:` key that was removed from the spanmetrics connector schema in v0.104.
+      filter/spanmetrics_input:
+        error_mode: ignore
+        traces:
+          span:
+            - 'name != "mintkey.proxy.handle_request"'
+
+      # Defense-in-depth redaction. Primary redaction is at the SDK (T-1.0.14 / ADR-0017.6).
+      attributes/redact:
+        actions:
+          - { key: mintkey.token,                           action: delete }
+          - { key: mintkey.api_key,                         action: delete }
+          - { key: mintkey.password,                        action: delete }
+          - { key: mintkey.authorization_header,            action: delete }
+          - { key: mintkey.cookie_value,                    action: delete }
+          - { key: mintkey.set_cookie_value,                action: delete }
+          - { key: http.request.header.authorization,       action: delete }
+          - { key: http.request.header.cookie,              action: delete }
+          - { key: http.response.header.set-cookie,         action: delete }
+
+      redaction:
+        allow_all_keys: true
+        blocked_values:
+          - 'sk_[a-zA-Z0-9_-]{20,}'
+          - 'pk_[a-zA-Z0-9_-]{20,}'
+          - 'eyJ[A-Za-z0-9+/=._-]{20,}'
+          - 'mk_agent_[a-zA-Z0-9_-]{8,}'
+          - 'mk_svckey_[a-zA-Z0-9_-]{8,}'
+        summary: silent
+
+    exporters:
+      otlphttp/jaeger:
+        endpoint: http://{{ include "mintkey.fullname" . }}-jaeger:4318
+      prometheus:
+        endpoint: 0.0.0.0:8889
+      # debug exporter — logs redacted spans to collector stdout for CI verification.
+      # Verbosity "detailed" prints span attributes so redaction can be confirmed.
+      debug:
+        verbosity: detailed
+
+    connectors:
+      spanmetrics:
+        namespace: mintkey_proxy
+        metrics_flush_interval: 15s
+        histogram:
+          explicit:
+            buckets: [5ms, 10ms, 25ms, 50ms, 75ms, 100ms, 250ms, 500ms, 750ms, 1000ms, 2500ms, 5000ms, 10000ms]
+        dimensions:
+          - name: mintkey.actor_id
+            default: "unknown"
+          - name: mintkey.service_id
+            default: "unknown"
+          - name: mintkey.outcome
+            default: "unknown"
+        dimensions_cache_size: 1000
+        aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+        metrics_expiration: 5m
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers:  [otlp]
+          processors: [batch, attributes/redact, redaction]
+          exporters:  [otlphttp/jaeger, debug]
+        traces/spanmetrics_input:
+          receivers:  [otlp]
+          processors: [batch, filter/spanmetrics_input]
+          exporters:  [spanmetrics]
+        metrics:
+          receivers:  [otlp, spanmetrics]
+          processors: [batch]
+          exporters:  [prometheus]
+{{- end }}

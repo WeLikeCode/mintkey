@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import time
 import threading
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -136,7 +137,12 @@ class AdminUiSignedRequestMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if self._public_key is None:
-            # No key configured → skip (dev mode / bootstrap)
+            if os.getenv("MINTKEY_ENV", "dev") == "production":
+                return Response(
+                    content='{"code":"mintkey:signed_request_required"}',
+                    status_code=401,
+                    media_type="application/json",
+                )
             return await call_next(request)
 
         token = request.headers.get(SIGNED_REQUEST_HEADER)

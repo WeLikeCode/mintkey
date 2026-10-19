@@ -741,6 +741,7 @@ async def create_service_from_template(
                 "token_url": hint.token_url,
                 "credential_fields": hint.credential_fields,
                 "token_response_path": hint.token_response_path,
+                "token_request_headers": hint.token_request_headers,
             }
         else:
             # Simple auth types (bearer_token, api_key_header, etc.) — include field/help/format

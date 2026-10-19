@@ -51,6 +51,7 @@ class CredentialHint(BaseModel):
     token_url: str | None = None
     credential_fields: dict[str, str] | None = None
     token_response_path: str | None = None
+    token_request_headers: dict[str, str] | None = None
 
 
 class ServiceTemplate(BaseModel):
