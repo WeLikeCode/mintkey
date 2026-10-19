@@ -76,7 +76,7 @@ unless a task names them.
 
 ## 5. admin-ui: top bar, wiring, end-to-end spec
 
-- [ ] 5.1 Add the `LoggedIn` override `apps/admin-ui/src/components/app/LoggedIn.tsx` and register it in `apps/admin-ui/src/components/index.ts` with `componentLoader.override("LoggedIn", "./app/LoggedIn")`
+- [x] 5.1 Add the `LoggedIn` override `apps/admin-ui/src/components/app/LoggedIn.tsx` and register it in `apps/admin-ui/src/components/index.ts` with `componentLoader.override("LoggedIn", "./app/LoggedIn")`
   - Red: `apps/admin-ui/tests/LoggedIn.render.test.tsx` (jsdom project; `fireEvent.submit(form)` fires the submit
     event): "The top bar renders the form", "Submit sends the current CSRF cookie", "A session without a CSRF token";
     and in `apps/admin-ui/tests/test_logout_wiring.test.ts` (reads the source, as
