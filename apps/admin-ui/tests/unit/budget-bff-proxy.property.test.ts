@@ -95,9 +95,9 @@ describe("Property 6: BFF proxy fidelity", () => {
       period: fc.constantFrom("hourly", "daily", "weekly", "monthly"),
       used: fc.integer({ min: 0, max: 100_000 }),
       remaining: fc.integer({ min: 0, max: 100_000 }),
-      period_start: fc.date({ min: new Date("2020-01-01"), max: new Date("2030-12-31") })
+      period_start: fc.date({ min: new Date("2020-01-01"), max: new Date("2030-12-31"), noInvalidDate: true })
         .map((d) => d.toISOString()),
-      period_end: fc.date({ min: new Date("2020-01-01"), max: new Date("2030-12-31") })
+      period_end: fc.date({ min: new Date("2020-01-01"), max: new Date("2030-12-31"), noInvalidDate: true })
         .map((d) => d.toISOString()),
       alert_thresholds: fc.array(fc.integer({ min: 1, max: 100 }), { minLength: 0, maxLength: 5 }),
     });
