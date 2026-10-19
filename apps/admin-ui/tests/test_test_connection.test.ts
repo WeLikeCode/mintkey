@@ -16,6 +16,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ServicesResource } from "../src/resources/services.js";
 
+// vitest hoists vi.mock; keep it at module top level (required by vitest 5).
+vi.mock("../src/lib/signed-request.js", () => ({
+  buildSignedRequest: vi.fn().mockResolvedValue("fake.jwt.token"),
+}));
+
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
@@ -34,10 +39,6 @@ function makeFetchResponse(data: unknown, ok = true): Response {
 describe("testService action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Stub signed-request module — buildSignedRequest returns a fake JWT
-    vi.mock("../src/lib/signed-request.js", () => ({
-      buildSignedRequest: vi.fn().mockResolvedValue("fake.jwt.token"),
-    }));
   });
 
   it("testService action exists", () => {
