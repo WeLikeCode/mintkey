@@ -961,3 +961,6 @@
 {"ts": "2026-10-19T15:46:57.579659Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 961, "type": "agent.session", "profile": "deepseek", "session_id": "ses_eab2b8f8effeHJK1soD9kSHpPr", "fix_unit": "fix-logout-session-fix-1"}
 {"ts": "2026-10-19T15:46:57.580197Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 962, "type": "budget.cost", "usd": 0.023982534000000003, "profile": "deepseek", "task": "1.1", "fix_unit": "fix-logout-session-fix-1"}
 {"ts": "2026-10-19T15:46:57.615937Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 963, "type": "question.raised", "id": "Q-001", "task": "1.1", "kind": "technical", "title": "golangci-lint cache path is on the read-only filesystem", "fix_unit": "fix-logout-session-fix-1"}
+{"ts": "2026-10-19T15:47:01.367802Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 964, "type": "pr.labels", "number": 354, "labels": ["l4:fixing", "l4:needs-answers"]}
+{"ts": "2026-10-19T15:47:02.703545Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 965, "type": "lock.released"}
+{"ts": "2026-10-19T15:47:02.704109Z", "run_id": "r-20261019T1313Z-104d", "unit": "openspec:fix-logout-session", "seq": 966, "type": "run.finished", "exit_code": 11}
