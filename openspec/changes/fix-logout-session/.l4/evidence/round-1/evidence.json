@@ -1,0 +1,322 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "apps/admin-api/Dockerfile",
+      "apps/admin-ui/src/index.ts",
+      "src/components/index.ts",
+      "Path=",
+      "tests/acceptance/test_no_sql_injection.py",
+      "#/components/responses/ServiceUnavailable",
+      "tests/integration/admin_api/test_auth.py",
+      "apps/admin-ui/tests/test_logout.test.ts",
+      "src/components/app/LoggedIn.tsx",
+      "tests/unit/admin_api",
+      "tests/integration",
+      "@testing-library/react",
+      ".l4/config.yaml",
+      "apps/admin-ui/e2e/tests/01-login.spec.ts",
+      "apps/admin-api/src/admin_api/auth/sessions.py",
+      "apps/admin-api/src/admin_api/api/auth.py",
+      "docs/architecture/contracts/rest/openapi.yaml",
+      "apps/admin-ui/src/routes/logout.ts",
+      "apps/admin-ui/src/components/index.ts",
+      "apps/admin-ui/src/components/app/LoggedIn.tsx",
+      "tests/unit/admin_api/test_delete_session.py",
+      "apps/admin-ui/tests/test_logout_guard.test.ts",
+      "apps/admin-ui/e2e/tests/21-logout-session.spec.ts",
+      "tests/acceptance/test_audit_coverage.py",
+      ".l4/criteria.json",
+      "tests/unit/admin_api/test_whoami_eviction.py",
+      "tests/unit/admin_api/test_logout_session.py",
+      "tests/unit/admin_api/test_logout_store_failure.py",
+      "text/plain",
+      "apps/admin-ui/tests/test_logout_session.test.ts",
+      "apps/admin-ui/tests/test_logout_router.test.ts",
+      "apps/admin-ui/tests/LoggedIn.render.test.tsx",
+      "apps/admin-ui/tests/test_logout_wiring.test.ts",
+      "@adminjs/design-system",
+      "apps/admin-ui/e2e/tests/21-logout-replay.spec.ts",
+      "${ADMIN_API}/v1/auth/whoami",
+      "**/test_logout.test.ts",
+      "**/index.ts",
+      "**/test_index_security_config.test.ts",
+      "**/test_oauth2_bff_route.test.ts",
+      "e2e/**",
+      "**/test_auth.py",
+      "**/auth.py",
+      "tests/**/*.test.ts",
+      "**/test_budget_bff.test.ts",
+      "tests/**/*.render.test.tsx",
+      "**/playwright.yml",
+      "apps/admin-ui/**",
+      "apps/admin-api/**",
+      "apps/admin-ui/e2e/**",
+      "**/tsconfig.json",
+      "src/**",
+      "**/test_whoami_eviction.py",
+      "**/test_logout_session.py",
+      "**/test_logout_store_failure.py",
+      "**/test_logout_session.test.ts",
+      "**/test_logout_router.test.ts",
+      "**/test_logout_wiring.test.ts",
+      "**/LoggedIn.render.test.tsx",
+      "**/req.session?.adminUser",
+      "**/req.body?._csrf",
+      "**/[data-testid=\"logout\"]",
+      "**/[data-testid=\"logout-confirm\"]",
+      "**/logout.ts",
+      "module #",
+      "module ${ADMIN_API}",
+      "module .l4",
+      "module @adminjs",
+      "module @testing-library",
+      "module admin-api",
+      "module admin-ui",
+      "module components",
+      "module docs",
+      "module tests",
+      "module text"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/auth.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/sessions.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/e2e/tests/21-logout-replay.spec.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/admin-ui/e2e/tests/21-logout-session.spec.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/src/components/app/LoggedIn.tsx",
+        "module": "admin-ui",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/src/components/index.ts",
+        "module": "admin-ui",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/src/index.ts",
+        "module": "admin-ui",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/src/routes/logout.ts",
+        "module": "admin-ui",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-ui/tests/LoggedIn.render.test.tsx",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/admin-ui/tests/test_logout_guard.test.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/admin-ui/tests/test_logout_router.test.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/admin-ui/tests/test_logout_session.test.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/admin-ui/tests/test_logout_wiring.test.ts",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "docs/architecture/contracts/rest/openapi.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1246Z-38f3.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1247Z-1460.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1248Z-cdea.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1250Z-2273.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1251Z-db38.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1253Z-94f0.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1255Z-b911.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1301Z-6147.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1303Z-8159.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1304Z-1c90.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1305Z-6c11.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1307Z-e8b3.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/.l4/ledger/r-20261019T1313Z-104d.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/fix-logout-session/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "tests/unit/admin_api/conftest.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_delete_session.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_logout_session.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_logout_store_failure.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_whoami_eviction.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": null,
+  "tests_ran": null
+}
