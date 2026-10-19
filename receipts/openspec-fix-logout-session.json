@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-19T16:54:50Z",
+  "integrated_revision": "8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b",
+  "merge_commit": "8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b",
+  "plan_digest": "02df41125fe65e13",
+  "plan_id": "logout-session",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/354",
+  "receipt_id": "logout-session/openspec:fix-logout-session/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "5763b0fed7e7e142",
+  "target": "staging",
+  "unit_id": "openspec:fix-logout-session"
+}

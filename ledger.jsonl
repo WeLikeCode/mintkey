@@ -50,3 +50,7 @@
 {"at":"2026-10-19T13:13:22Z","run":"r-20261019T1313Z-104d","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T16:15:49Z","attempt":1,"cost_usd":0.48231,"runs":22,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T16:15:49Z","run":"r-20261019T1615Z-2b83","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T16:54:50Z","by":"person","merge_commit":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","pr":"<forge>/WeLikeCode/mintkey/pull/354","type":"unit.merged","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T16:54:50Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","status":"pass","type":"unit.postcheck","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T16:54:50Z","revision":"8d376bf6be0a3d8b44d4cdea6b0adbde3057f70b","type":"unit.integrated","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T16:54:50Z","attempt":1,"cost_usd":1.41433,"runs":22,"type":"plan.charged","unit":"openspec:fix-logout-session"}
