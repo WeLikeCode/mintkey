@@ -207,7 +207,7 @@ async function main() {
   // replace with a durable store (e.g. connect-redis or connect-pg-simple) to
   // survive restarts and support horizontal scaling.
   app.use(
-    session({ // codeql[js/missing-csrf-middleware] CSRF mitigated by sameSite:"strict" + signed Ed25519 AdminUiSignedRequest JWT per ADR-0019
+    session({
       name: "adminjs.sid",
       secret: process.env.SESSION_SECRET ?? "mintkey-dev-secret",
       resave: false,
