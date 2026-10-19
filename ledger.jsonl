@@ -44,3 +44,4 @@
 {"at":"2026-10-19T13:05:55Z","run":"r-20261019T1305Z-6c11","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T13:07:21Z","attempt":1,"cost_usd":0.0,"runs":20,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T13:07:21Z","run":"r-20261019T1307Z-e8b3","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T13:08:28Z","detail":"20 run(s) used of 20","reason":"limit_runs","type":"plan.stopped"}
