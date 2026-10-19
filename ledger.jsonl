@@ -4,3 +4,5 @@
 {"accepted":{},"at":"2026-10-19T11:47:53Z","attempt_base":{"openspec:fix-logout-session":0},"by":"the+github@ciprianiacobescu.com","current":null,"digests":{"openspec:fix-logout-session":"5763b0fed7e7e142"},"limits":{"deadline":null,"max_cost_usd":8.0,"max_runs":8,"max_unit_attempts":2},"merge":"human","plan_digest":"02df41125fe65e13","reason":"\u2026","type":"plan.activated"}
 {"at":"2026-10-19T12:34:52Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T12:34:52Z","run":"r-20261019T1234Z-bb49","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T12:35:57Z","attempt":1,"cost_usd":0.0,"runs":2,"type":"plan.charged","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T12:35:57Z","run":"r-20261019T1235Z-4e30","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
