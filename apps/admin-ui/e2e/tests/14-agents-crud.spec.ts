@@ -73,7 +73,7 @@ test.describe("14 — Agents CRUD round-trip", () => {
     });
     await page.waitForLoadState("networkidle");
     // Edit form renders with expected fields (input values aren't in innerText)
-    await expect(page.locator("form"), "edit form must be visible").toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('form:not([action="/admin/logout"])'), "edit form must be visible").toBeVisible({ timeout: 10_000 });
     await expect(page.getByLabel("name"), "name input must be present").toBeVisible();
     const descField = page.getByLabel(/description/i);
     if ((await descField.count()) > 0) {
@@ -165,3 +165,4 @@ test.describe("14 — Agents CRUD round-trip", () => {
     void consoleErrors;
   });
 });
+
