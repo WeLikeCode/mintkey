@@ -26,3 +26,5 @@
 {"at":"2026-10-19T12:47:42Z","run":"r-20261019T1247Z-1460","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T12:48:59Z","attempt":1,"cost_usd":0.0,"runs":11,"type":"plan.charged","unit":"openspec:fix-logout-session"}
 {"at":"2026-10-19T12:48:59Z","run":"r-20261019T1248Z-cdea","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T12:50:22Z","attempt":1,"cost_usd":0.0,"runs":12,"type":"plan.charged","unit":"openspec:fix-logout-session"}
+{"at":"2026-10-19T12:50:22Z","run":"r-20261019T1250Z-2273","type":"unit.dispatched","unit":"openspec:fix-logout-session"}
