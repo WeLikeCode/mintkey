@@ -66,12 +66,17 @@ profiles:
     adapter: claude-code
     auth: subscription
     vendor: anthropic
+  nemotron-judge:           # OpenCode Zen's free NVIDIA Nemotron 3.5 Super, no key: the judge when Claude is unavailable or out of quota
+    adapter: opencode
+    model: opencode/nemotron-3.5-super-vl-free
+    vendor: nvidia
 roles:
   implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
   - deepseek
   - glm
   judges:
   - claude-judge
+  - nemotron-judge          # the free fallback judge (NVIDIA: independent of the DeepSeek and GLM implementers)
   s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
   - jev
 forge:
