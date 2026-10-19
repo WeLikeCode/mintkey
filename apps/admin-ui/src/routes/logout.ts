@@ -11,7 +11,66 @@
  * copy of the old cookie stays valid server-side until the session row expires.
  */
 
-import type { Request, Response } from "express";
+import { timingSafeEqual } from "crypto";
+import type { NextFunction, Request, Response } from "express";
+
+const REFUSED_BODY = "Logout refused: missing or invalid CSRF token";
+
+/**
+ * Read a cookie value from a raw Cookie header.
+ *
+ * The name matches exactly (not as a suffix), the value is everything after the
+ * first "=" and is only trimmed -- never percent-decoded. A missing header,
+ * name or empty value yields undefined; a repeated name yields the first one.
+ */
+export function readCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    const value = part.slice(separator + 1).trim();
+    return value === "" ? undefined : value;
+  }
+  return undefined;
+}
+
+function tokensEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/**
+ * CSRF guard for POST /admin/logout (the double-submit cookie already used by
+ * admin-api): the form field `_csrf` must equal the `csrf_token` cookie.
+ *
+ * A request with neither a `mintkey_session` cookie nor an AdminJS adminUser
+ * has nothing to end and goes to the login page without any change, so a stale
+ * page or a cross-site POST lands there instead of a 403.
+ */
+export function logoutGuard(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.cookie;
+  const hasSessionCookie = readCookie(header, "mintkey_session") !== undefined;
+  const hasAdminUser = Boolean(req.session?.adminUser);
+
+  if (!hasSessionCookie && !hasAdminUser) {
+    res.redirect(302, "/admin/login");
+    return;
+  }
+
+  const body = req.body as Record<string, unknown> | undefined;
+  const formToken = typeof body?._csrf === "string" ? body._csrf : undefined;
+  const cookieToken = readCookie(header, "csrf_token");
+
+  if (!formToken || !cookieToken || !tokensEqual(formToken, cookieToken)) {
+    res.status(403).type("text/plain").send(REFUSED_BODY);
+    return;
+  }
+
+  next();
+}
 
 export function createLogoutHandler(adminApiUrl: string) {
   return async function logoutHandler(req: Request, res: Response): Promise<void> {

@@ -47,7 +47,7 @@ unless a task names them.
 
 ## 4. admin-ui: logout routes in `apps/admin-ui/src/routes/logout.ts`
 
-- [ ] 4.1 Add `readCookie(header: string | undefined, name: string): string | undefined` and `logoutGuard(req, res, next)`
+- [x] 4.1 Add `readCookie(header: string | undefined, name: string): string | undefined` and `logoutGuard(req, res, next)`
   - Red: `apps/admin-ui/tests/test_logout_guard.test.ts` with fake `req`/`res`/`next`: "A missing token is refused",
     "A wrong token is refused" (same length and another length), "Nothing to log out", a valid token calls `next()`
     once; `readCookie` matches the exact name (`xcsrf_token=a` is not `csrf_token`), keeps a value's later `=`
