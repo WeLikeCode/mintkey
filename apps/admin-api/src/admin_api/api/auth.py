@@ -387,3 +387,7 @@ async def _emit_session_created_audit(
                     "ip": ip,
                 },
             )
+
+
+def _evict_whoami(session_token: str) -> None:
+    raise NotImplementedError
