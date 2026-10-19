@@ -26,7 +26,7 @@ unless a task names them.
 
 ## 3. admin-api: logout ends the session
 
-- [ ] 3.1 Rewrite `logout` in `apps/admin-api/src/admin_api/api/auth.py` (keep the name `logout`, listed in `AUDIT_EXEMPT` of `tests/acceptance/test_audit_coverage.py`, and keep `csrf_exempt("/v1/auth/logout")`): delete the row, evict the token, answer 204 that clears both cookies
+- [x] 3.1 Rewrite `logout` in `apps/admin-api/src/admin_api/api/auth.py` (keep the name `logout`, listed in `AUDIT_EXEMPT` of `tests/acceptance/test_audit_coverage.py`, and keep `csrf_exempt("/v1/auth/logout")`): delete the row, evict the token, answer 204 that clears both cookies
   - Red: `tests/unit/admin_api/test_logout_session.py`: "The old cookie is refused after logout inside the cache
     window" (internal login, whoami 200, assert the cache entry, logout, whoami 401), "Logout clears both cookies",
     "Logout without a session cookie", "Logout twice with the same cookie", "Concurrent logouts with the same cookie",

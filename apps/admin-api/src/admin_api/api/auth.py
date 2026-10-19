@@ -28,7 +28,7 @@ from admin_api.auth.oidc import (
     oidc_token_exchange,
 )
 from admin_api.auth.oidc_state import OidcStateRepository
-from admin_api.auth.sessions import create_session, validate_session
+from admin_api.auth.sessions import create_session, delete_session, validate_session
 from admin_api.middleware.csrf import no_csrf
 
 _logger = logging.getLogger(__name__)
@@ -117,9 +117,21 @@ async def internal_login(body: LoginRequest, response: Response) -> JSONResponse
 
 
 @router.post("/logout")
-async def logout(response: Response) -> Response:
-    response.delete_cookie("mintkey_session")
-    return Response(status_code=204)
+async def logout(request: Request) -> Response:
+    """Delete the server-side session row, evict its whoami cache entry and
+    answer 204 with both session cookies cleared.
+
+    Source: operator-logout (issue #345).
+    """
+    session_token = request.cookies.get("mintkey_session")
+    if session_token:
+        await delete_session(session_token)
+        _evict_whoami(session_token)
+
+    resp = Response(status_code=204)
+    resp.delete_cookie("mintkey_session", path="/")
+    resp.delete_cookie("csrf_token", path="/")
+    return resp
 
 
 # ---------------------------------------------------------------------------
