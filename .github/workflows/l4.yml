@@ -41,6 +41,9 @@ jobs:
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
+      # the soft deadline counts from here: the checkout and the setup steps below use the job's time too (L4-IMP-066)
+      - name: job start
+        run: echo "L4_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -71,7 +74,7 @@ jobs:
         with:
           version: "11"
       - id: l4
-        uses: ciprianiacobescu/l4/.github/actions/l4@1bb7e38c21cd55186c7d9e1ece70515b0dc3cdbf # v0.4.18
+        uses: ciprianiacobescu/l4/.github/actions/l4@2b08ce80270c2302ed0e0da7599d674ec1cca00d # v0.4.19
         with:
           self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
       - name: doctor
