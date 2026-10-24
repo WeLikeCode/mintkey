@@ -6,3 +6,4 @@
 {"accepted":{},"at":"2026-10-24T15:10:02Z","attempt_base":{"openspec:agent-auth-unavailable":0},"by":"the+github@ciprianiacobescu.com","current":null,"digests":{"openspec:agent-auth-unavailable":"3a28bd6765979922"},"limits":{"deadline":null,"max_cost_usd":10.0,"max_runs":5,"max_unit_attempts":2},"merge":"human","plan_digest":"8518e8eb7fb42418","reason":"fix the intermittent 401 on a valid agent key (agent-auth-unavailable)","type":"plan.activated"}
 {"at":"2026-10-24T15:14:38Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-24T15:14:38Z","run":"r-20261024T1514Z-368a","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-24T15:18:42Z","detail":"the test gate cannot run at the base: report missing: .l4-out/junit-admin-ui.xml","reason":"unit_halted","type":"plan.stopped","unit":"openspec:agent-auth-unavailable"}
