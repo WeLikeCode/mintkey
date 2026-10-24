@@ -8,3 +8,5 @@
 {"at":"2026-10-24T15:14:38Z","run":"r-20261024T1514Z-368a","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-24T15:18:42Z","detail":"the test gate cannot run at the base: report missing: .l4-out/junit-admin-ui.xml","reason":"unit_halted","type":"plan.stopped","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-24T16:58:12Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"harness 0.4.29 (d7c113e4) makes node_modules/.vite-temp writable in test gates; the baseline_failed halt was the harness, and the unit is retried (implementing)","type":"plan.resumed"}
+{"at":"2026-10-24T16:59:22Z","attempt":1,"cost_usd":0.0,"runs":2,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-24T16:59:22Z","run":"r-20261024T1659Z-dbdf","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
