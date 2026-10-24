@@ -25,26 +25,23 @@ touched suite, `ruff check` and (admin-api) `mypy --strict src/admin_api/`.
   `session` a fake whose `execute` is an `AsyncMock` (the first call is the `set_config` statement; the second returns
   a result whose `fetchone()` gives a row with `id`, `tenant_id`, `api_key_hash`, `status="active"`,
   `api_key_expires_at=None`, or `None` for the unknown-key case) and `admin_api.api.internal._verify_argon2`
-  monkeypatched to raise. Cover the four scenarios of the requirement "admin-api answers 503 when the verify fails for a
-  reason other than the key": `MemoryError` on a known agent gives 503 `{"mintkey:code":
-  "mintkey:verify_unavailable"}`; `VerifyMismatchError` and `InvalidHashError` give 401 `INVALID_KEY_RESPONSE`; an
-  unknown key with a `MemoryError` from the dummy verify gives 401. The first fails before the change (401 instead of
-  503). Then in `apps/admin-api/src/admin_api/api/internal.py`, `validate_agent_key`: add
-  `VERIFY_UNAVAILABLE_RESPONSE: dict[str, object] = {"mintkey:code": "mintkey:verify_unavailable"}` and replace the
-  known-agent branch's `except Exception` by `except (VerificationError, InvalidHashError)` (401, as today) followed by
-  `except Exception` returning `JSONResponse(status_code=503, content=VERIFY_UNAVAILABLE_RESPONSE)`. The unknown-key
-  branch is unchanged.
+  monkeypatched to raise. Cover the five scenarios of the requirement "admin-api answers 503 when the verify fails for a
+  reason other than the key" (`caplog` for the WARNING of the logger `admin_api.api.internal`). The first fails before
+  the change (401 instead of 503). Then in `apps/admin-api/src/admin_api/api/internal.py`: add
+  `logger = logging.getLogger(__name__)`, import `VerificationError` and `InvalidHashError` from `argon2.exceptions`,
+  add `VERIFY_UNAVAILABLE_RESPONSE: dict[str, object] = {"mintkey:code": "mintkey:verify_unavailable"}`, and in
+  `validate_agent_key` replace the known-agent branch's `except Exception` by `except (VerificationError,
+  InvalidHashError)` (401, as today) followed by `except Exception as exc`, which logs
+  `logger.warning("validate-agent-key: verify failed (%s)", type(exc).__name__)` and returns
+  `JSONResponse(status_code=503, content=VERIFY_UNAVAILABLE_RESPONSE)`. The unknown-key branch is unchanged.
 
 ## 3. admin-api's memory limit fits its verify concurrency
 
-- [ ] 3.1 Tests first, new file `tests/acceptance/test_admin_api_verify_capacity.py`: a helper that turns a memory
-  value (`512m`, `1g`, `512Mi`, `1Gi`) into MiB, and a check `required_mib(concurrency) = concurrency * 64 + 256`
-  applied to the `admin-api` service of `infra/compose/docker-compose.yml` and `infra/compose/docker-compose.ghcr.yml`
-  (its `mem_limit` and `environment`) and to `adminApi` in `deploy/helm/mintkey/values.yaml`
-  (`resources.limits.memory`; the concurrency from an entry named `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY` in
-  `global.extraEnv`, or in `adminApi.extraEnv` when that key exists, else 4). Cover
-  the three scenarios of the requirement "admin-api's memory limit fits its verify concurrency": the three files give
-  512 MiB each; an in-memory definition with concurrency 8 and 512 MiB fails with a message naming the file, the limit
-  and 768 MiB; a definition without a limit is skipped. The first fails before the change (256 MiB). Then set
-  `mem_limit: 512m` for `admin-api` in both compose files and `limits: {cpu: "500m", memory: "512Mi"}` for `adminApi`
-  in `deploy/helm/mintkey/values.yaml`.
+- [ ] 3.1 Tests first, new file `tests/acceptance/test_admin_api_verify_capacity.py`: define `to_mib`, `required_mib`
+  and `capacity_problem` exactly as the requirement "admin-api's memory limit fits its verify concurrency" gives them,
+  read the three definitions it names with `yaml.safe_load` (compose: `services["admin-api"]["mem_limit"]` and the
+  concurrency from its `environment` mapping, else 4; Helm: `adminApi["resources"]["limits"]["memory"]` with
+  concurrency 4), and cover its five scenarios. The first fails before the change (256 MiB). Then set
+  `mem_limit: 512m` for `admin-api` in `infra/compose/docker-compose.yml` and `infra/compose/docker-compose.ghcr.yml`,
+  and change only `adminApi.resources.limits.memory` from `256Mi` to `512Mi` in `deploy/helm/mintkey/values.yaml`
+  (the CPU limit `500m` and the requests stay).

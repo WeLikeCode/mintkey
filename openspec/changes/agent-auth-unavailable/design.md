@@ -26,20 +26,25 @@ answers the same 401.
 
 **D3. admin-api separates "the key is wrong" from "the check broke".** In `validate_agent_key`
 (`apps/admin-api/src/admin_api/api/internal.py`), the verify of a known agent's stored hash catches
-`argon2.exceptions.VerificationError` (which `VerifyMismatchError` subclasses) and `argon2.exceptions.InvalidHashError`
-as today's 401. Any other exception (a `MemoryError`, a failure of the thread the verify runs in) answers 503 with
-`{"mintkey:code": "mintkey:verify_unavailable"}`, which the MCP server already reads as `"service_unavailable"`. The
-unknown-key branch (the `DUMMY_HASH` verify) keeps its 401 whatever the verify raises: the fingerprint lookup has
-already found no agent. Timing equalisation (ADR-0017.5) covers the normal outcomes and is unchanged; the new branch
-is an abnormal one.
+`argon2.exceptions.VerificationError` (`VerifyMismatchError` subclasses it) and `argon2.exceptions.InvalidHashError`
+(a `ValueError` subclass, raised for a malformed stored hash) as today's 401: both concern the key or its stored hash.
+Any other `Exception` (a `MemoryError`, a failure of the thread the verify runs in) answers 503 with
+`{"mintkey:code": "mintkey:verify_unavailable"}` and logs one WARNING naming the exception class only. The MCP server
+already reads any admin-api status of 500 or more as `"service_unavailable"` (`mcp_server.auth.agent_key`), so this 503
+becomes the middleware's 503 of D1; each half is tested on its own side. `asyncio.CancelledError` is a `BaseException`
+and propagates. The unknown-key branch (the `DUMMY_HASH` verify) keeps its 401 whatever the verify raises: the
+fingerprint lookup has already found no agent. Timing equalisation (ADR-0017.5) covers the normal outcomes and is
+unchanged; the new branch is an abnormal one.
 
 **D4. The memory limit is derived from the concurrency, not tuned by hand.** The rule is
-`limit >= C x 64 MiB + 256 MiB`, C being `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY` in that definition's environment, else
-4, the code default. 64 MiB is the memory cost of `argon2.PasswordHasher()`'s defaults (65536 KiB), which the stored
-hashes use; 256 MiB covers the process (about 200 MiB measured) with headroom. With C = 4 that is 512 MiB, in
-`infra/compose/docker-compose.yml` and `infra/compose/docker-compose.ghcr.yml` (`mem_limit: 512m`) and in
-`deploy/helm/mintkey/values.yaml` (`adminApi.resources.limits.memory: 512Mi`). Lowering C instead would make bursts
-queue longer behind the 5 s timeout, which is the symptom being fixed.
+`limit >= C x 64 MiB + 256 MiB`. 64 MiB is the memory cost of `argon2.PasswordHasher()`'s defaults (65536 KiB), which
+the stored hashes use; 256 MiB covers the process (about 200 MiB measured) with headroom. In compose, C is
+`MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY` in the service's `environment` mapping, else 4, the code default; in the Helm
+chart C is always 4, because no value reaches admin-api's environment (`global.extraEnv` is for the Go services). With
+C = 4 the limit is 512 MiB: `mem_limit: 512m` in `infra/compose/docker-compose.yml` and
+`infra/compose/docker-compose.ghcr.yml`, and `adminApi.resources.limits.memory: 512Mi` in
+`deploy/helm/mintkey/values.yaml`, whose CPU limit (`500m`) and requests stay as they are. Lowering C instead would
+make bursts queue longer behind the 5 s timeout, which is the symptom being fixed.
 
 **D5. What is not changed.** No validation cache (it would keep a revoked key working for its lifetime), no new
 timeout, no Argon2id parameter change, and no change to the JSON-RPC path, which already answers `-32603` for the same
