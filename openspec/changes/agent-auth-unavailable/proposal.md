@@ -51,6 +51,7 @@ that was never judged as rejected.
 - Changed: `apps/mcp-server/src/mcp_server/main.py` (`agent_key_middleware`),
   `apps/admin-api/src/admin_api/api/internal.py` (`validate_agent_key`), `infra/compose/docker-compose.yml`,
   `infra/compose/docker-compose.ghcr.yml` and `deploy/helm/mintkey/values.yaml` (the admin-api memory limit).
+- New module: `apps/admin-api/src/admin_api/capacity.py` (the memory rule's helpers).
 - New tests: `apps/mcp-server/tests/test_rest_auth_unavailable.py`,
   `tests/unit/admin_api/test_validate_agent_key_errors.py`, `tests/acceptance/test_admin_api_verify_capacity.py`.
 - Clients: a REST client sees 503 with `Retry-After` instead of 401 for a check that did not happen, and can retry.

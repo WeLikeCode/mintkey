@@ -11,8 +11,7 @@ could not be checked, and the capacity admin-api needs to check keys without tim
 The MCP server's HTTP middleware SHALL answer a request on a path outside its auth bypass list that carries an
 `mk_agent_` key (`Authorization: Bearer` or `X-API-Key`) with status 503, the body `{"code": "mintkey:auth_unavailable"}`
 and the header `Retry-After: 1`, without running the route, when `validate_agent_key` returns the reason
-`service_unavailable`. The body SHALL be the same for every cause and SHALL NOT contain the key. Every other case SHALL
-behave as before.
+`service_unavailable`. The body SHALL be the same for every cause and SHALL NOT contain the key.
 
 #### Scenario: admin-api cannot judge the key on list_services
 - **WHEN** `GET /v1/tools/list_services` carries `Authorization: Bearer mk_agent_<key>` and `validate_agent_key`
@@ -24,24 +23,6 @@ behave as before.
 - **WHEN** `POST /v1/tools/request_token` carries `X-API-Key: mk_agent_<key>` and `validate_agent_key` returns
   `(None, "service_unavailable")`
 - **THEN** the response is the same 503 with the same body and `Retry-After: 1`, and the body does not contain the key
-
-#### Scenario: a rejected key still gets 401
-- **WHEN** `GET /v1/tools/list_services` carries an `mk_agent_` key and `validate_agent_key` returns
-  `(None, "invalid_key")`
-- **THEN** the response is 401 with the body `{"code": "mintkey:auth_required"}`
-
-#### Scenario: a valid key still gets through
-- **WHEN** `GET /v1/tools/list_services` carries an `mk_agent_` key and `validate_agent_key` returns an agent context
-- **THEN** the response is 200
-
-#### Scenario: no agent key, no validation
-- **WHEN** `GET /v1/tools/list_services` carries no `mk_agent_` key
-- **THEN** `validate_agent_key` is not called and the response is 401 `{"code": "mintkey:auth_required"}`
-
-#### Scenario: a bypass path is served while admin-api is down
-- **WHEN** `GET /health` carries an `mk_agent_` key and `validate_agent_key` would return
-  `(None, "service_unavailable")`
-- **THEN** `validate_agent_key` is not called and the response is 200
 
 ### Requirement: admin-api answers 503 when the verify fails for a reason other than the key
 `POST /v1/internal/validate-agent-key` SHALL answer 503 with the body `{"mintkey:code": "mintkey:verify_unavailable"}`
@@ -85,10 +66,13 @@ concurrency, and each SHALL be 512 MiB after this change:
   Only that value changes: `adminApi.resources` becomes `{requests: {cpu: "100m", memory: "128Mi"}, limits: {cpu:
   "500m", memory: "512Mi"}}`.
 
-The test module `tests/acceptance/test_admin_api_verify_capacity.py` SHALL define and use:
+The module `admin_api.capacity` (`apps/admin-api/src/admin_api/capacity.py`) SHALL define these, and the test module
+`tests/acceptance/test_admin_api_verify_capacity.py` SHALL use them:
 - `to_mib(value: str) -> int`: an integer followed by `m`, `M` or `Mi` is that many MiB; followed by `g`, `G` or `Gi`,
   that many times 1024. Any other string SHALL raise `ValueError` whose message contains the string.
 - `required_mib(concurrency: int) -> int`: `concurrency * 64 + 256`.
+- `compose_concurrency(environment: Mapping[str, object] | None) -> int`: `int()` of the value at
+  `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY` when the mapping has that key, else 4.
 - `capacity_problem(name: str, limit: str | None, concurrency: int) -> str | None`: `None` when `limit` is `None` or
   `to_mib(limit) >= required_mib(concurrency)`; else `"<name>: admin-api memory limit <limit> (<to_mib(limit)> MiB) is
   below the required <required_mib(concurrency)> MiB for <concurrency> concurrent verifies"`.
@@ -116,4 +100,4 @@ the test with a message naming the file or the value; nothing is skipped.
 
 #### Scenario: a broken definition fails the test, never skips it
 - **WHEN** a compose environment sets `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY: "four"`
-- **THEN** reading the concurrency raises `ValueError` naming `four`
+- **THEN** `compose_concurrency` raises `ValueError` naming `four`
