@@ -1,0 +1,14 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "agent-auth",
+  "target": "staging",
+  "merge": "human",
+  "limits": {"max_cost_usd": 10, "max_unit_attempts": 2, "max_runs": 5},
+  "external_dependencies": [],
+  "batches": [
+    {"id": "agent-auth", "depends_on": [], "units": [
+      {"id": "openspec:agent-auth-unavailable", "depends_on": []}
+    ]}
+  ],
+  "exclude": []
+}
