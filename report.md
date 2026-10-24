@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at 2797493499483fd22f9fc8c9b8eb820b5eca696f
+- Target: staging at f8b2a462cad897082479825e99a33c919535175f
 - Merge: human
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-24T15:18:42Z
-- Stopped: unit_halted (openspec:agent-auth-unavailable): the test gate cannot run at the base: report missing: .l4-out/junit-admin-ui.xml
+- Written: 2026-10-24T18:41:20Z
+- Stopped: limit_runs: 5 run(s) used of 5
 
 ## Units
 
@@ -15,7 +15,7 @@
 - Pull request: none
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 1 run(s), 1 attempt(s)
+- Usage: $0.15, 5 run(s), 1 attempt(s)
 
 ## Batches
 
@@ -23,6 +23,6 @@
 
 ## Usage
 
-- Cost: $0.11
+- Cost: $0.27
 - Of which the readiness review: $0.11
-- Runs that dispatched a unit: 1
+- Runs that dispatched a unit: 5
