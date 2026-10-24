@@ -12,3 +12,5 @@
 {"at":"2026-10-24T16:59:22Z","run":"r-20261024T1659Z-dbdf","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-24T17:19:42Z","attempt":1,"cost_usd":0.03213,"runs":3,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-24T17:19:42Z","run":"r-20261024T1719Z-139f","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-24T17:36:56Z","attempt":1,"cost_usd":0.055314,"runs":4,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-24T17:36:56Z","run":"r-20261024T1736Z-2e16","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
