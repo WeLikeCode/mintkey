@@ -106,7 +106,7 @@ ci:
   runner_tags: []
   self_provision: true
   continuation: dispatch
-  time_budget: 21m
+  time_budget: auto  # the job timeout (timeout-minutes 180) minus the margin; 21m left one usable minute, which the in-step deadline of 0.4.19+ refuses
   soft_deadline_margin: 20m
   upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
 yolo:
