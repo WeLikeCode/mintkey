@@ -44,3 +44,4 @@
 {"at":"2026-10-25T19:52:06Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"6b0376ab8ff25b2478f1fc9feae31b309811a6a7","status":"pass","type":"unit.postcheck","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-25T19:52:06Z","revision":"6b0376ab8ff25b2478f1fc9feae31b309811a6a7","type":"unit.integrated","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-25T19:52:06Z","attempt":2,"cost_usd":1.773733,"runs":4,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-25T19:53:08Z","batch":"agent-auth","profile":"none","revision":"6b0376ab8ff25b2478f1fc9feae31b309811a6a7","type":"batch.accepted"}
