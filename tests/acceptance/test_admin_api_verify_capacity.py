@@ -137,6 +137,17 @@ def test_C_434fcc7f_to_mib_converts_memory_units_and_refuses_others() -> None:
         assert value in str(excinfo.value)
 
 
+@pytest.mark.l4("C-6fb6b8c7")
+def test_C_6fb6b8c7_to_mib_refuses_lowercase_i_suffixes_and_non_ascii_digits() -> None:
+    for value in ("512mi", "1gi", "\uff15\uff11\uff12m"):
+        with pytest.raises(ValueError) as excinfo:
+            to_mib(value)
+        assert value in str(excinfo.value)
+
+    assert to_mib("512Mi") == 512
+    assert to_mib("1Gi") == 1024
+
+
 @pytest.mark.l4("C-e54cc104")
 def test_C_e54cc104_compose_concurrency_refuses_a_non_integer_value() -> None:
     with pytest.raises(ValueError) as excinfo:
