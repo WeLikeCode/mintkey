@@ -1,0 +1,306 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "apps/mcp-server/src/mcp_server/main.py",
+      "apps/admin-api/src/admin_api/api/internal.py",
+      "infra/compose/docker-compose.yml",
+      "infra/compose/docker-compose.ghcr.yml",
+      "deploy/helm/mintkey/values.yaml",
+      "apps/mcp-server/tests/test_rest_auth_unavailable.py",
+      "tests/unit/admin_api/test_validate_agent_key_errors.py",
+      "tests/acceptance/test_admin_api_verify_capacity.py",
+      "apps/mcp-server/tests/test_bearer_auth.py",
+      "**/services[\"admin-api\"][\"mem_limit\"]",
+      "**/adminApi[\"resources\"][\"limits\"][\"memory\"]",
+      "module admin-api",
+      "module deploy",
+      "module infra",
+      "module mcp-server",
+      "module tests"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "module `admin-api` is named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/main.py",
+        "module": "mcp-server",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/tests/test_rest_auth_unavailable.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "deploy/helm/mintkey/values.yaml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "infra/compose/docker-compose.ghcr.yml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "changed by human commit 1b1e9d2f72"
+      },
+      {
+        "path": "infra/compose/docker-compose.yml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "changed by human commit 1b1e9d2f72"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T0813Z-a663.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T0835Z-88e7.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T1115Z-b78d.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T1532Z-ccf2.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/design.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/specs/agent-key-auth/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-auth-unavailable/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "tests/acceptance/test_admin_api_verify_capacity.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_validate_agent_key_errors.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_run",
+    "reason": "coverage.py is not importable in the project environment",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [],
+    "functions": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "qualname": "validate_agent_key",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "qualname": "to_mib",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "qualname": "required_mib",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "qualname": "compose_concurrency",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/capacity.py",
+        "qualname": "capacity_problem",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/main.py",
+        "qualname": "create_app.agent_key_middleware",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      }
+    ]
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 2679,
+      "passed": 2625,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 54,
+      "new": 12,
+      "new_passed": 12,
+      "skipped_unchanged": [
+        "apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated",
+        "apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401",
+        "apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields",
+        "apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found",
+        "apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape",
+        "github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger",
+        "github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming",
+        "tests.acceptance.test_admin_ui_boot::test_login_page_returns_200",
+        "tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]",
+        "tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end",
+        "tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2",
+        "tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode",
+        "tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call",
+        "tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue",
+        "tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation",
+        "tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429",
+        "tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call",
+        "tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created",
+        "tests.acceptance.test_classical_key::test_classical_key_full_flow",
+        "tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy",
+        "tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt",
+        "tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403",
+        "tests.acceptance.test_data_plane_smoke::test_broker_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_kong_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke",
+        "tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end",
+        "tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream",
+        "tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end",
+        "tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end",
+        "tests.acceptance.test_observability::test_audit_chain_valid",
+        "tests.acceptance.test_observability::test_prometheus_targets_all_up",
+        "tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics",
+        "tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded",
+        "tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12",
+        "tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok"
+      ]
+    },
+    "findings": []
+  }
+}
