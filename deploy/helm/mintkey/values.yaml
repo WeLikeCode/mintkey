@@ -50,7 +50,7 @@ adminApi:
   # Confirm the signed-request keypair (kubernetes-readiness A3) is provisioned before scaling.
   resources:
     requests: {cpu: "100m", memory: "128Mi"}
-    limits: {cpu: "500m", memory: "256Mi"}
+    limits: {cpu: "500m", memory: "512Mi"}
 
 adminUi:
   image: mintkey-admin-ui

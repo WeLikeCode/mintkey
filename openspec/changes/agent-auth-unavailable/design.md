@@ -14,7 +14,11 @@ middleware; the JSON-RPC dispatcher behind `/`, `/mcp` and `/v1/mcp` validates t
 ## Decisions
 
 **D1. The middleware answers the 503 itself.** One place covers every REST tool; the dozen `agent_ctx is None` checks
-in the tool modules stay as they are and keep answering 401 for a missing or rejected key. When a key was found and
+in the tool modules stay as they are and keep answering 401 for a missing or rejected key. Those unchanged answers
+(a rejected key, no key, a valid key, a bypass path) are not scenarios of this change: the middleware is nested in
+`create_app()`, which the red step's zero-value check cannot reach. `apps/mcp-server/tests/test_bearer_auth.py`
+already covers a valid key and a missing or non-agent key; a rejected key and a bypass path keep the code path they
+have today, which D1 does not change. When a key was found and
 the reason is `"service_unavailable"`, the middleware returns `JSONResponse(status_code=503, content={"code":
 "mintkey:auth_unavailable"}, headers={"Retry-After": "1"})` without calling the route. Status 503 with `Retry-After` is
 what HTTP clients and agents already treat as "try again"; 401 tells them to fix their credentials.
@@ -41,7 +45,8 @@ unchanged; the new branch is an abnormal one.
 the stored hashes use; 256 MiB covers the process (about 200 MiB measured) with headroom. In compose, C is
 `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY` in the service's `environment` mapping, else 4, the code default; in the Helm
 chart C is always 4, because no value reaches admin-api's environment (`global.extraEnv` is for the Go services). With
-C = 4 the limit is 512 MiB: `mem_limit: 512m` in `infra/compose/docker-compose.yml` and
+C = 4 the limit is 512 MiB (the rule's helpers live in `admin_api.capacity`, so that the red step can stub them and
+its zero-value check can break them): `mem_limit: 512m` in `infra/compose/docker-compose.yml` and
 `infra/compose/docker-compose.ghcr.yml`, and `adminApi.resources.limits.memory: 512Mi` in
 `deploy/helm/mintkey/values.yaml`, whose CPU limit (`500m`) and requests stay as they are. Lowering C instead would
 make bursts queue longer behind the 5 s timeout, which is the symptom being fixed.
