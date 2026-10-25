@@ -2,20 +2,20 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at fa10201d5de46682a8f2cc4f419ea60e0977ea21
+- Target: staging at 182470d45faa74359da0c210bdc86dc0cb5afa49
 - Merge: human
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-25T08:31:05Z
-- Stopped: inputs_changed (openspec:agent-auth-unavailable): the spec of openspec:agent-auth-unavailable changed after the activation: spec digest 3a28bd67 frozen at the activation, 0144234e now on its branch l4/openspec/agent-auth-unavailable (1b49049); changed: openspec/changes/agent-auth-unavailable/design.md, openspec/changes/agent-auth-unavailable/proposal.md, openspec/changes/agent-auth-unavailable/specs/agent-key-auth/spec.md and 1 more
+- Written: 2026-10-25T16:50:18Z
+- Stopped: postcheck_failed (openspec:agent-auth-unavailable): test failed (report missing: .l4-out/junit-admin-ui.xml); log /home/runner/work/mintkey/mintkey/.l4-out/yolo/postcheck/r-20261025T1644Z-ff01/013-test.log; skipped (not configured): build, e2e
 
 ## Units
 
 ### openspec:agent-auth-unavailable
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.15, 5 run(s), 2 attempt(s)
+- Result: merged
+- Pull request: <forge>/WeLikeCode/mintkey/pull/367
+- Merge commit: 182470d45faa74359da0c210bdc86dc0cb5afa49
+- Post-merge check: fail with profile all (test failed (report missing: .l4-out/junit-admin-ui.xml); log /home/runner/work/mintkey/mintkey/.l4-out/yolo/postcheck/r-20261025T1644Z-ff01/013-test.log; skipped (not configured): build, e2e)
+- Usage: $1.93, 9 run(s), 2 attempt(s)
 
 ## Batches
 
@@ -23,6 +23,6 @@
 
 ## Usage
 
-- Cost: $0.27
-- Of which the readiness review: $0.11
-- Runs that dispatched a unit: 5
+- Cost: $2.12
+- Of which the readiness review: $0.19
+- Runs that dispatched a unit: 9
