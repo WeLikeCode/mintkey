@@ -28,3 +28,5 @@
 {"at":"2026-10-25T08:35:58Z","run":"r-20261025T0835Z-88e7","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-25T09:30:18Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-25T11:15:22Z","by":"harness","reason":"the cause is gone: openspec:agent-auth-unavailable is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-25T11:15:23Z","attempt":2,"cost_usd":0.157895,"runs":2,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-25T11:15:23Z","run":"r-20261025T1115Z-b78d","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
