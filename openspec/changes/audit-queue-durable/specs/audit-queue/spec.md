@@ -18,12 +18,13 @@ way while the process runs. `Close` and `CloseWithContext` SHALL keep their dead
 stays in the WAL. The exported API of the package SHALL stay as it is (no exported name added, removed or changed).
 
 #### Scenario: the sink is down, then returns
-- **WHEN** with `MINTKEY_AUDIT_RETRY_INITIAL_MS=5` and `MINTKEY_AUDIT_RETRY_MAX_MS=20`, 1,500 events (payload
-  `{"seq": i}`) are enqueued while the sink answers 503, and the sink starts answering 200 once it has answered at
-  least 10 requests with 503 (within 3 s)
-- **THEN** before the switch `DeadLetterTotal()` is 0, `<wal>.dead` does not exist and the queue's
-  `auditq_backlog_events` is 1500; within 30 s after it every `seq` from 0 to 1499 has reached the sink, then the
-  backlog becomes 0 and `<wal>.dead` still does not exist
+- **WHEN** with `MINTKEY_AUDIT_RETRY_INITIAL_MS=5` and `MINTKEY_AUDIT_RETRY_MAX_MS=20`, a sink that answers 503 until
+  the test switches it, and the queue started, all 1,500 events (payload `{"seq": i}`) are enqueued, the test waits
+  (at most 3 s) until the sink has answered at least 10 requests with 503, and only then switches the sink to 200
+- **THEN** at that point, before the switch, `DeadLetterTotal()` is 0, `<wal>.dead` does not exist and the queue's
+  `auditq_backlog_events` is 1500 (no event can have been delivered: the sink has answered nothing but 503); within
+  30 s after the switch every `seq` from 0 to 1499 has reached the sink, then the backlog becomes 0 and `<wal>.dead`
+  still does not exist
 
 #### Scenario: more failures than the old limit of five
 - **WHEN** with `MINTKEY_AUDIT_RETRY_INITIAL_MS=1` and `MINTKEY_AUDIT_RETRY_MAX_MS=5`, the sink answers the first 8
