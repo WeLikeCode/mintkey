@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at f8b2a462cad897082479825e99a33c919535175f
+- Target: staging at fa10201d5de46682a8f2cc4f419ea60e0977ea21
 - Merge: human
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-24T18:41:20Z
-- Stopped: limit_runs: 5 run(s) used of 5
+- Written: 2026-10-25T08:31:05Z
+- Stopped: inputs_changed (openspec:agent-auth-unavailable): the spec of openspec:agent-auth-unavailable changed after the activation: spec digest 3a28bd67 frozen at the activation, 0144234e now on its branch l4/openspec/agent-auth-unavailable (1b49049); changed: openspec/changes/agent-auth-unavailable/design.md, openspec/changes/agent-auth-unavailable/proposal.md, openspec/changes/agent-auth-unavailable/specs/agent-key-auth/spec.md and 1 more
 
 ## Units
 
@@ -15,7 +15,7 @@
 - Pull request: none
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.15, 5 run(s), 1 attempt(s)
+- Usage: $0.15, 5 run(s), 2 attempt(s)
 
 ## Batches
 
