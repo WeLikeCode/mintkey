@@ -1,25 +1,25 @@
 # Delivery plan agent-auth
 
-- Status: stopped
+- Status: completed
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at 182470d45faa74359da0c210bdc86dc0cb5afa49
+- Target: staging at 6b0376ab8ff25b2478f1fc9feae31b309811a6a7
 - Merge: human
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-25T16:50:18Z
-- Stopped: postcheck_failed (openspec:agent-auth-unavailable): test failed (report missing: .l4-out/junit-admin-ui.xml); log /home/runner/work/mintkey/mintkey/.l4-out/yolo/postcheck/r-20261025T1644Z-ff01/013-test.log; skipped (not configured): build, e2e
+- Written: 2026-10-25T19:54:14Z
+- Completed at: 6b0376ab8ff25b2478f1fc9feae31b309811a6a7
 
 ## Units
 
 ### openspec:agent-auth-unavailable
-- Result: merged
+- Result: integrated at 6b0376ab8ff25b2478f1fc9feae31b309811a6a7
 - Pull request: <forge>/WeLikeCode/mintkey/pull/367
 - Merge commit: 182470d45faa74359da0c210bdc86dc0cb5afa49
-- Post-merge check: fail with profile all (test failed (report missing: .l4-out/junit-admin-ui.xml); log /home/runner/work/mintkey/mintkey/.l4-out/yolo/postcheck/r-20261025T1644Z-ff01/013-test.log; skipped (not configured): build, e2e)
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
 - Usage: $1.93, 9 run(s), 2 attempt(s)
 
 ## Batches
 
-- agent-auth (profile none): not checked
+- agent-auth (profile none): accepted at 6b0376ab8ff25b2478f1fc9feae31b309811a6a7
 
 ## Usage
 
