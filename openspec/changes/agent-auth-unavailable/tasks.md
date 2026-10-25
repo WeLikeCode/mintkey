@@ -5,7 +5,7 @@ touched suite, `ruff check` and (admin-api) `mypy --strict src/admin_api/`.
 
 ## 1. The REST middleware answers 503 when the key could not be checked
 
-- [ ] 1.1 Tests first, new file `apps/mcp-server/tests/test_rest_auth_unavailable.py`: build the app the way
+- [x] 1.1 Tests first, new file `apps/mcp-server/tests/test_rest_auth_unavailable.py`: build the app the way
   `_build_app` in `apps/mcp-server/tests/test_bearer_auth.py` does (a fake `validate_agent_key` set on
   `mcp_server.main`, `get_db_session` overridden with an `AsyncMock` session), and cover the two scenarios of the
   requirement "A REST request whose agent key could not be checked gets 503 auth_unavailable": list_services with a
