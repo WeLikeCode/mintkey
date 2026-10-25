@@ -11,3 +11,5 @@
 {"at":"2026-10-25T21:01:59Z","run":"r-20261025T2101Z-cc64","type":"unit.dispatched","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-25T21:04:14Z","detail":"awaiting_human: no new answers (open: Q-001) (escalated to a person: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-25T21:13:43Z","by":"harness","reason":"the cause is gone: openspec:broker-service-token-required is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-25T21:13:45Z","attempt":1,"cost_usd":1.102947,"runs":2,"type":"plan.charged","unit":"openspec:broker-service-token-required"}
+{"at":"2026-10-25T21:13:45Z","run":"r-20261025T2113Z-59fd","type":"unit.dispatched","unit":"openspec:broker-service-token-required"}
