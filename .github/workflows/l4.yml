@@ -74,7 +74,7 @@ jobs:
         with:
           version: "11"
       - id: l4
-        uses: ciprianiacobescu/l4/.github/actions/l4@881e3b68c883963827452e7e8b29e4d4c63ab7c0 # v0.4.31
+        uses: ciprianiacobescu/l4/.github/actions/l4@66d99acc5d9d35ba487e58084064423c71c0d358 # v0.4.32
         with:
           self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
       - name: doctor
@@ -87,6 +87,14 @@ jobs:
         with:
           path: ${{ steps.l4.outputs.clis-cache-paths }}
           key: ${{ steps.l4.outputs.clis-cache-key }}
+      - name: save Laya cache
+        if: >-
+          ${{ success() && github.ref_name == env.L4_BASE_BRANCH && steps.l4.outputs.laya-cache-hit != 'true'
+          && steps.l4.outputs.laya-cache-key != '' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.l4.outputs.laya-cache-paths }}
+          key: ${{ steps.l4.outputs.laya-cache-key }}
       - name: plan
         run: l4 plan --sweep || l4 ci map-exit $?
       - name: run
