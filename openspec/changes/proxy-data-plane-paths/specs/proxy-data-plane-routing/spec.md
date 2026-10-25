@@ -72,4 +72,5 @@ and no credential value.
 - **WHEN** the acceptance test reads `docs/guides/data-plane-only.md`
 - **THEN** the file exists, contains every name of design.md's list, contains no ```` ```mermaid ```` fence, and
   contains none of the values that `infra/compose/docker-compose.yml` gives the `proxy-plugin` service's variables
-  whose names end in `_TOKEN`
+  whose names end in `_TOKEN` (only values that are strings of at least 16 characters and contain no `${`: an empty value, an interpolation
+  such as `${MINTKEY_PROXY_SERVICE_TOKEN}` and a short placeholder are skipped, since the page names the variables)

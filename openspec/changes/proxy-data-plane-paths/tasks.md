@@ -69,7 +69,9 @@ acceptance suite as `.l4/gates/test.sh` runs it.
   `DATABASE_URL`, `NOTIFY`, `mintkey:agent`, `token.revoked`, `agent.revoked` (one assertion message listing every
   missing name). `test_data_plane_doc_has_no_mermaid_and_no_credential_values` asserts `DOC.is_file()`, that
   ```` ```mermaid ```` does not occur, and that none of the values of `services["proxy-plugin"]["environment"]` in
-  `infra/compose/docker-compose.yml` (read with `yaml.safe_load`) whose key ends in `_TOKEN` occurs. Both fail before
+  `infra/compose/docker-compose.yml` (read with `yaml.safe_load`) whose key ends in `_TOKEN` occurs, counting only
+  string values of at least 16 characters with no `${` (empty values, interpolations and short placeholders are
+  skipped; the environment may be a mapping or a list of `KEY=VALUE`). Both fail before
   the change because the file does not exist.
   Then write `docs/guides/data-plane-only.md` with the seven sections of design.md, in that order, stating each fact
   listed there.
