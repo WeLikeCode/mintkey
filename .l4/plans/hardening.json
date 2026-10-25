@@ -1,0 +1,27 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "hardening",
+  "target": "staging",
+  "merge": "auto",
+  "limits": {"max_cost_usd": 60, "max_unit_attempts": 2, "max_runs": 70},
+  "external_dependencies": [],
+  "batches": [
+    {"id": "p0-auth", "depends_on": [], "units": [
+      {"id": "openspec:broker-service-token-required", "depends_on": []},
+      {"id": "openspec:vault-service-identity-fast-check", "depends_on": ["openspec:broker-service-token-required"]},
+      {"id": "openspec:vault-method-scopes", "depends_on": ["openspec:vault-service-identity-fast-check"]}
+    ]},
+    {"id": "p1-proxy-audit", "depends_on": ["p0-auth"], "units": [
+      {"id": "openspec:proxy-revocation-enforced", "depends_on": []},
+      {"id": "openspec:token-request-scope-claims", "depends_on": ["openspec:proxy-revocation-enforced"]},
+      {"id": "openspec:audit-chain-verifiable", "depends_on": []},
+      {"id": "openspec:audit-queue-durable", "depends_on": []}
+    ]},
+    {"id": "p2-cleanup", "depends_on": ["p1-proxy-audit"], "units": [
+      {"id": "openspec:proxy-budget-check", "depends_on": []},
+      {"id": "openspec:proxy-data-plane-paths", "depends_on": ["openspec:proxy-budget-check"]},
+      {"id": "openspec:service-token-files", "depends_on": []}
+    ]}
+  ],
+  "exclude": []
+}
