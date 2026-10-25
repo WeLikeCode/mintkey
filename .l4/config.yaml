@@ -68,6 +68,7 @@ profiles:
   claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
     adapter: claude-code
     auth: subscription
+    model: claude-sonnet-5-5  # the model it served in every run so far, named so the delegate's independence shows (doctor DLG-001)
     vendor: anthropic
   deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
     adapter: opencode
@@ -81,6 +82,11 @@ profiles:
     adapter: opencode
     model: opencode/nemotron-3.5-super-vl-free
     vendor: nvidia
+  delegate-fable:           # the delegate of unattended plans (owner decision 2026-10-25): a model no implementer or judge uses (claude-judge serves claude-sonnet-5-5); the token in CLAUDE_CODE_OAUTH_TOKEN
+    adapter: claude-code
+    auth: subscription
+    model: claude-fable-5-1
+    vendor: anthropic
 roles:
   implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
   - deepseek
@@ -93,6 +99,8 @@ roles:
   s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks; Jev first, Laya when Jev does not open (owner decision 2026-10-25)
   - jev
   - laya
+  delegate:                 # answers the questions of an active plan's current unit, read-only, and escalates what it cannot check
+  - delegate-fable
 forge:
   type: github
   token_env: GITHUB_TOKEN
@@ -119,5 +127,8 @@ yolo:
     max_dependency_chars: 30000  # the hardening plan's units are 23-35k each; the readiness judge reads a prerequisite's proposal, spec and design whole
   hold:                     # every spec, existing and new, is opt-in by plan: nothing runs until a plan lists it
   - "*"
+delegate:                   # on for unattended plans (owner decision 2026-10-25); only units of an active plan (scope yolo)
+  enabled: true
+  scope: yolo
 clarifier:
   answer_by_agents: true    # the owner lets the planning agent answer questions with `l4 questions`; each answer is a commit on the unit branch
