@@ -42,7 +42,7 @@ touched suite, `ruff check` and (admin-api) `mypy --strict src/admin_api/`.
 
 ## 3. admin-api's memory limit fits its verify concurrency
 
-- [ ] 3.1 Tests first, new file `tests/acceptance/test_admin_api_verify_capacity.py`, and the new helper module
+- [x] 3.1 Tests first, new file `tests/acceptance/test_admin_api_verify_capacity.py`, and the new helper module
   `apps/admin-api/src/admin_api/capacity.py` with `to_mib`, `required_mib`, `compose_concurrency` and
   `capacity_problem` exactly as the requirement "admin-api's memory limit fits its verify concurrency" gives them
   (red stubs the module, green fills it in). The test imports them from `admin_api.capacity`, reads the three
