@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1.1 | technical | Refresh the stale cached baseline so pre-existing admin-ui tests are not counted as new |
-| Q-002 | open | 3.1 | technical | tests/acceptance/test_admin_api_verify_capacity.py:92 needs the infra/compose limits at 512 MiB, but infra/** is harness-protected |
+| Q-002 | answered | 3.1 | technical | tests/acceptance/test_admin_api_verify_capacity.py:92 needs the infra/compose limits at 512 MiB, but infra/** is harness-protected |
 <!-- l4:index:end -->
 
 ---
@@ -39,7 +39,7 @@ Answered by Claude as the owner's delegate (the owner: 'do it as my delegate', 2
 
 ## Q-002: tests/acceptance/test_admin_api_verify_capacity.py:92 needs the infra/compose limits at 512 MiB, but infra/** is harness-protected
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 3.1
 - **Kind:** technical
 - **Asked:** 2026-10-25T12:50Z by deepseek, run r-20261025T1115Z-b78d, task 3.1
@@ -59,3 +59,4 @@ Edit `infra/compose/docker-compose.yml`: set `services.admin-api.mem_limit` from
 
 ### Answer
 <!-- write below this line -->
+Answered by Claude as the owner's delegate (the owner: 'do it as my delegate', 2026-10-25). None of the three options as an agent's edit: infra/** stays protected, and .l4/config.yaml does not change (option 3 would drop the guard for every later unit, which is the owner's call, not this unit's). The compose change is already on this branch as a person's commit, 1b1e9d2 by the owner's delegate: services.admin-api.mem_limit is 512m in infra/compose/docker-compose.yml and in infra/compose/docker-compose.ghcr.yml, and nothing else changed. L4 lists a protected path that only a person's commit changed and does not revert or block it (L4-SEC-004). Do not edit any file under infra/ again: an agent's edit there is reverted. Continue task 3.1 as written: fill in admin_api.capacity (to_mib, required_mib, compose_concurrency, capacity_problem) exactly as the requirement gives them, and change only adminApi.resources.limits.memory from 256Mi to 512Mi in deploy/helm/mintkey/values.yaml (the CPU limit 500m and the requests stay). The frozen tests stay as they are; they now pass once the module and the Helm limit are done.
