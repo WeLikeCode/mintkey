@@ -34,3 +34,5 @@
 {"at":"2026-10-25T15:32:48Z","by":"harness","reason":"the cause is gone: openspec:agent-auth-unavailable is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-25T15:32:50Z","attempt":2,"cost_usd":0.254777,"runs":3,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
 {"at":"2026-10-25T15:32:50Z","run":"r-20261025T1532Z-ccf2","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-25T16:10:05Z","attempt":2,"cost_usd":0.989757,"runs":4,"type":"plan.charged","unit":"openspec:agent-auth-unavailable"}
+{"at":"2026-10-25T16:10:05Z","run":"r-20261025T1610Z-440f","type":"unit.dispatched","unit":"openspec:agent-auth-unavailable"}
