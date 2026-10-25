@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: D4 picks the proxy and admin identities as the ones production requires. An owner may prefer a conf…
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Which vault identities production must have is a deployment-policy decision the repository does not make. deploy/helm/mintkey/README.md:24 says every secret key is required unless noted optional and notes none of the five vault tokens optional; the chart (templates/stateful/vault-adapter.yaml:61-105
 - **Blocking tasks:** 1.1, 2.1, 3.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
