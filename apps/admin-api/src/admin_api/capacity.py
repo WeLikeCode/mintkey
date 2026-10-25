@@ -11,7 +11,7 @@ _DEFAULT_CONCURRENCY = 4
 _MIB_PER_VERIFY = 64
 _BASE_MIB = 256
 
-_MEMORY_RE = re.compile(r"(\d+)([mMgG]i?)")
+_MEMORY_RE = re.compile(r"(\d+)(Mi|Gi|m|M|g|G)", re.ASCII)
 
 
 def to_mib(value: str) -> int:
