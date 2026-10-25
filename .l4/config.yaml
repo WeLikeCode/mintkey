@@ -62,6 +62,9 @@ profiles:
     api_key_env: TYPESAFE_API_KEY
     model: jev-1.13.0       # pinned: thresholds are tuned to a version
     vendor: typesafe
+  laya:                     # System One fallback when Jev does not open: Laya on the runner (free; cached by the setup action)
+    backend: system-one
+    engine: laya-local
   claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
     adapter: claude-code
     auth: subscription
@@ -87,8 +90,9 @@ roles:
   judges:
   - claude-judge
   - nemotron-judge          # the free fallback judge (NVIDIA: independent of the DeepSeek and GLM implementers)
-  s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
+  s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks; Jev first, Laya when Jev does not open (owner decision 2026-10-25)
   - jev
+  - laya
 forge:
   type: github
   token_env: GITHUB_TOKEN
