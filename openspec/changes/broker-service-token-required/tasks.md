@@ -45,7 +45,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 3. The vault adapter registers its identities from one table
 
-- [ ] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_test.go` (package `server`). The tests
+- [x] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_test.go` (package `server`). The tests
   build a `VaultService` with `NewVaultService(kek, st)` on `store.New(":memory:")` as `newTestGRPCServer` in
   `grpc_test.go` does, reach the two new methods through the `bootRegistrar` interface of design D7 asserted on the
   `*VaultService` (`t.Fatal` when it fails), pass a lookup built from a `map[string]string` (a missing key gives `""`,

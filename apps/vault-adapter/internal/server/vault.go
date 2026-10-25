@@ -94,11 +94,11 @@ type RevokeCredentialArgs struct {
 
 // ListVersionsArgs holds the input for ListVersions.
 type ListVersionsArgs struct {
-	TenantID         string
-	ServiceID        string
-	AfterKeyVersion  uint32
-	Limit            uint32
-	CallerActorID    string
+	TenantID        string
+	ServiceID       string
+	AfterKeyVersion uint32
+	Limit           uint32
+	CallerActorID   string
 }
 
 // VersionDescriptor is a metadata-only view of one credential version.
@@ -114,9 +114,9 @@ type VersionDescriptor struct {
 
 // ListVersionsResult is returned by ListVersions.
 type ListVersionsResult struct {
-	Versions             []VersionDescriptor
-	NextAfterKeyVersion  uint32
-	CurrentKeyVersion    uint32
+	Versions            []VersionDescriptor
+	NextAfterKeyVersion uint32
+	CurrentKeyVersion   uint32
 }
 
 // RotateCredentialArgs is input for RotateCredential.
@@ -167,8 +167,8 @@ var defaultArgon2Params = argon2Params{
 
 // serviceIdentity holds the Argon2id hash + scopes for one service.
 type serviceIdentity struct {
-	tokenHash []byte   // Argon2id(token, salt, params)
-	salt      []byte   // stored alongside hash
+	tokenHash []byte // Argon2id(token, salt, params)
+	salt      []byte // stored alongside hash
 	scopes    []string
 }
 
@@ -433,6 +433,13 @@ func (v *VaultService) ListVersions(ctx context.Context, args ListVersionsArgs) 
 // RegisterServiceIdentity hashes token with Argon2id and stores the result
 // under identityID.  Call this during bootstrap before accepting requests.
 func (v *VaultService) RegisterServiceIdentity(identityID string, token []byte, scopes []string) error {
+	if identityID == "" {
+		return fmt.Errorf("RegisterServiceIdentity: empty identity id")
+	}
+	if len(token) == 0 {
+		return fmt.Errorf("RegisterServiceIdentity(%s): empty token", identityID)
+	}
+
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return fmt.Errorf("RegisterServiceIdentity: generate salt: %w", err)
