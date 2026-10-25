@@ -11,7 +11,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 1. Broker endpoints refuse every request when their token is not configured
 
-- [ ] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_empty_token_test.go` (package `issue_test`):
+- [x] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_empty_token_test.go` (package `issue_test`):
   build an `*issuer.Issuer` as `newTestHandler` in `issue_test.go` does, and a fake `issue.AuditEnqueuer` that counts
   `Enqueue` calls. `TestIssue_EmptyConfiguredToken_NoHeader_Returns401`,
   `TestIssue_EmptyConfiguredToken_EmptyHeader_Returns401` and `TestIssue_EmptyConfiguredToken_AnyHeader_Returns401`
