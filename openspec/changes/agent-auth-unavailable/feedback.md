@@ -10,14 +10,14 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour | apps/admin-api/src/admin_api/capacity.py:14 | to_mib accepts 512mi, 1gi and non-ASCII digits |
+| FB-001 | taken | behaviour | apps/admin-api/src/admin_api/capacity.py:14 | to_mib accepts 512mi, 1gi and non-ASCII digits |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: to_mib accepts 512mi, 1gi and non-ASCII digits
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Where:** `apps/admin-api/src/admin_api/capacity.py:14-23`
 - **Lesson:** no
@@ -46,3 +46,4 @@ Review by Claude as the owner's delegate. The requirement "admin-api's memory li
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into agent-auth-unavailable-fix-1
