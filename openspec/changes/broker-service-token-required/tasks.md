@@ -30,7 +30,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 2. The broker refuses to start in production without its inbound tokens
 
-- [ ] 2.1 Tests first, new file `apps/broker/internal/config/config_test.go` (package `config_test`), building
+- [x] 2.1 Tests first, new file `apps/broker/internal/config/config_test.go` (package `config_test`), building
   `config.Config` values directly from their existing fields `Env`, `MCPServiceToken` and `ProxyServiceToken` (no
   environment) and reaching the new methods through
   `type serviceTokenChecker interface { MissingServiceTokens() []string; Validate() error }`, asserted on the

@@ -4,8 +4,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
 )
@@ -35,9 +37,9 @@ func Load() *Config {
 		HTTPPort:          getEnvInt("BROKER_HTTP_PORT", 8083),
 		VaultGRPCAddr:     getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
 		SigningKeyFile:    os.Getenv("MINTKEY_BROKER_SIGNING_KEY_FILE"),
-		ServiceToken:      os.Getenv("MINTKEY_SERVICE_TOKEN"),        // /run/secrets/ in compose
-		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"),  // /run/secrets/ in compose
-		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),    // shared with MCP Server
+		ServiceToken:      os.Getenv("MINTKEY_SERVICE_TOKEN"),       // /run/secrets/ in compose
+		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"), // /run/secrets/ in compose
+		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),   // shared with MCP Server
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		// Audit async emission (#22)
 		AdminAPIURL:    getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
@@ -49,6 +51,29 @@ func Load() *Config {
 			ThresholdBytes: getEnvInt64("MINTKEY_AUDIT_WAL_COMPACT_THRESHOLD_BYTES", 64<<20),
 		},
 	}
+}
+
+// MissingServiceTokens returns the names of the inbound service-token variables whose value is empty, in the order
+// MINTKEY_MCP_SERVICE_TOKEN, MINTKEY_PROXY_SERVICE_TOKEN. It returns an empty (nil) slice when both are set.
+func (c *Config) MissingServiceTokens() []string {
+	var missing []string
+	if c.MCPServiceToken == "" {
+		missing = append(missing, "MINTKEY_MCP_SERVICE_TOKEN")
+	}
+	if c.ProxyServiceToken == "" {
+		missing = append(missing, "MINTKEY_PROXY_SERVICE_TOKEN")
+	}
+	return missing
+}
+
+// Validate returns nil unless c.Env == "production" and MissingServiceTokens() is not empty. Then it returns an error
+// whose message is "production requires these variables to be set: " + strings.Join(MissingServiceTokens(), ", ").
+func (c *Config) Validate() error {
+	missing := c.MissingServiceTokens()
+	if c.Env == "production" && len(missing) != 0 {
+		return fmt.Errorf("production requires these variables to be set: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {
