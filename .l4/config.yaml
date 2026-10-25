@@ -112,6 +112,7 @@ ci:
 yolo:
   review:
     accept_by_agents: true  # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
+  extend_by_agents: true    # the owner's delegate raises a plan's limits for plan agent-auth (owner: "do it as my delegate", 2026-10-25); set back to false after the extension
   hold:                     # every spec, existing and new, is opt-in by plan: nothing runs until a plan lists it
   - "*"
 clarifier:
