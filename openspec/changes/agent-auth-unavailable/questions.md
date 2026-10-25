@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | Refresh the stale cached baseline so pre-existing admin-ui tests are not counted as new |
+| Q-001 | answered | 1.1 | technical | Refresh the stale cached baseline so pre-existing admin-ui tests are not counted as new |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Refresh the stale cached baseline so pre-existing admin-ui tests are not counted as new
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-25T09:29Z by deepseek-free, run r-20261025T0835Z-88e7, task 1.1
@@ -32,3 +32,4 @@ The cached baseline for base commit 1b49049 (run r-20261025T0835Z-88e7, ledger s
 
 ### Answer
 <!-- write below this line -->
+Answered by Claude as the owner's delegate (the owner: 'do it as my delegate', 2026-10-25). Neither option: the baseline was not stale, the L4 harness broke it. L4 0.4.30 and earlier mount node_modules read-only in test gates, and Vitest 5's default module cache (fsModuleCache, node_modules/.vitest-cache) does an mkdir there that nothing catches, so in every gate run exactly one admin-ui test file failed at file level, a different file each run (the baseline lost tests/test_auth_scheme.test.ts, red attempt 1 lost tests/test_budget_bff.test.ts, attempt 2 lost tests/test_agent_secret_grants.test.ts). L4 0.4.31 makes .vitest-cache a tool cache that is empty and writable in every gate, and staging pins it (2bdc6c7). The next run computes the baseline again under 0.4.31, so every admin-ui file is in the base report and its tests are not new. Do not change the Vitest configuration (no fsModuleCache: false) or any admin-ui file. Continue task 1.1 as written: the new tests in apps/mcp-server/tests/test_rest_auth_unavailable.py, failing by assertion before the implementation.
