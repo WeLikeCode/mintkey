@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-25T19:52:06Z",
+  "integrated_revision": "6b0376ab8ff25b2478f1fc9feae31b309811a6a7",
+  "merge_commit": "182470d45faa74359da0c210bdc86dc0cb5afa49",
+  "plan_digest": "8518e8eb7fb42418",
+  "plan_id": "agent-auth",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/367",
+  "receipt_id": "agent-auth/openspec:agent-auth-unavailable/2",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "0144234ec308ce42",
+  "target": "staging",
+  "unit_id": "openspec:agent-auth-unavailable"
+}
