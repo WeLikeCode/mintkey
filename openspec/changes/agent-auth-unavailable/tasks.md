@@ -23,7 +23,7 @@ touched suite, `ruff check` and (admin-api) `mypy --strict src/admin_api/`.
 
 ## 2. admin-api answers 503 when the verify breaks
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_validate_agent_key_errors.py`: call
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_validate_agent_key_errors.py`: call
   `admin_api.api.internal.validate_agent_key(ValidateAgentKeyRequest(api_key="mk_agent_x"), session)` directly, with
   `session` a fake whose `execute` is an `AsyncMock` (the first call is the `set_config` statement; the second returns
   a result whose `fetchone()` gives a row with `id`, `tenant_id`, `api_key_hash`, `status="active"`,
