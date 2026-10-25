@@ -1,55 +1,205 @@
-# Verification: openspec:agent-auth-unavailable: FAIL (round 2)
+# Verification: openspec:agent-auth-unavailable: PASS (round 3)
 
-traceability: not checked (an earlier step failed)
+traceability: 13/13 criteria covered by a discriminating test
 
 - Base: `2bdc6c769afac3dfb9e6dc983171072caa633985`
-- Head: `0ba515796fad3f7e6ceeef89d398acbe3409ead1`
+- Head: `5bb7af461fcc9c7835f183ba29379217e460ad4c`
 - Implementer profiles: deepseek, glm, deepseek-free
-- Judge: claude-judge, 0 call(s), prompt sha256 `-`
+- Judge: claude-judge (claude-sonnet-5-5), 1 call(s), prompt sha256 `1bf1c86889a5dd911dc56b324fec23254bdbc105fa58442d2cb92c9bcc2ac990`
+- Judge replies of claude-judge (this unit, all rounds): valid 2, repaired 0, retried 0, discarded 0; this round: valid
+- independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared), glm zhipu (declared), deepseek-free deepseek (declared)
+- Cost: $0.7705
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | failed | 0.5 | base staging@2bdc6c769a contained; Feedback FB-001 (behaviour): to_mib accepts 512mi, 1gi and non-ASCII digits |
-| 1 | integrity | not_run | 0.0 | an earlier step failed |
-| 2 | build | not_run | 0.0 | an earlier step failed |
-| 3 | tests | not_run | 0.0 | an earlier step failed |
-| 4 | traceability | not_run | 0.0 | an earlier step failed |
-| 4a | audit sampling | not_run | 0.0 | an earlier step failed |
-| 5 | ui test generation | not_run | 0.0 | an earlier step failed |
-| 6 | quality | not_run | 0.0 | an earlier step failed |
-| 8 | s1 judge | not_run | 0.0 | an earlier step failed |
-| 9 | judge | not_run | 0.0 | an earlier step failed |
-| 10 | aggregation | ok | 0.0 | FAIL |
+| 0 | preconditions | ok | 0.9 | base staging@2bdc6c769a contained |
+| 1 | integrity | ok | 237.8 | 10 sub-checks; scope: 31 changed file(s) |
+| 2 | build | ok | 131.2 |  |
+| 3 | tests | ok | 166.7 |  |
+| 4 | traceability | ok | 0.1 | 13/13 criteria covered |
+| 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
+| 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
+| 6 | quality | ok | 0.0 | diff coverage not measured: coverage.py is not importable in the project environment |
+| 8 | s1 judge | ok | 0.9 | 13/13 criteria judged by jev |
+| 9 | judge | ok | 20.2 | 1 call(s) |
+| 10 | aggregation | ok | 0.0 | PASS |
+
+## Gates
+
+| Gate | Status | Command | Log |
+|---|---|---|---|
+| setup | pass | `uv sync --frozen --directory apps/admin-api` | .l4-out/gates/r-20261025T1610Z-440f/058-setup.log |
+| setup | pass | `uv sync --frozen --directory packages/python/mintkey-models` | .l4-out/gates/r-20261025T1610Z-440f/059-setup.log |
+| setup | pass | `uv sync --frozen --directory apps/mcp-server` | .l4-out/gates/r-20261025T1610Z-440f/060-setup.log |
+| setup | pass | `sh .l4/gates/setup-go.sh` | .l4-out/gates/r-20261025T1610Z-440f/061-setup.log |
+| setup | pass | `pnpm --dir apps/admin-ui install --frozen-lockfile` | .l4-out/gates/r-20261025T1610Z-440f/062-setup.log |
+| lint | pass | `uv run --frozen --directory apps/admin-api ruff check src/` | .l4-out/gates/r-20261025T1610Z-440f/063-lint.log |
+| lint | pass | `uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/` | .l4-out/gates/r-20261025T1610Z-440f/064-lint.log |
+| lint | pass | `uv run --frozen --directory apps/mcp-server ruff check src/` | .l4-out/gates/r-20261025T1610Z-440f/065-lint.log |
+| lint | pass | `sh .l4/gates/lint-go.sh` | .l4-out/gates/r-20261025T1610Z-440f/066-lint.log |
+| typecheck | pass | `uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/` | .l4-out/gates/r-20261025T1610Z-440f/067-typecheck.log |
+| typecheck | pass | `uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/` | .l4-out/gates/r-20261025T1610Z-440f/068-typecheck.log |
+| typecheck | pass | `pnpm --dir apps/admin-ui exec tsc --noEmit` | .l4-out/gates/r-20261025T1610Z-440f/069-typecheck.log |
+| test | pass | `sh .l4/gates/test.sh` | .l4-out/gates/r-20261025T1610Z-440f/070-test.log |
+
+## Integrity
+
+| Check | Status | Note |
+|---|---|---|
+| protected paths | ok | no protected path differs from the base (+2 changed by humans, listed) |
+| pre-existing tests | ok | 3 test file(s) compared with the base |
+| red-green freeze | ok | 4 task(s): red and green compared |
+| test path freeze | ok | 4 harness step commit(s) checked |
+| content scan | ok | no result-manipulating construct in the changed support and runner files |
+| gate configuration | skipped | no gate or runner configuration file changed |
+| test awareness | ok | no production line reacts to the test run |
+| suppressions | ok | 1 new suppression(s), 1 declared |
+| tdd history | ok | 4 task(s); red tests passing at head: step 3 |
+| pre-existing tests still pass | ok | 2612 of 2612 base tests pass on the unit's code with its 2 test and support files at the base (base: evidence) |
+
+Declared suppressions:
+- tests/acceptance/test_admin_api_verify_capacity.py:23 # noqa: E402 (declared: The import follows the sys.path setup that makes the local admin_api package importable without installation.)
+
+## Protected paths changed by humans (allowed, L4-SEC-004)
+
+- `infra/compose/docker-compose.ghcr.yml`: 1b1e9d2f72 by CiprianSpot
+- `infra/compose/docker-compose.yml`: 1b1e9d2f72 by CiprianSpot
+
+## Pre-existing tests changed with an allowance (L4-VER-031)
+
+- apps/mcp-server/tests/test_rest_auth_unavailable.py kept at head for the run (task 1.1: unfrozen by Q-001)
+
+## Traceability
+
+| Id | Criterion | State | Tests (status, proof) | Not evidence | S1 p |
+|---|---|---|---|---|---|
+| C-0bbc396d | agent-key-auth › A REST request whose agent key could not be checked gets 503 auth_unavailable › admin-api cannot judge the key on list_services | covered | apps.mcp-server.tests.test_rest_auth_unavailable::test_C_0bbc396d_list_services_unjudged_key_gets_503_without_using_session (passed, red_assertion) | - | 0.95 |
+| C-9a964586 | agent-key-auth › A REST request whose agent key could not be checked gets 503 auth_unavailable › the same answer on request_token and with X-API-Key | covered | apps.mcp-server.tests.test_rest_auth_unavailable::test_C_9a964586_request_token_unjudged_x_api_key_gets_same_503 (passed, red_assertion) | - | 0.89 |
+| C-b6439852 | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an unexpected error in the verify of a known agent | covered | tests.unit.admin_api.test_validate_agent_key_errors::test_C_b6439852_unexpected_verify_error_answers_503 (passed, red_assertion) | - | 0.93 |
+| C-51ef8acf | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › a mismatch is still a 401 | covered | tests.unit.admin_api.test_validate_agent_key_errors::test_C_51ef8acf_verify_mismatch_is_still_401 (passed, pre_satisfied) | - | 0.92 |
+| C-60c778ab | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an invalid stored hash is still a 401 | covered | tests.unit.admin_api.test_validate_agent_key_errors::test_C_60c778ab_invalid_stored_hash_is_still_401 (passed, pre_satisfied) | - | 0.90 |
+| C-f73110db | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an unknown key stays a 401 whatever the dummy verify raises | covered | tests.unit.admin_api.test_validate_agent_key_errors::test_C_f73110db_unknown_key_stays_401_when_dummy_verify_raises (passed, pre_satisfied) | - | 0.92 |
+| C-55531051 | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › a cancelled request is not turned into an answer | covered | tests.unit.admin_api.test_validate_agent_key_errors::test_C_55531051_cancelled_verify_propagates (passed, pre_satisfied) | - | 0.93 |
+| C-cbd20f5c | agent-key-auth › admin-api's memory limit fits its verify concurrency › the three definitions fit the rule | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_cbd20f5c_three_definitions_fit_the_rule (passed, zero_value) | - | 0.84 |
+| C-06752b13 | agent-key-auth › admin-api's memory limit fits its verify concurrency › a definition that does not fit is reported | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_06752b13_capacity_problem_reports_a_definition_below_the_rule (passed, zero_value) | - | 0.87 |
+| C-f6faf63f | agent-key-auth › admin-api's memory limit fits its verify concurrency › a definition without a limit is not checked | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_f6faf63f_capacity_problem_ignores_a_definition_without_a_limit (passed, zero_value) | - | 0.90 |
+| C-434fcc7f | agent-key-auth › admin-api's memory limit fits its verify concurrency › memory values convert, and others are refused | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_434fcc7f_to_mib_converts_memory_units_and_refuses_others (passed, zero_value) | - | 0.90 |
+| C-e54cc104 | agent-key-auth › admin-api's memory limit fits its verify concurrency › a broken definition fails the test, never skips it | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_e54cc104_compose_concurrency_refuses_a_non_integer_value (passed, zero_value) | - | 0.89 |
+| C-6fb6b8c7 | agent-key-auth › to_mib accepts 512mi, 1gi and non-ASCII digits — feedback FB-001 › to_mib accepts 512mi, 1gi and non-ASCII digits | covered | tests.acceptance.test_admin_api_verify_capacity::test_C_6fb6b8c7_to_mib_refuses_lowercase_i_suffixes_and_non_ascii_digits (passed, red_assertion) | - | 0.91 |
+
+## Evidence
+
+### Needs attention
+
+- diff coverage not measured: coverage.py is not importable in the project environment
+
+### Files
+
+| Path | Module | Label | Why |
+|---|---|---|---|
+| `apps/admin-api/src/admin_api/api/internal.py` | admin-api | relevant | named in the spec |
+| `apps/admin-api/src/admin_api/capacity.py` | admin-api | relevant | module `admin-api` is named in the spec |
+| `apps/mcp-server/src/mcp_server/main.py` | mcp-server | relevant | named in the spec |
+| `apps/mcp-server/tests/test_rest_auth_unavailable.py` |  | relevant | new test file |
+| `deploy/helm/mintkey/values.yaml` | deploy | relevant | named in the spec |
+| `infra/compose/docker-compose.ghcr.yml` |  | none | changed by human commit 1b1e9d2f72 |
+| `infra/compose/docker-compose.yml` |  | none | changed by human commit 1b1e9d2f72 |
+| `openspec/changes/agent-auth-unavailable-fix-1/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable-fix-1/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable-fix-1/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable-fix-1/specs/agent-key-auth/spec.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable-fix-1/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/evidence/round-2/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/evidence/round-2/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T0813Z-a663.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T0835Z-88e7.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T1115Z-b78d.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T1532Z-ccf2.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/.l4/ledger/r-20261025T1610Z-440f.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/design.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/feedback.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/questions.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/specs/agent-key-auth/spec.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-auth-unavailable/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `tests/acceptance/test_admin_api_verify_capacity.py` |  | relevant | new test file |
+| `tests/unit/admin_api/test_validate_agent_key_errors.py` |  | relevant | new test file |
+
+### Changed functions
+
+Diff coverage not measured: coverage.py is not importable in the project environment
+
+### Tests
+
+2626 of 2680 passed, 0 failed, 0 errored, 54 skipped.
+13 of 13 new tests passed.
+Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated`, `apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401`, `apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields`, `apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found`, `apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape`, `github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger`, `github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming`, `tests.acceptance.test_admin_ui_boot::test_login_page_returns_200`, `tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials`, `tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]`, `tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]`, `tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end`, `tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips`, `tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id`, `tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints`, `tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id`, `tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id`, `tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id`, `tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1`, `tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain`, `tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2`, `tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode`, `tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends`, `tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null`, `tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call`, `tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue`, `tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation`, `tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429`, `tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call`, `tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created`, `tests.acceptance.test_classical_key::test_classical_key_full_flow`, `tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy`, `tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt`, `tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak`, `tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected`, `tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403`, `tests.acceptance.test_data_plane_smoke::test_broker_smoke`, `tests.acceptance.test_data_plane_smoke::test_kong_smoke`, `tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke`, `tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke`, `tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end`, `tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream`, `tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end`, `tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end`, `tests.acceptance.test_observability::test_audit_chain_valid`, `tests.acceptance.test_observability::test_prometheus_targets_all_up`, `tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics`, `tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded`, `tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12`, `tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe`, `tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx`, `tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash`, `tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422`, `tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok`
+
+## S1 (recorded for calibration, never decides)
+
+| Criterion | Status | p | Model | Engine | Note |
+|---|---|---|---|---|---|
+| C-0bbc396d | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-9a964586 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-b6439852 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-51ef8acf | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-60c778ab | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-f73110db | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-55531051 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-cbd20f5c | ok | 0.840 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-06752b13 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-f6faf63f | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-434fcc7f | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-e54cc104 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-6fb6b8c7 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
 ## Criteria
 
-None judged.
+| Id | Criterion | Judge | Result | Reason |
+|---|---|---|---|---|
+| C-0bbc396d | agent-key-auth › A REST request whose agent key could not be checked gets 503 auth_unavailable › admin-api cannot judge the key on list_services | pass | pass | the judge passed it and a discriminating test passes |
+| C-9a964586 | agent-key-auth › A REST request whose agent key could not be checked gets 503 auth_unavailable › the same answer on request_token and with X-API-Key | pass | pass | the judge passed it and a discriminating test passes |
+| C-b6439852 | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an unexpected error in the verify of a known agent | pass | pass | the judge passed it and a discriminating test passes |
+| C-51ef8acf | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › a mismatch is still a 401 | pass | pass | the judge passed it and a discriminating test passes |
+| C-60c778ab | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an invalid stored hash is still a 401 | pass | pass | the judge passed it and a discriminating test passes |
+| C-f73110db | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › an unknown key stays a 401 whatever the dummy verify raises | pass | pass | the judge passed it and a discriminating test passes |
+| C-55531051 | agent-key-auth › admin-api answers 503 when the verify fails for a reason other than the key › a cancelled request is not turned into an answer | pass | pass | the judge passed it and a discriminating test passes |
+| C-cbd20f5c | agent-key-auth › admin-api's memory limit fits its verify concurrency › the three definitions fit the rule | pass | pass | the judge passed it and a discriminating test passes |
+| C-06752b13 | agent-key-auth › admin-api's memory limit fits its verify concurrency › a definition that does not fit is reported | pass | pass | the judge passed it and a discriminating test passes |
+| C-f6faf63f | agent-key-auth › admin-api's memory limit fits its verify concurrency › a definition without a limit is not checked | pass | pass | the judge passed it and a discriminating test passes |
+| C-434fcc7f | agent-key-auth › admin-api's memory limit fits its verify concurrency › memory values convert, and others are refused | pass | pass | the judge passed it and a discriminating test passes |
+| C-e54cc104 | agent-key-auth › admin-api's memory limit fits its verify concurrency › a broken definition fails the test, never skips it | pass | pass | the judge passed it and a discriminating test passes |
+| C-6fb6b8c7 | agent-key-auth › to_mib accepts 512mi, 1gi and non-ASCII digits — feedback FB-001 › to_mib accepts 512mi, 1gi and non-ASCII digits | pass | pass | the judge passed it and a discriminating test passes |
 
 ## Findings
 
-- [major, feedback] Feedback FB-001 (behaviour): to_mib accepts 512mi, 1gi and non-ASCII digits: Review by Claude as the owner's delegate. The requirement "admin-api's memory limit fits its verify concurrency" says to_mib converts an integer followed by m, M or Mi (MiB) or g, G or Gi (times 1024) and that any other string SHALL raise ValueError whose message contains the string. The pattern (\d+)([mMgG]i?) also accepts a lowercase unit with i (512mi gives 512, 1gi gives 1024), and \d matches non-ASCII digits (５１２m gives 512). Accept exactly the six units (for example (\d+)(Mi|Gi|m|M|g|G) compiled with re.ASCII, still with fullmatch) and change nothing else: the other functions, their mess...
+None.
 
-## Fix unit
+## Feedback
 
-Fix unit 1 is created for these tasks:
-- F-fede8b82 Feedback FB-001 (behaviour): to_mib accepts 512mi, 1gi and non-ASCII digits
+- FB-001: addressed at 5bb7af461f: apps/admin-api/src/admin_api/capacity.py: _MEMORY_RE = re.compile(r"(\d+)(Mi|Gi|m|M|g|G)", re.ASCII), still fullmatch
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
-- `apps.mcp-server.tests.test_rest_auth_unavailable::test_C_0bbc396d_list_services_unjudged_key_gets_503_without_using_session` (task 1.1): not in the report
-- `apps.mcp-server.tests.test_rest_auth_unavailable::test_C_9a964586_request_token_unjudged_x_api_key_gets_same_503` (task 1.1): not in the report
-- `tests.acceptance.test_admin_api_verify_capacity::test_C_06752b13_capacity_problem_reports_a_definition_below_the_rule` (task 3.1): not in the report
-- `tests.acceptance.test_admin_api_verify_capacity::test_C_434fcc7f_to_mib_converts_memory_units_and_refuses_others` (task 3.1): not in the report
-- `tests.acceptance.test_admin_api_verify_capacity::test_C_cbd20f5c_three_definitions_fit_the_rule` (task 3.1): not in the report
-- `tests.acceptance.test_admin_api_verify_capacity::test_C_e54cc104_compose_concurrency_refuses_a_non_integer_value` (task 3.1): not in the report
-- `tests.acceptance.test_admin_api_verify_capacity::test_C_f6faf63f_capacity_problem_ignores_a_definition_without_a_limit` (task 3.1): not in the report
-- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_51ef8acf_verify_mismatch_is_still_401` (task 2.1): not in the report
-- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_55531051_cancelled_verify_propagates` (task 2.1): not in the report
-- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_60c778ab_invalid_stored_hash_is_still_401` (task 2.1): not in the report
-- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_b6439852_unexpected_verify_error_answers_503` (task 2.1): not in the report
-- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_f73110db_unknown_key_stays_401_when_dummy_verify_raises` (task 2.1): not in the report
+- `apps.mcp-server.tests.test_rest_auth_unavailable::test_C_0bbc396d_list_services_unjudged_key_gets_503_without_using_session` (task 1.1): passed
+- `apps.mcp-server.tests.test_rest_auth_unavailable::test_C_9a964586_request_token_unjudged_x_api_key_gets_same_503` (task 1.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_06752b13_capacity_problem_reports_a_definition_below_the_rule` (task 3.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_434fcc7f_to_mib_converts_memory_units_and_refuses_others` (task 3.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_6fb6b8c7_to_mib_refuses_lowercase_i_suffixes_and_non_ascii_digits` (task 1.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_cbd20f5c_three_definitions_fit_the_rule` (task 3.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_e54cc104_compose_concurrency_refuses_a_non_integer_value` (task 3.1): passed
+- `tests.acceptance.test_admin_api_verify_capacity::test_C_f6faf63f_capacity_problem_ignores_a_definition_without_a_limit` (task 3.1): passed
+- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_51ef8acf_verify_mismatch_is_still_401` (task 2.1): passed
+- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_55531051_cancelled_verify_propagates` (task 2.1): passed
+- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_60c778ab_invalid_stored_hash_is_still_401` (task 2.1): passed
+- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_b6439852_unexpected_verify_error_answers_503` (task 2.1): passed
+- `tests.unit.admin_api.test_validate_agent_key_errors::test_C_f73110db_unknown_key_stays_401_when_dummy_verify_raises` (task 2.1): passed
 
 ## Guard events
 
