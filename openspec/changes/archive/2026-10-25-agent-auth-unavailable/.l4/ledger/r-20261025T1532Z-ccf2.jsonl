@@ -109,3 +109,8 @@
 {"ts": "2026-10-25T16:01:06.266571Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 109, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 771.3}
 {"ts": "2026-10-25T16:01:06.267110Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 110, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-25T16:01:09.159346Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 111, "type": "pr.labels", "number": 367, "labels": ["l4:verified"]}
+{"ts": "2026-10-25T16:01:16.639029Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 112, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/367", "number": 367, "head": "197068a9e1037f2fbddf939b2b40605b3e4550f6"}
+{"ts": "2026-10-25T16:01:16.640124Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 113, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-25T16:01:19.686540Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 114, "type": "pr.labels", "number": 367, "labels": ["l4:in_review"]}
+{"ts": "2026-10-25T16:01:20.702995Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 115, "type": "lock.released"}
+{"ts": "2026-10-25T16:01:20.703737Z", "run_id": "r-20261025T1532Z-ccf2", "unit": "openspec:agent-auth-unavailable", "seq": 116, "type": "run.finished", "exit_code": 0}
