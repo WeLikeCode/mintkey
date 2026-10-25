@@ -101,9 +101,9 @@ the test with a message naming the file or the value; nothing is skipped.
 - **WHEN** a compose environment sets `MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY: "four"`
 - **THEN** `compose_concurrency` raises `ValueError` naming `four`
 
-### Requirement: to_mib accepts 512mi, 1gi and non-ASCII digits — feedback FB-001
+### Requirement: to_mib refuses 512mi, 1gi and non-ASCII digits — feedback FB-001
 The behaviour pinned by the scenarios below SHALL hold.
 
-#### Scenario: to_mib accepts 512mi, 1gi and non-ASCII digits
+#### Scenario: to_mib refuses 512mi, 1gi and non-ASCII digits
 - **WHEN** to_mib is given 512mi, 1gi, or 512m written with non-ASCII digits (the full-width ５１２m)
 - **THEN** it raises ValueError whose message contains the string, as it already does for 512, 512k, '512 Mi', '' and abc; only ASCII digits followed by exactly m, M, Mi, g, G or Gi convert
