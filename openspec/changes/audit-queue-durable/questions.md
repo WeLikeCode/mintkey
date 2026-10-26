@@ -60,6 +60,7 @@ The unit's specification already settles what the code must do, so the tasks are
 ## Q-003: `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask …
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked .l4/gates/lint-go.sh:11 cites a harness-written file (questions.md, verification.md, .l4/): not evidence
 - **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
