@@ -30,7 +30,7 @@ assertion that calls `t.Fatal` when it is missing, and is a top-level function w
 
 ## 2. The proxy reuses one connection to the vault
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/internal/vault/client_conn_test.go` (package `vault_test`). It
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/internal/vault/client_conn_test.go` (package `vault_test`). It
   defines a listener type wrapping `net.Listener` whose `Accept` counts successful accepts in an `atomic.Int32`, and a
   fake server embedding `vaultv1.UnimplementedVaultAdapterServer` whose `GetCredential` records the two metadata values
   of each call (under a mutex) and returns `&vaultv1.GetCredentialResponse{AuthScheme:
