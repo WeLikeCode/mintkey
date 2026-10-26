@@ -64,3 +64,4 @@
 {"at":"2026-10-26T10:24:53Z","run":"r-20261026T1024Z-90d7","type":"unit.dispatched","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T12:21:13Z","detail":"the repository CI is still running on the hand-off commit 5f52121661 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"5f521216612af28a402d6d0895c72762035565d1","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T12:39:08Z","by":"harness","reason":"the cause is gone: the merge of openspec:proxy-revocation-enforced can go on","type":"plan.resumed"}
+{"at":"2026-10-26T12:39:11Z","head":"5f521216612af28a402d6d0895c72762035565d1","pr":377,"target_before":"1f1c9b4ea58eaa88154cfea8e91bb996d758405d","type":"unit.merge_requested","unit":"openspec:proxy-revocation-enforced"}
