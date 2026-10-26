@@ -19,7 +19,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
 
 ## 1. One canonical form, used by the writer
 
-- [ ] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_audit_hash.py`, and the new module
+- [x] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_audit_hash.py`, and the new module
   `packages/python/mintkey-models/mintkey_models/audit_hash.py` with the names and signatures of the requirements
   "One canonical form for the audit event hash" and "The chain is verified from the stored columns by its links"
   (red stubs the module, green fills it in). Cover every scenario of those two requirements and of "Altering any
