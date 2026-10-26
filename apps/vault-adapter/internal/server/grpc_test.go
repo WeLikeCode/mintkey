@@ -1114,9 +1114,9 @@ func TestGRPCValidateServiceIdentity_HappyPath(t *testing.T) {
 }
 
 // TestGRPCValidateServiceIdentity_MissingToken verifies that a call without any
-// service-identity metadata is refused. Once ValidateServiceIdentity is in
-// methodScopes the interceptor refuses it with codes.PermissionDenied, like
-// every other listed method; before that the handler answers Unauthenticated.
+// service-identity metadata is refused with codes.PermissionDenied: the method
+// is in methodScopes, so the scope interceptor refuses it before the handler
+// runs, like every other listed method.
 func TestGRPCValidateServiceIdentity_MissingToken(t *testing.T) {
 	ctx := context.Background()
 	client, _, cleanup := newTestGRPCServerWithAuth(t)
@@ -1130,12 +1130,8 @@ func TestGRPCValidateServiceIdentity_MissingToken(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected gRPC status error, got %T: %v", err, err)
 	}
-	want := codes.Unauthenticated
-	if _, enforced := methodScopes[vaultv1.VaultAdapter_ValidateServiceIdentity_FullMethodName]; enforced {
-		want = codes.PermissionDenied
-	}
-	if st.Code() != want {
-		t.Errorf("expected %v, got %v", want, st.Code())
+	if st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", st.Code())
 	}
 }
 

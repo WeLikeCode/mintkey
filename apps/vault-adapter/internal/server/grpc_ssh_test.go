@@ -83,7 +83,7 @@ func newTestSSHGRPCServer(t *testing.T, ss *fakeSSHStore) (*grpc.ClientConn, fun
 	svc := NewVaultService(kek, s)
 	// Register a test service identity with the scopes the SSH proxy uses.
 	token := []byte("test-token-32-bytes-for-testing!!")
-	if err := svc.RegisterServiceIdentity("svcid_ssh_proxy", token, []string{"vault.read", "vault.put", "vault.hostkey.put"}); err != nil {
+	if err := svc.RegisterServiceIdentity("svcid_ssh_proxy", token, []string{"vault.read", "vault.hostkey.put"}); err != nil {
 		t.Fatalf("RegisterServiceIdentity: %v", err)
 	}
 
