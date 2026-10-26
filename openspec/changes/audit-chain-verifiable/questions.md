@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1.1, 2.1, 2.2 | ambiguous | Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa… |
-| Q-002 | open | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
+| Q-002 | answered | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
 | Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
 <!-- l4:index:end -->
 
@@ -42,7 +42,7 @@ None that block. The audit payloads this unit hashes carry ids, names, counts an
 
 ## Q-002: That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au…
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked spec:spec.md#requirement-one-canonical-form-for-the-audit-event-hash does not resolve
 - **Blocking tasks:** 1.1, 2.1, 2.2
 - **Kind:** ambiguous
@@ -58,6 +58,7 @@ Open-question-hash: 510e3dd2c3a76943
 
 ### Answer
 <!-- write below this line -->
+None that block. proposal.md (Impact, stored events) settles it: the canonical form is the one every stored hash was computed with and compute_hash's result does not change, so tests/acceptance/test_audit_chain.py keeps passing. That Docker test runs in the repository's CI (ci.yml, on pull requests into main), not in the L4 gate; its result is a person's check when staging is promoted. This unit's acceptance is its unit tests, including the golden digest. Implement the tasks as written. (Answered by the owner's delegate.)
 ---
 
 ## Q-003: `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser…
