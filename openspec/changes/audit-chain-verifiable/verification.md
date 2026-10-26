@@ -1,4 +1,4 @@
-# Verification: openspec:audit-chain-verifiable: NEEDS_HUMAN (round 1)
+# Verification: openspec:audit-chain-verifiable: FAIL (round 2)
 
 traceability: 20/20 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 20/20 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.3 | base merged: staging@6a9f98b9b2 as 8ab160c8ce (1 commit) |
-| 1 | integrity | ok | 403.0 | 10 sub-checks; scope: 15 changed file(s) |
-| 2 | build | ok | 119.4 |  |
-| 3 | tests | ok | 151.4 |  |
-| 4 | traceability | ok | 0.2 | 20/20 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: coverage.py is not importable in the project environment |
-| 8 | s1 judge | ok | 1.7 | 19/20 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 26.0 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -159,6 +159,10 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-e8293d4d | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e5cc56fd | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Answers to verdict questions
+
+- Q-005 reject F-0b7e7198 by the delegate (claude-fable-5-1 via claude-code): The finding holds. Task 2.1 is ticked but the existing verify-job chain test file was not changed: its _build_chain still builds each AuditEvent from id, event_type, tenant_id, payload, hash and prev_hash only, so at stays None, and the rewritten verify.py raises ValueError("event has no at") from _...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -186,8 +190,13 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 
 ## Findings
 
-- [major, judge] task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed: Task 2.1 requires putting mintkey-models on sys.path and passing at=datetime(2026,1,1,tzinfo=utc) in _build_chain of tests/unit/audit_verify/test_chain_verify.py. The diff does not touch that file, so its AuditEvents have at=None and compute_event_hash/verify_chain raise ValueError there.
+- [major, human] task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed: Task 2.1 requires putting mintkey-models on sys.path and passing at=datetime(2026,1,1,tzinfo=utc) in _build_chain of tests/unit/audit_verify/test_chain_verify.py. The diff does not touch that file, so its AuditEvents have at=None and compute_event_hash/verify_chain raise ValueError there. [rejected by the delegate (claude-fable-5-1 via claude-code) (The finding holds. Task 2.1 is ticked but the existing verify-job chain test file was not changed: its _build_chain still builds each AuditEvent from id, event_type, tenant_id, payload, hash and prev_hash only, so at stays None, and the rewritten v...
 - [minor, judge] Tenant of the chain taken from first event in list (spec gap) (criterion C-5090a0a4): verify_events starts at genesis_hash(events[0].tenant_id); events of mixed tenants are not checked for equal tenant_id.
+
+## Fix unit
+
+Fix unit 1 is created for these tasks:
+- F-0b7e7198 task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
