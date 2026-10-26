@@ -62,3 +62,4 @@
 {"at":"2026-10-26T10:24:51Z","by":"harness","reason":"the cause is gone: openspec:proxy-revocation-enforced is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-26T10:24:53Z","attempt":1,"cost_usd":4.213845,"runs":2,"type":"plan.charged","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T10:24:53Z","run":"r-20261026T1024Z-90d7","type":"unit.dispatched","unit":"openspec:proxy-revocation-enforced"}
+{"at":"2026-10-26T12:21:13Z","detail":"the repository CI is still running on the hand-off commit 5f52121661 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"5f521216612af28a402d6d0895c72762035565d1","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:proxy-revocation-enforced"}
