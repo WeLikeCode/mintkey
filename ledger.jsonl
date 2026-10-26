@@ -82,3 +82,6 @@
 {"at":"2026-10-26T14:24:37Z","head":"0cd4ba8ace2680629935a403d531673f12e477fc","pr":379,"target_before":"3a1e7ed2db7adec379542ccf1abd0acd39aa45dd","type":"unit.merge_requested","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:24:43Z","ci":"not_run","head":"0cd4ba8ace2680629935a403d531673f12e477fc","merge_commit":"a71ff01055da07f5cf41781f331d59b16b6ae1a1","method":"squash","pr":379,"raced":false,"type":"unit.merged","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:24:49Z","branch":"l4/openspec/token-request-scope-claims","head":"0cd4ba8ace2680629935a403d531673f12e477fc","type":"unit.branch_deleted","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T14:30:42Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"a71ff01055da07f5cf41781f331d59b16b6ae1a1","status":"pass","type":"unit.postcheck","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T14:30:42Z","revision":"a71ff01055da07f5cf41781f331d59b16b6ae1a1","type":"unit.integrated","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T14:30:42Z","attempt":1,"cost_usd":1.718131,"runs":2,"type":"plan.charged","unit":"openspec:token-request-scope-claims"}
