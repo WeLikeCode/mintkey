@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | Unfreeze tests/unit/audit_verify/test_chain_verify.py (lines 25 and 50): the red test C-9e5600b1 requires editing this frozen test file |
+| Q-001 | answered | 1.1 | technical | Unfreeze tests/unit/audit_verify/test_chain_verify.py (lines 25 and 50): the red test C-9e5600b1 requires editing this frozen test file |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Unfreeze tests/unit/audit_verify/test_chain_verify.py (lines 25 and 50): the red test C-9e5600b1 requires editing this frozen test file
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The question comes from the fix unit audit-chain-verifiable-fix-1 and its only possible answer is an edit to the frozen test file tests/unit/audit_verify/test_chain_verify.py. The red test (tests/unit/admin_api/test_audit_verify_chain_setup.py:37-75) runs that file in a fresh interpreter with the mo
 - **Blocking tasks:** 1.1
 - **Kind:** technical
@@ -37,3 +37,4 @@ Edit `tests/unit/audit_verify/test_chain_verify.py`: add `from datetime import d
 
 ### Answer
 <!-- write below this line -->
+Done by a person, as L4-IMP-081 asks for a test file a fix chore may not change: commit 3e5a1ea on the unit branch (by the owner's delegate) makes exactly this set-up change (the mintkey-models path on sys.path, at=datetime(2026, 1, 1, tzinfo=timezone.utc) in _build_chain, test bodies unchanged). With it the red test C-9e5600b1 and the file's five tests pass (6 passed, uv run --directory apps/admin-api pytest). Nothing needs to be unfrozen: the green of 1.1 has no test file to change. (Answered by the owner's delegate.)
