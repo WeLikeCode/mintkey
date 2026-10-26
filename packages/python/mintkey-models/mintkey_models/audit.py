@@ -17,7 +17,6 @@ Source: design §1; ADR-0014.7 (hash chain mandatory);
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import struct
 from datetime import datetime, timezone
@@ -26,6 +25,12 @@ from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from mintkey_models.audit_hash import (
+    canonical_event_fields,
+    canonical_json_bytes,
+    chain_hash,
+)
 
 # ---------------------------------------------------------------------------
 # Prometheus audit metrics — OPS-N
@@ -77,12 +82,7 @@ def compute_hash(event_dict: dict[str, Any], prev_hash: bytes) -> bytes:
 
     Source: ADR-0014.7; design §1.
     """
-    # Exclude "hash" field from canonical payload — ADR-0014.7
-    canonical_dict = {k: v for k, v in event_dict.items() if k != "hash"}
-    canonical_bytes = json.dumps(
-        canonical_dict, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    return hashlib.sha256(canonical_bytes + prev_hash).digest()
+    return chain_hash(canonical_json_bytes(event_dict), prev_hash)
 
 
 async def audit_emit(
@@ -127,17 +127,17 @@ async def audit_emit(
     from uuid import uuid4
     event_id = uuid4()
 
-    event_fields: dict[str, Any] = {
-        "id": str(event_id),
-        "tenant_id": str(tenant_id),
-        "event_type": event_type,
-        "actor_id": str(actor_id) if actor_id is not None else None,
-        "actor_type": actor_type,
-        "target_id": str(target_id) if target_id is not None else None,
-        "target_type": target_type,
-        "payload": payload,
-        "at": now.isoformat(),
-    }
+    event_fields = canonical_event_fields(
+        event_id=event_id,
+        tenant_id=tenant_id,
+        event_type=event_type,
+        actor_id=actor_id,
+        actor_type=actor_type,
+        target_id=target_id,
+        target_type=target_type,
+        payload=payload,
+        at=now,
+    )
     h = compute_hash(event_fields, prev_hash)
 
     # Step 5: INSERT into audit_events

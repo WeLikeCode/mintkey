@@ -19,7 +19,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
 
 ## 1. One canonical form, used by the writer
 
-- [ ] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_audit_hash.py`, and the new module
+- [x] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_audit_hash.py`, and the new module
   `packages/python/mintkey-models/mintkey_models/audit_hash.py` with the names and signatures of the requirements
   "One canonical form for the audit event hash" and "The chain is verified from the stored columns by its links"
   (red stubs the module, green fills it in). Cover every scenario of those two requirements and of "Altering any
@@ -38,7 +38,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
 
 ## 2. The verifiers use it
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_audit_verify_job_chain.py`: put
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_audit_verify_job_chain.py`: put
   `<repo>/packages/python/mintkey-models`, `<repo>/apps/admin-api/src` and `<repo>/apps/audit-verify-job` on
   `sys.path` as `tests/unit/admin_api/test_audit_verify_endpoint.py` and `tests/unit/audit_verify/test_chain_verify.py`
   do, import `verify` by that name (`main.py` imports it so), and load `<repo>/apps/audit-verify-job/main.py` with
@@ -63,7 +63,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
   literal of design.md (with `:tid`) and call `verify_rows(rows)` instead of building `AuditEvent`s; its logging and
   exit codes stay.
 
-- [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_audit_verify_endpoint_chain.py`: build the app as
+- [x] 2.2 Tests first, new file `tests/unit/admin_api/test_audit_verify_endpoint_chain.py`: build the app as
   `_create_test_app` in `tests/unit/admin_api/test_audit_verify_endpoint.py` does (the session's `execute` records
   `str(statement)` and returns a result whose `fetchall()` gives the stored rows), and cover the three scenarios of the requirement "The verify-chain
   endpoint checks a chain with the canonical form" with events written by `audit_emit` as above; the first fails
