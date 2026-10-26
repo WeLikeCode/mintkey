@@ -88,3 +88,5 @@
 {"at":"2026-10-26T14:45:14Z","branch":"l4/archive/openspec/token-request-scope-claims","head":"42eb36091ad57b8043c750d0530fc8c5148d691b","type":"unit.branch_deleted","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:45:16Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T14:45:16Z","run":"r-20261026T1445Z-e448","type":"unit.dispatched","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T15:03:43Z","attempt":1,"cost_usd":4.242269,"runs":2,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T15:03:43Z","run":"r-20261026T1503Z-0ff1","type":"unit.dispatched","unit":"openspec:audit-chain-verifiable"}
