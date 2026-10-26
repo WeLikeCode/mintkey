@@ -370,62 +370,128 @@ func (q *Queue) CloseWithContext(ctx context.Context) {
 	}
 }
 
-// appendWALLocked appends a newline-delimited JSON line to the WAL file. The
-// caller holds walMu.
+// appendWALLocked appends a newline-delimited JSON line to the WAL file. When
+// the file does not end with a newline (a line cut by a crash), a newline is
+// written first so the new event starts on its own line. The caller holds
+// walMu.
 func (q *Queue) appendWALLocked(line []byte) error {
-	f, err := os.OpenFile(q.walPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(q.walPath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("auditq: open WAL: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	if _, err := f.Write(append(line, '\n')); err != nil {
+	out := make([]byte, 0, len(line)+2)
+	info, statErr := f.Stat()
+	if statErr == nil && info.Size() > 0 {
+		var last [1]byte
+		if _, rerr := f.ReadAt(last[:], info.Size()-1); rerr == nil && last[0] != '\n' {
+			out = append(out, '\n')
+		}
+	}
+	out = append(out, line...)
+	out = append(out, '\n')
+
+	if _, err := f.Write(out); err != nil {
 		return fmt.Errorf("auditq: write WAL: %w", err)
 	}
 	return nil
 }
 
-// tombstoneWAL scans the WAL file and replaces the first occurrence of
-// a line matching event with a tombstone marker, then takes the event off the
-// backlog.  It reports whether the event may be considered settled; a write
-// failure leaves the line live so the event is retried.
-func (q *Queue) tombstoneWAL(e Event) bool {
-	target, err := json.Marshal(e)
-	if err != nil {
-		return false
+// tombstoneWAL overwrites the WAL line of entry in place with a tombstone (~
+// followed by spaces up to the line's length), then takes the event off the
+// backlog. Before writing it checks that the bytes at the line's remembered
+// offset are still that line (compaction may have moved it) and otherwise
+// finds the first live line with the same text. It reports whether the event
+// may be considered settled; a write failure leaves the line live so the event
+// is retried.
+func (q *Queue) tombstoneWAL(entry *batchEntry) bool {
+	target := entry.line
+	if len(target) == 0 {
+		var err error
+		target, err = json.Marshal(entry.event)
+		if err != nil {
+			return false
+		}
 	}
-	targetStr := string(target)
 
 	q.walMu.Lock()
 	defer q.walMu.Unlock()
 
-	data, err := os.ReadFile(q.walPath)
+	offset, length, found, err := q.locateLineLocked(target, entry.offset)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			q.metrics.backlogEvents.Add(-1)
-			return true
-		}
 		slog.Warn("auditq: tombstone: read WAL", "err", err)
 		return false
 	}
-
-	lines := strings.Split(string(data), "\n")
-	replaced := false
-	for i, line := range lines {
-		if !replaced && strings.TrimSpace(line) == targetStr {
-			lines[i] = walTombstone
-			replaced = true
-		}
-	}
-	if replaced {
-		if err := os.WriteFile(q.walPath, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
-			slog.Warn("auditq: tombstone: write WAL", "err", err)
+	if found {
+		if werr := q.writeTombstoneAtLocked(offset, length); werr != nil {
+			slog.Warn("auditq: tombstone: write WAL", "err", werr)
 			return false
 		}
 	}
 
 	q.metrics.backlogEvents.Add(-1)
 	return true
+}
+
+// locateLineLocked returns the offset and length of the line whose raw bytes
+// equal target. It first checks the remembered offset, then scans for the
+// first live line with the same text. A missing WAL reports found=false with
+// no error. The caller holds walMu.
+func (q *Queue) locateLineLocked(target []byte, hint int64) (offset, length int64, found bool, err error) {
+	f, err := os.Open(q.walPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, 0, false, nil
+		}
+		return 0, 0, false, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if hint >= 0 && len(target) > 0 {
+		buf := make([]byte, len(target))
+		if n, rerr := f.ReadAt(buf, hint); rerr == nil && n == len(buf) && bytes.Equal(buf, target) {
+			return hint, int64(len(target)), true, nil
+		}
+	}
+
+	data, rerr := io.ReadAll(f)
+	if rerr != nil {
+		return 0, 0, false, rerr
+	}
+	targetText := string(target)
+	var off int64
+	for _, raw := range bytes.Split(data, []byte("\n")) {
+		lineLen := int64(len(raw))
+		text := strings.TrimSpace(string(raw))
+		if text != "" && !strings.HasPrefix(text, walTombstone) && text == strings.TrimSpace(targetText) {
+			return off, lineLen, true, nil
+		}
+		off += lineLen + 1
+	}
+	return 0, 0, false, nil
+}
+
+// writeTombstoneAtLocked overwrites length bytes at offset with ~ followed by
+// spaces, keeping the file size and the line's trailing newline intact. The
+// caller holds walMu.
+func (q *Queue) writeTombstoneAtLocked(offset, length int64) error {
+	if length <= 0 {
+		return nil
+	}
+	buf := make([]byte, length)
+	for i := range buf {
+		buf[i] = ' '
+	}
+	buf[0] = walTombstone[0]
+
+	f, err := os.OpenFile(q.walPath, os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	_, err = f.WriteAt(buf, offset)
+	return err
 }
 
 // deadLetterWAL appends the event to a side-file named <walPath>.dead so
@@ -461,9 +527,41 @@ func (q *Queue) deadLetterWAL(e Event, lastErr error) {
 		"event_type", e.EventType, "dead_letter", path, "err", lastErr)
 }
 
+// deadLetterUnreadableLocked appends a record for an unreadable WAL line to
+// <walPath>.dead, counts it and refreshes the file-size gauge. The caller
+// holds walMu.
+func (q *Queue) deadLetterUnreadableLocked(text string) {
+	q.deadMu.Lock()
+	defer q.deadMu.Unlock()
+
+	b, _ := json.Marshal(map[string]any{
+		"line":     text,
+		"last_err": "unreadable WAL line",
+		"at":       time.Now().UTC().Format(time.RFC3339),
+	})
+	path := q.walPath + ".dead"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		slog.Error("auditq: dead-letter open", "err", err)
+		return
+	}
+	defer func() { _ = f.Close() }()
+	_, _ = f.Write(append(b, '\n'))
+
+	q.metrics.deadLetterTotal.Add(1)
+	if info, statErr := os.Stat(path); statErr == nil {
+		q.metrics.deadLetterFileSizeBytes.Store(info.Size())
+	}
+
+	slog.Error("auditq: unreadable WAL line moved to dead-letter file",
+		"dead_letter", path, "line", text)
+}
+
 // batchEntry is one event read from the WAL or held in memory for delivery.
 type batchEntry struct {
 	event      Event
+	line       []byte // raw WAL line bytes; nil for a memory event
+	offset     int64  // offset of line in the WAL
 	fromMemory bool
 	settled    bool
 }
@@ -547,19 +645,32 @@ func (q *Queue) readBatch() []*batchEntry {
 			slog.Warn("auditq: drain: read WAL", "path", q.walPath, "err", err)
 		}
 	} else {
+		var offset int64
 		for _, raw := range bytes.Split(completeLines(data), []byte("\n")) {
+			lineLen := int64(len(raw))
 			line := strings.TrimSpace(string(raw))
 			if line == "" || strings.HasPrefix(line, walTombstone) {
+				offset += lineLen + 1
 				continue
 			}
 			var e Event
 			if err := json.Unmarshal(raw, &e); err != nil {
+				q.deadLetterUnreadableLocked(string(raw))
+				if werr := q.writeTombstoneAtLocked(offset, lineLen); werr != nil {
+					slog.Warn("auditq: drain: tombstone unreadable line", "err", werr)
+				}
+				offset += lineLen + 1
 				continue
 			}
 			pending++
 			if len(entries) < q.settings.batchSize {
-				entries = append(entries, &batchEntry{event: e})
+				entries = append(entries, &batchEntry{
+					event:  e,
+					line:   append([]byte(nil), raw...),
+					offset: offset,
+				})
 			}
+			offset += lineLen + 1
 		}
 	}
 
@@ -597,7 +708,7 @@ func (q *Queue) deliverRound(entries []*batchEntry) (int, error) {
 		go func(entry *batchEntry) {
 			defer wg.Done()
 
-			status, err := q.emit(entry.event)
+			status, err := q.emit(entry.event, entry.line)
 			switch {
 			case isRejected(status):
 				if q.settleRejected(entry, status) {
@@ -633,7 +744,7 @@ func (q *Queue) settleDelivered(entry *batchEntry) bool {
 		entry.settled = true
 		return true
 	}
-	if !q.tombstoneWAL(entry.event) {
+	if !q.tombstoneWAL(entry) {
 		return false
 	}
 	entry.settled = true
@@ -650,7 +761,7 @@ func (q *Queue) settleRejected(entry *batchEntry, status int) bool {
 		entry.settled = true
 		return true
 	}
-	if !q.tombstoneWAL(entry.event) {
+	if !q.tombstoneWAL(entry) {
 		return false
 	}
 	entry.settled = true
@@ -728,13 +839,18 @@ func (q *Queue) MetricsHandler() http.HandlerFunc {
 	return q.metrics.MetricsHandler()
 }
 
-// emit POSTs the event to admin-api's /v1/internal/audit/emit endpoint. It
-// returns the sink's HTTP status (0 when no answer was read) and an error for
-// any answer that is not 2xx.
-func (q *Queue) emit(e Event) (int, error) {
-	body, err := json.Marshal(e)
-	if err != nil {
-		return 0, fmt.Errorf("auditq: marshal event: %w", err)
+// emit POSTs line to admin-api's /v1/internal/audit/emit endpoint. When line is
+// nil (a memory event) the event is marshalled first. It returns the sink's
+// HTTP status (0 when no answer was read) and an error for any answer that is
+// not 2xx.
+func (q *Queue) emit(e Event, line []byte) (int, error) {
+	body := line
+	if len(body) == 0 {
+		var err error
+		body, err = json.Marshal(e)
+		if err != nil {
+			return 0, fmt.Errorf("auditq: marshal event: %w", err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(

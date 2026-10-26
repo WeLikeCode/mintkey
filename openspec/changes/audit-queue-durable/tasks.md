@@ -66,7 +66,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
   `emit` returning the HTTP status as well as the error; remove `maxDeadLetterRetries`. The other tests of
   `packages/go/auditq/queue_test.go` and `packages/go/auditq/compact_test.go` pass unchanged.
 
-- [ ] 3.2 Tests first, new file `packages/go/auditq/walformat_test.go`: `TestCurrentFormatWALDrainsInPlace`,
+- [x] 3.2 Tests first, new file `packages/go/auditq/walformat_test.go`: `TestCurrentFormatWALDrainsInPlace`,
   `TestCompactionBetweenReadAndTombstone` (the held event has the type `hold.me`; the handler signals on a channel
   when it holds the request and waits on a release channel), `TestUnreadableLineDeadLettered` and
   `TestAppendAfterPartialLineStartsNewLine`, the four scenarios of the requirement "The WAL keeps the format the
