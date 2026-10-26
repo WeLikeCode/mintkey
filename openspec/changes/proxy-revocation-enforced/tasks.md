@@ -53,7 +53,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 3. Token ids are evicted after the longest token lifetime
 
-- [ ] 3.1 Tests first, new file `apps/proxy-plugin/internal/revocation/jti_eviction_test.go` (package
+- [x] 3.1 Tests first, new file `apps/proxy-plugin/internal/revocation/jti_eviction_test.go` (package
   `revocation_test`): declare `type evictionRunner interface { RunEviction(ctx context.Context, interval, retention
   time.Duration) }`. `TestJTIRunEvictionDropsEntriesPastRetention` builds two sets with
   `revocation.NewJTIRevocationSet(10)`, adds `jti_old` to the first and `jti_new` to the second, asserts
