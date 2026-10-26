@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Pre-existing ValidateServiceIdentity test contradicts the new requirement
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The project documents settle the behaviour, not the blocker. design.md D3/D9, proposal.md "Changed tests" and tasks.md 1.1 all say TestGRPCValidateServiceIdentity_MissingToken is changed in place to expect PermissionDenied, and head grpc.go:139-141 refuses missing metadata with PermissionDenied for
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-26T05:31Z by deepseek, run r-20261026T0313Z-8028, task 1.1
