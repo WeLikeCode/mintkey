@@ -109,3 +109,5 @@
 {"at":"2026-10-26T20:05:40Z","revision":"01526e7ba072734ba40d12fe67fae43105e606c7","type":"unit.integrated","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T20:05:40Z","attempt":1,"cost_usd":9.386279,"runs":6,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T20:07:27Z","branch":"l4/archive/openspec/audit-chain-verifiable","head":"3e404e1d96e08c7459c1f8949d864a9f0485662c","type":"unit.branch_deleted","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T20:07:29Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:audit-queue-durable"}
+{"at":"2026-10-26T20:07:29Z","run":"r-20261026T2007Z-6906","type":"unit.dispatched","unit":"openspec:audit-queue-durable"}
