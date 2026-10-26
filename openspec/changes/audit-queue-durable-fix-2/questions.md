@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: F-2813828d: the acceptance meta-test still runs the reverted base TestDeadLetterMetrics
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Every option needs something outside production code: a person committing a change to the acceptance meta-test (a test file, frozen for a fix task), a harness change to how base_tests treats superseded tests, or relaxing criterion C-f33bec22 against the specification, which requires 5xx to be retrie
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-26T23:50Z by deepseek, run r-20261026T2310Z-1139, task 1.1
