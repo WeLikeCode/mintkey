@@ -75,3 +75,5 @@
 {"at":"2026-10-26T12:46:24Z","run":"r-20261026T1246Z-5d24","type":"unit.dispatched","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T12:48:22Z","detail":"awaiting_human: no new answers (open: Q-001) (escalated to a person: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T12:51:07Z","by":"harness","reason":"the cause is gone: openspec:token-request-scope-claims is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-26T12:51:09Z","attempt":1,"cost_usd":0.883835,"runs":2,"type":"plan.charged","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T12:51:09Z","run":"r-20261026T1251Z-70e0","type":"unit.dispatched","unit":"openspec:token-request-scope-claims"}
