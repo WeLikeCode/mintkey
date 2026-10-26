@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events… |
 | Q-002 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
-| Q-003 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
+| Q-003 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
 <!-- l4:index:end -->
 
 ---
@@ -60,7 +60,7 @@ The unit's specification already settles what the code must do, so the tasks are
 
 ## Q-003: `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask …
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked .l4/gates/lint-go.sh:11 cites a harness-written file (questions.md, verification.md, .l4/): not evidence
 - **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
 - **Kind:** ambiguous
@@ -75,3 +75,4 @@ Open-question-hash: a4a95d3732942618
 
 ### Answer
 <!-- write below this line -->
+None that block. golangci-lint is one of this repository's lint gates (gates.lint in .l4/config.yaml runs sh .l4/gates/lint-go.sh, go vet and golangci-lint over every go.work module), so it runs on the new code at every gate run of this unit; whatever it asks for (for example a checked Close error) is fixed in the step whose gate reports it. Implement the tasks as written. (Answered by the owner's delegate.)
