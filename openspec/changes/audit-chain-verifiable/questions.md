@@ -21,6 +21,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa…
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked openspec/changes/audit-chain-verifiable/design.md:40 does not resolve
 - **Blocking tasks:** 1.1, 2.1, 2.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
