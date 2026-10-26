@@ -18,11 +18,11 @@ type IdentitySpec struct {
 // BootIdentities lists the identities registered at boot, in registration order.
 var BootIdentities = []IdentitySpec{
 	{"MINTKEY_VAULT_PROXY_IDENTITY_ID", "svcid_proxy", "MINTKEY_VAULT_PROXY_TOKEN",
-		[]string{"vault.read", "vault.put"}, true},
+		[]string{"vault.read"}, true},
 	{"MINTKEY_VAULT_ADMIN_IDENTITY_ID", "svcid_admin_api", "MINTKEY_VAULT_ADMIN_TOKEN",
 		[]string{"vault.read", "vault.put", "vault.secret.put", "vault.secret.delete"}, true},
 	{"MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID", "svcid_ssh_proxy", "MINTKEY_VAULT_SSH_PROXY_TOKEN",
-		[]string{"vault.read", "vault.put"}, false},
+		[]string{"vault.read", "vault.hostkey.put"}, false},
 	{"MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID", "svcid_email_proxy", "MINTKEY_VAULT_EMAIL_PROXY_TOKEN",
 		[]string{"vault.read"}, false},
 	{"MINTKEY_VAULT_MCP_IDENTITY_ID", "svcid_mcp", "MINTKEY_VAULT_MCP_TOKEN",

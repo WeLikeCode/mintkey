@@ -14,7 +14,7 @@ without `t.Run`.
 
 ## 1. One closed method table, refused by default
 
-- [ ] 1.1 Tests first, new file `apps/vault-adapter/internal/server/method_scopes_test.go`. Cover the requirement
+- [x] 1.1 Tests first, new file `apps/vault-adapter/internal/server/method_scopes_test.go`. Cover the requirement
   "Every vault method requires a valid service identity, except the health methods" with
   `TestScopeInterceptor_NoIdentityRefusedOnEveryListedMethod`, `TestScopeInterceptor_WrongTokenRefusedOnEveryListedMethod`,
   `TestScopeInterceptor_UnlistedMethodRefused`, `TestMethodTable_NotWrittenByRegistration`,
