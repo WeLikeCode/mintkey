@@ -323,6 +323,10 @@ func TestCompactionTimerTrigger(t *testing.T) {
 //
 // Cause N events to dead-letter (the sink refuses them every time).
 // Verify: counter increments by N; file-size gauge matches actual file.
+//
+// Only 400, 413 and 422 are a refusal (design D3 of audit-queue-durable); a
+// 5xx answer is retried without limit and never dead-letters an event, so the
+// sink answers 422 here rather than the 500 this test used before the change.
 // ---------------------------------------------------------------------------
 
 func TestDeadLetterMetrics(t *testing.T) {
