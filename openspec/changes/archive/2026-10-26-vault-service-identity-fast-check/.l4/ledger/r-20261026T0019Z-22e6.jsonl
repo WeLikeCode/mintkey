@@ -409,3 +409,8 @@
 {"ts": "2026-10-26T02:49:51.327314Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 409, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 704.4}
 {"ts": "2026-10-26T02:49:51.328198Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 410, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-26T02:49:54.012262Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 411, "type": "pr.labels", "number": 373, "labels": ["l4:verified"]}
+{"ts": "2026-10-26T02:50:01.199440Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 412, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/373", "number": 373, "head": "aeed11356341c9875865ca36233d7a7d65ed7e05"}
+{"ts": "2026-10-26T02:50:01.202044Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 413, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-26T02:50:04.261291Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 414, "type": "pr.labels", "number": 373, "labels": ["l4:in_review"]}
+{"ts": "2026-10-26T02:50:05.374791Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 415, "type": "lock.released"}
+{"ts": "2026-10-26T02:50:05.375945Z", "run_id": "r-20261026T0019Z-22e6", "unit": "openspec:vault-service-identity-fast-check", "seq": 416, "type": "run.finished", "exit_code": 0}
