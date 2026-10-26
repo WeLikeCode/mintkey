@@ -7,7 +7,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 1. The broker accepts, checks and signs the limits
 
-- [ ] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_scope_claims_test.go` (package `issue_test`,
+- [x] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_scope_claims_test.go` (package `issue_test`,
   using `newTestHandler(t)` and `testMCPToken` of `issue_test.go`). Add two file-local helpers: `postScopeIssue(t, h
   http.Handler, extra map[string]any) *httptest.ResponseRecorder` posts to `/v1/issue` with `X-Mintkey-Service-Token:
   testMCPToken` the JSON of `agent_id` `agent_01HZ0000000000000000000001`, `service_id`
