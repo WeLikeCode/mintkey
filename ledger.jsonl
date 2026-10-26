@@ -58,3 +58,4 @@
 {"at":"2026-10-26T10:10:38Z","batch":"p0-auth","profile":"none","revision":"1f1c9b4ea58eaa88154cfea8e91bb996d758405d","type":"batch.accepted"}
 {"at":"2026-10-26T10:11:57Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T10:11:57Z","run":"r-20261026T1011Z-7216","type":"unit.dispatched","unit":"openspec:proxy-revocation-enforced"}
+{"at":"2026-10-26T10:18:10Z","detail":"awaiting_human: no new answers (open: Q-004) (escalated to a person: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:proxy-revocation-enforced"}
