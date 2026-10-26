@@ -85,3 +85,4 @@
 {"at":"2026-10-26T14:30:42Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"a71ff01055da07f5cf41781f331d59b16b6ae1a1","status":"pass","type":"unit.postcheck","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:30:42Z","revision":"a71ff01055da07f5cf41781f331d59b16b6ae1a1","type":"unit.integrated","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:30:42Z","attempt":1,"cost_usd":1.718131,"runs":2,"type":"plan.charged","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T14:45:14Z","branch":"l4/archive/openspec/token-request-scope-claims","head":"42eb36091ad57b8043c750d0530fc8c5148d691b","type":"unit.branch_deleted","unit":"openspec:token-request-scope-claims"}
