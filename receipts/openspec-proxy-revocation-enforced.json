@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-26T12:45:03Z",
+  "integrated_revision": "c5cd4ec7b8ce3c78b860b3114641bfdae9606aa4",
+  "merge_commit": "c5cd4ec7b8ce3c78b860b3114641bfdae9606aa4",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 377,
+  "receipt_id": "hardening/openspec:proxy-revocation-enforced/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "5f521216612af28a402d6d0895c72762035565d1",
+  "spec_digest": "f27ddbd7f679299c",
+  "target": "staging",
+  "unit_id": "openspec:proxy-revocation-enforced"
+}
