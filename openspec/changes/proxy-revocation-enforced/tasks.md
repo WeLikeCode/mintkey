@@ -26,7 +26,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 2. admin-api publishes event_type
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_notify_event_type.py`, which puts `apps/admin-api/src` and
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_notify_event_type.py`, which puts `apps/admin-api/src` and
   `packages/python/mintkey-models` on `sys.path` as `tests/unit/admin_api/test_validate_agent_key_errors.py` does,
   with `T = "11111111-2222-3333-4444-555555555555"` and `A = "agent_3C7JAGMBGR9EMRS2AVGXDHQXDX"`. Sync test functions
   run coroutines with `asyncio.run`. A file-local `RecordingSession` has `async def execute(self, stmt,
