@@ -362,3 +362,8 @@
 {"ts": "2026-10-26T12:19:49.528760Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 362, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 746.3}
 {"ts": "2026-10-26T12:19:49.529388Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 363, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-26T12:19:52.227826Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 364, "type": "pr.labels", "number": 377, "labels": ["l4:verified"]}
+{"ts": "2026-10-26T12:19:58.909486Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 365, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/377", "number": 377, "head": "5f521216612af28a402d6d0895c72762035565d1"}
+{"ts": "2026-10-26T12:19:58.910627Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 366, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-26T12:20:01.666215Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 367, "type": "pr.labels", "number": 377, "labels": ["l4:in_review"]}
+{"ts": "2026-10-26T12:20:02.848921Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 368, "type": "lock.released"}
+{"ts": "2026-10-26T12:20:02.849686Z", "run_id": "r-20261026T1024Z-90d7", "unit": "openspec:proxy-revocation-enforced", "seq": 369, "type": "run.finished", "exit_code": 0}
