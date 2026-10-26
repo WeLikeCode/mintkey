@@ -52,7 +52,7 @@ without `t.Run`.
 
 ## 2. Each boot identity holds only the scopes it uses
 
-- [ ] 2.1 Tests first, new file `apps/vault-adapter/internal/server/identity_scopes_test.go`. Cover the requirement
+- [x] 2.1 Tests first, new file `apps/vault-adapter/internal/server/identity_scopes_test.go`. Cover the requirement
   "Each boot identity holds only the scopes its component uses" with `TestBootIdentities_LeastPrivilegeScopes` (reads
   `BootIdentities`, which exists at the base: design D10), `TestProxyIdentity_CannotPutCredential_AdminCan` and
   `TestSSHProxyIdentity_StoresHostKeyButCannotPutCredential`. The two server tests register identities with
