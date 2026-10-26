@@ -82,6 +82,7 @@ The repository settles the open question: the vault adapter's DEK cache is not k
 ## Q-004: A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a…
 
 - **Status:** open
+- **Escalated by:** the delegate: delegate answer limit of task 1.1 reached (3)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 4.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
