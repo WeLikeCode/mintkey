@@ -12,7 +12,7 @@ assertion that calls `t.Fatal` when it is missing, and is a top-level function w
 
 ## 1. The vault adapter verifies identities with HMAC-SHA-256
 
-- [ ] 1.1 Tests first, new file `apps/vault-adapter/internal/server/identity_check_test.go` (package `server`), with a
+- [x] 1.1 Tests first, new file `apps/vault-adapter/internal/server/identity_check_test.go` (package `server`), with a
   `VaultService` built by `NewVaultService(kek, st)` on `store.New(":memory:")`. Cover the requirement "Verifying a
   service identity uses a keyed hash, not a memory-hard one" with `TestValidateServiceIdentity_AllocatesUnderOneMiB`
   and `TestRegisterServiceIdentity_AllocatesUnderOneMiB` (read `runtime.MemStats.TotalAlloc` with
