@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | No Go unit has been implemented in this repository through the test gate's red step before; D5 is w… |
+| Q-001 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | No Go unit has been implemented in this repository through the test gate's red step before; D5 is w… |
 | Q-002 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and… |
 | Q-003 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)… |
 | Q-004 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a… |
@@ -21,7 +21,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: No Go unit has been implemented in this repository through the test gate's red step before; D5 is w…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 4.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -34,6 +35,7 @@ Open-question-hash: af108a54f5975fa6
 
 ### Answer
 <!-- write below this line -->
+Proceed under D5 as written; nothing in it needs a decision. The premise of the open question is out of date at this unit's head: three Go units have already been implemented and merged through the test gate's red step with the same approach, and their designs and tests are in the repository. broker-service-token-required (D7), vault-service-identity-fast-check (Testing notes) and vault-method-scopes (D10), all archived under openspec/changes/archive/2026-10-26-*, each state that the red step runs the new tests against the base code with every non-Python production file put back, and each reaches the new methods through an interface the test file declares with a type assertion that calls t.Fatal when the method is missing, as top-level test functions without t.Run. The merged tests use exactly that pattern: apps/broker/internal/config/config_test.go asserts *config.Config to a serviceTokenChecker interface, apps/vault-adapter/internal/server/identities_test.go asserts *VaultService to a bootRegistrar interface, apps/vault-adapter/internal/server/method_scopes_test.go asserts *VaultServer to grpcServerBuilder, and apps/proxy-plugin/internal/vault/client_conn_test.go asserts the vault client to interface{ Close() error }. The gate runs every go.work module through gotestsum with one junit report per module, including proxy-plugin, so the four new Go test files are collected as D5 expects. For this unit, write the tests so they name only the existing symbols D5 lists (NewAgentRevocationSet, NewJTIRevocationSet, Add, Contains, Len, changes.NewSubscriber, HandleNotification, testHandler, buildTestJWTWithClaims, ServeHTTP, which exist in the proxy-plugin package today), reach RunEviction and changesSubscriber through test-declared interfaces with a t.Fatal type assertion, and never name wireid, ToUUID, Canonical or JTIRetention in a test: the wire-id behaviour is checked through AgentRevocationSet.Add and Contains, and the eviction scenario uses literal durations. Tasks 1.1, 2.1, 3.1 and 4.1 can start.
 ---
 
 ## Q-002: The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and…
