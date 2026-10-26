@@ -47,6 +47,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -74,7 +75,75 @@ const (
 	// maxDeadLetterRetries is the number of consecutive failures before an
 	// event is moved to the dead-letter file (same dir, ".dead" suffix).
 	maxDeadLetterRetries = 5
+
+	// drainConcurrencyDefault is the number of delivery requests in flight.
+	drainConcurrencyDefault = 4
+
+	// drainBatchSizeDefault is the number of pending events read per pass.
+	drainBatchSizeDefault = 1000
+
+	// Environment variables that tune the drainer. An unset or empty value
+	// takes its default; a value that is not an integer of at least 1 is
+	// ignored with a warning.
+	envDrainConcurrency = "MINTKEY_AUDIT_DRAIN_CONCURRENCY"
+	envDrainBatchSize   = "MINTKEY_AUDIT_DRAIN_BATCH_SIZE"
+	envRetryInitialMS   = "MINTKEY_AUDIT_RETRY_INITIAL_MS"
+	envRetryMaxMS       = "MINTKEY_AUDIT_RETRY_MAX_MS"
 )
+
+// drainSettings holds the effective drainer settings read from the
+// environment when the queue is built.
+type drainSettings struct {
+	concurrency  int
+	batchSize    int
+	initialDelay time.Duration
+	maxDelay     time.Duration
+}
+
+// drainSettingsFromEnv reads the four drain-setting environment variables.
+// Each unset or empty variable takes its default; each value that is not an
+// integer of at least 1 is replaced by its default with one WARN record naming
+// the variable. A maximum below the initial delay becomes the initial delay.
+func drainSettingsFromEnv() drainSettings {
+	s := drainSettings{
+		concurrency:  drainConcurrencyDefault,
+		batchSize:    drainBatchSizeDefault,
+		initialDelay: initialRetryDelay,
+		maxDelay:     maxRetryDelay,
+	}
+	if v, ok := positiveIntSetting(envDrainConcurrency); ok {
+		s.concurrency = v
+	}
+	if v, ok := positiveIntSetting(envDrainBatchSize); ok {
+		s.batchSize = v
+	}
+	if v, ok := positiveIntSetting(envRetryInitialMS); ok {
+		s.initialDelay = time.Duration(v) * time.Millisecond
+	}
+	if v, ok := positiveIntSetting(envRetryMaxMS); ok {
+		s.maxDelay = time.Duration(v) * time.Millisecond
+	}
+	if s.maxDelay < s.initialDelay {
+		s.maxDelay = s.initialDelay
+	}
+	return s
+}
+
+// positiveIntSetting parses name as an integer of at least 1. It reports false
+// for an unset or empty variable, and false after logging one WARN record for
+// a set value that is not an integer of at least 1.
+func positiveIntSetting(name string) (int, bool) {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 1 {
+		slog.Warn("auditq: ignoring invalid setting", "name", name)
+		return 0, false
+	}
+	return v, true
+}
 
 // Event is the wire shape sent to admin-api's /v1/internal/audit/emit.
 // Payload MUST NOT contain credential plaintext (S-SEC-1).
@@ -110,6 +179,9 @@ type Queue struct {
 
 	// compactCfg controls when the compaction worker triggers.
 	compactCfg CompactConfig
+
+	// settings holds the drainer settings read from the environment.
+	settings drainSettings
 }
 
 // New creates a Queue targeting adminAPIURL/v1/internal/audit/emit.
@@ -142,6 +214,7 @@ func NewWithConfig(adminAPIURL, serviceToken, walPath, serviceLabel string, cc C
 		doneCh:       make(chan struct{}),
 		metrics:      newMetrics(serviceLabel),
 		compactCfg:   cc,
+		settings:     drainSettingsFromEnv(),
 	}
 }
 
@@ -195,6 +268,13 @@ func (q *Queue) Replay() {
 // Start launches the background drainer goroutine and the WAL compaction
 // worker.  Call once after Replay.
 func (q *Queue) Start() {
+	s := q.settings
+	slog.Info("auditq: drain settings",
+		"service", q.metrics.serviceLabel,
+		"concurrency", s.concurrency,
+		"batch_size", s.batchSize,
+		"initial_retry_delay", s.initialDelay,
+		"max_retry_delay", s.maxDelay)
 	go q.drain()
 	go q.compactWorker(q.compactCfg)
 }

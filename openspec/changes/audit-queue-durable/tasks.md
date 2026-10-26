@@ -34,7 +34,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 2. The drain settings
 
-- [ ] 2.1 Tests first, new file `packages/go/auditq/settings_test.go`: `TestDrainSettingsDefaults`,
+- [x] 2.1 Tests first, new file `packages/go/auditq/settings_test.go`: `TestDrainSettingsDefaults`,
   `TestDrainSettingsFromEnvironment` and `TestDrainSettingsInvalidValues` (the first three scenarios of the requirement
   "Retries wait a capped delay that progress resets"). Each replaces the default logger with
   `slog.New(slog.NewTextHandler(w, nil))`, `w` a writer that appends to a `bytes.Buffer` under a mutex, restores the
