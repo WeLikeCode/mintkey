@@ -155,6 +155,7 @@ func (q *Queue) Replay() {
 	f, err := os.Open(q.walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			q.metrics.backlogEvents.Store(0)
 			return // nothing to replay
 		}
 		slog.Warn("auditq: replay: open WAL", "path", q.walPath, "err", err)
@@ -164,6 +165,7 @@ func (q *Queue) Replay() {
 
 	scanner := bufio.NewScanner(f)
 	var replayed int
+	var pending int64
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, walTombstone) {
@@ -174,6 +176,7 @@ func (q *Queue) Replay() {
 			slog.Warn("auditq: replay: unmarshal event", "line", line, "err", err)
 			continue
 		}
+		pending++
 		select {
 		case q.ch <- e:
 			replayed++
@@ -183,6 +186,7 @@ func (q *Queue) Replay() {
 				"event_type", e.EventType)
 		}
 	}
+	q.metrics.backlogEvents.Store(pending)
 	if replayed > 0 {
 		slog.Info("auditq: replayed WAL events", "count", replayed, "wal", q.walPath)
 	}
@@ -259,6 +263,7 @@ func (q *Queue) appendWAL(e Event) error {
 	if _, err := f.Write(append(b, '\n')); err != nil {
 		return fmt.Errorf("auditq: write WAL: %w", err)
 	}
+	q.metrics.backlogEvents.Add(1)
 	return nil
 }
 

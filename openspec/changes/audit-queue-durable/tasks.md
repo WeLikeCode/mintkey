@@ -22,7 +22,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 1. The backlog metric
 
-- [ ] 1.1 Tests first, new file `packages/go/auditq/backlog_test.go` with the helper `backlogOf`:
+- [x] 1.1 Tests first, new file `packages/go/auditq/backlog_test.go` with the helper `backlogOf`:
   `TestBacklogInExposition` and `TestReplayCountsPendingEvents`, the two scenarios of the requirement "The backlog is a
   metric" (the first reads `q.MetricsHandler()` through an `httptest.NewRecorder`; the WAL of the second is written
   with `os.WriteFile`: two lines of `json.Marshal(newEvent(...))` and a `~` line). They fail before the change: the
