@@ -55,3 +55,4 @@
 {"at":"2026-10-26T10:08:57Z","revision":"33b52d82152a9fadd37cc48c8cacbf424ea64123","type":"unit.integrated","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T10:08:57Z","attempt":1,"cost_usd":3.513981,"runs":4,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T10:10:36Z","branch":"l4/archive/openspec/vault-method-scopes","head":"1f1c9b4ea58eaa88154cfea8e91bb996d758405d","type":"unit.branch_deleted","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T10:10:38Z","batch":"p0-auth","profile":"none","revision":"1f1c9b4ea58eaa88154cfea8e91bb996d758405d","type":"batch.accepted"}
