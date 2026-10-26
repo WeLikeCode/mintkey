@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-26T03:10:04Z",
+  "integrated_revision": "54368c1145d71340de9ae5a8fa3fed8ccf52feeb",
+  "merge_commit": "54368c1145d71340de9ae5a8fa3fed8ccf52feeb",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 373,
+  "receipt_id": "hardening/openspec:vault-service-identity-fast-check/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "aeed11356341c9875865ca36233d7a7d65ed7e05",
+  "spec_digest": "8bed06c619df96be",
+  "target": "staging",
+  "unit_id": "openspec:vault-service-identity-fast-check"
+}
