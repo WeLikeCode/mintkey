@@ -42,7 +42,7 @@ async def _run(tenant_id_filter: str | None) -> int:
         log.error("DATABASE_URL environment variable is not set")
         return 1
 
-    from verify import AuditEvent, verify_chain
+    from verify import verify_rows
 
     engine = create_async_engine(database_url)
     all_ok = True
@@ -63,28 +63,18 @@ async def _run(tenant_id_filter: str | None) -> int:
         for (tenant_id,) in tenant_rows:
             result = await conn.execute(
                 text(
-                    "SELECT id, event_type, tenant_id, payload, hash, prev_hash"
+                    "SELECT id, tenant_id, event_type, actor_id, actor_type,"
+                    " target_id, target_type, payload, at, prev_hash, hash,"
+                    " request_id, trace_id"
                     " FROM audit_events"
                     " WHERE tenant_id = :tid"
-                    " ORDER BY at ASC"
+                    " ORDER BY at ASC, id ASC"
                 ),
                 {"tid": str(tenant_id)},
             )
             rows = result.fetchall()
 
-            events = [
-                AuditEvent(
-                    id=str(row.id),
-                    event_type=row.event_type,
-                    tenant_id=str(row.tenant_id),
-                    payload=row.payload or {},
-                    hash=bytes(row.hash),
-                    prev_hash=bytes(row.prev_hash),
-                )
-                for row in rows
-            ]
-
-            vr = verify_chain(events)
+            vr = verify_rows(rows)
             if vr.ok:
                 log.info(
                     "tenant %s: chain intact (%d events)", tenant_id, vr.chain_length

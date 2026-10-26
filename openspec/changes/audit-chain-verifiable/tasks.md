@@ -38,7 +38,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
 
 ## 2. The verifiers use it
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_audit_verify_job_chain.py`: put
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_audit_verify_job_chain.py`: put
   `<repo>/packages/python/mintkey-models`, `<repo>/apps/admin-api/src` and `<repo>/apps/audit-verify-job` on
   `sys.path` as `tests/unit/admin_api/test_audit_verify_endpoint.py` and `tests/unit/audit_verify/test_chain_verify.py`
   do, import `verify` by that name (`main.py` imports it so), and load `<repo>/apps/audit-verify-job/main.py` with
