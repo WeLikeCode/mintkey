@@ -1,7 +1,7 @@
 # Kong Syncer — Go 1.27, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
 
 WORKDIR /workspace
 
