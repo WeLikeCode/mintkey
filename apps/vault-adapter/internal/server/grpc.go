@@ -47,12 +47,32 @@ type googleServiceAccountEnvelope struct {
 	Scope   string          `json:"scope"`
 }
 
-// methodScopes maps gRPC method full names to the required scope.
-// Methods not listed here do not require scope enforcement.
+// anyIdentity as a methodScopes value means: a valid identity, whatever its scopes.
+const anyIdentity = "*"
+
+// methodScopes maps every unary vault method to the scope its caller must hold. Never written at run time.
 var methodScopes = map[string]string{
-	"/mintkey.vault.v1.VaultAdapter/GetCredential": "vault.read",
-	"/mintkey.vault.v1.VaultAdapter/PutCredential": "vault.put",
+	vaultv1.VaultAdapter_GetCredential_FullMethodName:           "vault.read",
+	vaultv1.VaultAdapter_PutCredential_FullMethodName:           "vault.put",
+	vaultv1.VaultAdapter_RevokeCredential_FullMethodName:        "vault.put",
+	vaultv1.VaultAdapter_ListVersions_FullMethodName:            "vault.read",
+	vaultv1.VaultAdapter_ValidateServiceIdentity_FullMethodName: anyIdentity,
+	vaultv1.AgentSecretsVault_PutAgentSecret_FullMethodName:     "vault.secret.put",
+	vaultv1.AgentSecretsVault_GetAgentSecret_FullMethodName:     "vault.secret.read",
+	vaultv1.AgentSecretsVault_DeleteAgentSecret_FullMethodName:  "vault.secret.delete",
+	"/" + sshVaultServiceName + "/GetAgentByFingerprint":        "vault.read",
+	"/" + sshVaultServiceName + "/GetHostKeyFingerprint":        "vault.read",
+	"/" + sshVaultServiceName + "/StoreHostKeyFingerprint":      "vault.hostkey.put",
 }
+
+// openMethods are unary methods served without an identity.
+var openMethods = map[string]bool{
+	grpc_health_v1.Health_Check_FullMethodName: true,
+	grpc_health_v1.Health_List_FullMethodName:  true,
+}
+
+// openStreams are streaming methods served without an identity; every other stream is refused.
+var openStreams = map[string]bool{grpc_health_v1.Health_Watch_FullMethodName: true}
 
 // VaultServer is the gRPC server. It holds the KEK, VaultService, and a
 // reference to the shared DEK cache for metrics emission.
@@ -91,14 +111,13 @@ func (s *VaultServer) WithAgentSecretStore(as store.AgentSecretStore) *VaultServ
 	return s
 }
 
-// scopeInterceptor returns a gRPC unary server interceptor that enforces
-// scope-based access control. It extracts the "x-mintkey-service-token"
-// from incoming metadata, validates it against the VaultService's registered
-// service identities, and checks that the caller has the required scope for
-// the invoked method. Returns PERMISSION_DENIED if the scope is missing.
-//
-// Methods not listed in methodScopes are allowed without scope checks
-// (e.g., ValidateServiceIdentity, ListVersions, health checks).
+// scopeInterceptor returns a gRPC unary server interceptor that authorizes
+// every method the vault serves. The health methods in openMethods are served
+// without an identity; a method not listed in methodScopes is refused with
+// PERMISSION_DENIED before the token is read. For a listed method it extracts
+// "x-mintkey-service-token" from incoming metadata, validates it against the
+// VaultService's registered service identities, and checks that the caller has
+// the method's scope (or only a valid identity when the scope is anyIdentity).
 //
 // Requirement 22.5: vault.read scope enforcement on GetCredential.
 func scopeInterceptor(svc *VaultService) grpc.UnaryServerInterceptor {
@@ -108,9 +127,13 @@ func scopeInterceptor(svc *VaultService) grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		requiredScope, needsScope := methodScopes[info.FullMethod]
-		if !needsScope {
+		if openMethods[info.FullMethod] {
 			return handler(ctx, req)
+		}
+
+		requiredScope, listed := methodScopes[info.FullMethod]
+		if !listed {
+			return nil, status.Errorf(codes.PermissionDenied, "method not allowed: %s", info.FullMethod)
 		}
 
 		md, ok := metadata.FromIncomingContext(ctx)
@@ -128,11 +151,27 @@ func scopeInterceptor(svc *VaultService) grpc.UnaryServerInterceptor {
 			return nil, status.Errorf(codes.PermissionDenied, "invalid service token")
 		}
 
-		if !hasScope(scopes, requiredScope) {
+		if requiredScope != anyIdentity && !hasScope(scopes, requiredScope) {
 			return nil, status.Errorf(codes.PermissionDenied, "caller lacks required scope %q", requiredScope)
 		}
 
 		return handler(ctx, req)
+	}
+}
+
+// streamScopeInterceptor serves the streams in openStreams without an identity
+// and refuses every other stream with PERMISSION_DENIED.
+func streamScopeInterceptor() grpc.StreamServerInterceptor {
+	return func(
+		srv interface{},
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
+		if openStreams[info.FullMethod] {
+			return handler(srv, ss)
+		}
+		return status.Errorf(codes.PermissionDenied, "method not allowed: %s", info.FullMethod)
 	}
 }
 
@@ -495,18 +534,13 @@ func (g *grpcVaultServer) ValidateServiceIdentity(ctx context.Context, req *vaul
 	}, nil
 }
 
-// ListenAndServe starts the gRPC server on the given port, registering the VaultAdapter RPC.
-// It also serves HTTP/1.1 requests on the same port, routing /metrics to a Prometheus handler
-// and gRPC (detected via Content-Type: application/grpc) to the gRPC server.
-// T-1.10.2: DEK cache metrics exposed on /metrics.
-func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultService) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return fmt.Errorf("vault-adapter: listen :%d: %w", port, err)
-	}
-
+// buildGRPCServer returns the server ListenAndServe serves: the vault services
+// the VaultServer is configured for, the health service set to SERVING, and the
+// unary and stream interceptors that authorize every method.
+func (s *VaultServer) buildGRPCServer(svc *VaultService) *grpc.Server {
 	grpcSrv := grpc.NewServer(
 		grpc.UnaryInterceptor(scopeInterceptor(svc)),
+		grpc.StreamInterceptor(streamScopeInterceptor()),
 	)
 
 	healthSvc := health.NewServer()
@@ -524,6 +558,21 @@ func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultSe
 	if s.agentSecretStore != nil {
 		RegisterAgentSecretsVaultServer(grpcSrv, svc, s.agentSecretStore)
 	}
+
+	return grpcSrv
+}
+
+// ListenAndServe starts the gRPC server on the given port, registering the VaultAdapter RPC.
+// It also serves HTTP/1.1 requests on the same port, routing /metrics to a Prometheus handler
+// and gRPC (detected via Content-Type: application/grpc) to the gRPC server.
+// T-1.10.2: DEK cache metrics exposed on /metrics.
+func (s *VaultServer) ListenAndServe(ctx context.Context, port int, svc *VaultService) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return fmt.Errorf("vault-adapter: listen :%d: %w", port, err)
+	}
+
+	grpcSrv := s.buildGRPCServer(svc)
 
 	// HTTP mux for non-gRPC requests (e.g. /metrics).
 	httpMux := http.NewServeMux()

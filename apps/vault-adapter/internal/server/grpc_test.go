@@ -94,10 +94,10 @@ func TestGRPCListVersions_TwoVersions(t *testing.T) {
 	var putVersions []uint32
 	for _, secret := range secrets {
 		resp, err := client.PutCredential(ctx, &vaultv1.PutCredentialRequest{
-			TenantId:  tenantID,
-			ServiceId: serviceID,
+			TenantId:   tenantID,
+			ServiceId:  serviceID,
 			AuthScheme: vaultv1.AuthScheme_AUTH_SCHEME_API_KEY_HEADER,
-			Value:     secret,
+			Value:      secret,
 		})
 		if err != nil {
 			t.Fatalf("PutCredential: %v", err)
@@ -1114,7 +1114,9 @@ func TestGRPCValidateServiceIdentity_HappyPath(t *testing.T) {
 }
 
 // TestGRPCValidateServiceIdentity_MissingToken verifies that a call without any
-// service-identity metadata returns codes.Unauthenticated.
+// service-identity metadata is refused with codes.PermissionDenied: the method
+// is in methodScopes, so the scope interceptor refuses it before the handler
+// runs, like every other listed method.
 func TestGRPCValidateServiceIdentity_MissingToken(t *testing.T) {
 	ctx := context.Background()
 	client, _, cleanup := newTestGRPCServerWithAuth(t)
@@ -1128,8 +1130,8 @@ func TestGRPCValidateServiceIdentity_MissingToken(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected gRPC status error, got %T: %v", err, err)
 	}
-	if st.Code() != codes.Unauthenticated {
-		t.Errorf("expected codes.Unauthenticated, got %v", st.Code())
+	if st.Code() != codes.PermissionDenied {
+		t.Errorf("expected codes.PermissionDenied, got %v", st.Code())
 	}
 }
 
