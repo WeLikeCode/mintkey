@@ -37,3 +37,5 @@
 {"at":"2026-10-26T03:11:21Z","branch":"l4/archive/openspec/vault-service-identity-fast-check","head":"cd7f5e7cb59b4187ea03e78b0511d4983a2252e3","type":"unit.branch_deleted","unit":"openspec:vault-service-identity-fast-check"}
 {"at":"2026-10-26T03:11:22Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T03:11:22Z","run":"r-20261026T0311Z-4b41","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T03:13:18Z","attempt":1,"cost_usd":0.925156,"runs":2,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T03:13:18Z","run":"r-20261026T0313Z-8028","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
