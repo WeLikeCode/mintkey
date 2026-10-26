@@ -41,6 +41,71 @@ type issueRequest struct {
 	Scope       string `json:"scope"`
 	ServiceKind string `json:"service_kind,omitempty"` // e.g. "email" for email_services
 	TTLSeconds  int    `json:"ttl_seconds"`
+
+	Methods    []string `json:"methods"`     // nil when absent or null
+	PathPrefix string   `json:"path_prefix"` // "" when absent
+}
+
+var allowedMethods = map[string]struct{}{
+	"GET": {}, "HEAD": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}, "OPTIONS": {},
+}
+
+// scopeClaims checks the optional limits of an issue request. It returns the
+// methods to sign (uppercased, in request order) and "", or nil and the 400
+// title.
+func scopeClaims(methods []string, pathPrefix, serviceKind string) ([]string, string) {
+	if (methods != nil || pathPrefix != "") && serviceKind != "" {
+		return nil, "methods and path_prefix apply to HTTP services only"
+	}
+	if methods != nil {
+		if len(methods) == 0 || len(methods) > 7 {
+			return nil, "methods must list 1 to 7 distinct HTTP methods"
+		}
+		upper := make([]string, len(methods))
+		seen := make(map[string]struct{}, len(methods))
+		for i, m := range methods {
+			u := strings.ToUpper(m)
+			if _, dup := seen[u]; dup {
+				return nil, "methods must list 1 to 7 distinct HTTP methods"
+			}
+			seen[u] = struct{}{}
+			upper[i] = u
+		}
+		for _, u := range upper {
+			if _, ok := allowedMethods[u]; !ok {
+				return nil, "methods may contain only GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS"
+			}
+		}
+		methods = upper
+	}
+	if pathPrefix != "" && !validPathPrefix(pathPrefix) {
+		return nil, "path_prefix must be an absolute path without query, fragment, percent-encoding, empty or dot segments"
+	}
+	return methods, ""
+}
+
+// validPathPrefix reports whether p is an absolute path without query,
+// fragment, percent-encoding, empty or dot segments and at most 512 bytes.
+func validPathPrefix(p string) bool {
+	if p == "" || p[0] != '/' || len(p) > 512 {
+		return false
+	}
+	for _, bad := range []string{"?", "#", "%", "\\", "//"} {
+		if strings.Contains(p, bad) {
+			return false
+		}
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] <= 0x20 || p[i] == 0x7f {
+			return false
+		}
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // issueResponse is the 200 JSON body.
@@ -59,7 +124,7 @@ type errBody struct {
 type Handler struct {
 	iss      *issuer.Issuer
 	mcpToken string
-	audit    AuditEnqueuer   // nil → audit disabled (safe zero value)
+	audit    AuditEnqueuer    // nil → audit disabled (safe zero value)
 	metrics  *metrics.Metrics // nil → metrics disabled (safe zero value)
 }
 
@@ -112,6 +177,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 3b. Validate the optional methods / path_prefix limits.
+	methods, title := scopeClaims(req.Methods, req.PathPrefix, req.ServiceKind)
+	if title != "" {
+		writeErr(w, http.StatusBadRequest, "validation_failed", title)
+		return
+	}
+
 	// 4. Issue the JWT.
 	token, err := h.iss.Issue(issuer.TokenRequest{
 		AgentID:     req.AgentID,
@@ -119,6 +191,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TenantID:    req.TenantID,
 		Scope:       req.Scope,
 		ServiceKind: req.ServiceKind,
+		Methods:     methods,
+		PathPrefix:  req.PathPrefix,
 		TTLSeconds:  ttl,
 	})
 	if err != nil {

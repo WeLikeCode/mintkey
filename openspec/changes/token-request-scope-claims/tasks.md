@@ -7,7 +7,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 1. The broker accepts, checks and signs the limits
 
-- [ ] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_scope_claims_test.go` (package `issue_test`,
+- [x] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_scope_claims_test.go` (package `issue_test`,
   using `newTestHandler(t)` and `testMCPToken` of `issue_test.go`). Add two file-local helpers: `postScopeIssue(t, h
   http.Handler, extra map[string]any) *httptest.ResponseRecorder` posts to `/v1/issue` with `X-Mintkey-Service-Token:
   testMCPToken` the JSON of `agent_id` `agent_01HZ0000000000000000000001`, `service_id`
@@ -26,7 +26,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 2. The proxy enforces the limits before the credential fetch
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/scope_claims_test.go` (package `main`, using
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/scope_claims_test.go` (package `main`, using
   `testHandler()`, `mustMarshalJSON` and `testSvcUUIDA` of `proxy_test.go`). Add a file-local helper
   `buildScopeClaimsJWT(t *testing.T, aud string, extra map[string]any) (string, ed25519.PublicKey)` that signs, with
   `kid` `testkey`, the claims `iss` `mintkey/broker`, `sub` `agent_test`, `aud` `[aud]`, `tnt`
@@ -48,7 +48,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 3. The MCP server passes the limits through
 
-- [ ] 3.1 Tests first, new file `apps/mcp-server/tests/test_request_token_scope_claims.py`. Sync test functions run
+- [x] 3.1 Tests first, new file `apps/mcp-server/tests/test_request_token_scope_claims.py`. Sync test functions run
   coroutines with `asyncio.run`. Call `mcp_server.tools.request_token.request_token(request=MagicMock(),
   body=TokenRequest(...), session=session, agent_ctx={"agent_id": "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd",
   "tenant_id": "11111111-2222-3333-4444-555555555555"})` directly, with `monkeypatch` setting on that module
