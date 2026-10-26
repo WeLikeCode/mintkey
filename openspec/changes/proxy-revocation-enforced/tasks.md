@@ -7,7 +7,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 1. Agent ids in every form, and the event key
 
-- [ ] 1.1 Tests first, new file `apps/proxy-plugin/internal/revocation/agent_set_id_forms_test.go` (package
+- [x] 1.1 Tests first, new file `apps/proxy-plugin/internal/revocation/agent_set_id_forms_test.go` (package
   `revocation_test`): `TestAgentSetMatchesWireAndUUIDForms` and `TestAgentSetAddedUUIDMatchesWireFormAndIgnoresEmpty`
   cover the two scenarios of the requirement "The agent revocation set treats every form of an agent id as one id",
   with the ids exactly as written there. Both fail before the change because `Contains` compares strings exactly (and
@@ -26,7 +26,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 2. admin-api publishes event_type
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_notify_event_type.py`, which puts `apps/admin-api/src` and
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_notify_event_type.py`, which puts `apps/admin-api/src` and
   `packages/python/mintkey-models` on `sys.path` as `tests/unit/admin_api/test_validate_agent_key_errors.py` does,
   with `T = "11111111-2222-3333-4444-555555555555"` and `A = "agent_3C7JAGMBGR9EMRS2AVGXDHQXDX"`. Sync test functions
   run coroutines with `asyncio.run`. A file-local `RecordingSession` has `async def execute(self, stmt,
@@ -53,7 +53,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 3. Token ids are evicted after the longest token lifetime
 
-- [ ] 3.1 Tests first, new file `apps/proxy-plugin/internal/revocation/jti_eviction_test.go` (package
+- [x] 3.1 Tests first, new file `apps/proxy-plugin/internal/revocation/jti_eviction_test.go` (package
   `revocation_test`): declare `type evictionRunner interface { RunEviction(ctx context.Context, interval, retention
   time.Duration) }`. `TestJTIRunEvictionDropsEntriesPastRetention` builds two sets with
   `revocation.NewJTIRevocationSet(10)`, adds `jti_old` to the first and `jti_new` to the second, asserts
@@ -69,7 +69,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 4. The handler refuses revoked tokens
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/revocation_enforced_test.go` (package `main`,
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/revocation_enforced_test.go` (package `main`,
   using `testHandler()`, `buildTestJWTWithClaims` and `testSvcUUIDA` of `proxy_test.go`): declare
   `type changesSubscriberSource interface { changesSubscriber(dsn string, opts ...changes.SubscriberOption)
   *changes.Subscriber }`. Each test builds `h := testHandler()`, asserts `any(h).(changesSubscriberSource)` succeeds

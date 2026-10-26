@@ -33,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
@@ -44,7 +45,6 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/egress"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
-	"github.com/google/uuid"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
@@ -108,10 +108,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Keep revoked token ids for the longest token lifetime, then evict them
+	// so the set does not fill up (ADR-0016; S-OPS-1).
+	go handler.revokedJTIs.RunEviction(ctx, time.Minute, revocation.JTIRetention)
+
 	// Wire the changes subscriber so api_key.revoked and agent.revoked events
-	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4).
-	agentSet := revocation.NewAgentRevocationSet()
-	jtiSet := revocation.NewJTIRevocationSet(10_000)
+	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4) and
+	// populate the handler's own revocation sets.
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
 		var subOpts []changes.SubscriberOption
 		// Wire budget cache invalidation if a resolver is configured (T-BUD-3.4).
@@ -120,7 +123,7 @@ func main() {
 				subOpts = append(subOpts, changes.WithBudgetCache(bc))
 			}
 		}
-		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler, subOpts...)
+		sub := handler.changesSubscriber(dsn, subOpts...)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("proxy-plugin: changes subscriber error: %v", err)
@@ -198,7 +201,13 @@ type proxyHandler struct {
 	// was used; routing through this emitter ensures agent_id is included and
 	// redaction guardrails are applied.
 	tokenExchangeEmitter tokenExchangeEmitterI // may be nil
-	metrics     *metrics.Metrics
+	metrics              *metrics.Metrics
+	// revokedAgents holds the agents refused by the proxy. Never nil after
+	// newProxyHandler; the change subscriber fills it.
+	revokedAgents *revocation.AgentRevocationSet
+	// revokedJTIs holds the revoked token ids. Never nil after newProxyHandler;
+	// a background loop evicts aged entries.
+	revokedJTIs *revocation.JTIRevocationSet
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 	// tokenCache is the in-memory cache for OAuth2 password grant exchanged tokens.
@@ -240,6 +249,8 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		audit:            ae,
 		auditQ:           aq,
 		metrics:          m,
+		revokedAgents:    revocation.NewAgentRevocationSet(),
+		revokedJTIs:      revocation.NewJTIRevocationSet(10_000),
 		pubKeys:          make(map[string]ed25519.PublicKey),
 		tokenCache:       cache.NewTokenCache(),
 		tokenExchanger:   credential.NewTokenExchanger(),
@@ -247,6 +258,13 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		budgetMetrics:    budget.NewBudgetMetrics(),
 		budgetThresholds: budget.NewThresholdTracker(),
 	}
+}
+
+// changesSubscriber builds the change-channel subscriber over the handler's own
+// revocation sets, so a notification the subscriber applies is the one the
+// request handler checks.
+func (h *proxyHandler) changesSubscriber(dsn string, opts ...changes.SubscriberOption) *changes.Subscriber {
+	return changes.NewSubscriber(dsn, h.revokedAgents, h.revokedJTIs, h.ckHandler, opts...)
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +341,16 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if serviceID == "" || tenantID == "" {
 		h.metrics.IncProxyDenied("unknown", "unauthenticated")
 		http.Error(w, "unauthorized: missing aud or tnt claim", http.StatusUnauthorized)
+		return
+	}
+
+	// Revocation gate: a revoked token id or an agent in the revoked set is
+	// refused before any other gate and before the vault credential fetch.
+	// The body does not reveal which of the two matched (D1).
+	jti, _ := claims["jti"].(string)
+	if (jti != "" && h.revokedJTIs.Contains(jti)) || (agentID != "" && h.revokedAgents.Contains(agentID)) {
+		h.metrics.IncProxyDenied(serviceID, "revoked")
+		http.Error(w, "unauthorized: token revoked", http.StatusUnauthorized)
 		return
 	}
 
