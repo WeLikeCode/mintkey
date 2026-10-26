@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Whether the MCP server should later derive `path_prefix` from a grant's `request_path_prefix` const…
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked spec:spec.md#requirement-the-mcp-server-passes-the-limits-to-the-broker does not resolve
 - **Blocking tasks:** 1.1, 2.1, 3.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
