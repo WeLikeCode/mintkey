@@ -69,7 +69,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 4. The handler refuses revoked tokens
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/revocation_enforced_test.go` (package `main`,
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/revocation_enforced_test.go` (package `main`,
   using `testHandler()`, `buildTestJWTWithClaims` and `testSvcUUIDA` of `proxy_test.go`): declare
   `type changesSubscriberSource interface { changesSubscriber(dsn string, opts ...changes.SubscriberOption)
   *changes.Subscriber }`. Each test builds `h := testHandler()`, asserts `any(h).(changesSubscriberSource)` succeeds
