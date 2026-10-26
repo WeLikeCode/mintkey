@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
 | Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
 | Q-004 | answered | 2.2 | technical | tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form |
-| Q-005 | open | none | verdict | Finding F-0b7e7198: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed |
+| Q-005 | answered | none | verdict | Finding F-0b7e7198: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed |
 <!-- l4:index:end -->
 
 ---
@@ -112,7 +112,8 @@ Option 1, as task 2.2 and proposal.md (Changed tests, set-up only) say: unfreeze
 
 ## Q-005: Finding F-0b7e7198: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -133,3 +134,4 @@ This finding cites no criterion: end the reason with one sentence WHEN <the situ
 
 ### Answer
 <!-- write below this line -->
+reject The finding holds. Task 2.1 is ticked but the existing verify-job chain test file was not changed: its _build_chain still builds each AuditEvent from id, event_type, tenant_id, payload, hash and prev_hash only, so at stays None, and the rewritten verify.py raises ValueError("event has no at") from _chain_event, which compute_event_hash calls on the first event of every chain. The file also does not put packages/python/mintkey-models on sys.path itself, as task 2.1 requires, although the shared tests/conftest.py does so when it is collected through pytest from the repository. All four chain tests in that file therefore fail at set-up, and the task's own instruction (only the set-up changes: add the mintkey-models path, pass at=datetime(2026, 1, 1, tzinfo=timezone.utc) to each AuditEvent, test bodies stay) was not carried out. WHEN tests/unit/audit_verify/test_chain_verify.py is run against the rewritten verify.py THEN its set-up puts packages/python/mintkey-models on sys.path and _build_chain gives every AuditEvent at=datetime(2026, 1, 1, tzinfo=timezone.utc), so that test_intact_chain_returns_ok, test_tampered_chain_detects_first_bad_event, test_genesis_hash_verification, test_genesis_hash_value and test_empty_chain_is_ok pass with their bodies unchanged.
