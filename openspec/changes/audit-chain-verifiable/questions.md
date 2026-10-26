@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1, 2.1, 2.2 | ambiguous | Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa… |
+| Q-001 | answered | 1.1, 2.1, 2.2 | ambiguous | Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa… |
 | Q-002 | open | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
 | Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
 <!-- l4:index:end -->
@@ -20,7 +20,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa…
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked openspec/changes/audit-chain-verifiable/design.md:40 does not resolve
 - **Blocking tasks:** 1.1, 2.1, 2.2
 - **Kind:** ambiguous
@@ -37,6 +37,7 @@ Open-question-hash: 3ef0eeef2a4ddd9e
 
 ### Answer
 <!-- write below this line -->
+None that block. The audit payloads this unit hashes carry ids, names, counts and flags, never floats in exponent form, so JSONB's number normalisation does not change any hash it verifies. If a payload ever needs such floats, the writer should hash the value Postgres returns; that is a separate change, as design.md's open questions say. Implement the tasks as written. (Answered by the owner's delegate.)
 ---
 
 ## Q-002: That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au…
