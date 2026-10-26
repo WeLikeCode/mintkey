@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Base TestDeadLetterMetrics (500 -> dead-letter) contradicts criterion C-f33bec22 and Q-002 (500 -> retried, no dead-letter)
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The head test at packages/go/auditq/compact_test.go:328-358 already uses 422 and the committed isRejected (queue.go:809) retries 500, matching spec requirement "An event the sink refuses goes to the dead-letter file on its first answer" and design D3. The base version of the test is not in the workt
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-26T22:57Z by deepseek, run r-20261026T2243Z-71a7, task 1.1
