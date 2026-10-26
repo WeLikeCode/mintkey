@@ -86,6 +86,7 @@ The repository confirms the observation and settles what it means for this unit.
 ## Q-004: tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked openspec/changes/audit-verifiable/tasks.md:75 does not resolve
 - **Blocking tasks:** 2.2
 - **Kind:** technical
 - **Asked:** 2026-10-26T18:03Z by deepseek, run r-20261026T1730Z-c15c, task 2.2
