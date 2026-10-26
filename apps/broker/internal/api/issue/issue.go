@@ -85,7 +85,9 @@ func NewHandlerWithAuditAndMetrics(iss *issuer.Issuer, mcpToken string, audit Au
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 1. Authenticate — service-to-service token.
-	if subtle.ConstantTimeCompare(
+	// An unconfigured token refuses every request: fail closed rather than
+	// comparing against the empty string (which a missing header would match).
+	if h.mcpToken == "" || subtle.ConstantTimeCompare(
 		[]byte(r.Header.Get("X-Mintkey-Service-Token")),
 		[]byte(h.mcpToken),
 	) != 1 {

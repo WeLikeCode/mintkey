@@ -184,7 +184,9 @@ func NewHandler(store Store, proxyToken string) http.Handler {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 1. Authenticate — service-to-service token (Req 3.1; design §3).
-	if subtle.ConstantTimeCompare(
+	// An unconfigured token refuses every request: fail closed rather than
+	// comparing against the empty string (which a missing header would match).
+	if h.proxyToken == "" || subtle.ConstantTimeCompare(
 		[]byte(r.Header.Get("X-Mintkey-Service-Token")),
 		[]byte(h.proxyToken),
 	) != 1 {

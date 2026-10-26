@@ -11,7 +11,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 1. Broker endpoints refuse every request when their token is not configured
 
-- [ ] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_empty_token_test.go` (package `issue_test`):
+- [x] 1.1 Tests first, new file `apps/broker/internal/api/issue/issue_empty_token_test.go` (package `issue_test`):
   build an `*issuer.Issuer` as `newTestHandler` in `issue_test.go` does, and a fake `issue.AuditEnqueuer` that counts
   `Enqueue` calls. `TestIssue_EmptyConfiguredToken_NoHeader_Returns401`,
   `TestIssue_EmptyConfiguredToken_EmptyHeader_Returns401` and `TestIssue_EmptyConfiguredToken_AnyHeader_Returns401`
@@ -30,7 +30,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 2. The broker refuses to start in production without its inbound tokens
 
-- [ ] 2.1 Tests first, new file `apps/broker/internal/config/config_test.go` (package `config_test`), building
+- [x] 2.1 Tests first, new file `apps/broker/internal/config/config_test.go` (package `config_test`), building
   `config.Config` values directly from their existing fields `Env`, `MCPServiceToken` and `ProxyServiceToken` (no
   environment) and reaching the new methods through
   `type serviceTokenChecker interface { MissingServiceTokens() []string; Validate() error }`, asserted on the
@@ -45,7 +45,7 @@ redeclare names that already exist in their test package (`testMCPToken`, `newTe
 
 ## 3. The vault adapter registers its identities from one table
 
-- [ ] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_test.go` (package `server`). The tests
+- [x] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_test.go` (package `server`). The tests
   build a `VaultService` with `NewVaultService(kek, st)` on `store.New(":memory:")` as `newTestGRPCServer` in
   `grpc_test.go` does, reach the two new methods through the `bootRegistrar` interface of design D7 asserted on the
   `*VaultService` (`t.Fatal` when it fails), pass a lookup built from a `map[string]string` (a missing key gives `""`,
