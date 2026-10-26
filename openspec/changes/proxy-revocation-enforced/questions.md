@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | No Go unit has been implemented in this repository through the test gate's red step before; D5 is w… |
 | Q-002 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and… |
 | Q-003 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)… |
-| Q-004 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a… |
+| Q-004 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a… |
 <!-- l4:index:end -->
 
 ---
@@ -81,7 +81,7 @@ The repository settles the open question: the vault adapter's DEK cache is not k
 
 ## Q-004: A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a…
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate: delegate answer limit of task 1.1 reached (3)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 4.1
 - **Kind:** ambiguous
@@ -96,3 +96,4 @@ Open-question-hash: d461306d88581c88
 
 ### Answer
 <!-- write below this line -->
+None that block. The live check (revoke an agent in the admin UI, then call the proxy within 2 s) needs the compose stack, so it is a person's check after the merge and not part of this unit. This unit's acceptance is its unit tests, which feed the subscriber the exact payloads admin-api publishes. Implement the tasks as written. (Answered by the owner's delegate.)
