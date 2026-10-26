@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional, Sequence
 
 GENESIS_PREFIX = "mintkey-audit-genesis-v1:"
 
@@ -125,3 +125,7 @@ def verify_chain(events: List[AuditEvent]) -> VerifyResult:
         first_bad_event_id=None,
         message="chain intact",
     )
+
+
+def verify_rows(rows: Sequence[Any]) -> VerifyResult:
+    raise NotImplementedError
