@@ -14,3 +14,4 @@
 {"at":"2026-10-25T21:13:45Z","attempt":1,"cost_usd":1.102947,"runs":2,"type":"plan.charged","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-25T21:13:45Z","run":"r-20261025T2113Z-59fd","type":"unit.dispatched","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-25T23:03:43Z","detail":"the repository CI is still running on the hand-off commit 80b59d5551 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"80b59d5551eecdd62a858605aa4afbb7a3cd81b8","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:broker-service-token-required"}
+{"at":"2026-10-26T00:09:42Z","by":"harness","reason":"the cause is gone: the merge of openspec:broker-service-token-required can go on","type":"plan.resumed"}
