@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | Pre-existing ValidateServiceIdentity test contradicts the new requirement |
+| Q-001 | answered | 1.1 | ambiguous | Pre-existing ValidateServiceIdentity test contradicts the new requirement |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Pre-existing ValidateServiceIdentity test contradicts the new requirement
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The project documents settle the behaviour, not the blocker. design.md D3/D9, proposal.md "Changed tests" and tasks.md 1.1 all say TestGRPCValidateServiceIdentity_MissingToken is changed in place to expect PermissionDenied, and head grpc.go:139-141 refuses missing metadata with PermissionDenied for
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
@@ -34,3 +34,4 @@ At base cd7f5e7, TestGRPCValidateServiceIdentity_MissingToken (apps/vault-adapte
 
 ### Answer
 <!-- write below this line -->
+Option 1. The reviewed spec settles the behaviour: proposal.md "Changed tests" and tasks.md 1.1 of vault-method-scopes (design D3 and D9) change `apps/vault-adapter/internal/server/grpc_test.go::TestGRPCValidateServiceIdentity_MissingToken` in place to expect `codes.PermissionDenied`, and change the helper `newTestSSHGRPCServer` in apps/vault-adapter/internal/server/grpc_ssh_test.go to build its server with `grpc.NewServer(grpc.UnaryInterceptor(scopeInterceptor(svc)))` and register `svcid_ssh_proxy` with `[]string{"vault.read", "vault.hostkey.put"}`. Both base-test failures are those intended changes. This answer unfreezes exactly two files for this fix task: apps/vault-adapter/internal/server/grpc_test.go and apps/vault-adapter/internal/server/grpc_ssh_test.go. In grpc_test.go, TestGRPCValidateServiceIdentity_MissingToken asserts `codes.PermissionDenied` unconditionally: remove the `methodScopes` lookup that picks the expected code at run time, and keep a comment that says why. In grpc_ssh_test.go, the helper registers exactly the two scopes above (drop `vault.put`), and TestSSHVault_GetAgentByFingerprint_MissingToken itself stays unchanged: it passes through the interceptor. Change nothing else in those two files and no other test. Options 2 and 3 are rejected: they weaken the default-deny design that this change exists for.
