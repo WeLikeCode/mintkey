@@ -18,3 +18,6 @@
 {"at":"2026-10-26T00:09:45Z","head":"80b59d5551eecdd62a858605aa4afbb7a3cd81b8","pr":371,"target_before":"15919f7685eb781fea84c15d2596bdc5f42a23ec","type":"unit.merge_requested","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-26T00:09:50Z","ci":"not_run","head":"80b59d5551eecdd62a858605aa4afbb7a3cd81b8","merge_commit":"7881e9190adf933ddd6a17bffed5d47a741b8aca","method":"squash","pr":371,"raced":false,"type":"unit.merged","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-26T00:09:54Z","branch":"l4/openspec/broker-service-token-required","head":"80b59d5551eecdd62a858605aa4afbb7a3cd81b8","type":"unit.branch_deleted","unit":"openspec:broker-service-token-required"}
+{"at":"2026-10-26T00:15:46Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"7881e9190adf933ddd6a17bffed5d47a741b8aca","status":"pass","type":"unit.postcheck","unit":"openspec:broker-service-token-required"}
+{"at":"2026-10-26T00:15:46Z","revision":"7881e9190adf933ddd6a17bffed5d47a741b8aca","type":"unit.integrated","unit":"openspec:broker-service-token-required"}
+{"at":"2026-10-26T00:15:46Z","attempt":1,"cost_usd":2.004206,"runs":2,"type":"plan.charged","unit":"openspec:broker-service-token-required"}
