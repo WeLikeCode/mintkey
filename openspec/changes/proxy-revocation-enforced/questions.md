@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | No Go unit has been implemented in this repository through the test gate's red step before; D5 is w… |
 | Q-002 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and… |
-| Q-003 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)… |
+| Q-003 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)… |
 | Q-004 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a… |
 <!-- l4:index:end -->
 
@@ -61,7 +61,8 @@ The open question records a known gap, not a decision this unit has to make, and
 
 ## Q-003: The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 4.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -75,6 +76,7 @@ Open-question-hash: a00dcfed513bb5f9
 
 ### Answer
 <!-- write below this line -->
+The repository settles the open question: the vault adapter's DEK cache is not keyed by the form the credential.rotated payload carries, and that is not something this unit changes, so tasks 1.1 to 4.1 proceed exactly as the specification and design state, without touching the vault adapter. The cache key is whatever service_id the vault's GetCredential caller passes (apps/vault-adapter/internal/server/vault.go keys cache.Put and cache.Get by args.ServiceID, and the gRPC layer in grpc.go passes req.GetServiceId() through unchanged with no wire-to-UUID conversion anywhere in apps/vault-adapter/internal/server). On the proxy path that value is the JWT aud: the MCP server posts the DB UUID to the broker as service_id (request_token.py, "Pass the DB UUID to the broker"), the broker copies req.ServiceID into aud unchanged (apps/broker/internal/issuer/issuer.go), and the proxy sends audFirst(claims["aud"]) as ServiceID in its GetCredential request. admin-api's rotate_credential, by contrast, publishes "service_id": service_id, the wire form from the URL (svc_ plus 26 Crockford characters), while it writes the vault with db_svc_uuid. So after this change the vault adapter's InvalidateByService(tenant_id, "svc_...") compares against entries keyed by the dashed UUID and evicts nothing. Two facts bound the consequence: the proxy's GetCredentialRequest sets no KeyVersion, so the vault reads SQLite on every proxy fetch (GetCredential only consults the cache when args.KeyVersion != 0) and rotation is reflected immediately regardless of the cache; and the proposal's Impact lists no vault-adapter file and the specification has no requirement for the vault adapter, so widening this unit to normalise the service id there (for example with the new wireid package, which lives in the proxy plugin) is out of scope. Record the mismatch as a follow-up: either admin-api's credential.rotated payload carries the DB UUID or the vault subscriber canonicalises service_id before InvalidateByService; that is its own change. Nothing in this unit's four tasks depends on the answer.
 ---
 
 ## Q-004: A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a…
