@@ -39,3 +39,5 @@
 {"at":"2026-10-26T03:11:22Z","run":"r-20261026T0311Z-4b41","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T03:13:18Z","attempt":1,"cost_usd":0.925156,"runs":2,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T03:13:18Z","run":"r-20261026T0313Z-8028","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T05:45:41Z","attempt":1,"cost_usd":2.687074,"runs":3,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T05:45:41Z","run":"r-20261026T0545Z-4e2f","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
