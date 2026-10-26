@@ -63,3 +63,8 @@
 {"ts": "2026-10-26T09:49:02.898777Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 63, "type": "step.timed", "phase": "verify", "round": 4, "seconds": 929.7}
 {"ts": "2026-10-26T09:49:02.899351Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 64, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-26T09:49:06.723206Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 65, "type": "pr.labels", "number": 375, "labels": ["l4:verified"]}
+{"ts": "2026-10-26T09:49:14.771251Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 66, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/375", "number": 375, "head": "060fe30de74de22316a07a545c8bea50b08067c5"}
+{"ts": "2026-10-26T09:49:14.772296Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 67, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-26T09:49:18.541711Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 68, "type": "pr.labels", "number": 375, "labels": ["l4:in_review"]}
+{"ts": "2026-10-26T09:49:20.180890Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 69, "type": "lock.released"}
+{"ts": "2026-10-26T09:49:20.181570Z", "run_id": "r-20261026T0933Z-2477", "unit": "openspec:vault-method-scopes", "seq": 70, "type": "run.finished", "exit_code": 0}
