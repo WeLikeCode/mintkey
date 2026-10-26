@@ -1,0 +1,144 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "apps/vault-adapter/internal/server/grpc.go",
+      "cmd/proxy-plugin/main.go",
+      "internal/vault/client.go",
+      "internal/backend/backend.go",
+      "internal/auth/auth.go",
+      "internal/backend/hostkey.go",
+      "cmd/email-proxy/main.go",
+      "internal/server/server.go",
+      "internal/server/handlers/email.go",
+      "services/vault_client.py",
+      "services/agent_secrets_vault_client.py",
+      "vault/agent_secrets_client.py",
+      "tests/acceptance/test_data_plane_smoke.py",
+      "tests/acceptance/test_golden_path.py",
+      "scripts/mintkey-doctor.sh",
+      "apps/vault-adapter/internal/server/identities.go",
+      "apps/vault-adapter/internal/server/grpc_agent_secrets.go",
+      "apps/vault-adapter/internal/server/grpc_ssh.go",
+      "apps/vault-adapter/internal/server/grpc_ssh_test.go",
+      "apps/vault-adapter/internal/server/grpc_test.go",
+      "apps/vault-adapter/internal/server/method_scopes_test.go",
+      "apps/vault-adapter/internal/server/identity_scopes_test.go",
+      "infra/compose/docker-compose.yml",
+      "infra/compose/docker-compose.ghcr.yml",
+      "apps/vault-adapter",
+      "apps/proxy-plugin",
+      "**/xmodule_integration_test.go",
+      "**/\"*\"",
+      "**/[vault.read]",
+      "**/grpc_ssh_test.go",
+      "**/grpc_test.go",
+      "**/MINTKEY_VAULT_PROXY_*",
+      "**/MINTKEY_VAULT_ADMIN_*",
+      "infra/**",
+      "**/[]string{\"vault.read\"}",
+      "module cmd",
+      "module infra",
+      "module internal",
+      "module proxy-plugin",
+      "module scripts",
+      "module services",
+      "module tests",
+      "module vault",
+      "module vault-adapter"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/vault-adapter/internal/server/grpc.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/grpc_agent_secrets.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/grpc_ssh.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/grpc_ssh_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/grpc_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/identities.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/identity_scopes_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/method_scopes_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0311Z-4b41.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0313Z-8028.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/vault-method-scopes/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/vault-method-scopes/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      }
+    ]
+  },
+  "diff_coverage": null,
+  "tests_ran": null
+}
