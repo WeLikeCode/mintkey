@@ -49,8 +49,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0
       express-rate-limit:
-        specifier: 7.5.0
-        version: 7.5.0(express@4.22.3(supports-color@5.5.0))
+        specifier: 8.7.1
+        version: 8.7.1(express@4.22.3(supports-color@5.5.0))(supports-color@5.5.0)
       express-session:
         specifier: ^1.18.1
         version: 1.19.0(supports-color@5.5.0)
@@ -2048,11 +2048,11 @@ packages:
     resolution: {integrity: sha512-w1vXjF3gb50UKTNkFaW8/4rqY4dUrKfZ1sAZzwAF9YxCAgj/29QZsycf71di0GkskrZOAkubk9pvGYfxyAMYiw==}
     engines: {node: '>= 8'}
 
-  express-rate-limit@7.5.0:
-    resolution: {integrity: sha512-eB5zbQh5h+VenMPM3fh+nw1YExi5nMr6HUCR62ELSP11huvxm/Uir1H1QEyTkk5QX6A58pX6NmaTMceKZ0Eodg==}
+  express-rate-limit@8.7.1:
+    resolution: {integrity: sha512-2FXbqkygil3mZiXzEtM0IjE/UBmBNot0J1GEVrJT4JbrvwOSoEtqtO+wHbiMQELWe1eNvHoYRg2dkjOid+6JkA==}
     engines: {node: '>= 16'}
     peerDependencies:
-      express: ^4.11 || 5 || ^5.0.0-beta.1
+      express: '>= 4.11'
 
   express-session@1.19.0:
     resolution: {integrity: sha512-0csaMkGq+vaiZTmSMMGkfdCOabYv192VbytFypcvI0MANrp+4i/7yEkJ0sbAEhycQjntaKGzYfjfXQyVb7BHMA==}
@@ -2232,6 +2232,10 @@ packages:
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
+
+  ip-address@10.7.4:
+    resolution: {integrity: sha512-DWBMKyeM25D70nrIiTkgQth59/G+naKOTep6huF9j+GmeK3DMD60Zvxg5d5qQnz+38AHgou6ean2LECX+lrKDg==}
+    engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
     resolution: {integrity: sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==}
@@ -4484,7 +4488,7 @@ snapshots:
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
       '@jridgewell/trace-mapping': 0.3.31
 
   '@jridgewell/remapping@2.3.5':
@@ -4501,7 +4505,7 @@ snapshots:
   '@jridgewell/trace-mapping@0.3.31':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
-      '@jridgewell/sourcemap-codec': 1.5.5
+      '@jridgewell/sourcemap-codec': 1.6.0
 
   '@noble/hashes@1.8.0': {}
 
@@ -5550,9 +5554,13 @@ snapshots:
     dependencies:
       formidable: 1.2.6
 
-  express-rate-limit@7.5.0(express@4.22.3(supports-color@5.5.0)):
+  express-rate-limit@8.7.1(express@4.22.3(supports-color@5.5.0))(supports-color@5.5.0):
     dependencies:
+      debug: 4.4.3(supports-color@5.5.0)
       express: 4.22.3(supports-color@5.5.0)
+      ip-address: 10.7.4
+    transitivePeerDependencies:
+      - supports-color
 
   express-session@1.19.0(supports-color@5.5.0):
     dependencies:
@@ -5780,6 +5788,8 @@ snapshots:
       wrappy: 1.0.2
 
   inherits@2.0.4: {}
+
+  ip-address@10.7.4: {}
 
   ipaddr.js@1.9.1: {}
 
