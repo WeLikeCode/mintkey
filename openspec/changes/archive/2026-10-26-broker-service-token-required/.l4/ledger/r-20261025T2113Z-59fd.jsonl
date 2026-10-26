@@ -315,3 +315,8 @@
 {"ts": "2026-10-25T23:02:15.798380Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 315, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 796.1}
 {"ts": "2026-10-25T23:02:15.798890Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 316, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-25T23:02:18.943866Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 317, "type": "pr.labels", "number": 371, "labels": ["l4:verified"]}
+{"ts": "2026-10-25T23:02:25.646122Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 318, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/371", "number": 371, "head": "80b59d5551eecdd62a858605aa4afbb7a3cd81b8"}
+{"ts": "2026-10-25T23:02:25.647291Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 319, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-25T23:02:28.235164Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 320, "type": "pr.labels", "number": 371, "labels": ["l4:in_review"]}
+{"ts": "2026-10-25T23:02:29.243022Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 321, "type": "lock.released"}
+{"ts": "2026-10-25T23:02:29.244150Z", "run_id": "r-20261025T2113Z-59fd", "unit": "openspec:broker-service-token-required", "seq": 322, "type": "run.finished", "exit_code": 0}
