@@ -82,10 +82,13 @@ const (
 	argonKeyLen  = 32
 )
 
-// dummyHash is verifiable with argon2id so the constant-time path takes the
-// same wall-clock time as a real verify. It is the Argon2id hash of the
-// literal string "dummy_constant_time_placeholder".
-var dummyHash = hashPassword("dummy_constant_time_placeholder")
+// dummyHash returns a hash verifiable with argon2id so the constant-time path
+// takes the same wall-clock time as a real verify. It is computed on the first
+// unknown-fingerprint request and reused afterwards, so package initialisation
+// does not pay for an Argon2id derivation.
+var dummyHash = sync.OnceValue(func() string {
+	return hashPassword("dummy_constant_time_placeholder")
+})
 
 // hashPassword computes an Argon2id hash; used only in HashForTest + dummyHash init.
 func hashPassword(plaintext string) string {
@@ -218,7 +221,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Constant-time Argon2id verify — runs on BOTH found and not-found paths
 	// so fingerprint existence cannot be inferred from timing (Req 3.2).
-	hashToCheck := dummyHash
+	hashToCheck := dummyHash()
 	if row != nil {
 		hashToCheck = row.KeyHash
 	}
