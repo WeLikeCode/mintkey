@@ -1,9 +1,9 @@
-# Verification: openspec:vault-method-scopes: FAIL (round 2)
+# Verification: openspec:vault-method-scopes: FAIL (round 3)
 
 traceability: not checked (an earlier step failed)
 
 - Base: `cd7f5e7cb59b4187ea03e78b0511d4983a2252e3`
-- Head: `a20efb2db8bb067ff5be781edeb8f8d3265745ef`
+- Head: `555a88281e79601da465640d89518f6146bd6d70`
 - Implementer profiles: deepseek, glm, deepseek-free
 - Judge: claude-judge, 0 call(s), prompt sha256 `-`
 
@@ -11,8 +11,8 @@ traceability: not checked (an earlier step failed)
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.8 | base staging@cd7f5e7cb5 contained |
-| 1 | integrity | failed | 422.5 | a pre-existing test fails on the unit's code; scope: 22 changed file(s) |
+| 0 | preconditions | ok | 1.3 | base staging@cd7f5e7cb5 contained |
+| 1 | integrity | failed | 409.1 | a pre-existing test fails on the unit's code; scope: 29 changed file(s) |
 | 2 | build | not_run | 0.0 | an earlier step failed |
 | 3 | tests | not_run | 0.0 | an earlier step failed |
 | 4 | traceability | not_run | 0.0 | an earlier step failed |
@@ -30,7 +30,7 @@ traceability: not checked (an earlier step failed)
 | protected paths | ok | no protected path differs from the base |
 | pre-existing tests | skipped | no Python test file changed; 2 other test file(s) are checked by the run of pre-existing tests |
 | red-green freeze | ok | 1 task(s): red and green compared |
-| test path freeze | ok | 2 harness step commit(s) checked |
+| test path freeze | ok | 3 harness step commit(s) checked |
 | content scan | ok | no result-manipulating construct in the changed support and runner files |
 | gate configuration | skipped | no gate or runner configuration file changed |
 | test awareness | ok | no production line reacts to the test run |
@@ -61,9 +61,16 @@ Nothing needs attention.
 | `openspec/changes/vault-method-scopes-fix-1/proposal.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes-fix-1/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes-fix-1/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-2/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-2/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-2/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-2/tasks.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-2/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-2/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-2/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0311Z-4b41.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0313Z-8028.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0545Z-4e2f.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -89,8 +96,7 @@ None judged.
 
 ## Fix unit
 
-Fix unit 2 is created for these tasks:
-- F-2813828d a pre-existing test fails on the unit's code
+Escalated: round 3 failed the same way as round 2: finding F-2813828d
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
@@ -112,5 +118,7 @@ Fix unit 2 is created for these tasks:
 
 ## Guard events
 
+- guard.test_tamper: apps/vault-adapter/internal/server/grpc_ssh_test.go
+- guard.test_tamper: apps/vault-adapter/internal/server/grpc_test.go
 - guard.test_tamper: apps/vault-adapter/internal/server/grpc_ssh_test.go
 - guard.test_tamper: apps/vault-adapter/internal/server/grpc_test.go
