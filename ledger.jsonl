@@ -50,3 +50,4 @@
 {"at":"2026-10-26T10:03:05Z","by":"harness","reason":"the cause is gone: the merge of openspec:vault-method-scopes can go on","type":"plan.resumed"}
 {"at":"2026-10-26T10:03:10Z","head":"060fe30de74de22316a07a545c8bea50b08067c5","pr":375,"target_before":"ea16cf59f307ae5b659d636ff2f3b5fde8270456","type":"unit.merge_requested","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T10:03:16Z","ci":"not_run","head":"060fe30de74de22316a07a545c8bea50b08067c5","merge_commit":"33b52d82152a9fadd37cc48c8cacbf424ea64123","method":"squash","pr":375,"raced":false,"type":"unit.merged","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T10:03:22Z","branch":"l4/openspec/vault-method-scopes","head":"060fe30de74de22316a07a545c8bea50b08067c5","type":"unit.branch_deleted","unit":"openspec:vault-method-scopes"}
