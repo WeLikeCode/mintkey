@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-26T20:05:40Z",
+  "integrated_revision": "01526e7ba072734ba40d12fe67fae43105e606c7",
+  "merge_commit": "01526e7ba072734ba40d12fe67fae43105e606c7",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 381,
+  "receipt_id": "hardening/openspec:audit-chain-verifiable/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "12134acaa3b9c2d41609040cef09f583b015dc3c",
+  "spec_digest": "5c91624895816377",
+  "target": "staging",
+  "unit_id": "openspec:audit-chain-verifiable"
+}
