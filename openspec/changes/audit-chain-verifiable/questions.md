@@ -42,6 +42,7 @@ Open-question-hash: 3ef0eeef2a4ddd9e
 ## Q-002: That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au…
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked spec:spec.md#requirement-one-canonical-form-for-the-audit-event-hash does not resolve
 - **Blocking tasks:** 1.1, 2.1, 2.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
