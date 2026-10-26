@@ -71,3 +71,5 @@
 {"at":"2026-10-26T12:45:03Z","revision":"c5cd4ec7b8ce3c78b860b3114641bfdae9606aa4","type":"unit.integrated","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T12:45:03Z","attempt":1,"cost_usd":5.060241,"runs":2,"type":"plan.charged","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T12:46:22Z","branch":"l4/archive/openspec/proxy-revocation-enforced","head":"3a1e7ed2db7adec379542ccf1abd0acd39aa45dd","type":"unit.branch_deleted","unit":"openspec:proxy-revocation-enforced"}
+{"at":"2026-10-26T12:46:24Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T12:46:24Z","run":"r-20261026T1246Z-5d24","type":"unit.dispatched","unit":"openspec:token-request-scope-claims"}
