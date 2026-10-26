@@ -24,3 +24,5 @@
 {"at":"2026-10-26T00:17:02Z","branch":"l4/archive/openspec/broker-service-token-required","head":"ffa17a35e5254a8c7f0118bd1863baf5d68667b0","type":"unit.branch_deleted","unit":"openspec:broker-service-token-required"}
 {"at":"2026-10-26T00:17:03Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:vault-service-identity-fast-check"}
 {"at":"2026-10-26T00:17:03Z","run":"r-20261026T0016Z-eac0","type":"unit.dispatched","unit":"openspec:vault-service-identity-fast-check"}
+{"at":"2026-10-26T00:19:05Z","attempt":1,"cost_usd":1.063962,"runs":2,"type":"plan.charged","unit":"openspec:vault-service-identity-fast-check"}
+{"at":"2026-10-26T00:19:05Z","run":"r-20261026T0019Z-22e6","type":"unit.dispatched","unit":"openspec:vault-service-identity-fast-check"}
