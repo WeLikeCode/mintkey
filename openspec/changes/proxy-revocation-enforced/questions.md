@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | No Go unit has been implemented in this repository through the test gate's red step before; D5 is w… |
-| Q-002 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and… |
+| Q-002 | answered | 1.1, 2.1, 3.1, 4.1 | ambiguous | The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and… |
 | Q-003 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)… |
 | Q-004 | open | 1.1, 2.1, 3.1, 4.1 | ambiguous | A live check (revoke an agent in the admin UI, call the proxy within 2 s) needs the compose stack a… |
 <!-- l4:index:end -->
@@ -40,7 +40,8 @@ Proceed under D5 as written; nothing in it needs a decision. The premise of the 
 
 ## Q-002: The SSH proxy acts on `agent.revoked` by `target_id`, which admin-api's payload does not carry, and…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 4.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -55,6 +56,7 @@ Open-question-hash: 5e98db39c9b24795
 
 ### Answer
 <!-- write below this line -->
+The open question records a known gap, not a decision this unit has to make, and it does not block any of the four tasks. The repository confirms it as written: apps/ssh-proxy/internal/revocation/revocation.go decodes only event_type and target_id, acts on agent.revoked by target_id, and builds packages/go/changes.NewClient with a nil connection, while admin-api's revoke_agent and delete_agent publish agent_id and no target_id, and changes.Client.Start only runs the heartbeat loop and still carries the T-1.2.2 LISTEN comments. The proposal puts revocation in the SSH and email proxies out of scope for this change, the specification has no requirement for the SSH proxy, and the proposal's Impact lists no SSH proxy file. So proceed with tasks 1.1 to 4.1 exactly as the specification and design state: do not edit the SSH proxy, packages/go/changes or admin-api's revocation payload beyond adding event_type in notify_change. After this unit the SSH proxy will see event_type on admin-api's agent.revoked notifications once its client LISTENs, but it will still need its own change to read agent_id (or admin-api to carry target_id) and to open the LISTEN; that is a separate proposal, as design.md says.
 ---
 
 ## Q-003: The vault adapter will now act on `credential.rotated` (`InvalidateByService(tenant_id, service_id)…
