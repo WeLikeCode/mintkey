@@ -7,7 +7,7 @@ method is detected by a type assertion to an interface the test file declares, w
 
 ## 1. Agent ids in every form, and the event key
 
-- [ ] 1.1 Tests first, new file `apps/proxy-plugin/internal/revocation/agent_set_id_forms_test.go` (package
+- [x] 1.1 Tests first, new file `apps/proxy-plugin/internal/revocation/agent_set_id_forms_test.go` (package
   `revocation_test`): `TestAgentSetMatchesWireAndUUIDForms` and `TestAgentSetAddedUUIDMatchesWireFormAndIgnoresEmpty`
   cover the two scenarios of the requirement "The agent revocation set treats every form of an agent id as one id",
   with the ids exactly as written there. Both fail before the change because `Contains` compares strings exactly (and
