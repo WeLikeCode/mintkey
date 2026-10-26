@@ -48,7 +48,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 3. The MCP server passes the limits through
 
-- [ ] 3.1 Tests first, new file `apps/mcp-server/tests/test_request_token_scope_claims.py`. Sync test functions run
+- [x] 3.1 Tests first, new file `apps/mcp-server/tests/test_request_token_scope_claims.py`. Sync test functions run
   coroutines with `asyncio.run`. Call `mcp_server.tools.request_token.request_token(request=MagicMock(),
   body=TokenRequest(...), session=session, agent_ctx={"agent_id": "6c3c950a-2e18-4ba9-8c89-5b875b1bf5bd",
   "tenant_id": "11111111-2222-3333-4444-555555555555"})` directly, with `monkeypatch` setting on that module
