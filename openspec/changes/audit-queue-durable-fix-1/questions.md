@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | Base TestDeadLetterMetrics (500 -> dead-letter) contradicts criterion C-f33bec22 and Q-002 (500 -> retried, no dead-letter) |
+| Q-001 | answered | 1.1 | ambiguous | Base TestDeadLetterMetrics (500 -> dead-letter) contradicts criterion C-f33bec22 and Q-002 (500 -> retried, no dead-letter) |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Base TestDeadLetterMetrics (500 -> dead-letter) contradicts criterion C-f33bec22 and Q-002 (500 -> retried, no dead-letter)
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The head test at packages/go/auditq/compact_test.go:328-358 already uses 422 and the committed isRejected (queue.go:809) retries 500, matching spec requirement "An event the sink refuses goes to the dead-letter file on its first answer" and design D3. The base version of the test is not in the workt
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
@@ -33,3 +33,4 @@ packages/go/auditq/compact_test.go at the unit's base returns HTTP 500 and waits
 
 ### Answer
 <!-- write below this line -->
+Option 1. The reviewed spec settles it: criterion C-f33bec22, design D3 and the answer to Q-002 make only 400, 413 and 422 a refusal and retry every other status, 500 included, with no dead-letter record. The base TestDeadLetterMetrics (packages/go/auditq/compact_test.go), which answered 500 and waited for retries to run out, tests the behaviour this change removes, so it is superseded. A person's commit (35dea71, by the owner's delegate) is now the last change to compact_test.go: the sink answers 422 and the comment says why, which clears the pre-existing-test blocker (L4-IMP-081). The fix chore changes no test file and no production code for this finding. Option 2 is rejected: a bounded give-up for 5xx would drop events during a long outage, which the change exists to prevent.
