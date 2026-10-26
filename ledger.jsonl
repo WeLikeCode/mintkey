@@ -78,3 +78,4 @@
 {"at":"2026-10-26T12:51:09Z","attempt":1,"cost_usd":0.883835,"runs":2,"type":"plan.charged","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T12:51:09Z","run":"r-20261026T1251Z-70e0","type":"unit.dispatched","unit":"openspec:token-request-scope-claims"}
 {"at":"2026-10-26T14:09:35Z","detail":"the repository CI is still running on the hand-off commit 0cd4ba8ace (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"0cd4ba8ace2680629935a403d531673f12e477fc","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:token-request-scope-claims"}
+{"at":"2026-10-26T14:24:31Z","by":"harness","reason":"the cause is gone: the merge of openspec:token-request-scope-claims can go on","type":"plan.resumed"}
