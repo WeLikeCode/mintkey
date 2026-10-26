@@ -12,7 +12,7 @@ assertion that calls `t.Fatal` when it is missing, and is a top-level function w
 
 ## 1. The vault adapter verifies identities with HMAC-SHA-256
 
-- [ ] 1.1 Tests first, new file `apps/vault-adapter/internal/server/identity_check_test.go` (package `server`), with a
+- [x] 1.1 Tests first, new file `apps/vault-adapter/internal/server/identity_check_test.go` (package `server`), with a
   `VaultService` built by `NewVaultService(kek, st)` on `store.New(":memory:")`. Cover the requirement "Verifying a
   service identity uses a keyed hash, not a memory-hard one" with `TestValidateServiceIdentity_AllocatesUnderOneMiB`
   and `TestRegisterServiceIdentity_AllocatesUnderOneMiB` (read `runtime.MemStats.TotalAlloc` with
@@ -30,7 +30,7 @@ assertion that calls `t.Fatal` when it is missing, and is a top-level function w
 
 ## 2. The proxy reuses one connection to the vault
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/internal/vault/client_conn_test.go` (package `vault_test`). It
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/internal/vault/client_conn_test.go` (package `vault_test`). It
   defines a listener type wrapping `net.Listener` whose `Accept` counts successful accepts in an `atomic.Int32`, and a
   fake server embedding `vaultv1.UnimplementedVaultAdapterServer` whose `GetCredential` records the two metadata values
   of each call (under a mutex) and returns `&vaultv1.GetCredentialResponse{AuthScheme:
@@ -50,7 +50,7 @@ assertion that calls `t.Fatal` when it is missing, and is a top-level function w
 
 ## 3. The broker computes its dummy hash on first use
 
-- [ ] 3.1 Tests first, new file `apps/broker/internal/api/resolve/dummy_hash_lazy_test.go` (package `resolve_test`):
+- [x] 3.1 Tests first, new file `apps/broker/internal/api/resolve/dummy_hash_lazy_test.go` (package `resolve_test`):
   `TestMain(m *testing.M)` reads `runtime.MemStats.TotalAlloc` into a package variable, then `os.Exit(m.Run())`;
   `TestPackageInit_AllocatesUnder32MiB` asserts that value is below `32 << 20`; and
   `TestUnknownFingerprint_StillRefusedTwice` covers the second scenario of the requirement "The broker computes its

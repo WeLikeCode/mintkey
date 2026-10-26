@@ -11,14 +11,20 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	vaultv1 "github.com/mintkey/mintkey/packages/go/vault/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
+
+// errClientClosed is returned by GetCredential after Close has been called.
+var errClientClosed = errors.New("vault: client closed")
 
 // GetCredentialRequest identifies a credential to fetch from the Vault Adapter.
 // Field names mirror vault.proto GetCredentialRequest.
@@ -65,6 +71,12 @@ type Client struct {
 	address           string
 	serviceToken      string
 	serviceIdentityID string
+
+	// mu is a pointer so copying a Client value (the architecture test does
+	// reflect.TypeOf(*c)) does not copy a lock; govet's copylocks rejects that.
+	mu     *sync.Mutex
+	conn   *grpc.ClientConn
+	closed bool
 	// No cache field — ADR-0014.4: cache in Vault Adapter, not in proxy plugin.
 }
 
@@ -81,6 +93,7 @@ func NewClient(address, serviceToken, serviceIdentityID string) *Client {
 		address:           address,
 		serviceToken:      serviceToken,
 		serviceIdentityID: serviceIdentityID,
+		mu:                &sync.Mutex{},
 	}
 }
 
@@ -95,11 +108,63 @@ func (c *Client) ServiceIdentityID() string {
 	return c.serviceIdentityID
 }
 
+// connection returns the client's single gRPC connection, creating it on first
+// use. The connection is reused by every call and reconnects on its own after
+// the Vault Adapter restarts.
+func (c *Client) connection() (*grpc.ClientConn, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return nil, errClientClosed
+	}
+	if c.conn != nil {
+		return c.conn, nil
+	}
+
+	conn, err := grpc.NewClient(
+		c.address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay:  100 * time.Millisecond,
+				Multiplier: 1.6,
+				Jitter:     0.2,
+				MaxDelay:   2 * time.Second,
+			},
+			MinConnectTimeout: 5 * time.Second,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("vault: create client for %s: %w", c.address, err)
+	}
+	c.conn = conn
+	return c.conn, nil
+}
+
+// Close closes the client's connection, if one was made. Later calls to
+// GetCredential return an error containing "vault: client closed" without
+// dialling. Close is safe to call more than once and returns nil then.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return nil
+	}
+	c.closed = true
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
+}
+
 // GetCredential fetches a plaintext credential from the Vault Adapter.
 //
 // Every call:
 //  1. Attaches "x-mintkey-service-token: <token>" to the outgoing gRPC metadata.
-//  2. Dials the Vault Adapter (per-call, fails fast on unreachable).
+//  2. Reuses the client's single connection to the Vault Adapter (created on
+//     first use; fails fast on unreachable).
 //  3. Returns an error — never panics — if the adapter is unreachable.
 //
 // Callers MUST zero resp.Plaintext after use.
@@ -124,14 +189,10 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	conn, err := grpc.NewClient(
-		c.address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	conn, err := c.connection()
 	if err != nil {
-		return nil, fmt.Errorf("vault: create client for %s: %w", c.address, err)
+		return nil, err
 	}
-	defer conn.Close()
 
 	stub := vaultv1.NewVaultAdapterClient(conn)
 	resp, err := stub.GetCredential(dialCtx, &vaultv1.GetCredentialRequest{

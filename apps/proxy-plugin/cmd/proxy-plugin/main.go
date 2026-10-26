@@ -82,6 +82,7 @@ func main() {
 	auditQueue.Start()
 
 	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, cfg.VaultIdentityToken, cfg.VaultIdentityID)
+	defer func() { _ = vaultClient.Close() }()
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
 
 	// Wire AuditEmitter for classical-key path (was nil, causing WS-9 gap).
