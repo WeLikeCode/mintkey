@@ -1,0 +1,72 @@
+# Questions — audit-queue-durable
+
+<!-- l4:questions v1
+How to answer: write under "### Answer" and set **Status** to `answered`.
+To accept the clarifier's suggestion as-is, set **Status** to `accepted`.
+Status values: open · answered · accepted · answered-by-clarifier · dismissed · superseded
+Kind values: technical · product · ambiguous · verdict · harness. For a `verdict` question, start the answer with `accept` or
+`reject`, then give your reason; for a `harness` question, with `accept` or `retry`.
+Do not change question IDs. Commit and push to the l4/… branch to resume the run. -->
+
+<!-- l4:index:start -->
+| ID | Status | Blocking | Kind | Question |
+|----|--------|----------|------|----------|
+| Q-001 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events… |
+| Q-002 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
+| Q-003 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
+<!-- l4:index:end -->
+
+---
+
+## Q-001: The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events…
+
+- **Status:** open
+- **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
+- **Kind:** ambiguous
+- **Asked:** intake (open questions in design.md)
+
+### Context
+The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events); a run
+against a real admin-api that is stopped for ten minutes was not made here.
+
+Listed under "Open questions" in design.md.
+Open-question-hash: d1fe919dc28f6e38
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-002: Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus…
+
+- **Status:** open
+- **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
+- **Kind:** ambiguous
+- **Asked:** intake (open questions in design.md)
+
+### Context
+Which statuses an audit sink other than admin-api (an embedding application) uses for a final refusal is not
+known; D3 assumes 400, 413 and 422 and retries the rest.
+
+Listed under "Open questions" in design.md.
+Open-question-hash: 2f0ecd0234c979f4
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-003: `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask …
+
+- **Status:** open
+- **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
+- **Kind:** ambiguous
+- **Asked:** intake (open questions in design.md)
+
+### Context
+`sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask for small
+changes (for example a checked `Close` error).
+
+Listed under "Open questions" in design.md.
+Open-question-hash: a4a95d3732942618
+
+### Answer
+<!-- write below this line -->
