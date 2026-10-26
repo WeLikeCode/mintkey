@@ -43,3 +43,4 @@
 {"at":"2026-10-26T05:45:41Z","run":"r-20261026T0545Z-4e2f","type":"unit.dispatched","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T06:33:09Z","attempt":1,"cost_usd":2.710265,"runs":3,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T06:33:09Z","detail":"round 3 failed the same way as round 2: finding F-2813828d","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T09:32:31Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"The cause of the stop is gone: harness v0.4.33 (pin ea16cf5) reads a person's last commit to a test file in step 1 and finds Go test files from their module, and a person's commit (3069177) sets the two changed tests of vault-method-scopes as its spec states them; the unit is retried (verifying).","type":"plan.resumed"}
