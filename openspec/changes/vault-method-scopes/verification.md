@@ -1,9 +1,9 @@
-# Verification: openspec:vault-method-scopes: FAIL (round 1)
+# Verification: openspec:vault-method-scopes: FAIL (round 2)
 
 traceability: not checked (an earlier step failed)
 
 - Base: `cd7f5e7cb59b4187ea03e78b0511d4983a2252e3`
-- Head: `0bb2ae8ba49aba0450294e0f4d0f6b7f4c627355`
+- Head: `a20efb2db8bb067ff5be781edeb8f8d3265745ef`
 - Implementer profiles: deepseek, glm, deepseek-free
 - Judge: claude-judge, 0 call(s), prompt sha256 `-`
 
@@ -11,8 +11,8 @@ traceability: not checked (an earlier step failed)
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.4 | base staging@cd7f5e7cb5 contained |
-| 1 | integrity | failed | 582.1 | a pre-existing test fails on the unit's code; scope: 12 changed file(s) |
+| 0 | preconditions | ok | 0.8 | base staging@cd7f5e7cb5 contained |
+| 1 | integrity | failed | 422.5 | a pre-existing test fails on the unit's code; scope: 22 changed file(s) |
 | 2 | build | not_run | 0.0 | an earlier step failed |
 | 3 | tests | not_run | 0.0 | an earlier step failed |
 | 4 | traceability | not_run | 0.0 | an earlier step failed |
@@ -30,13 +30,13 @@ traceability: not checked (an earlier step failed)
 | protected paths | ok | no protected path differs from the base |
 | pre-existing tests | skipped | no Python test file changed; 2 other test file(s) are checked by the run of pre-existing tests |
 | red-green freeze | ok | 1 task(s): red and green compared |
-| test path freeze | ok | 1 harness step commit(s) checked |
+| test path freeze | ok | 2 harness step commit(s) checked |
 | content scan | ok | no result-manipulating construct in the changed support and runner files |
 | gate configuration | skipped | no gate or runner configuration file changed |
 | test awareness | ok | no production line reacts to the test run |
 | suppressions | skipped | not checked: python only; changed files outside it: apps/vault-adapter/internal/server/grpc.go, apps/vault-adapter/internal/server/grpc_agent_secrets.go, apps/vault-adapter/internal/server/grpc_ssh.go, apps/vault-adapter/internal/server/grpc_ssh_test.go, apps/vault-adapter/internal/server/grpc_test.... |
 | tdd history | ok | 2 task(s); red tests passing at head: step 3 |
-| pre-existing tests still pass | failed | 2654 of 2656 base tests pass on the unit's code with its 4 test and support files at the base (base: base worktree) |
+| pre-existing tests still pass | failed | 2654 of 2656 base tests pass on the unit's code with its 4 test and support files at the base (base: evidence) |
 
 ## Evidence
 
@@ -56,10 +56,20 @@ Nothing needs attention.
 | `apps/vault-adapter/internal/server/identities.go` | vault-adapter | relevant | named in the spec |
 | `apps/vault-adapter/internal/server/identity_scopes_test.go` |  | relevant | new test file |
 | `apps/vault-adapter/internal/server/method_scopes_test.go` |  | relevant | new test file |
+| `openspec/changes/vault-method-scopes-fix-1/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-1/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-1/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-1/questions.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes-fix-1/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0311Z-4b41.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0313Z-8028.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/.l4/ledger/r-20261026T0545Z-4e2f.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/vault-method-scopes/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/vault-method-scopes/verification.md` |  | none | exempt: harness, spec or documentation path |
 
 ### Changed functions
 
@@ -79,7 +89,7 @@ None judged.
 
 ## Fix unit
 
-Fix unit 1 is created for these tasks:
+Fix unit 2 is created for these tasks:
 - F-2813828d a pre-existing test fails on the unit's code
 
 ## New tests (red then green, `task.red_ok` in the ledger)
@@ -99,3 +109,8 @@ Fix unit 1 is created for these tasks:
 - `github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestScopeInterceptor_UnlistedMethodRefused_C_377bc9e7` (task 1.1): not in the report
 - `github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestScopeInterceptor_WrongTokenRefusedOnEveryListedMethod_C_e4e95bdb` (task 1.1): not in the report
 - `github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestValidateServiceIdentity_RequiresIdentityButNoScope_C_08b38088` (task 1.1): not in the report
+
+## Guard events
+
+- guard.test_tamper: apps/vault-adapter/internal/server/grpc_ssh_test.go
+- guard.test_tamper: apps/vault-adapter/internal/server/grpc_test.go
