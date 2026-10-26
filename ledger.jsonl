@@ -51,3 +51,6 @@
 {"at":"2026-10-26T10:03:10Z","head":"060fe30de74de22316a07a545c8bea50b08067c5","pr":375,"target_before":"ea16cf59f307ae5b659d636ff2f3b5fde8270456","type":"unit.merge_requested","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T10:03:16Z","ci":"not_run","head":"060fe30de74de22316a07a545c8bea50b08067c5","merge_commit":"33b52d82152a9fadd37cc48c8cacbf424ea64123","method":"squash","pr":375,"raced":false,"type":"unit.merged","unit":"openspec:vault-method-scopes"}
 {"at":"2026-10-26T10:03:22Z","branch":"l4/openspec/vault-method-scopes","head":"060fe30de74de22316a07a545c8bea50b08067c5","type":"unit.branch_deleted","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T10:08:57Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"33b52d82152a9fadd37cc48c8cacbf424ea64123","status":"pass","type":"unit.postcheck","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T10:08:57Z","revision":"33b52d82152a9fadd37cc48c8cacbf424ea64123","type":"unit.integrated","unit":"openspec:vault-method-scopes"}
+{"at":"2026-10-26T10:08:57Z","attempt":1,"cost_usd":3.513981,"runs":4,"type":"plan.charged","unit":"openspec:vault-method-scopes"}
