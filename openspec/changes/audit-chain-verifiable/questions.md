@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 1.1, 2.1, 2.2 | ambiguous | Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa… |
 | Q-002 | answered | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
 | Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
-| Q-004 | open | 2.2 | technical | tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form |
+| Q-004 | answered | 2.2 | technical | tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form |
 <!-- l4:index:end -->
 
 ---
@@ -85,7 +85,7 @@ The repository confirms the observation and settles what it means for this unit.
 
 ## Q-004: tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked openspec/changes/audit-verifiable/tasks.md:75 does not resolve
 - **Blocking tasks:** 2.2
 - **Kind:** technical
@@ -105,3 +105,4 @@ Edit `tests/unit/admin_api/test_audit_verify_endpoint.py`: replace `_GENESIS_PRE
 
 ### Answer
 <!-- write below this line -->
+Option 1, as task 2.2 and proposal.md (Changed tests, set-up only) say: unfreeze tests/unit/admin_api/test_audit_verify_endpoint.py for the green of 2.2 and change only its helpers. Remove _GENESIS_PREFIX, _genesis_hash and _compute_event_hash; _build_chain_rows returns types.SimpleNamespace rows with all 13 columns (id f"audit_evt_{i:03d}", tenant_id, event_type "test.event", actor_id None, actor_type "system", target_id and target_type None, payload {"seq": i}, at datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=i), request_id and trace_id None, prev_hash, hash), the first prev_hash being genesis_hash(str(tenant_id)) and each hash chain_hash(canonical_json_bytes(canonical_event_fields(...)), prev_hash), all imported from mintkey_models.audit_hash. The test bodies stay unchanged. (Answered by the owner's delegate.)
