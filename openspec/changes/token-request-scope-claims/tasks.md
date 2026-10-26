@@ -26,7 +26,7 @@ suites: `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `apps/
 
 ## 2. The proxy enforces the limits before the credential fetch
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/scope_claims_test.go` (package `main`, using
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/scope_claims_test.go` (package `main`, using
   `testHandler()`, `mustMarshalJSON` and `testSvcUUIDA` of `proxy_test.go`). Add a file-local helper
   `buildScopeClaimsJWT(t *testing.T, aud string, extra map[string]any) (string, ed25519.PublicKey)` that signs, with
   `kid` `testkey`, the claims `iss` `mintkey/broker`, `sub` `agent_test`, `aud` `[aud]`, `tnt`

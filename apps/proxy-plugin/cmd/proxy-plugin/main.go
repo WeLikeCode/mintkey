@@ -354,6 +354,17 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional narrowing claims: refuse a method or upstream path the token
+	// does not permit, before any other gate and before the credential fetch.
+	if refusal := checkScopeClaims(claims, r.Method, upstreamPath(r.URL.Path, serviceID)); refusal != "" {
+		h.metrics.IncProxyDenied(serviceID, "permission_denied")
+		body, _ := json.Marshal(map[string]string{"error": refusal})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(body)
+		return
+	}
+
 	// Read-scoped proxy action (read:atlas): restrict the agent to safe HTTP
 	// methods. Only the literal scope "read:atlas" triggers this gate; admin:atlas,
 	// call, email scopes, and everything else are unaffected. Runs before the vault
@@ -592,13 +603,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
 		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment here so the
 		// backend receives the bare API path (e.g. /api-key-header).
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		// Inject the credential (also strips the agent's Authorization header).
 		// safeInjectErr returns a fixed string so the credential plaintext
 		// cannot reach the log sink (CodeQL go/clear-text-logging).
@@ -772,13 +777,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
 		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)
@@ -879,13 +878,7 @@ func (h *proxyHandler) handleHTTPDigest(
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
 		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		// Strip the agent's Authorization header and inject NO credential header —
 		// the digest.Transport supplies the upstream Authorization on the retry.
 		req.Header.Del("Authorization")
@@ -1015,13 +1008,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
 		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)
