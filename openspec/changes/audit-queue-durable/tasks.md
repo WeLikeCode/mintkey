@@ -46,7 +46,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 3. The WAL is the queue
 
-- [ ] 3.1 Tests first, new file `packages/go/auditq/durable_test.go`, with a helper `seqEvent(i int) auditq.Event`
+- [x] 3.1 Tests first, new file `packages/go/auditq/durable_test.go`, with a helper `seqEvent(i int) auditq.Event`
   (`newEvent("proxy.hit")` with payload `{"seq": i}`): `TestSinkDownThenBack`, `TestRetriesPastFiveFailures`,
   `TestCloseWhileSinkDownKeepsEvents`, `TestUnwritableWALDeliversFromMemory` (the four scenarios of the requirement "An
   undelivered event stays in the WAL until the sink accepts or refuses it"), `TestRetryDelayDoublesUpToCap` (the
