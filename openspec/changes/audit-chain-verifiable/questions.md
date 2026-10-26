@@ -15,6 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
 | Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
 | Q-004 | answered | 2.2 | technical | tests/unit/admin_api/test_audit_verify_endpoint.py:49-91 still hashes rows with the old three-field form |
+| Q-005 | open | none | verdict | Finding F-0b7e7198: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed |
 <!-- l4:index:end -->
 
 ---
@@ -106,3 +107,29 @@ Edit `tests/unit/admin_api/test_audit_verify_endpoint.py`: replace `_GENESIS_PRE
 ### Answer
 <!-- write below this line -->
 Option 1, as task 2.2 and proposal.md (Changed tests, set-up only) say: unfreeze tests/unit/admin_api/test_audit_verify_endpoint.py for the green of 2.2 and change only its helpers. Remove _GENESIS_PREFIX, _genesis_hash and _compute_event_hash; _build_chain_rows returns types.SimpleNamespace rows with all 13 columns (id f"audit_evt_{i:03d}", tenant_id, event_type "test.event", actor_id None, actor_type "system", target_id and target_type None, payload {"seq": i}, at datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=i), request_id and trace_id None, prev_hash, hash), the first prev_hash being genesis_hash(str(tenant_id)) and each hash chain_hash(canonical_json_bytes(canonical_event_fields(...)), prev_hash), all imported from mintkey_models.audit_hash. The test bodies stay unchanged. (Answered by the owner's delegate.)
+
+---
+
+## Q-005: Finding F-0b7e7198: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+
+### Context
+The judge raised a major finding in round 1, and no deterministic check confirms it.
+
+Title: task 2.1: tests/unit/audit_verify/test_chain_verify.py set-up not changed
+Detail: Task 2.1 requires putting mintkey-models on sys.path and passing at=datetime(2026,1,1,tzinfo=utc) in _build_chain of tests/unit/audit_verify/test_chain_verify.py. The diff does not touch that file, so its AuditEvents have at=None and compute_event_hash/verify_chain raise ValueError there.
+Suggested fix: Update the file's set-up as task 2.1 states.
+
+Answer `accept` to waive the finding, or `reject` and say why: a rejected finding is fixed by a fix unit, and your reason comes first in it.
+This finding cites no criterion: end the reason with one sentence WHEN <the situation> THEN <the behaviour you expect>, with WHEN and THEN in capitals, or no fix can be made from the reject.
+
+### Options
+1. accept
+2. reject: <reason>, then WHEN ... THEN ... to set the check
+
+### Answer
+<!-- write below this line -->
