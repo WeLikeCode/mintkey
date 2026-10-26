@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1, 2.1, 2.2 | ambiguous | Postgres normalises JSONB numbers: a float written in exponent form with an integral value (for exa… |
 | Q-002 | open | 1.1, 2.1, 2.2 | ambiguous | That stored rows round-trip `at` and the payload exactly is also shown by `tests/acceptance/test_au… |
-| Q-003 | open | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
+| Q-003 | answered | 1.1, 2.1, 2.2 | ambiguous | `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser… |
 <!-- l4:index:end -->
 
 ---
@@ -61,7 +61,8 @@ Open-question-hash: 510e3dd2c3a76943
 
 ## Q-003: `apps/audit-verify-job` has no deployment definition in this repository (no Dockerfile, compose ser…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 2.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -75,3 +76,4 @@ Open-question-hash: 1e4ca768955a8d46
 
 ### Answer
 <!-- write below this line -->
+The repository confirms the observation and settles what it means for this unit. There is no Dockerfile, compose service or workflow step for apps/audit-verify-job (the Dockerfiles exist for every other app under apps/, the compose files and the GitHub workflows do not mention the job), and the project's MVP design, section 15, states how it is meant to run: a one-shot script scheduled by an external cron or Kubernetes CronJob, and in the compose deployment invoked ad hoc by an operator, with the on-demand verify-chain endpoint as the compose-time path. Its environment is the one main.py documents today, a DATABASE_URL with an asyncpg DSN, plus, after this change, mintkey_models importable, as design.md D6 and the proposal's Impact section prescribe (for example PYTHONPATH=packages/python/mintkey-models python apps/audit-verify-job/main.py). Nothing in tasks 1.1, 2.1 or 2.2 depends on a deployment definition: the tests write events through a fake session, put the three source directories on sys.path themselves, and load main.py with importlib, and the production code must not add a sys.path change. So proceed with the tasks as written and do not add a Dockerfile, compose service or chart job; that would be a deployment decision outside the proposal's scope. If a packaged deployment of the job is wanted later, it is a separate change for the architect.
