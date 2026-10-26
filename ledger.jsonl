@@ -96,3 +96,5 @@
 {"at":"2026-10-26T18:13:09Z","by":"harness","reason":"the cause is gone: openspec:audit-chain-verifiable is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-26T18:13:11Z","attempt":1,"cost_usd":5.786599,"runs":4,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T18:13:11Z","run":"r-20261026T1813Z-f0d4","type":"unit.dispatched","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T18:42:24Z","attempt":1,"cost_usd":7.628289,"runs":5,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T18:42:24Z","run":"r-20261026T1842Z-289d","type":"unit.dispatched","unit":"openspec:audit-chain-verifiable"}
