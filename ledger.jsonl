@@ -30,3 +30,4 @@
 {"at":"2026-10-26T03:04:11Z","by":"harness","reason":"the cause is gone: the merge of openspec:vault-service-identity-fast-check can go on","type":"plan.resumed"}
 {"at":"2026-10-26T03:04:17Z","head":"aeed11356341c9875865ca36233d7a7d65ed7e05","pr":373,"target_before":"ffa17a35e5254a8c7f0118bd1863baf5d68667b0","type":"unit.merge_requested","unit":"openspec:vault-service-identity-fast-check"}
 {"at":"2026-10-26T03:04:23Z","ci":"not_run","head":"aeed11356341c9875865ca36233d7a7d65ed7e05","merge_commit":"54368c1145d71340de9ae5a8fa3fed8ccf52feeb","method":"squash","pr":373,"raced":false,"type":"unit.merged","unit":"openspec:vault-service-identity-fast-check"}
+{"at":"2026-10-26T03:04:29Z","branch":"l4/openspec/vault-service-identity-fast-check","head":"aeed11356341c9875865ca36233d7a7d65ed7e05","type":"unit.branch_deleted","unit":"openspec:vault-service-identity-fast-check"}
