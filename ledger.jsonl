@@ -93,3 +93,4 @@
 {"at":"2026-10-26T17:30:40Z","attempt":1,"cost_usd":4.571603,"runs":3,"type":"plan.charged","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T17:30:40Z","run":"r-20261026T1730Z-c15c","type":"unit.dispatched","unit":"openspec:audit-chain-verifiable"}
 {"at":"2026-10-26T18:06:02Z","detail":"awaiting_human: no new answers (open: Q-004) (escalated to a person: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:audit-chain-verifiable"}
+{"at":"2026-10-26T18:13:09Z","by":"harness","reason":"the cause is gone: openspec:audit-chain-verifiable is awaiting_human","type":"plan.resumed"}
