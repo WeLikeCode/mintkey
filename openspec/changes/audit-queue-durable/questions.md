@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events… |
-| Q-002 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
+| Q-002 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
 | Q-003 | open | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
 <!-- l4:index:end -->
 
@@ -39,7 +39,8 @@ Open-question-hash: d1fe919dc28f6e38
 
 ## Q-002: Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -53,6 +54,7 @@ Open-question-hash: 2f0ecd0234c979f4
 
 ### Answer
 <!-- write below this line -->
+The unit's specification already settles what the code must do, so the tasks are not blocked. Implement the refusal set exactly as the requirement "An event the sink refuses goes to the dead-letter file on its first answer" states: a sink answer of 400, 413 or 422 is a refusal and goes to the dead-letter file on its first answer, a 2xx answer delivers the event, and every other status is retried without limit. The scenario "which statuses are a refusal" fixes the retried set explicitly (401, 403, 404, 409, 429, 500, 502, 503 and 504 must be retried, with no dead-letter record), so the package must not treat any other 4xx as final. What a sink other than admin-api actually answers for a final refusal is not recorded anywhere in the repository and cannot be known from it; design.md lists the refusal set under "Decisions taken without the owner" as reversible without a format change, so it stays an open note for the owner rather than something the implementation must resolve. Do not add a configuration variable or widen the set to accommodate hypothetical sinks: the spec allows only the four named drain settings and no new exported name.
 ---
 
 ## Q-003: `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask …
