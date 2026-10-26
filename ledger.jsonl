@@ -60,3 +60,5 @@
 {"at":"2026-10-26T10:11:57Z","run":"r-20261026T1011Z-7216","type":"unit.dispatched","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T10:18:10Z","detail":"awaiting_human: no new answers (open: Q-004) (escalated to a person: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:proxy-revocation-enforced"}
 {"at":"2026-10-26T10:24:51Z","by":"harness","reason":"the cause is gone: openspec:proxy-revocation-enforced is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-26T10:24:53Z","attempt":1,"cost_usd":4.213845,"runs":2,"type":"plan.charged","unit":"openspec:proxy-revocation-enforced"}
+{"at":"2026-10-26T10:24:53Z","run":"r-20261026T1024Z-90d7","type":"unit.dispatched","unit":"openspec:proxy-revocation-enforced"}
