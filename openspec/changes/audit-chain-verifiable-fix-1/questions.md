@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Unfreeze tests/unit/audit_verify/test_chain_verify.py (lines 25 and 50): the red test C-9e5600b1 requires editing this frozen test file
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The question comes from the fix unit audit-chain-verifiable-fix-1 and its only possible answer is an edit to the frozen test file tests/unit/audit_verify/test_chain_verify.py. The red test (tests/unit/admin_api/test_audit_verify_chain_setup.py:37-75) runs that file in a fresh interpreter with the mo
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-26T19:15Z by deepseek, run r-20261026T1842Z-289d, task 1.1
