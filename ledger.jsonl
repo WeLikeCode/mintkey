@@ -112,3 +112,4 @@
 {"at":"2026-10-26T20:07:29Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-26T20:07:29Z","run":"r-20261026T2007Z-6906","type":"unit.dispatched","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-26T20:12:04Z","detail":"awaiting_human: no new answers (open: Q-003) (escalated to a person: Q-001, Q-003)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:audit-queue-durable"}
+{"at":"2026-10-26T20:13:09Z","by":"harness","reason":"the cause is gone: openspec:audit-queue-durable is awaiting_human","type":"plan.resumed"}
