@@ -63,7 +63,7 @@ actor_type="operator", target_id=None, target_type=None, payload={"name": "svc-a
   literal of design.md (with `:tid`) and call `verify_rows(rows)` instead of building `AuditEvent`s; its logging and
   exit codes stay.
 
-- [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_audit_verify_endpoint_chain.py`: build the app as
+- [x] 2.2 Tests first, new file `tests/unit/admin_api/test_audit_verify_endpoint_chain.py`: build the app as
   `_create_test_app` in `tests/unit/admin_api/test_audit_verify_endpoint.py` does (the session's `execute` records
   `str(statement)` and returns a result whose `fetchall()` gives the stored rows), and cover the three scenarios of the requirement "The verify-chain
   endpoint checks a chain with the canonical form" with events written by `audit_emit` as above; the first fails
