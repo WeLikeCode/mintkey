@@ -224,8 +224,8 @@ func TestCompactionThresholdTrigger(t *testing.T) {
 	defer srv.Close()
 
 	cc := auditq.CompactConfig{
-		IntervalSec:    0,                // disable timer
-		ThresholdBytes: thresholdBytes,   // trigger on size
+		IntervalSec:    0,              // disable timer
+		ThresholdBytes: thresholdBytes, // trigger on size
 	}
 	wal := tmpWAL(t)
 	q := startWithConfig(t, srv, wal, cc)
@@ -321,16 +321,16 @@ func TestCompactionTimerTrigger(t *testing.T) {
 // ---------------------------------------------------------------------------
 // TestDeadLetterMetrics
 //
-// Cause N events to dead-letter (mock returns errors every time).
+// Cause N events to dead-letter (the sink refuses them every time).
 // Verify: counter increments by N; file-size gauge matches actual file.
 // ---------------------------------------------------------------------------
 
 func TestDeadLetterMetrics(t *testing.T) {
 	const wantDeadLettered = 3
 
-	// Server always returns 500 so events exhaust retries → dead-letter.
+	// Server always returns 422 so the sink refuses every event → dead-letter.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 	}))
 	defer srv.Close()
 
@@ -343,8 +343,7 @@ func TestDeadLetterMetrics(t *testing.T) {
 		q.Enqueue(newEvent(fmt.Sprintf("fail_evt_%d", i)))
 	}
 
-	// Wait until all events dead-letter (5 retries each × initial 250ms backoff
-	// → max ~8s; use 30s deadline to be safe in CI).
+	// Wait until the sink's refusals have dead-lettered all three events.
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if q.DeadLetterTotal() >= wantDeadLettered {
