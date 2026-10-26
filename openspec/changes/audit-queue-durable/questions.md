@@ -21,6 +21,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events…
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the reply was discarded: checked .l4/gates/test.sh:44 cites a harness-written file (questions.md, verification.md, .l4/): not evidence
 - **Blocking tasks:** 1.1, 2.1, 3.1, 3.2
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
