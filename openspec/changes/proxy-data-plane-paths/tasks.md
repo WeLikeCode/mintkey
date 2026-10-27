@@ -44,7 +44,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 3. Kong-syncer adds the headers to the virtual-host route
 
-- [ ] 3.1 Tests first, new file `apps/kong-syncer/internal/kong/yaml_vhost_headers_test.go` (package `kong_test`):
+- [x] 3.1 Tests first, new file `apps/kong-syncer/internal/kong/yaml_vhost_headers_test.go` (package `kong_test`):
   `TestVirtualHostRouteCarriesRoutingHeaders` generates the YAML for the service of the scenario "the virtual-host
   route carries the headers" (`TenantSlug` `t_default`, `Slug` `openai`, `BaseURL` `https://api.openai.com`, proxy URL
   `http://proxy-plugin:8086`), parses it with `gopkg.in/yaml.v3` into `map[string]any`, and for each of the two routes
