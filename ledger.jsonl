@@ -139,3 +139,4 @@
 {"at":"2026-10-27T06:03:30Z","by":"harness","reason":"the cause is gone: openspec:proxy-budget-check is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-27T06:03:33Z","attempt":1,"cost_usd":2.325197,"runs":2,"type":"plan.charged","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:03:33Z","run":"r-20261027T0603Z-1870","type":"unit.dispatched","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:34:03Z","detail":"the repository CI is still running on the hand-off commit 6b5847a2cc (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:proxy-budget-check"}
