@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events… |
 | Q-002 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
 | Q-003 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
-| Q-004 | open | none | verdict | Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events): accept as satisfied? |
+| Q-004 | answered | none | verdict | Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events): accept as satisfied? |
 <!-- l4:index:end -->
 
 ---
@@ -82,7 +82,8 @@ None that block. golangci-lint is one of this repository's lint gates (gates.lin
 
 ## Q-004: Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 3, verifier
@@ -110,3 +111,4 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The criterion is satisfied as it stands. TestDeadLetterMetrics in packages/go/auditq/compact_test.go runs the scenario word for word: an httptest sink that answers 422 to every request, 3 events enqueued on a started queue with compaction disabled, then it waits until DeadLetterTotal reaches 3, fails the test with t.Fatalf when the counter is not exactly 3, stats the dead-letter file next to the WAL and fails when DeadLetterFileSizeBytes differs from its size, and decodes every line of that file as JSON, failing when a line does not parse or holds any of the keys credential, api_key, secret or token_value. The production code behind it matches the requirement: isRejected returns true for 400, 413 and 422 only, settleRejected writes the record with last_err rejected: HTTP <status> through deadLetterWAL, which appends one JSON line to <wal>.dead, adds 1 to the dead-letter counter and stores the file's size in the gauge after each append. The judge passed the criterion; the only gap was that no test was traced to it, and this test discriminates it.
