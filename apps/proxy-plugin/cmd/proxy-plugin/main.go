@@ -384,13 +384,46 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service_id
-	// embedded in the URL path.  Both are in the canonical UUID form (the JWT aud
-	// contains the DB UUID; the URL path /v1/call/<uuid>/... also carries the UUID).
-	// Kong routes are named /v1/call/{service_uuid} so the first non-empty path
-	// segment after stripping /v1/call/ is the UUID to compare against.
-	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
-		safeURLSvcID := safeID(urlSvcID)
+	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service
+	// the request addresses: the X-Mintkey-Service-ID header when present
+	// (Kong's generated routes add it), else the segment after /v1/call/, else a
+	// UUID-shaped first path segment. Ids are compared in canonical form so the
+	// UUID and svc_ forms of the same service match. In strict mode a request
+	// that addresses no service cannot be checked, so it is refused.
+	addressed := addressedServiceID(r.URL.Path, r.Header.Get("X-Mintkey-Service-ID"))
+	switch {
+	case addressed == "":
+		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
+			safeSvcID := safeID(serviceID)
+			log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
+				"", safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+			// Emit audit event for strict-mode rejection (#24).
+			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
+			if h.audit != nil {
+				jtiForReject, _ := claims["jti"].(string)
+				h.audit.Enqueue(auditq.Event{
+					EventType:  "proxy.aud_mismatch_rejected",
+					TenantID:   tenantID,
+					ActorID:    agentID,
+					ActorType:  "agent",
+					TargetID:   serviceID,
+					TargetType: "service",
+					Payload: map[string]any{
+						"jti":            jtiForReject,
+						"aud":            serviceID,
+						"url_service_id": "",
+						"mode":           string(h.cfg.AudEnforcement),
+					},
+				})
+			}
+			h.metrics.IncProxyDenied(serviceID, "permission_denied")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprint(w, `{"error":"service not addressed"}`)
+			return
+		}
+	case wireid.Canonical(addressed, "svc_") != wireid.Canonical(serviceID, "svc_"):
+		safeURLSvcID := safeID(addressed)
 		safeSvcID := safeID(serviceID)
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
 			safeURLSvcID, safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
@@ -409,7 +442,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					Payload: map[string]any{
 						"jti":            jtiForReject,
 						"aud":            serviceID,
-						"url_service_id": urlSvcID,
+						"url_service_id": addressed,
 						"mode":           string(h.cfg.AudEnforcement),
 					},
 				})
@@ -609,15 +642,18 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
+		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment (or the
+		// /v1/call/<svc_id> prefix) before the target's base path is joined so the
+		// backend receives the bare API path (e.g. /api-key-header).
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		// Use the target's Host header so the upstream sees the correct virtual host.
 		req.Host = req.URL.Host
-		// Strip the X-Mintkey-Target header before forwarding.
+		// Strip the routing headers before forwarding.
 		req.Header.Del("X-Mintkey-Target")
-		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
-		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment here so the
-		// backend receives the bare API path (e.g. /api-key-header).
-		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the credential (also strips the agent's Authorization header).
 		// safeInjectErr returns a fixed string so the credential plaintext
 		// cannot reach the log sink (CodeQL go/clear-text-logging).
@@ -787,11 +823,14 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)
@@ -888,11 +927,14 @@ func (h *proxyHandler) handleHTTPDigest(
 	proxy.Transport = digestTransport
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Strip the agent's Authorization header and inject NO credential header —
 		// the digest.Transport supplies the upstream Authorization on the retry.
 		req.Header.Del("Authorization")
@@ -1018,11 +1060,14 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)

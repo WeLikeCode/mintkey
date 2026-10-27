@@ -7,7 +7,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 1. One path form, and the routing headers stay in the proxy
 
-- [ ] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/data_plane_paths_test.go` (package `main`, using
+- [x] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/data_plane_paths_test.go` (package `main`, using
   `testHandler()`, `testSvcUUIDA` of `proxy_test.go` and `buildScopeClaimsJWT` of `scope_claims_test.go`).
   `TestUpstreamPathStripsCallPrefixOfTheTokensService` calls `upstreamPath` with the five paths of the scenario "the
   call prefix is removed for the token's service only" and asserts the five results.
@@ -29,7 +29,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 2. Strict mode always has an address
 
-- [ ] 2.1 Tests first, in the same file: `TestStrictModeRefusesUnaddressedRequest` covers "an unaddressed request is
+- [x] 2.1 Tests first, in the same file: `TestStrictModeRefusesUnaddressedRequest` covers "an unaddressed request is
   refused in strict mode only" with `testHandlerStrictWithAudit(mock)` (and `&mockAuditQueue{}`) and `testHandler()`
   of `proxy_test.go`, asserting the 403 JSON body's `error`, exactly one captured event with `EventType`
   `proxy.aud_mismatch_rejected`, `Payload["url_service_id"] == ""` and `Payload["mode"] == "strict"`, and 502 for the
@@ -44,7 +44,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 3. Kong-syncer adds the headers to the virtual-host route
 
-- [ ] 3.1 Tests first, new file `apps/kong-syncer/internal/kong/yaml_vhost_headers_test.go` (package `kong_test`):
+- [x] 3.1 Tests first, new file `apps/kong-syncer/internal/kong/yaml_vhost_headers_test.go` (package `kong_test`):
   `TestVirtualHostRouteCarriesRoutingHeaders` generates the YAML for the service of the scenario "the virtual-host
   route carries the headers" (`TenantSlug` `t_default`, `Slug` `openai`, `BaseURL` `https://api.openai.com`, proxy URL
   `http://proxy-plugin:8086`), parses it with `gopkg.in/yaml.v3` into `map[string]any`, and for each of the two routes
@@ -56,7 +56,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 4. The data-plane-only guide
 
-- [ ] 4.1 Tests first, new file `tests/acceptance/test_data_plane_only_doc.py` (no project import; `ROOT =
+- [x] 4.1 Tests first, new file `tests/acceptance/test_data_plane_only_doc.py` (no project import; `ROOT =
   Path(__file__).resolve().parents[2]`, `DOC = ROOT / "docs" / "guides" / "data-plane-only.md"`).
   `test_data_plane_doc_names_every_setting` asserts `DOC.is_file()` and then that the text contains each of:
   `broker`, `proxy-plugin`, `vault-adapter`, `MINTKEY_VAULT_BACKEND=sqlite`, `MINTKEY_VAULT_FILE_PATH`, `admin-api`,
