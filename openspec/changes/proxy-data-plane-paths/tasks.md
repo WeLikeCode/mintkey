@@ -56,7 +56,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 4. The data-plane-only guide
 
-- [ ] 4.1 Tests first, new file `tests/acceptance/test_data_plane_only_doc.py` (no project import; `ROOT =
+- [x] 4.1 Tests first, new file `tests/acceptance/test_data_plane_only_doc.py` (no project import; `ROOT =
   Path(__file__).resolve().parents[2]`, `DOC = ROOT / "docs" / "guides" / "data-plane-only.md"`).
   `test_data_plane_doc_names_every_setting` asserts `DOC.is_file()` and then that the text contains each of:
   `broker`, `proxy-plugin`, `vault-adapter`, `MINTKEY_VAULT_BACKEND=sqlite`, `MINTKEY_VAULT_FILE_PATH`, `admin-api`,
