@@ -159,3 +159,6 @@
 {"at":"2026-10-27T08:33:03Z","head":"1d5bbb7c7d1996a1f3140f14abcb1168466e10ff","pr":409,"target_before":"e3527af5cd44e0b3fcc66fed2c33052fa2b0459b","type":"unit.merge_requested","unit":"openspec:proxy-data-plane-paths"}
 {"at":"2026-10-27T08:33:08Z","ci":"not_run","head":"1d5bbb7c7d1996a1f3140f14abcb1168466e10ff","merge_commit":"56d39aa1596fc6f850b740701fd15f2680f50551","method":"squash","pr":409,"raced":false,"type":"unit.merged","unit":"openspec:proxy-data-plane-paths"}
 {"at":"2026-10-27T08:33:14Z","branch":"l4/openspec/proxy-data-plane-paths","head":"1d5bbb7c7d1996a1f3140f14abcb1168466e10ff","type":"unit.branch_deleted","unit":"openspec:proxy-data-plane-paths"}
+{"at":"2026-10-27T08:38:49Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"56d39aa1596fc6f850b740701fd15f2680f50551","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-data-plane-paths"}
+{"at":"2026-10-27T08:38:49Z","revision":"56d39aa1596fc6f850b740701fd15f2680f50551","type":"unit.integrated","unit":"openspec:proxy-data-plane-paths"}
+{"at":"2026-10-27T08:38:49Z","attempt":1,"cost_usd":1.754493,"runs":2,"type":"plan.charged","unit":"openspec:proxy-data-plane-paths"}

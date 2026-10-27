@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-27T08:38:49Z",
+  "integrated_revision": "56d39aa1596fc6f850b740701fd15f2680f50551",
+  "merge_commit": "56d39aa1596fc6f850b740701fd15f2680f50551",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 409,
+  "receipt_id": "hardening/openspec:proxy-data-plane-paths/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "1d5bbb7c7d1996a1f3140f14abcb1168466e10ff",
+  "spec_digest": "5a0283d7caf4c367",
+  "target": "staging",
+  "unit_id": "openspec:proxy-data-plane-paths"
+}
