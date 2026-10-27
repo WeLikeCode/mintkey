@@ -452,3 +452,8 @@
 {"ts": "2026-10-27T10:35:34.246070Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 452, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 585.3}
 {"ts": "2026-10-27T10:35:34.246803Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 453, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-27T10:35:37.476576Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 454, "type": "pr.labels", "number": 411, "labels": ["l4:verified"]}
+{"ts": "2026-10-27T10:35:46.149116Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 455, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/411", "number": 411, "head": "cfb5ca4001457643951fa083fa8fbe2f8060a8a4"}
+{"ts": "2026-10-27T10:35:46.150178Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 456, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-27T10:35:49.302154Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 457, "type": "pr.labels", "number": 411, "labels": ["l4:in_review"]}
+{"ts": "2026-10-27T10:35:50.577390Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 458, "type": "lock.released"}
+{"ts": "2026-10-27T10:35:50.578269Z", "run_id": "r-20261027T0842Z-e819", "unit": "openspec:service-token-files", "seq": 459, "type": "run.finished", "exit_code": 0}
