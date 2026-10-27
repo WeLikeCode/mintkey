@@ -1,12 +1,12 @@
 # Delivery plan hardening
 
-- Status: stopped
+- Status: completed
 - Repository: https://github.com/WeLikeCode/mintkey
-- Target: staging at cd7f5e7cb59b4187ea03e78b0511d4983a2252e3
+- Target: staging at 2e252b72c85e7057e7c5d0fbf38f13b3a158caff
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-26T06:33:09Z
-- Stopped: unit_escalated (openspec:vault-method-scopes): round 3 failed the same way as round 2: finding F-2813828d
+- Written: 2026-10-27T10:55:48Z
+- Completed at: 2e252b72c85e7057e7c5d0fbf38f13b3a158caff
 
 ## Units
 
@@ -25,72 +25,69 @@
 - Usage: $2.06, 2 run(s), 1 attempt(s)
 
 ### openspec:vault-method-scopes
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mintkey/pull/375
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $2.71, 3 run(s), 1 attempt(s)
-- Delegate decisions:
-  - Q-001 (ambiguous): answer by the delegate (claude-fable-5-1 via claude-code), $0.93
-  - vault-method-scopes-fix-1/Q-001 (ambiguous): escalated by the delegate (claude-fable-5-1 via claude-code), $1.19: The project documents settle the behaviour, not the blocker. design.md D3/D9, proposal.md "Changed tests" and tasks.md 1.1 all say TestGRPCValidateServiceIdentity_MissingToken is changed in place to expect PermissionDenied, and head grpc.go:139-141 refuses missing metadata with PermissionDenied for
+- Result: integrated at 33b52d82152a9fadd37cc48c8cacbf424ea64123
+- Pull request: 375
+- Merge commit: 33b52d82152a9fadd37cc48c8cacbf424ea64123
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $3.51, 4 run(s), 1 attempt(s)
 
 ### openspec:proxy-revocation-enforced
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at c5cd4ec7b8ce3c78b860b3114641bfdae9606aa4
+- Pull request: 377
+- Merge commit: c5cd4ec7b8ce3c78b860b3114641bfdae9606aa4
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $5.06, 2 run(s), 1 attempt(s)
 
 ### openspec:token-request-scope-claims
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at a71ff01055da07f5cf41781f331d59b16b6ae1a1
+- Pull request: 379
+- Merge commit: a71ff01055da07f5cf41781f331d59b16b6ae1a1
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.72, 2 run(s), 1 attempt(s)
 
 ### openspec:audit-chain-verifiable
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 01526e7ba072734ba40d12fe67fae43105e606c7
+- Pull request: 381
+- Merge commit: 01526e7ba072734ba40d12fe67fae43105e606c7
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $9.39, 6 run(s), 1 attempt(s)
 
 ### openspec:audit-queue-durable
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 9038697752f8bbc50b93ff89b33df566d253ad95
+- Pull request: 405
+- Merge commit: 9038697752f8bbc50b93ff89b33df566d253ad95
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $7.07, 6 run(s), 1 attempt(s)
 
 ### openspec:proxy-budget-check
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2
+- Pull request: 407
+- Merge commit: 15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $3.09, 2 run(s), 1 attempt(s)
 
 ### openspec:proxy-data-plane-paths
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 56d39aa1596fc6f850b740701fd15f2680f50551
+- Pull request: 409
+- Merge commit: 56d39aa1596fc6f850b740701fd15f2680f50551
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.75, 2 run(s), 1 attempt(s)
 
 ### openspec:service-token-files
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 7b889b29c53fdde52f0126f85ad8d3ba62ffa09d
+- Pull request: 411
+- Merge commit: 7b889b29c53fdde52f0126f85ad8d3ba62ffa09d
+- Post-merge check: pass with profile all (13 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.79, 2 run(s), 1 attempt(s)
 
 ## Batches
 
-- p0-auth (profile none): not checked
-- p1-proxy-audit (profile none): not checked
-- p2-cleanup (profile none): not checked
+- p0-auth (profile none): accepted at 1f1c9b4ea58eaa88154cfea8e91bb996d758405d
+- p1-proxy-audit (profile none): accepted at 981d46b5e635ff3492828fe0ba270bd050a197c5
+- p2-cleanup (profile none): accepted at 2e252b72c85e7057e7c5d0fbf38f13b3a158caff
 
 ## Usage
 
-- Cost: $11.17
+- Cost: $41.83
 - Of which the readiness review: $4.39
-- Runs that dispatched a unit: 7
+- Runs that dispatched a unit: 30
