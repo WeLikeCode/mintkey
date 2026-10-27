@@ -47,7 +47,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 4. The email proxy
 
-- [ ] 4.1 Tests first, new file `apps/email-proxy/internal/config/config_files_test.go` (package `config`, calling the
+- [x] 4.1 Tests first, new file `apps/email-proxy/internal/config/config_files_test.go` (package `config`, calling the
   existing `Load()`): `TestLoad_EmailProxyTokensFromFiles`, `TestLoad_UnreadableEmailProxyTokenFile` and
   `TestLoad_EmailProxyTokenFileWithOnlyANewline` cover the requirement "The email proxy reads its tokens from files
   too"; the first two fail before the change (the `_FILE` variables are ignored). Then in
