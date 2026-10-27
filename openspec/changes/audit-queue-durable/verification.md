@@ -1,4 +1,4 @@
-# Verification: openspec:audit-queue-durable: NEEDS_HUMAN (round 3)
+# Verification: openspec:audit-queue-durable: PASS (round 4)
 
 traceability: 18/19 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 18/19 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 1.4 | base merged: staging@cdfdc23e35 as 299dc8dc51 (2 commits) |
-| 1 | integrity | ok | 432.3 | 10 sub-checks; scope: 31 changed file(s) |
-| 2 | build | ok | 134.1 |  |
-| 3 | tests | ok | 151.4 |  |
-| 4 | traceability | ok | 0.2 | 18/19 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 3) |
+| 1 | integrity | reused | 0.0 | reused (round 3) |
+| 2 | build | reused | 0.0 | reused (round 3) |
+| 3 | tests | reused | 0.0 | reused (round 3) |
+| 4 | traceability | reused | 0.0 | reused (round 3) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | not measured: diff coverage measures python only; changed code outside it: packages/go/auditq/metrics.go, packages/go/auditq/queue.go |
-| 8 | s1 judge | ok | 1.8 | 19/19 criteria judged by jev |
-| 9 | judge | ok | 22.5 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 3) |
+| 8 | s1 judge | reused | 0.0 | reused (round 3) |
+| 9 | judge | reused | 0.0 | reused (round 3) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -163,6 +163,10 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-93344fde | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-933c705a | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Answers to verdict questions
+
+- Q-004 accept C-fad8c50f by the delegate (claude-fable-5-1 via claude-code): The criterion is satisfied as it stands. TestDeadLetterMetrics in packages/go/auditq/compact_test.go runs the scenario word for word: an httptest sink that answers 422 to every request, 3 events enqueued on a started queue with compaction disabled, then it waits until DeadLetterTotal reaches 3, fail...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -179,7 +183,7 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-2ea77966 | audit-queue › Deliveries run concurrently up to a bound, and failing events do not hold up the others › events the sink keeps answering with 403 | pass | pass | the judge passed it and a discriminating test passes |
 | C-f33bec22 | audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › which statuses are a refusal | pass | pass | the judge passed it and a discriminating test passes |
 | C-8c6da99a | audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the record of a refused event | pass | pass | the judge passed it and a discriminating test passes |
-| C-fad8c50f | audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events | pass | needs_human | uncovered: no adequate discriminating test traces it |
+| C-fad8c50f | audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events | pass | pass | accepted by the delegate (claude-fable-5-1 via claude-code): The criterion is satisfied as it stands. TestDeadLetterMetrics in packages/go/auditq/compact_test.go runs the scenario word for word: an httptest sink that answers 422 to every request, 3 events enqueued on a started queue with compaction ... |
 | C-c0a8fbe4 | audit-queue › The WAL keeps the format the current code reads › a WAL in today's format drains in place | pass | pass | the judge passed it and a discriminating test passes |
 | C-88d9b9f7 | audit-queue › The WAL keeps the format the current code reads › compaction between the read and the tombstone | pass | pass | the judge passed it and a discriminating test passes |
 | C-84b4a061 | audit-queue › The WAL keeps the format the current code reads › an unreadable line | pass | pass | the judge passed it and a discriminating test passes |
