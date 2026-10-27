@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1 | ambiguous | The SQL (the grant lookup, the counter upsert under row-level security with `set_config`) is checke… |
-| Q-002 | open | 1.1 | ambiguous | That `mintkey_app` holds `SELECT, INSERT, UPDATE` on `budget_counters` is inferred from `019-grants… |
+| Q-002 | answered | 1.1 | ambiguous | That `mintkey_app` holds `SELECT, INSERT, UPDATE` on `budget_counters` is inferred from `019-grants… |
 <!-- l4:index:end -->
 
 ---
@@ -39,7 +39,8 @@ Open-question-hash: 2bfcc625ff2d49d0
 
 ## Q-002: That `mintkey_app` holds `SELECT, INSERT, UPDATE` on `budget_counters` is inferred from `019-grants…
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** intake (open questions in design.md)
@@ -53,3 +54,4 @@ Open-question-hash: ebc46e7ac7244cc3
 
 ### Answer
 <!-- write below this line -->
+Yes: mintkey_app holds SELECT, INSERT and UPDATE (and DELETE) on budget_counters, and the repository establishes it on three independent grounds, so task 1.1 can proceed without a new grant or a new role. First, changeset 019-grants-defensive-public runs ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO mintkey_app, and the compose Liquibase job runs the whole changelog as the single user mintkey_migrate, so budget_counters, created later in the same changelog by 029-budget-counters, is created by the role whose default privileges were altered and inherits the grant. Second, that changeset is runAlways: true and also executes GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mintkey_app, so every subsequent Liquibase apply re-grants on budget_counters as well; the only REVOKE in the changelogs against mintkey_app is on audit_events, none on budget_counters. Third, admin-api already connects as mintkey_app in compose and already issues INSERT ... ON CONFLICT DO UPDATE and UPDATE budget_counters SET used = 0 and SELECT ... FROM budget_counters, so the privileges are exercised in production code today. The proxy-plugin's compose DATABASE_URL uses the same mintkey_app role, which matches the proposal's statement that the existing grants give it what it needs. The live check in the design's open question stays useful as confirmation of the SQL under row-level security, but it is not needed to settle the privilege question.
