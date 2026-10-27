@@ -47,8 +47,11 @@ exporters:
     endpoint: http://jaeger:4318
   prometheus:
     endpoint: 0.0.0.0:8889
-  # debug exporter — logs redacted spans to collector stdout for CI verification.
-  # Verbosity "detailed" prints span attributes so redaction can be confirmed.
+  # debug exporter — logs redacted spans to collector stdout. Verbosity "detailed"
+  # prints span attributes so redaction can be confirmed by eye. It is defined but
+  # not in the traces pipeline: every span written to stdout grew the collector's
+  # container log by ~1 GB/h on a dev stack. Add it to service.pipelines.traces.exporters
+  # while checking redaction, then remove it again. Nothing in CI reads its output.
   debug:
     verbosity: detailed
 
@@ -80,7 +83,7 @@ service:
     traces:
       receivers:  [otlp]
       processors: [batch, attributes/redact, redaction]
-      exporters:  [otlphttp/jaeger, debug]
+      exporters:  [otlphttp/jaeger]
     traces/spanmetrics_input:
       receivers:  [otlp]
       processors: [batch, filter/spanmetrics_input]

@@ -28,12 +28,24 @@ networks:
     driver: bridge
 
 # ---------------------------------------------------------------------------
+# Container logs: json-file with rotation, used by every service below.
+# Without a cap one chatty container can fill the Docker disk (an unrotated
+# otel-collector log once grew past 100 GB in four days).
+# ---------------------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+# ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
 services:
 
   # ─── 1. Postgres ─────────────────────────────────────────────────────────
   postgres:
+    logging: *default-logging
     # Pinned 2026-05-18 — root cause of 2026-05-18 dev-data wipe was unpinned
     # `postgres:16` digest drift during `docker compose up`. Refresh digest
     # with: docker buildx imagetools inspect postgres:16
@@ -58,6 +70,7 @@ services:
 
   # ─── 2. Keycloak (parallel; uses postgres for its own schema) ─────────────
   keycloak:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk
     # identical to the postgres incident. Refresh digest with:
     # docker buildx imagetools inspect quay.io/keycloak/keycloak:24.0
@@ -90,6 +103,7 @@ services:
 
   # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
   liquibase:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect liquibase/liquibase:4.27.0
     image: liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e662c4212e834468df959983
@@ -113,6 +127,7 @@ services:
 
   # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
   seed-job:
+    logging: *default-logging
     build:
       context: ../../apps/seed-job
     restart: on-failure:3
@@ -159,6 +174,7 @@ services:
 
   # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
   vault-adapter:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/vault-adapter/Dockerfile
@@ -234,6 +250,7 @@ services:
 
   # ─── 3b. HashiCorp Vault (opt-in; start with --profile hashicorp) ────────
   hashicorp-vault:
+    logging: *default-logging
     image: hashicorp/vault:1.18
     cap_add: [IPC_LOCK]
     environment:
@@ -254,6 +271,7 @@ services:
   # For LAN/cloud: set them in .env to the address remote clients will use.
   # MCP and proxy may be on different hosts.
   admin-api:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/admin-api/Dockerfile
@@ -319,6 +337,7 @@ services:
 
   # ─── 5. Admin UI (AdminJS) ─────────────────────────────────────────────────
   admin-ui:
+    logging: *default-logging
     build:
       context: ../../apps/admin-ui
       dockerfile: Dockerfile
@@ -360,6 +379,7 @@ services:
 
   # ─── 6. MCP Server ────────────────────────────────────────────────────────
   mcp-server:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/mcp-server/Dockerfile
@@ -404,6 +424,7 @@ services:
 
   # ─── 7. Broker ────────────────────────────────────────────────────────────
   broker:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/broker/Dockerfile
@@ -437,6 +458,7 @@ services:
 
   # ─── 8. Kong (DB-less) ────────────────────────────────────────────────────
   kong:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect kong:3.6
     image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
@@ -471,6 +493,7 @@ services:
 
   # ─── 9. Kong Syncer ───────────────────────────────────────────────────────
   kong-syncer:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/kong-syncer/Dockerfile
@@ -501,6 +524,7 @@ services:
 
   # ─── 10. Proxy Plugin ─────────────────────────────────────────────────────
   proxy-plugin:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/proxy-plugin/Dockerfile
@@ -548,6 +572,7 @@ services:
 
   # ─── 10b. SSH Proxy (bastion) ────────────────────────────────────────────
   ssh-proxy:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/ssh-proxy/Dockerfile
@@ -595,6 +620,7 @@ services:
 
   # ─── 10c. Email Proxy (IMAP/SMTP bastion) ────────────────────────────────
   email-proxy:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: apps/email-proxy/Dockerfile
@@ -632,6 +658,7 @@ services:
 
   # ─── 11. Mock Backend ─────────────────────────────────────────────────────
   mock-backend:
+    logging: *default-logging
     build:
       context: ../../apps/mock-backend
       dockerfile: Dockerfile
@@ -650,6 +677,7 @@ services:
 
   # ─── 12. OTel Collector ───────────────────────────────────────────────────
   otel-collector:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect otel/opentelemetry-collector-contrib:0.104.0
     image: otel/opentelemetry-collector-contrib:0.104.0@sha256:e07e325e303e86f4a87a617491e921b579a92da6d404007394757ac910bf9587
@@ -669,6 +697,7 @@ services:
   # Host port mapping removed (SSO-E): Jaeger UI is now reachable only from
   # inside the docker network. External access goes through jaeger-auth (oauth2-proxy).
   jaeger:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect jaegertracing/all-in-one:1.56
     image: jaegertracing/all-in-one:1.56@sha256:d2cd4c226624bdc116decd3106091b4df9882da8db42f8550293596cab79b8ea
@@ -676,6 +705,9 @@ services:
     mem_limit: 128m
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      # In-memory span store: cap the traces it keeps so it stays under mem_limit
+      # (uncapped it grew to the 128m limit and was OOM-killed every few hours).
+      MEMORY_MAX_TRACES: "5000"
     expose:
       - "16686"
     networks:
@@ -695,6 +727,7 @@ services:
   # (auth-code + PKCE flow) and returned here with a session cookie.
   # Refs: ADR-0014 §14.2; docs/AUTH.md (added in SSO-G).
   jaeger-auth:
+    logging: *default-logging
     build:
       context: ../../apps/jaeger-auth
     restart: unless-stopped
@@ -747,6 +780,7 @@ services:
 
   # ─── 14. Prometheus ───────────────────────────────────────────────────────
   prometheus:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect prom/prometheus:v2.51.0
     image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
@@ -766,6 +800,7 @@ services:
 
   # ─── 16b. cAdvisor — container memory metrics ────────────────────────────
   cadvisor:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect gcr.io/cadvisor/cadvisor:v0.49.1
     image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
@@ -789,6 +824,7 @@ services:
 
   # ─── 15. Grafana ──────────────────────────────────────────────────────────
   grafana:
+    logging: *default-logging
     # Pinned 2026-05-18 — EV-GAP-006 R-4: tag-only image posed digest-drift risk.
     # Refresh digest with: docker buildx imagetools inspect grafana/grafana:10.3.3
     image: grafana/grafana:10.3.3@sha256:8640e5038e83ca4554ed56b9d76375158bcd51580238c6f5d8adaf3f20dd5379
