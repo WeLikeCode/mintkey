@@ -221,4 +221,4 @@ def clean_db(admin_app: TestClient, postgres_container: PostgresContainer, apply
         finally:
             await conn.close()
 
-    asyncio.get_event_loop().run_until_complete(_truncate())
+    asyncio.run(_truncate())
