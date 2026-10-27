@@ -133,3 +133,5 @@
 {"at":"2026-10-27T05:55:34Z","attempt":1,"cost_usd":7.066673,"runs":6,"type":"plan.charged","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-27T05:57:08Z","branch":"l4/archive/openspec/audit-queue-durable","head":"981d46b5e635ff3492828fe0ba270bd050a197c5","type":"unit.branch_deleted","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-27T05:57:09Z","batch":"p1-proxy-audit","profile":"none","revision":"981d46b5e635ff3492828fe0ba270bd050a197c5","type":"batch.accepted"}
+{"at":"2026-10-27T05:58:16Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T05:58:16Z","run":"r-20261027T0558Z-d4a7","type":"unit.dispatched","unit":"openspec:proxy-budget-check"}
