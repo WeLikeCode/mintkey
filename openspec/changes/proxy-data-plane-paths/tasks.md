@@ -7,7 +7,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 1. One path form, and the routing headers stay in the proxy
 
-- [ ] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/data_plane_paths_test.go` (package `main`, using
+- [x] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/data_plane_paths_test.go` (package `main`, using
   `testHandler()`, `testSvcUUIDA` of `proxy_test.go` and `buildScopeClaimsJWT` of `scope_claims_test.go`).
   `TestUpstreamPathStripsCallPrefixOfTheTokensService` calls `upstreamPath` with the five paths of the scenario "the
   call prefix is removed for the token's service only" and asserts the five results.
