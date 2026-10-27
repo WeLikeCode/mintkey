@@ -16,3 +16,8 @@
 {"ts": "2026-10-27T05:36:52.737907Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 16, "type": "step.timed", "phase": "verify", "round": 4, "seconds": 2.9}
 {"ts": "2026-10-27T05:36:52.738541Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 17, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-27T05:36:55.300853Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 18, "type": "pr.labels", "number": 405, "labels": ["l4:verified"]}
+{"ts": "2026-10-27T05:37:01.914116Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 19, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/405", "number": 405, "head": "4a9d5dfd5e7994b76ae00c5013d2c4b6adfab12c"}
+{"ts": "2026-10-27T05:37:01.915166Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 20, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-27T05:37:04.542373Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 21, "type": "pr.labels", "number": 405, "labels": ["l4:in_review"]}
+{"ts": "2026-10-27T05:37:05.547622Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 22, "type": "lock.released"}
+{"ts": "2026-10-27T05:37:05.549379Z", "run_id": "r-20261027T0536Z-0cfa", "unit": "openspec:audit-queue-durable", "seq": 23, "type": "run.finished", "exit_code": 0}
