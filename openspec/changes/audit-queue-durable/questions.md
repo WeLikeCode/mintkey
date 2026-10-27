@@ -14,6 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | The tests compress an outage of minutes into milliseconds (retry delays of 5 to 50 ms, 1,500 events… |
 | Q-002 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | Which statuses an audit sink other than admin-api (an embedding application) uses for a final refus… |
 | Q-003 | answered | 1.1, 2.1, 3.1, 3.2 | ambiguous | `sh .l4/gates/lint-go.sh` (golangci-lint) was not run against the new code; the linter set may ask … |
+| Q-004 | open | none | verdict | Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events): accept as satisfied? |
 <!-- l4:index:end -->
 
 ---
@@ -76,3 +77,36 @@ Open-question-hash: a4a95d3732942618
 ### Answer
 <!-- write below this line -->
 None that block. golangci-lint is one of this repository's lint gates (gates.lint in .l4/config.yaml runs sh .l4/gates/lint-go.sh, go vet and golangci-lint over every go.work module), so it runs on the new code at every gate run of this unit; whatever it asks for (for example a checked Close error) is fixed in the step whose gate reports it. Implement the tasks as written. (Answered by the owner's delegate.)
+
+---
+
+## Q-004: Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 3, verifier
+- **Criteria:** C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events)
+
+### Context
+Criterion C-fad8c50f (audit-queue › An event the sink refuses goes to the dead-letter file on its first answer › the dead-letter metrics follow refused events) is needs human after round 3.
+
+Scenario:
+\- **WHEN** the sink answers 422 to every request and 3 events are enqueued
+\- **THEN** `DeadLetterTotal()` is 3, `DeadLetterFileSizeBytes()` equals the size of `<wal>.dead`, and each of its
+  lines is JSON without the keys `credential`, `api_key`, `secret` and `token_value`
+
+Why: uncovered: no adequate discriminating test traces it
+Judge: pass
+Tracing tests: none
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+To set the check the fix must pass, end the reason with one sentence WHEN <the situation> THEN <the behaviour you expect>, with WHEN and THEN in capitals: it becomes a scenario of the fix unit. Without one, the fix is checked against the scenario above as it is written.
+
+### Options
+1. accept
+2. reject: <reason>, then WHEN ... THEN ... to set the check
+
+### Answer
+<!-- write below this line -->
