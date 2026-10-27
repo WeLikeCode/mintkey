@@ -11,7 +11,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 1. The rule, svcid.FromEnv, and the SSH proxy
 
-- [ ] 1.1 Tests first, new file `apps/ssh-proxy/internal/config/config_files_test.go` (package `config`, calling the
+- [x] 1.1 Tests first, new file `apps/ssh-proxy/internal/config/config_files_test.go` (package `config`, calling the
   existing `Load("")`): `TestLoad_SSHProxyTokenFromVariable`, `TestLoad_SSHProxyTokenFromFile`,
   `TestLoad_SSHProxyTokenFileTrailingLineEndsRemoved`, `TestLoad_SSHProxyTokenFileWithOnlyANewline`,
   `TestLoad_SSHProxyTokenSetTwice` and `TestLoad_UnreadableSSHProxyTokenFile` cover the six scenarios of the
