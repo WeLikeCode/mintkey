@@ -148,3 +148,5 @@
 {"at":"2026-10-27T06:49:54Z","revision":"15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2","type":"unit.integrated","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:49:54Z","attempt":1,"cost_usd":3.085783,"runs":2,"type":"plan.charged","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:51:18Z","branch":"l4/archive/openspec/proxy-budget-check","head":"e3527af5cd44e0b3fcc66fed2c33052fa2b0459b","type":"unit.branch_deleted","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:51:19Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:proxy-data-plane-paths"}
+{"at":"2026-10-27T06:51:19Z","run":"r-20261027T0651Z-62b6","type":"unit.dispatched","unit":"openspec:proxy-data-plane-paths"}
