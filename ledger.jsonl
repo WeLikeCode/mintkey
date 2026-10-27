@@ -172,3 +172,6 @@
 {"at":"2026-10-27T10:47:24Z","head":"cfb5ca4001457643951fa083fa8fbe2f8060a8a4","pr":411,"target_before":"336c1fc9221631d5b26feeef91d811913ab7c62d","type":"unit.merge_requested","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T10:47:28Z","ci":"not_run","head":"cfb5ca4001457643951fa083fa8fbe2f8060a8a4","merge_commit":"7b889b29c53fdde52f0126f85ad8d3ba62ffa09d","method":"squash","pr":411,"raced":false,"type":"unit.merged","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T10:47:34Z","branch":"l4/openspec/service-token-files","head":"cfb5ca4001457643951fa083fa8fbe2f8060a8a4","type":"unit.branch_deleted","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T10:52:50Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"7b889b29c53fdde52f0126f85ad8d3ba62ffa09d","status":"pass","type":"unit.postcheck","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T10:52:50Z","revision":"7b889b29c53fdde52f0126f85ad8d3ba62ffa09d","type":"unit.integrated","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T10:52:50Z","attempt":1,"cost_usd":1.787958,"runs":2,"type":"plan.charged","unit":"openspec:service-token-files"}
