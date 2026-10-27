@@ -162,3 +162,4 @@
 {"at":"2026-10-27T08:38:49Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"56d39aa1596fc6f850b740701fd15f2680f50551","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-data-plane-paths"}
 {"at":"2026-10-27T08:38:49Z","revision":"56d39aa1596fc6f850b740701fd15f2680f50551","type":"unit.integrated","unit":"openspec:proxy-data-plane-paths"}
 {"at":"2026-10-27T08:38:49Z","attempt":1,"cost_usd":1.754493,"runs":2,"type":"plan.charged","unit":"openspec:proxy-data-plane-paths"}
+{"at":"2026-10-27T08:40:13Z","branch":"l4/archive/openspec/proxy-data-plane-paths","head":"336c1fc9221631d5b26feeef91d811913ab7c62d","type":"unit.branch_deleted","unit":"openspec:proxy-data-plane-paths"}
