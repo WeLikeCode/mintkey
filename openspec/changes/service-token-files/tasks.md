@@ -22,7 +22,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 2. The broker and the egress proxy
 
-- [ ] 2.1 Tests first, new file `apps/broker/internal/config/config_files_test.go` (package `config_test`):
+- [x] 2.1 Tests first, new file `apps/broker/internal/config/config_files_test.go` (package `config_test`):
   `TestLoad_BrokerTokensFromFiles`, `TestLoad_BrokerTokensFromVariables` and `TestLoad_UnreadableBrokerTokenFile` cover
   the first three scenarios of the requirement "The broker and the egress proxy read their tokens from files too". New
   file `apps/proxy-plugin/internal/config/config_files_test.go` (package `config_test`):

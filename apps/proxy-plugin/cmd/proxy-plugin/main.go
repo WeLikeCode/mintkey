@@ -57,6 +57,10 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if err := cfg.SecretErr(); err != nil {
+		log.Fatalf("proxy-plugin: %v", err)
+	}
+
 	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if otlpEndpoint == "" {
