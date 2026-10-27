@@ -244,14 +244,16 @@ test.describe("34 — testService / services.delete / agents.delete confirmation
     ]);
     expect(response.status(), "delete POST must return 2xx").toBeLessThan(400);
 
-    // Wait for redirect to services list (the delete handler returns redirectUrl)
-    // or action-notice (if redirect is delayed). Wait for both to settle.
-    await Promise.race([
-      page.waitForURL(/\/admin\/resources\/services/, { timeout: 10_000 }),
-      page.locator('[data-testid="action-notice"]').waitFor({ state: "visible", timeout: 10_000 }),
-    ]);
-    // Let any in-progress navigations complete before we navigate away
-    await page.waitForLoadState("load", { timeout: 10_000 }).catch(() => {});
+    // Wait until ConfirmAction's redirect to the services list has loaded: it sets
+    // window.location.href after the POST resolves (at once with a redirectUrl, after 1.5 s with a
+    // notice). The match is on the list's exact path: the delete page's own URL
+    // (/admin/resources/services/records/<id>/delete) matches a bare /admin\/resources\/services/
+    // pattern, and waitForURL returns at once for a URL that already matches, so the goto below
+    // would race the pending redirect ("Navigation ... is interrupted by another navigation to
+    // .../admin/resources/services").
+    await page.waitForURL((url) => url.pathname.replace(/\/+$/, "") === "/admin/resources/services", {
+      timeout: 10_000,
+    });
 
     // Verify the service is gone — its show page must render "not found" or redirect to list
     // AdminJS redirects the show page of a missing record to the list client-side. With

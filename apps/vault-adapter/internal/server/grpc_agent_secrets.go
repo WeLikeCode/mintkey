@@ -49,12 +49,6 @@ func RegisterAgentSecretsVaultServer(grpcSrv *grpc.Server, svc *VaultService, se
 		svc:         svc,
 		secretStore: secretStore,
 	})
-
-	// Extend methodScopes so the existing scopeInterceptor enforces scopes on
-	// the new RPCs automatically.
-	methodScopes[vaultv1.AgentSecretsVault_PutAgentSecret_FullMethodName] = "vault.secret.put"
-	methodScopes[vaultv1.AgentSecretsVault_GetAgentSecret_FullMethodName] = "vault.secret.read"
-	methodScopes[vaultv1.AgentSecretsVault_DeleteAgentSecret_FullMethodName] = "vault.secret.delete"
 }
 
 // PutAgentSecret seals and stores (or replaces) the encrypted blob for

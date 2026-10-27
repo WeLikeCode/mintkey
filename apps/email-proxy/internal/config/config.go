@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 // Config holds all configuration for the Email Proxy.
@@ -82,13 +84,21 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID is required but not set")
 	}
 
-	if v := os.Getenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN"); v != "" {
+	v, err := svcid.FromEnv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	if v != "" {
 		cfg.VaultToken = v
 	} else {
 		return nil, fmt.Errorf("MINTKEY_VAULT_EMAIL_PROXY_TOKEN is required but not set")
 	}
 
-	if v := os.Getenv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN"); v != "" {
+	v, err = svcid.FromEnv("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	if v != "" {
 		cfg.EmailProxyServiceToken = v
 	} else {
 		return nil, fmt.Errorf("MINTKEY_EMAIL_PROXY_SERVICE_TOKEN is required but not set")

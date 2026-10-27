@@ -29,9 +29,9 @@ const sshBufSize = 1024 * 1024
 
 // fakeSSHStore is an in-memory SSHStore for testing.
 type fakeSSHStore struct {
-	agents    map[string]*store.AgentSSHRecord   // fingerprint → record
-	hostKeys  map[string]string                  // "tenantID/serviceID" → fingerprint
-	storeErr  error                              // if set, returned by StoreHostKeyFingerprint
+	agents   map[string]*store.AgentSSHRecord // fingerprint → record
+	hostKeys map[string]string                // "tenantID/serviceID" → fingerprint
+	storeErr error                            // if set, returned by StoreHostKeyFingerprint
 }
 
 func (f *fakeSSHStore) GetAgentBySSHPubKey(_ context.Context, _, fp string) (*store.AgentSSHRecord, error) {
@@ -81,14 +81,14 @@ func newTestSSHGRPCServer(t *testing.T, ss *fakeSSHStore) (*grpc.ClientConn, fun
 	}
 
 	svc := NewVaultService(kek, s)
-	// Register a test service identity with both scopes.
+	// Register a test service identity with the scopes the SSH proxy uses.
 	token := []byte("test-token-32-bytes-for-testing!!")
-	if err := svc.RegisterServiceIdentity("svcid_ssh_proxy", token, []string{"vault.read", "vault.put"}); err != nil {
+	if err := svc.RegisterServiceIdentity("svcid_ssh_proxy", token, []string{"vault.read", "vault.hostkey.put"}); err != nil {
 		t.Fatalf("RegisterServiceIdentity: %v", err)
 	}
 
 	lis := bufconn.Listen(sshBufSize)
-	grpcSrv := grpc.NewServer()
+	grpcSrv := grpc.NewServer(grpc.UnaryInterceptor(scopeInterceptor(svc)))
 	RegisterSSHVaultServer(grpcSrv, svc, ss)
 	go func() { _ = grpcSrv.Serve(lis) }()
 
@@ -318,7 +318,7 @@ func TestSSHVault_StoreHostKeyFingerprint_MissingArgs(t *testing.T) {
 
 	req := &sshvault.StoreHostKeyFingerprintRequest{
 		TenantID:    "tenant1",
-		ServiceID:   "",   // Missing
+		ServiceID:   "", // Missing
 		Fingerprint: "SHA256:fp",
 	}
 	resp := &sshvault.StoreHostKeyFingerprintResponse{}

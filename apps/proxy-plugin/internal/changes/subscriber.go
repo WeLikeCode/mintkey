@@ -123,6 +123,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 func (s *Subscriber) HandleNotification(payload string) error {
 	var evt struct {
 		EventType      string `json:"event_type"`
+		Event          string `json:"event"`
 		AgentID        string `json:"agent_id"`
 		JTI            string `json:"jti"`
 		KeyFingerprint string `json:"key_fingerprint"`
@@ -132,7 +133,12 @@ func (s *Subscriber) HandleNotification(payload string) error {
 		return fmt.Errorf("parse notification payload: %w", err)
 	}
 
-	switch evt.EventType {
+	eventType := evt.EventType
+	if eventType == "" {
+		eventType = evt.Event
+	}
+
+	switch eventType {
 	case "agent.revoked":
 		s.agents.Add(evt.AgentID)
 		if s.cache != nil {

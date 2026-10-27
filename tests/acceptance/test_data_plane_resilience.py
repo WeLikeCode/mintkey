@@ -562,10 +562,12 @@ def test_vault_down_returns_502_no_cred_leak() -> None:
         # Give a moment for in-flight gRPC connections to time out
         time.sleep(1)
 
-        # proxy-plugin bounds its vault GetCredential call at 60 s (apps/proxy-plugin/internal/vault/
-        # client.go: a 5 s deadline produced spurious 502s on legitimate 2-6 s vault calls, #260),
-        # so with the adapter paused the 502 arrives after ~60 s. The old 15 s client timeout cut
-        # the request off first (Kong logged 499) and the test saw a ReadTimeout instead of a 502.
+        # proxy-plugin bounds its vault GetCredential call at 45 s (callTimeout in
+        # apps/proxy-plugin/internal/vault/client.go: a 5 s deadline produced spurious 502s on
+        # legitimate 2-6 s vault calls, #260; it stays below Kong's 60 s read_timeout, after which
+        # Kong retries the request), so with the adapter paused the 502 arrives within ~45 s. The
+        # old 15 s client timeout cut the request off first (Kong logged 499) and the test saw a
+        # ReadTimeout instead of a 502.
         proxy_r = httpx.get(
             f"{BASE_KONG}/v1/call/{uuid_to_wire(service_uuid, 'svc')}/api-key-header",
             headers={"Authorization": f"Bearer {fresh_jwt}"},

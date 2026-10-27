@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
@@ -44,15 +47,19 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/credential"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/egress"
 	proxyjwt "github.com/mintkey/mintkey/services/proxy-plugin/internal/jwt"
-	"github.com/google/uuid"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/wireid"
 	"golang.org/x/sync/singleflight"
 )
 
 func main() {
 	cfg := config.Load()
+
+	if err := cfg.SecretErr(); err != nil {
+		log.Fatalf("proxy-plugin: %v", err)
+	}
 
 	// Wire OTel SDK with mandatory redaction filter (ADR-0017.6).
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -82,6 +89,7 @@ func main() {
 	auditQueue.Start()
 
 	vaultClient := vault.NewClient(cfg.VaultAddrGRPC, cfg.VaultIdentityToken, cfg.VaultIdentityID)
+	defer func() { _ = vaultClient.Close() }()
 	jwksLimiter := proxyjwt.NewJWKSRefreshLimiter()
 
 	// Wire AuditEmitter for classical-key path (was nil, causing WS-9 gap).
@@ -107,19 +115,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Keep revoked token ids for the longest token lifetime, then evict them
+	// so the set does not fill up (ADR-0016; S-OPS-1).
+	go handler.revokedJTIs.RunEviction(ctx, time.Minute, revocation.JTIRetention)
+
 	// Wire the changes subscriber so api_key.revoked and agent.revoked events
-	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4).
-	agentSet := revocation.NewAgentRevocationSet()
-	jtiSet := revocation.NewJTIRevocationSet(10_000)
+	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4) and
+	// populate the handler's own revocation sets.
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		var subOpts []changes.SubscriberOption
-		// Wire budget cache invalidation if a resolver is configured (T-BUD-3.4).
-		if handler.budgetResolver != nil {
-			if bc, ok := handler.budgetResolver.(changes.BudgetCacheInvalidator); ok {
-				subOpts = append(subOpts, changes.WithBudgetCache(bc))
-			}
+		budgetSQL, err := sql.Open("postgres", dsn)
+		if err != nil {
+			log.Printf("proxy-plugin: budget enforcement disabled: DATABASE_URL could not be parsed")
+		} else {
+			budgetSQL.SetMaxOpenConns(budgetMaxOpenConns)
+			defer func() { _ = budgetSQL.Close() }()
+			handler.useBudgetSQL(budgetSQL)
 		}
-		sub := changes.NewSubscriber(dsn, agentSet, jtiSet, ckHandler, subOpts...)
+		sub := handler.changesSubscriber(dsn)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("proxy-plugin: changes subscriber error: %v", err)
@@ -197,7 +209,13 @@ type proxyHandler struct {
 	// was used; routing through this emitter ensures agent_id is included and
 	// redaction guardrails are applied.
 	tokenExchangeEmitter tokenExchangeEmitterI // may be nil
-	metrics     *metrics.Metrics
+	metrics              *metrics.Metrics
+	// revokedAgents holds the agents refused by the proxy. Never nil after
+	// newProxyHandler; the change subscriber fills it.
+	revokedAgents *revocation.AgentRevocationSet
+	// revokedJTIs holds the revoked token ids. Never nil after newProxyHandler;
+	// a background loop evicts aged entries.
+	revokedJTIs *revocation.JTIRevocationSet
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 	// tokenCache is the in-memory cache for OAuth2 password grant exchanged tokens.
@@ -239,6 +257,8 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		audit:            ae,
 		auditQ:           aq,
 		metrics:          m,
+		revokedAgents:    revocation.NewAgentRevocationSet(),
+		revokedJTIs:      revocation.NewJTIRevocationSet(10_000),
 		pubKeys:          make(map[string]ed25519.PublicKey),
 		tokenCache:       cache.NewTokenCache(),
 		tokenExchanger:   credential.NewTokenExchanger(),
@@ -246,6 +266,16 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		budgetMetrics:    budget.NewBudgetMetrics(),
 		budgetThresholds: budget.NewThresholdTracker(),
 	}
+}
+
+// changesSubscriber builds the change-channel subscriber over the handler's own
+// revocation sets, so a notification the subscriber applies is the one the
+// request handler checks.
+func (h *proxyHandler) changesSubscriber(dsn string, opts ...changes.SubscriberOption) *changes.Subscriber {
+	if bc, ok := h.budgetResolver.(changes.BudgetCacheInvalidator); ok {
+		opts = append(opts, changes.WithBudgetCache(bc))
+	}
+	return changes.NewSubscriber(dsn, h.revokedAgents, h.revokedJTIs, h.ckHandler, opts...)
 }
 
 func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -325,6 +355,27 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Revocation gate: a revoked token id or an agent in the revoked set is
+	// refused before any other gate and before the vault credential fetch.
+	// The body does not reveal which of the two matched (D1).
+	jti, _ := claims["jti"].(string)
+	if (jti != "" && h.revokedJTIs.Contains(jti)) || (agentID != "" && h.revokedAgents.Contains(agentID)) {
+		h.metrics.IncProxyDenied(serviceID, "revoked")
+		http.Error(w, "unauthorized: token revoked", http.StatusUnauthorized)
+		return
+	}
+
+	// Optional narrowing claims: refuse a method or upstream path the token
+	// does not permit, before any other gate and before the credential fetch.
+	if refusal := checkScopeClaims(claims, r.Method, upstreamPath(r.URL.Path, serviceID)); refusal != "" {
+		h.metrics.IncProxyDenied(serviceID, "permission_denied")
+		body, _ := json.Marshal(map[string]string{"error": refusal})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write(body)
+		return
+	}
+
 	// Read-scoped proxy action (read:atlas): restrict the agent to safe HTTP
 	// methods. Only the literal scope "read:atlas" triggers this gate; admin:atlas,
 	// call, email scopes, and everything else are unaffected. Runs before the vault
@@ -337,13 +388,46 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service_id
-	// embedded in the URL path.  Both are in the canonical UUID form (the JWT aud
-	// contains the DB UUID; the URL path /v1/call/<uuid>/... also carries the UUID).
-	// Kong routes are named /v1/call/{service_uuid} so the first non-empty path
-	// segment after stripping /v1/call/ is the UUID to compare against.
-	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
-		safeURLSvcID := safeID(urlSvcID)
+	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service
+	// the request addresses: the X-Mintkey-Service-ID header when present
+	// (Kong's generated routes add it), else the segment after /v1/call/, else a
+	// UUID-shaped first path segment. Ids are compared in canonical form so the
+	// UUID and svc_ forms of the same service match. In strict mode a request
+	// that addresses no service cannot be checked, so it is refused.
+	addressed := addressedServiceID(r.URL.Path, r.Header.Get("X-Mintkey-Service-ID"))
+	switch {
+	case addressed == "":
+		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
+			safeSvcID := safeID(serviceID)
+			log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
+				"", safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+			// Emit audit event for strict-mode rejection (#24).
+			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
+			if h.audit != nil {
+				jtiForReject, _ := claims["jti"].(string)
+				h.audit.Enqueue(auditq.Event{
+					EventType:  "proxy.aud_mismatch_rejected",
+					TenantID:   tenantID,
+					ActorID:    agentID,
+					ActorType:  "agent",
+					TargetID:   serviceID,
+					TargetType: "service",
+					Payload: map[string]any{
+						"jti":            jtiForReject,
+						"aud":            serviceID,
+						"url_service_id": "",
+						"mode":           string(h.cfg.AudEnforcement),
+					},
+				})
+			}
+			h.metrics.IncProxyDenied(serviceID, "permission_denied")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprint(w, `{"error":"service not addressed"}`)
+			return
+		}
+	case wireid.Canonical(addressed, "svc_") != wireid.Canonical(serviceID, "svc_"):
+		safeURLSvcID := safeID(addressed)
 		safeSvcID := safeID(serviceID)
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
 			safeURLSvcID, safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
@@ -362,7 +446,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					Payload: map[string]any{
 						"jti":            jtiForReject,
 						"aud":            serviceID,
-						"url_service_id": urlSvcID,
+						"url_service_id": addressed,
 						"mode":           string(h.cfg.AudEnforcement),
 					},
 				})
@@ -380,7 +464,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// If the resolved grant has a budget constraint, atomically increment and
 	// check. On ceiling hit: return 429 budget_exceeded without calling upstream.
 	if h.budgetResolver != nil && h.budgetDB != nil {
-		if resolved := h.budgetResolver.Resolve(agentID, serviceID, tenantID); resolved != nil {
+		var resolved *budget.ResolvedBudget
+		if actionResolver, ok := h.budgetResolver.(budget.ActionResolver); ok {
+			resolved = actionResolver.ResolveAction(r.Context(), agentID, serviceID, tenantID, scope)
+		} else {
+			resolved = h.budgetResolver.Resolve(agentID, serviceID, tenantID)
+		}
+		if resolved != nil {
+			budgetTenant := wireid.Canonical(tenantID, "tenant_")
 			budgetLabels := budget.MetricLabels{
 				PermissionID: resolved.PermissionID,
 				AgentID:      agentID,
@@ -391,7 +482,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Set ceiling gauge when budget config is loaded (T-BUD-3.5).
 			h.budgetMetrics.SetCeiling(budgetLabels, resolved.Config.Ceiling)
 
-			used, _, budgetErr := budget.Check(r.Context(), h.budgetDB, resolved.PermissionID, tenantID, resolved.Config)
+			used, _, budgetErr := budget.Check(budget.WithTenant(r.Context(), budgetTenant), h.budgetDB, resolved.PermissionID, budgetTenant, resolved.Config)
 			if budgetErr != nil {
 				var exceeded *budget.ErrBudgetExceeded
 				if errors.As(budgetErr, &exceeded) {
@@ -555,21 +646,18 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
+		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment (or the
+		// /v1/call/<svc_id> prefix) before the target's base path is joined so the
+		// backend receives the bare API path (e.g. /api-key-header).
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		// Use the target's Host header so the upstream sees the correct virtual host.
 		req.Host = req.URL.Host
-		// Strip the X-Mintkey-Target header before forwarding.
+		// Strip the routing headers before forwarding.
 		req.Header.Del("X-Mintkey-Target")
-		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
-		// /<svc_id>/<actual-path>. Strip the leading /<svc_id> segment here so the
-		// backend receives the bare API path (e.g. /api-key-header).
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the credential (also strips the agent's Authorization header).
 		// safeInjectErr returns a fixed string so the credential plaintext
 		// cannot reach the log sink (CodeQL go/clear-text-logging).
@@ -739,17 +827,14 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)
@@ -846,17 +931,14 @@ func (h *proxyHandler) handleHTTPDigest(
 	proxy.Transport = digestTransport
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Strip the agent's Authorization header and inject NO credential header —
 		// the digest.Transport supplies the upstream Authorization on the retry.
 		req.Header.Del("Authorization")
@@ -982,17 +1064,14 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// Strip the call prefix or the leading /<svc_id> segment before the
+		// target's base path is joined.
+		req.URL.Path = upstreamPath(req.URL.Path, serviceID)
 		originalDirector(req)
 		req.Host = req.URL.Host
 		req.Header.Del("X-Mintkey-Target")
-		// Strip the leading /<svc_id> segment from the path.
-		stripped := strings.TrimPrefix(req.URL.Path, "/"+serviceID)
-		if stripped != req.URL.Path {
-			if stripped == "" || stripped[0] != '/' {
-				stripped = "/" + stripped
-			}
-			req.URL.Path = stripped
-		}
+		req.Header.Del("X-Mintkey-Service-ID")
+		req.Header.Del("X-Mintkey-Tenant-ID")
 		// Inject the exchanged token as Authorization: Bearer.
 		if injectErr := credential.Inject(req, cred); injectErr != nil {
 			safeErr := safeInjectErr(injectErr)
