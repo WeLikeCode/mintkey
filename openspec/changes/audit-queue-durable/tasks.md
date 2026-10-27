@@ -22,7 +22,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 1. The backlog metric
 
-- [ ] 1.1 Tests first, new file `packages/go/auditq/backlog_test.go` with the helper `backlogOf`:
+- [x] 1.1 Tests first, new file `packages/go/auditq/backlog_test.go` with the helper `backlogOf`:
   `TestBacklogInExposition` and `TestReplayCountsPendingEvents`, the two scenarios of the requirement "The backlog is a
   metric" (the first reads `q.MetricsHandler()` through an `httptest.NewRecorder`; the WAL of the second is written
   with `os.WriteFile`: two lines of `json.Marshal(newEvent(...))` and a `~` line). They fail before the change: the
@@ -34,7 +34,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 2. The drain settings
 
-- [ ] 2.1 Tests first, new file `packages/go/auditq/settings_test.go`: `TestDrainSettingsDefaults`,
+- [x] 2.1 Tests first, new file `packages/go/auditq/settings_test.go`: `TestDrainSettingsDefaults`,
   `TestDrainSettingsFromEnvironment` and `TestDrainSettingsInvalidValues` (the first three scenarios of the requirement
   "Retries wait a capped delay that progress resets"). Each replaces the default logger with
   `slog.New(slog.NewTextHandler(w, nil))`, `w` a writer that appends to a `bytes.Buffer` under a mutex, restores the
@@ -46,7 +46,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
 
 ## 3. The WAL is the queue
 
-- [ ] 3.1 Tests first, new file `packages/go/auditq/durable_test.go`, with a helper `seqEvent(i int) auditq.Event`
+- [x] 3.1 Tests first, new file `packages/go/auditq/durable_test.go`, with a helper `seqEvent(i int) auditq.Event`
   (`newEvent("proxy.hit")` with payload `{"seq": i}`): `TestSinkDownThenBack`, `TestRetriesPastFiveFailures`,
   `TestCloseWhileSinkDownKeepsEvents`, `TestUnwritableWALDeliversFromMemory` (the four scenarios of the requirement "An
   undelivered event stays in the WAL until the sink accepts or refuses it"), `TestRetryDelayDoublesUpToCap` (the
@@ -66,7 +66,7 @@ body, decode it as `auditq.Event` where they need the payload, and count with `s
   `emit` returning the HTTP status as well as the error; remove `maxDeadLetterRetries`. The other tests of
   `packages/go/auditq/queue_test.go` and `packages/go/auditq/compact_test.go` pass unchanged.
 
-- [ ] 3.2 Tests first, new file `packages/go/auditq/walformat_test.go`: `TestCurrentFormatWALDrainsInPlace`,
+- [x] 3.2 Tests first, new file `packages/go/auditq/walformat_test.go`: `TestCurrentFormatWALDrainsInPlace`,
   `TestCompactionBetweenReadAndTombstone` (the held event has the type `hold.me`; the handler signals on a channel
   when it holds the request and waits on a release channel), `TestUnreadableLineDeadLettered` and
   `TestAppendAfterPartialLineStartsNewLine`, the four scenarios of the requirement "The WAL keeps the format the
