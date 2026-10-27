@@ -176,3 +176,4 @@
 {"at":"2026-10-27T10:52:50Z","revision":"7b889b29c53fdde52f0126f85ad8d3ba62ffa09d","type":"unit.integrated","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T10:52:50Z","attempt":1,"cost_usd":1.787958,"runs":2,"type":"plan.charged","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T10:54:25Z","branch":"l4/archive/openspec/service-token-files","head":"2e252b72c85e7057e7c5d0fbf38f13b3a158caff","type":"unit.branch_deleted","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T10:54:26Z","batch":"p2-cleanup","profile":"none","revision":"2e252b72c85e7057e7c5d0fbf38f13b3a158caff","type":"batch.accepted"}
