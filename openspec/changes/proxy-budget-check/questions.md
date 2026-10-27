@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | The SQL (the grant lookup, the counter upsert under row-level security with `set_config`) is checke… |
+| Q-001 | answered | 1.1 | ambiguous | The SQL (the grant lookup, the counter upsert under row-level security with `set_config`) is checke… |
 | Q-002 | answered | 1.1 | ambiguous | That `mintkey_app` holds `SELECT, INSERT, UPDATE` on `budget_counters` is inferred from `019-grants… |
 <!-- l4:index:end -->
 
@@ -19,7 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: The SQL (the grant lookup, the counter upsert under row-level security with `set_config`) is checke…
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The open question asks for a live run on the compose stack (a grant with ceiling 2, three calls, the third answering 429, budget_counters.used = 2) and for confirmation that mintkey_app holds the needed privileges on a real database. I can only read files and cannot run the stack, so I cannot check
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
@@ -35,6 +35,7 @@ Open-question-hash: 2bfcc625ff2d49d0
 
 ### Answer
 <!-- write below this line -->
+None that block. The gates check the SQL (the grant lookup, the counter upsert under row-level security with set_config) against the fake driver; the live check on the compose stack (a grant with ceiling 2, three calls, the third answers 429, budget_counters.used is 2) is a person's check after the merge and is on the owner's list of stack checks. Task 1.1 goes ahead as specified.
 ---
 
 ## Q-002: That `mintkey_app` holds `SELECT, INSERT, UPDATE` on `budget_counters` is inferred from `019-grants…
