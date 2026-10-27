@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -85,4 +86,85 @@ func TestPathPrefixClaimMatchesCallForm_C_c6932f9e(t *testing.T) {
 	h.pubKeys["testkey"] = pub
 
 	assertScopeReachesVault(t, h, token, http.MethodGet, "/v1/call/svc_5ANANANANANANANANANANANANA/v1/messages/x")
+}
+
+// TestStrictModeRefusesUnaddressedRequest covers the scenario "an unaddressed
+// request is refused in strict mode only": a request that names no service is
+// answered 403 {"error":"service not addressed"} before the credential fetch
+// with one proxy.aud_mismatch_rejected event, while the permissive handler
+// reaches the (unreachable) vault.
+func TestStrictModeRefusesUnaddressedRequest_C_12f2e366(t *testing.T) {
+	mock := &mockAuditQueue{}
+	strict := testHandlerStrictWithAudit(mock)
+	permissive := testHandler()
+	token, pub := buildScopeClaimsJWT(t, testSvcUUIDA, nil)
+	strict.pubKeys["testkey"] = pub
+	permissive.pubKeys["testkey"] = pub
+
+	rw := scopeRequest(t, strict, token, http.MethodGet, "/v1/messages")
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("strict unaddressed: status = %d, want %d (body: %s)", rw.Code, http.StatusForbidden, rw.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatalf("strict unaddressed: body is not valid JSON: %s", rw.Body.String())
+	}
+	if got := body["error"]; got != "service not addressed" {
+		t.Fatalf("strict unaddressed: error = %v, want %q (body: %s)", got, "service not addressed", rw.Body.String())
+	}
+
+	events := mock.captured()
+	if len(events) != 1 {
+		t.Fatalf("strict unaddressed: audit events = %d, want exactly 1", len(events))
+	}
+	evt := events[0]
+	if evt.EventType != "proxy.aud_mismatch_rejected" {
+		t.Errorf("EventType = %q, want proxy.aud_mismatch_rejected", evt.EventType)
+	}
+	if got := evt.Payload["url_service_id"]; got != "" {
+		t.Errorf("Payload.url_service_id = %v, want empty", got)
+	}
+	if got := evt.Payload["mode"]; got != "strict" {
+		t.Errorf("Payload.mode = %v, want strict", got)
+	}
+
+	assertScopeReachesVault(t, permissive, token, http.MethodGet, "/v1/messages")
+}
+
+// TestStrictModeComparesHeaderAndWireFormWithAudience covers the scenario "the
+// header and the wire form are compared with the audience": the header and the
+// /v1/call/ wire form of the token's service reach the credential fetch, while
+// the wire form of another service answers 403 {"error":"scope mismatch"}.
+func TestStrictModeComparesHeaderAndWireFormWithAudience_C_842c06af(t *testing.T) {
+	h := testHandlerStrict()
+	token, pub := buildScopeClaimsJWT(t, testSvcUUIDA, nil)
+	h.pubKeys["testkey"] = pub
+
+	headerRequest := func(serviceHeader string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("X-Mintkey-Service-ID", serviceHeader)
+		rw := httptest.NewRecorder()
+		h.ServeHTTP(rw, req)
+		return rw
+	}
+
+	if rw := headerRequest("svc_5ANANANANANANANANANANANANA"); rw.Code != http.StatusBadGateway {
+		t.Fatalf("header of the token's service: status = %d, want %d from the unreachable test vault (body: %s)", rw.Code, http.StatusBadGateway, rw.Body.String())
+	}
+
+	rw := headerRequest("svc_5VQEXVQEXVQEXVQEXVQEXVQEXV")
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("header of another service: status = %d, want %d (body: %s)", rw.Code, http.StatusForbidden, rw.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rw.Body.Bytes(), &body); err != nil {
+		t.Fatalf("header of another service: body is not valid JSON: %s", rw.Body.String())
+	}
+	if got := body["error"]; got != "scope mismatch" {
+		t.Fatalf("header of another service: error = %v, want %q (body: %s)", got, "scope mismatch", rw.Body.String())
+	}
+
+	assertScopeRefused(t, h, token, http.MethodGet, "/v1/call/svc_5VQEXVQEXVQEXVQEXVQEXVQEXV/x", "scope mismatch")
+	assertScopeReachesVault(t, h, token, http.MethodGet, "/v1/call/svc_5ANANANANANANANANANANANANA/x")
 }
