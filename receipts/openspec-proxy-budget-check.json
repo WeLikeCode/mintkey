@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-27T06:49:54Z",
+  "integrated_revision": "15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2",
+  "merge_commit": "15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 407,
+  "receipt_id": "hardening/openspec:proxy-budget-check/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10",
+  "spec_digest": "0b03dfdecef2c866",
+  "target": "staging",
+  "unit_id": "openspec:proxy-budget-check"
+}

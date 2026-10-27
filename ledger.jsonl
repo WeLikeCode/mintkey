@@ -144,3 +144,6 @@
 {"at":"2026-10-27T06:44:26Z","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","pr":407,"target_before":"981d46b5e635ff3492828fe0ba270bd050a197c5","type":"unit.merge_requested","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:44:30Z","ci":"not_run","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","merge_commit":"15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2","method":"squash","pr":407,"raced":false,"type":"unit.merged","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:44:34Z","branch":"l4/openspec/proxy-budget-check","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","type":"unit.branch_deleted","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:49:54Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:49:54Z","revision":"15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2","type":"unit.integrated","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:49:54Z","attempt":1,"cost_usd":3.085783,"runs":2,"type":"plan.charged","unit":"openspec:proxy-budget-check"}
