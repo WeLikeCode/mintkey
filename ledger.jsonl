@@ -143,3 +143,4 @@
 {"at":"2026-10-27T06:43:22Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"proxy-budget-check passed round 1 and was handed off at 06:32:45Z; the 10-minute window for repository CI has passed and staging pull requests run no repository CI, so the plan can merge","type":"plan.resumed"}
 {"at":"2026-10-27T06:44:26Z","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","pr":407,"target_before":"981d46b5e635ff3492828fe0ba270bd050a197c5","type":"unit.merge_requested","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:44:30Z","ci":"not_run","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","merge_commit":"15fd48e17e5ecbc80c3eb3b62c02ac451a4255c2","method":"squash","pr":407,"raced":false,"type":"unit.merged","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:44:34Z","branch":"l4/openspec/proxy-budget-check","head":"6b5847a2cc02ac5c56a40d5dc4f7bb8384806a10","type":"unit.branch_deleted","unit":"openspec:proxy-budget-check"}
