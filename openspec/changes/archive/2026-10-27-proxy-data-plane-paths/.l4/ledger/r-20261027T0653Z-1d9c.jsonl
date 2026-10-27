@@ -365,3 +365,8 @@
 {"ts": "2026-10-27T08:21:09.932254Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 365, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 579.3}
 {"ts": "2026-10-27T08:21:09.932669Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 366, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-27T08:21:13.300690Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 367, "type": "pr.labels", "number": 409, "labels": ["l4:verified"]}
+{"ts": "2026-10-27T08:21:21.491920Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 368, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/409", "number": 409, "head": "1d5bbb7c7d1996a1f3140f14abcb1168466e10ff"}
+{"ts": "2026-10-27T08:21:21.492796Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 369, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-27T08:21:24.465381Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 370, "type": "pr.labels", "number": 409, "labels": ["l4:in_review"]}
+{"ts": "2026-10-27T08:21:25.696752Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 371, "type": "lock.released"}
+{"ts": "2026-10-27T08:21:25.697291Z", "run_id": "r-20261027T0653Z-1d9c", "unit": "openspec:proxy-data-plane-paths", "seq": 372, "type": "run.finished", "exit_code": 0}
