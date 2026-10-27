@@ -137,3 +137,5 @@
 {"at":"2026-10-27T05:58:16Z","run":"r-20261027T0558Z-d4a7","type":"unit.dispatched","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:01:47Z","detail":"awaiting_human: no new answers (open: Q-001) (escalated to a person: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:proxy-budget-check"}
 {"at":"2026-10-27T06:03:30Z","by":"harness","reason":"the cause is gone: openspec:proxy-budget-check is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-27T06:03:33Z","attempt":1,"cost_usd":2.325197,"runs":2,"type":"plan.charged","unit":"openspec:proxy-budget-check"}
+{"at":"2026-10-27T06:03:33Z","run":"r-20261027T0603Z-1870","type":"unit.dispatched","unit":"openspec:proxy-budget-check"}
