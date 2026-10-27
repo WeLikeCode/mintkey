@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | F-2813828d: the acceptance meta-test still runs the reverted base TestDeadLetterMetrics |
+| Q-001 | answered | 1.1 | ambiguous | F-2813828d: the acceptance meta-test still runs the reverted base TestDeadLetterMetrics |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: F-2813828d: the acceptance meta-test still runs the reverted base TestDeadLetterMetrics
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Every option needs something outside production code: a person committing a change to the acceptance meta-test (a test file, frozen for a fix task), a harness change to how base_tests treats superseded tests, or relaxing criterion C-f33bec22 against the specification, which requires 5xx to be retrie
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
@@ -34,3 +34,4 @@ At the parent base (3e404e1) packages/go/auditq/compact_test.go::TestDeadLetterM
 
 ### Answer
 <!-- write below this line -->
+Option 2, done in the harness. L4 0.4.36 (pinned on staging in cdfdc23) keeps a test module whose last change in base..head is a person's commit at head for step 1's run of the base tests. 35dea71 is the last change to packages/go/auditq/compact_test.go (no harness commit after it), so the run uses the head version of that file, and tests/acceptance/test_async_audit_emission.py::test_auditq_unit_tests_pass, which runs `go test ./packages/go/auditq/...`, runs that version. Checked on this branch (fe29b70): with the unit's code, compact_test.go at head and the unit's added test files set aside, `go test ./...` in packages/go/auditq passes; with compact_test.go at its base version, TestDeadLetterMetrics fails as in round 2. No production change and no person's commit to the meta-test are needed: retry task 1.1 as it is.
