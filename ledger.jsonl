@@ -168,3 +168,4 @@
 {"at":"2026-10-27T08:42:32Z","attempt":1,"cost_usd":0.836876,"runs":2,"type":"plan.charged","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T08:42:32Z","run":"r-20261027T0842Z-e819","type":"unit.dispatched","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T10:37:13Z","detail":"the repository CI is still running on the hand-off commit cfb5ca4001 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"cfb5ca4001457643951fa083fa8fbe2f8060a8a4","reason":"merge_not_ready","type":"plan.waiting","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T10:46:12Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"staging PRs get no repository CI; hand-off commit cfb5ca4 (10:35:37Z) is older than 10 minutes","type":"plan.resumed"}
