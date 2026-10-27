@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 
 def _run(coro):
     """Synchronous runner for async coroutines (no pytest-asyncio required)."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class TestSetTenantContextBoundParams:
