@@ -121,3 +121,5 @@
 {"at":"2026-10-26T23:10:20Z","run":"r-20261026T2310Z-1139","type":"unit.dispatched","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-27T05:05:44Z","attempt":1,"cost_usd":5.066671,"runs":5,"type":"plan.charged","unit":"openspec:audit-queue-durable"}
 {"at":"2026-10-27T05:05:44Z","run":"r-20261027T0505Z-eb94","type":"unit.dispatched","unit":"openspec:audit-queue-durable"}
+{"at":"2026-10-27T05:36:43Z","attempt":1,"cost_usd":7.066673,"runs":6,"type":"plan.charged","unit":"openspec:audit-queue-durable"}
+{"at":"2026-10-27T05:36:43Z","run":"r-20261027T0536Z-0cfa","type":"unit.dispatched","unit":"openspec:audit-queue-durable"}
