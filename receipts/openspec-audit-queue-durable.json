@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-27T05:55:34Z",
+  "integrated_revision": "9038697752f8bbc50b93ff89b33df566d253ad95",
+  "merge_commit": "9038697752f8bbc50b93ff89b33df566d253ad95",
+  "plan_digest": "40adec6b3c96ed8f",
+  "plan_id": "hardening",
+  "postcheck": "pass",
+  "pr": 405,
+  "receipt_id": "hardening/openspec:audit-queue-durable/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": "4a9d5dfd5e7994b76ae00c5013d2c4b6adfab12c",
+  "spec_digest": "2025784dcf88632a",
+  "target": "staging",
+  "unit_id": "openspec:audit-queue-durable"
+}
