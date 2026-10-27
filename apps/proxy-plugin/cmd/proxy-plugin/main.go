@@ -384,13 +384,46 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service_id
-	// embedded in the URL path.  Both are in the canonical UUID form (the JWT aud
-	// contains the DB UUID; the URL path /v1/call/<uuid>/... also carries the UUID).
-	// Kong routes are named /v1/call/{service_uuid} so the first non-empty path
-	// segment after stripping /v1/call/ is the UUID to compare against.
-	if urlSvcID := urlServiceID(r.URL.Path); urlSvcID != "" && urlSvcID != serviceID {
-		safeURLSvcID := safeID(urlSvcID)
+	// ADR-0004 addendum (Scenario D / WS-4): compare JWT.aud with the service
+	// the request addresses: the X-Mintkey-Service-ID header when present
+	// (Kong's generated routes add it), else the segment after /v1/call/, else a
+	// UUID-shaped first path segment. Ids are compared in canonical form so the
+	// UUID and svc_ forms of the same service match. In strict mode a request
+	// that addresses no service cannot be checked, so it is refused.
+	addressed := addressedServiceID(r.URL.Path, r.Header.Get("X-Mintkey-Service-ID"))
+	switch {
+	case addressed == "":
+		if h.cfg.AudEnforcement == config.AudEnforcementStrict {
+			safeSvcID := safeID(serviceID)
+			log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
+				"", safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
+			// Emit audit event for strict-mode rejection (#24).
+			// Payload carries only identifiers — no JWT raw value, no credentials (S-SEC-1).
+			if h.audit != nil {
+				jtiForReject, _ := claims["jti"].(string)
+				h.audit.Enqueue(auditq.Event{
+					EventType:  "proxy.aud_mismatch_rejected",
+					TenantID:   tenantID,
+					ActorID:    agentID,
+					ActorType:  "agent",
+					TargetID:   serviceID,
+					TargetType: "service",
+					Payload: map[string]any{
+						"jti":            jtiForReject,
+						"aud":            serviceID,
+						"url_service_id": "",
+						"mode":           string(h.cfg.AudEnforcement),
+					},
+				})
+			}
+			h.metrics.IncProxyDenied(serviceID, "permission_denied")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprint(w, `{"error":"service not addressed"}`)
+			return
+		}
+	case wireid.Canonical(addressed, "svc_") != wireid.Canonical(serviceID, "svc_"):
+		safeURLSvcID := safeID(addressed)
 		safeSvcID := safeID(serviceID)
 		log.Printf("proxy-plugin: event=aud_check service_id_url=%s aud=%s mode=%s result=%s",
 			safeURLSvcID, safeSvcID, h.cfg.AudEnforcement, audCheckResult(h.cfg.AudEnforcement))
@@ -409,7 +442,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					Payload: map[string]any{
 						"jti":            jtiForReject,
 						"aud":            serviceID,
-						"url_service_id": urlSvcID,
+						"url_service_id": addressed,
 						"mode":           string(h.cfg.AudEnforcement),
 					},
 				})

@@ -6,6 +6,22 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/wireid"
 )
 
+// addressedServiceID returns the service a request addresses: serviceHeader
+// when it is not empty; else, for a path starting with "/v1/call/", the
+// segment after it (any form, possibly ""); else urlServiceID(reqPath).
+func addressedServiceID(reqPath, serviceHeader string) string {
+	if serviceHeader != "" {
+		return serviceHeader
+	}
+	if rest, ok := strings.CutPrefix(reqPath, "/v1/call/"); ok {
+		if i := strings.IndexByte(rest, '/'); i >= 0 {
+			return rest[:i]
+		}
+		return rest
+	}
+	return urlServiceID(reqPath)
+}
+
 // upstreamPath returns the path the upstream receives for reqPath, the request
 // path as the proxy received it:
 //

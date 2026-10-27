@@ -29,7 +29,7 @@ acceptance suite as `.l4/gates/test.sh` runs it.
 
 ## 2. Strict mode always has an address
 
-- [ ] 2.1 Tests first, in the same file: `TestStrictModeRefusesUnaddressedRequest` covers "an unaddressed request is
+- [x] 2.1 Tests first, in the same file: `TestStrictModeRefusesUnaddressedRequest` covers "an unaddressed request is
   refused in strict mode only" with `testHandlerStrictWithAudit(mock)` (and `&mockAuditQueue{}`) and `testHandler()`
   of `proxy_test.go`, asserting the 403 JSON body's `error`, exactly one captured event with `EventType`
   `proxy.aud_mismatch_rejected`, `Payload["url_service_id"] == ""` and `Payload["mode"] == "strict"`, and 502 for the
