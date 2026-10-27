@@ -26,6 +26,17 @@ import (
 // errClientClosed is returned by GetCredential after Close has been called.
 var errClientClosed = errors.New("vault: client closed")
 
+// callTimeout bounds one GetCredential call. The connection is reused, so an
+// adapter that is alive but not answering (a paused container, a stuck
+// process) holds the call for the whole timeout. Kong gives each upstream
+// request 60 s (its default read_timeout) and then retries it, so the bound
+// stays below 60 s: the proxy answers 502 before Kong sends the request again.
+// It must still cover a cold adapter (postgres backend + KEK load) plus a slow
+// upstream credential operation; a 5 s value surfaced as spurious 502
+// "bad gateway: vault error" (DeadlineExceeded) on legitimate calls (#260).
+// A variable so tests can shorten it.
+var callTimeout = 45 * time.Second
+
 // GetCredentialRequest identifies a credential to fetch from the Vault Adapter.
 // Field names mirror vault.proto GetCredentialRequest.
 type GetCredentialRequest struct {
@@ -182,11 +193,8 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 	// Apply a per-call deadline so that an unreachable adapter cannot block a
 	// caller indefinitely. grpc.WaitForReady(false) already fails fast when the
 	// adapter is truly down (connection refused returns immediately), so this
-	// deadline only bounds the slow-but-alive case. It must therefore be large
-	// enough to cover a cold vault-adapter (postgres backend + KEK load) plus a
-	// slow upstream credential operation; a 5s value here surfaced as spurious
-	// 502 "bad gateway: vault error" (DeadlineExceeded) on legitimate calls.
-	dialCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// deadline bounds the slow-but-alive and hung cases; see callTimeout.
+	dialCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
 	conn, err := c.connection()
