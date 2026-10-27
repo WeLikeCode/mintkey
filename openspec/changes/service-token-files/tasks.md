@@ -36,7 +36,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 3. The vault adapter
 
-- [ ] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_files_test.go` (package `server`):
+- [x] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_files_test.go` (package `server`):
   `TestRegisterBootIdentitiesFromEnv_TokenFromFile` and `TestRegisterBootIdentitiesFromEnv_UnreadableTokenFile` cover
   the requirement "The vault adapter reads its identity variables from files too", calling the existing
   `svc.RegisterBootIdentitiesFromEnv("dev")` on a `VaultService` built with `NewVaultService(kek, st)` on
