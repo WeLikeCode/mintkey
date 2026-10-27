@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -34,6 +35,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	"github.com/mintkey/mintkey/packages/go/auditq"
 	"github.com/mintkey/mintkey/packages/go/otelinit"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/audit"
@@ -48,6 +50,7 @@ import (
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/metrics"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/revocation"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/vault"
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/wireid"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -116,14 +119,15 @@ func main() {
 	// evict the classical-key resolution cache within ≤ 5s (ADR-0018 §4) and
 	// populate the handler's own revocation sets.
 	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		var subOpts []changes.SubscriberOption
-		// Wire budget cache invalidation if a resolver is configured (T-BUD-3.4).
-		if handler.budgetResolver != nil {
-			if bc, ok := handler.budgetResolver.(changes.BudgetCacheInvalidator); ok {
-				subOpts = append(subOpts, changes.WithBudgetCache(bc))
-			}
+		budgetSQL, err := sql.Open("postgres", dsn)
+		if err != nil {
+			log.Printf("proxy-plugin: budget enforcement disabled: DATABASE_URL could not be parsed")
+		} else {
+			budgetSQL.SetMaxOpenConns(budgetMaxOpenConns)
+			defer func() { _ = budgetSQL.Close() }()
+			handler.useBudgetSQL(budgetSQL)
 		}
-		sub := handler.changesSubscriber(dsn, subOpts...)
+		sub := handler.changesSubscriber(dsn)
 		go func() {
 			if err := sub.Start(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("proxy-plugin: changes subscriber error: %v", err)
@@ -264,6 +268,9 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 // revocation sets, so a notification the subscriber applies is the one the
 // request handler checks.
 func (h *proxyHandler) changesSubscriber(dsn string, opts ...changes.SubscriberOption) *changes.Subscriber {
+	if bc, ok := h.budgetResolver.(changes.BudgetCacheInvalidator); ok {
+		opts = append(opts, changes.WithBudgetCache(bc))
+	}
 	return changes.NewSubscriber(dsn, h.revokedAgents, h.revokedJTIs, h.ckHandler, opts...)
 }
 
@@ -420,7 +427,14 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// If the resolved grant has a budget constraint, atomically increment and
 	// check. On ceiling hit: return 429 budget_exceeded without calling upstream.
 	if h.budgetResolver != nil && h.budgetDB != nil {
-		if resolved := h.budgetResolver.Resolve(agentID, serviceID, tenantID); resolved != nil {
+		var resolved *budget.ResolvedBudget
+		if actionResolver, ok := h.budgetResolver.(budget.ActionResolver); ok {
+			resolved = actionResolver.ResolveAction(r.Context(), agentID, serviceID, tenantID, scope)
+		} else {
+			resolved = h.budgetResolver.Resolve(agentID, serviceID, tenantID)
+		}
+		if resolved != nil {
+			budgetTenant := wireid.Canonical(tenantID, "tenant_")
 			budgetLabels := budget.MetricLabels{
 				PermissionID: resolved.PermissionID,
 				AgentID:      agentID,
@@ -431,7 +445,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Set ceiling gauge when budget config is loaded (T-BUD-3.5).
 			h.budgetMetrics.SetCeiling(budgetLabels, resolved.Config.Ceiling)
 
-			used, _, budgetErr := budget.Check(r.Context(), h.budgetDB, resolved.PermissionID, tenantID, resolved.Config)
+			used, _, budgetErr := budget.Check(budget.WithTenant(r.Context(), budgetTenant), h.budgetDB, resolved.PermissionID, budgetTenant, resolved.Config)
 			if budgetErr != nil {
 				var exceeded *budget.ErrBudgetExceeded
 				if errors.As(budgetErr, &exceeded) {
