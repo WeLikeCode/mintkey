@@ -29,12 +29,24 @@ networks:
     driver: bridge
 
 # ---------------------------------------------------------------------------
+# Container logs: json-file with rotation, used by every service below.
+# Without a cap one chatty container can fill the Docker disk (an unrotated
+# otel-collector log once grew past 100 GB in four days).
+# ---------------------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+# ---------------------------------------------------------------------------
 # Services
 # ---------------------------------------------------------------------------
 services:
 
   # ─── 1. Postgres ─────────────────────────────────────────────────────────
   postgres:
+    logging: *default-logging
     image: postgres:16@sha256:b6ccf02e9b47eac0d67b5eaa0ef56fd59163bffa5506f64e96ceb5053130ec86
     restart: unless-stopped
     mem_limit: 512m
@@ -56,6 +68,7 @@ services:
 
   # ─── 2. Keycloak ─────────────────────────────────────────────────────────
   keycloak:
+    logging: *default-logging
     image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
     restart: unless-stopped
     mem_limit: 1g
@@ -85,6 +98,7 @@ services:
 
   # ─── 16. Liquibase (one-shot job) ─────────────────────────────────────────
   liquibase:
+    logging: *default-logging
     image: liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e662c4212e834468df959983
     restart: on-failure:3
     mem_limit: 256m
@@ -106,6 +120,7 @@ services:
 
   # ─── 17. Seed-job (one-shot job) ──────────────────────────────────────────
   seed-job:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-seed-job:${MINTKEY_TAG:-latest}
     restart: on-failure:3
     mem_limit: 128m
@@ -137,6 +152,7 @@ services:
 
   # ─── 3. Vault Adapter ─────────────────────────────────────────────────────
   vault-adapter:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-vault-adapter:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -174,6 +190,7 @@ services:
 
   # ─── 4. Admin API ─────────────────────────────────────────────────────────
   admin-api:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-admin-api:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 512m
@@ -216,6 +233,7 @@ services:
 
   # ─── 5. Admin UI ──────────────────────────────────────────────────────────
   admin-ui:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-admin-ui:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 512m
@@ -249,6 +267,7 @@ services:
 
   # ─── 6. MCP Server ────────────────────────────────────────────────────────
   mcp-server:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-mcp-server:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 256m
@@ -277,6 +296,7 @@ services:
 
   # ─── 7. Broker ────────────────────────────────────────────────────────────
   broker:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-broker:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -307,6 +327,7 @@ services:
 
   # ─── 8. Kong (DB-less) ────────────────────────────────────────────────────
   kong:
+    logging: *default-logging
     image: kong:3.6@sha256:a42d2b4503e7b6674ca7914883bdb0d2274b806b0e397a6af28d1dd57aafce4e
     restart: unless-stopped
     mem_limit: 512m
@@ -339,6 +360,7 @@ services:
 
   # ─── 9. Kong Syncer ───────────────────────────────────────────────────────
   kong-syncer:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-kong-syncer:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -367,6 +389,7 @@ services:
 
   # ─── 10. Proxy Plugin ─────────────────────────────────────────────────────
   proxy-plugin:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-proxy-plugin:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -400,6 +423,7 @@ services:
 
   # ─── 10b. SSH Proxy (bastion) ────────────────────────────────────────────
   ssh-proxy:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-ssh-proxy:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 512m
@@ -440,6 +464,7 @@ services:
 
   # ─── 10c. Email Proxy (IMAP/SMTP bastion) ────────────────────────────────
   email-proxy:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-email-proxy:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -475,6 +500,7 @@ services:
 
   # ─── 11. Mock Backend ─────────────────────────────────────────────────────
   mock-backend:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-mock-backend:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 128m
@@ -491,6 +517,7 @@ services:
 
   # ─── 12. OTel Collector ───────────────────────────────────────────────────
   otel-collector:
+    logging: *default-logging
     image: otel/opentelemetry-collector-contrib:0.104.0@sha256:e07e325e303e86f4a87a617491e921b579a92da6d404007394757ac910bf9587
     restart: unless-stopped
     mem_limit: 256m
@@ -504,11 +531,15 @@ services:
 
   # ─── 13. Jaeger ───────────────────────────────────────────────────────────
   jaeger:
+    logging: *default-logging
     image: jaegertracing/all-in-one:1.56@sha256:d2cd4c226624bdc116decd3106091b4df9882da8db42f8550293596cab79b8ea
     restart: unless-stopped
     mem_limit: 128m
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      # In-memory span store: cap the traces it keeps so it stays under mem_limit
+      # (uncapped it grew to the 128m limit and was OOM-killed every few hours).
+      MEMORY_MAX_TRACES: "5000"
     expose:
       - "16686"
     networks:
@@ -524,6 +555,7 @@ services:
 
   # ─── 13b. Jaeger Auth (oauth2-proxy) ──────────────────────────────────────
   jaeger-auth:
+    logging: *default-logging
     image: ghcr.io/welikecode/mintkey-jaeger-auth:${MINTKEY_TAG:-latest}
     restart: unless-stopped
     mem_limit: 96m
@@ -567,6 +599,7 @@ services:
 
   # ─── 14. Prometheus ───────────────────────────────────────────────────────
   prometheus:
+    logging: *default-logging
     image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
     restart: unless-stopped
     mem_limit: 256m
@@ -584,6 +617,7 @@ services:
 
   # ─── 16b. cAdvisor ────────────────────────────────────────────────────────
   cadvisor:
+    logging: *default-logging
     image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
     restart: unless-stopped
     mem_limit: 256m
@@ -605,6 +639,7 @@ services:
 
   # ─── 15. Grafana ──────────────────────────────────────────────────────────
   grafana:
+    logging: *default-logging
     image: grafana/grafana:10.3.3@sha256:8640e5038e83ca4554ed56b9d76375158bcd51580238c6f5d8adaf3f20dd5379
     restart: unless-stopped
     mem_limit: 256m
