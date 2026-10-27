@@ -165,3 +165,5 @@
 {"at":"2026-10-27T08:40:13Z","branch":"l4/archive/openspec/proxy-data-plane-paths","head":"336c1fc9221631d5b26feeef91d811913ab7c62d","type":"unit.branch_deleted","unit":"openspec:proxy-data-plane-paths"}
 {"at":"2026-10-27T08:40:14Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:service-token-files"}
 {"at":"2026-10-27T08:40:14Z","run":"r-20261027T0840Z-5a10","type":"unit.dispatched","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T08:42:32Z","attempt":1,"cost_usd":0.836876,"runs":2,"type":"plan.charged","unit":"openspec:service-token-files"}
+{"at":"2026-10-27T08:42:32Z","run":"r-20261027T0842Z-e819","type":"unit.dispatched","unit":"openspec:service-token-files"}
