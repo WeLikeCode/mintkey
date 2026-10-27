@@ -6,7 +6,7 @@ top-level Go functions without `t.Run` and use only API that exists before the c
 
 ## 1. The proxy enforces grant budgets over Postgres
 
-- [ ] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/budget_wiring_test.go` (package `main`, using
+- [x] 1.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/budget_wiring_test.go` (package `main`, using
   `testHandler()`, `testSvcUUIDA` of `proxy_test.go` and `buildScopeClaimsJWT` of `scope_claims_test.go`). Declare
   `type budgetDBUser interface { useBudgetDB(db budget.DB) }` and `type budgetSQLUser interface { useBudgetSQL(db
   *sql.DB) }`; every test asserts the handler implements the one it needs (else `t.Fatal`). Tokens are
