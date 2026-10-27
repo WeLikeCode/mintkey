@@ -1,0 +1,255 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "packages/go/svcid",
+      "github.com/mintkey/mintkey",
+      "packages/go",
+      "packages/go/auditq",
+      "packages/go/otelinit",
+      "cmd/broker/main.go",
+      "cmd/proxy-plugin/main.go",
+      "packages/go/svcid/fromenv.go",
+      "apps/broker/internal/config/config.go",
+      "apps/proxy-plugin/internal/config/config.go",
+      "apps/vault-adapter/internal/server/identities.go",
+      "apps/ssh-proxy/internal/config/config.go",
+      "apps/email-proxy/internal/config/config.go",
+      "apps/broker/cmd/broker/main.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+      "apps/broker/internal/config/config_files_test.go",
+      "apps/proxy-plugin/internal/config/config_files_test.go",
+      "apps/vault-adapter/internal/server/identities_files_test.go",
+      "apps/ssh-proxy/internal/config/config_files_test.go",
+      "apps/email-proxy/internal/config/config_files_test.go",
+      "scripts/mintkey-doctor.sh",
+      "apps/proxy-plugin/internal/config/config_test.go",
+      "github.com/mintkey/mintkey/packages/go/svcid",
+      "**/config_test.go",
+      "**/*config.Config",
+      "**/fromenv.go",
+      "infra/**",
+      "module broker",
+      "module cmd",
+      "module email-proxy",
+      "module github.com",
+      "module go",
+      "module proxy-plugin",
+      "module scripts",
+      "module ssh-proxy",
+      "module vault-adapter"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/broker/cmd/broker/main.go",
+        "module": "broker",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/broker/internal/config/config.go",
+        "module": "broker",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/broker/internal/config/config_files_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/email-proxy/internal/config/config.go",
+        "module": "email-proxy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/email-proxy/internal/config/config_files_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/internal/config/config.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/internal/config/config_files_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/ssh-proxy/internal/config/config.go",
+        "module": "ssh-proxy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/ssh-proxy/internal/config/config_files_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/identities.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/identities_files_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "openspec/changes/service-token-files/.l4/ledger/r-20261027T0840Z-5a10.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/service-token-files/.l4/ledger/r-20261027T0842Z-e819.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/service-token-files/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/service-token-files/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/go/svcid/fromenv.go",
+        "module": "go",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_applicable",
+    "reason": "diff coverage measures python only; changed code outside it: apps/broker/cmd/broker/main.go, apps/broker/internal/config/config.go, apps/email-proxy/internal/config/config.go, apps/proxy-plugin/cmd/proxy-plugin/main.go, apps/proxy-plugin/internal/config/config.go and 3 more",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [
+      "apps/broker/cmd/broker/main.go",
+      "apps/broker/internal/config/config.go",
+      "apps/email-proxy/internal/config/config.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+      "apps/proxy-plugin/internal/config/config.go",
+      "apps/ssh-proxy/internal/config/config.go",
+      "apps/vault-adapter/internal/server/identities.go",
+      "packages/go/svcid/fromenv.go"
+    ],
+    "functions": []
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 2822,
+      "passed": 2768,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 54,
+      "new": 15,
+      "new_passed": 15,
+      "skipped_unchanged": [
+        "apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated",
+        "apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401",
+        "apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields",
+        "apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found",
+        "apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape",
+        "github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger",
+        "github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming",
+        "tests.acceptance.test_admin_ui_boot::test_login_page_returns_200",
+        "tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]",
+        "tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end",
+        "tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2",
+        "tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode",
+        "tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call",
+        "tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue",
+        "tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation",
+        "tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429",
+        "tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call",
+        "tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created",
+        "tests.acceptance.test_classical_key::test_classical_key_full_flow",
+        "tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy",
+        "tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt",
+        "tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403",
+        "tests.acceptance.test_data_plane_smoke::test_broker_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_kong_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke",
+        "tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end",
+        "tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream",
+        "tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end",
+        "tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end",
+        "tests.acceptance.test_observability::test_audit_chain_valid",
+        "tests.acceptance.test_observability::test_prometheus_targets_all_up",
+        "tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics",
+        "tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded",
+        "tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12",
+        "tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok"
+      ]
+    },
+    "findings": []
+  }
+}

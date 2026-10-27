@@ -11,7 +11,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 1. The rule, svcid.FromEnv, and the SSH proxy
 
-- [ ] 1.1 Tests first, new file `apps/ssh-proxy/internal/config/config_files_test.go` (package `config`, calling the
+- [x] 1.1 Tests first, new file `apps/ssh-proxy/internal/config/config_files_test.go` (package `config`, calling the
   existing `Load("")`): `TestLoad_SSHProxyTokenFromVariable`, `TestLoad_SSHProxyTokenFromFile`,
   `TestLoad_SSHProxyTokenFileTrailingLineEndsRemoved`, `TestLoad_SSHProxyTokenFileWithOnlyANewline`,
   `TestLoad_SSHProxyTokenSetTwice` and `TestLoad_UnreadableSSHProxyTokenFile` cover the six scenarios of the
@@ -22,7 +22,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 2. The broker and the egress proxy
 
-- [ ] 2.1 Tests first, new file `apps/broker/internal/config/config_files_test.go` (package `config_test`):
+- [x] 2.1 Tests first, new file `apps/broker/internal/config/config_files_test.go` (package `config_test`):
   `TestLoad_BrokerTokensFromFiles`, `TestLoad_BrokerTokensFromVariables` and `TestLoad_UnreadableBrokerTokenFile` cover
   the first three scenarios of the requirement "The broker and the egress proxy read their tokens from files too". New
   file `apps/proxy-plugin/internal/config/config_files_test.go` (package `config_test`):
@@ -36,7 +36,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 3. The vault adapter
 
-- [ ] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_files_test.go` (package `server`):
+- [x] 3.1 Tests first, new file `apps/vault-adapter/internal/server/identities_files_test.go` (package `server`):
   `TestRegisterBootIdentitiesFromEnv_TokenFromFile` and `TestRegisterBootIdentitiesFromEnv_UnreadableTokenFile` cover
   the requirement "The vault adapter reads its identity variables from files too", calling the existing
   `svc.RegisterBootIdentitiesFromEnv("dev")` on a `VaultService` built with `NewVaultService(kek, st)` on
@@ -47,7 +47,7 @@ files must not redeclare names that already exist in their test package.
 
 ## 4. The email proxy
 
-- [ ] 4.1 Tests first, new file `apps/email-proxy/internal/config/config_files_test.go` (package `config`, calling the
+- [x] 4.1 Tests first, new file `apps/email-proxy/internal/config/config_files_test.go` (package `config`, calling the
   existing `Load()`): `TestLoad_EmailProxyTokensFromFiles`, `TestLoad_UnreadableEmailProxyTokenFile` and
   `TestLoad_EmailProxyTokenFileWithOnlyANewline` cover the requirement "The email proxy reads its tokens from files
   too"; the first two fail before the change (the `_FILE` variables are ignored). Then in

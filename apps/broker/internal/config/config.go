@@ -4,12 +4,14 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 // Config holds all runtime configuration for the Credential Broker.
@@ -28,28 +30,39 @@ type Config struct {
 	AuditWALPath   string // path to the WAL file (default /var/lib/mintkey/broker-audit.wal)
 	// WAL compaction (#27)
 	AuditCompact auditq.CompactConfig
+	secretErr    error
+}
+
+// SecretErr returns the error of reading the service tokens in Load, or nil.
+func (c *Config) SecretErr() error {
+	return c.secretErr
 }
 
 // Load reads configuration from environment variables.
 func Load() *Config {
+	serviceToken, serviceErr := svcid.FromEnv("MINTKEY_SERVICE_TOKEN")
+	proxyServiceToken, proxyErr := svcid.FromEnv("MINTKEY_PROXY_SERVICE_TOKEN")
+	mcpServiceToken, mcpErr := svcid.FromEnv("MINTKEY_MCP_SERVICE_TOKEN")
+	brokerSvcToken, brokerErr := svcid.FromEnv("MINTKEY_BROKER_SERVICE_TOKEN")
 	return &Config{
 		Env:               getEnv("MINTKEY_ENV", "dev"),
 		HTTPPort:          getEnvInt("BROKER_HTTP_PORT", 8083),
 		VaultGRPCAddr:     getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
 		SigningKeyFile:    os.Getenv("MINTKEY_BROKER_SIGNING_KEY_FILE"),
-		ServiceToken:      os.Getenv("MINTKEY_SERVICE_TOKEN"),       // /run/secrets/ in compose
-		ProxyServiceToken: os.Getenv("MINTKEY_PROXY_SERVICE_TOKEN"), // /run/secrets/ in compose
-		MCPServiceToken:   os.Getenv("MINTKEY_MCP_SERVICE_TOKEN"),   // shared with MCP Server
+		ServiceToken:      serviceToken,      // /run/secrets/ in compose
+		ProxyServiceToken: proxyServiceToken, // /run/secrets/ in compose
+		MCPServiceToken:   mcpServiceToken,   // shared with MCP Server
 		DatabaseURL:       getEnv("DATABASE_URL", ""),
 		// Audit async emission (#22)
 		AdminAPIURL:    getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
-		BrokerSvcToken: os.Getenv("MINTKEY_BROKER_SERVICE_TOKEN"),
+		BrokerSvcToken: brokerSvcToken,
 		AuditWALPath:   getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/broker-audit.wal"),
 		// WAL compaction (#27)
 		AuditCompact: auditq.CompactConfig{
 			IntervalSec:    getEnvInt("MINTKEY_AUDIT_WAL_COMPACT_INTERVAL_SEC", 300),
 			ThresholdBytes: getEnvInt64("MINTKEY_AUDIT_WAL_COMPACT_THRESHOLD_BYTES", 64<<20),
 		},
+		secretErr: errors.Join(serviceErr, proxyErr, mcpErr, brokerErr),
 	}
 }
 

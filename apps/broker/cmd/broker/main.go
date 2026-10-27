@@ -29,6 +29,10 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if err := cfg.SecretErr(); err != nil {
+		log.Fatalf("broker: %v", err)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("broker: %v", err)
 	}

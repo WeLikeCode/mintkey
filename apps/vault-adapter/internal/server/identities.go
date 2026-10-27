@@ -2,8 +2,9 @@ package server
 
 import (
 	"fmt"
-	"os"
 	"strings"
+
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 // IdentitySpec describes one service identity the vault adapter registers at boot.
@@ -81,9 +82,7 @@ func (v *VaultService) RegisterBootIdentities(env string, lookup func(name strin
 	return unset, nil
 }
 
-// RegisterBootIdentitiesFromEnv is RegisterBootIdentities with a lookup that returns os.Getenv(name), nil.
+// RegisterBootIdentitiesFromEnv is RegisterBootIdentities with a lookup that reads each variable through svcid.FromEnv.
 func (v *VaultService) RegisterBootIdentitiesFromEnv(env string) (unset []string, err error) {
-	return v.RegisterBootIdentities(env, func(name string) (string, error) {
-		return os.Getenv(name), nil
-	})
+	return v.RegisterBootIdentities(env, svcid.FromEnv)
 }
