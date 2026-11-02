@@ -7,7 +7,7 @@ name = "mintkey-models"
 version = "0.1.0-preview.1"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.14.1",
+    "pydantic>=2.14.2",
     "sqlalchemy[asyncio]>=2.1.4",
     "prometheus-client>=0.26.0",
     "cryptography>=50.0.0",
@@ -19,10 +19,10 @@ include = ["mintkey_models*"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1",
     "ruff>=0.15.18",
-    "mypy>=2.4.0",
+    "mypy>=2.4.1",
 ]
 
 [tool.uv]
