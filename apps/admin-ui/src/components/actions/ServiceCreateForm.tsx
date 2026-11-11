@@ -33,7 +33,7 @@ import {
 } from "@adminjs/design-system";
 import { ApiClient } from "adminjs";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AUTH_SCHEMES, getCredentialFields, type KvRow } from "../../lib/auth-scheme.js";
+import { AUTH_SCHEMES, getCredentialFields, buildCredentialPayload, type KvRow } from "../../lib/auth-scheme.js";
 
 // ── types ────────────────────────────────────────────────────────────────────
 
@@ -465,6 +465,13 @@ const ServiceCreateForm = (props: Props): React.ReactElement => {
           service_id: serviceId,
           value: valueJson,
           token_url: tokenUrl,
+        };
+      } else if (authScheme === "oauth2_client_credentials") {
+        // admin-api requires the structured JSON `value` (ADR-0029); flat
+        // client_id/client_secret fields give 422 "Field required: body.value".
+        credPayload = {
+          service_id: serviceId,
+          ...buildCredentialPayload(authScheme, credFields),
         };
       } else {
         credPayload = {
