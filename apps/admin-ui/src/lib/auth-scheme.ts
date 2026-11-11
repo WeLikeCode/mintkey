@@ -202,6 +202,26 @@ export function buildCredentialPayload(
     return payload;
   }
 
+  if (scheme === "oauth2_client_credentials") {
+    // admin-api (ADR-0029) validates `value` as a JSON-encoded
+    // OAuth2ClientCredentialsPayload: { token_url, client_id, client_secret,
+    // scope?, audience? }. Flat top-level fields are rejected with
+    // 422 "Field required: body.value". The form field `scopes` maps to the
+    // payload key `scope`. Empty optional fields are omitted; an empty
+    // token_url is kept so admin-api reports a clear field error.
+    const envelope: Record<string, string> = {
+      token_url: formData["token_url"] ?? "",
+      client_id: formData["client_id"] ?? "",
+      client_secret: formData["client_secret"] ?? "",
+    };
+    const scope = formData["scopes"] ?? "";
+    const audience = formData["audience"] ?? "";
+    if (scope.trim() !== "") envelope["scope"] = scope.trim();
+    if (audience.trim() !== "") envelope["audience"] = audience.trim();
+    payload["value"] = JSON.stringify(envelope);
+    return payload;
+  }
+
   if (scheme === "oauth2_password_grant") {
     // formData carries:
     //   token_url, token_response_path, exchange_timeout_seconds (as strings)

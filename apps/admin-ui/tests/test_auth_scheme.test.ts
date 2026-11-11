@@ -261,6 +261,58 @@ describe("buildCredentialPayload", () => {
     expect(payload).toEqual({ auth_scheme: "none" });
   });
 
+  // admin-api (ADR-0029) requires `value` = JSON string of the OAuth2 client-credentials
+  // payload. Flat top-level fields give 422 "Field required: body.value".
+  it("oauth2_client_credentials: nests token_url/client_id/client_secret/audience/scope inside value JSON", () => {
+    const payload = buildCredentialPayload("oauth2_client_credentials", {
+      token_url: "https://auth.example.com/oauth/token",
+      client_id: "cid",
+      client_secret: "csecret",
+      scopes: "read:a read:b",
+      audience: "https://api.example.com/",
+    });
+    expect(payload.auth_scheme).toBe("oauth2_client_credentials");
+    expect(JSON.parse(payload.value)).toEqual({
+      token_url: "https://auth.example.com/oauth/token",
+      client_id: "cid",
+      client_secret: "csecret",
+      scope: "read:a read:b",
+      audience: "https://api.example.com/",
+    });
+  });
+
+  it("oauth2_client_credentials: omits empty optional scope and audience from value JSON", () => {
+    const payload = buildCredentialPayload("oauth2_client_credentials", {
+      token_url: "https://auth.example.com/oauth/token",
+      client_id: "cid",
+      client_secret: "csecret",
+      scopes: "",
+      audience: "",
+    });
+    expect(JSON.parse(payload.value)).toEqual({
+      token_url: "https://auth.example.com/oauth/token",
+      client_id: "cid",
+      client_secret: "csecret",
+    });
+  });
+
+  it("oauth2_client_credentials: never leaves the client secret as a flat top-level field", () => {
+    const payload = buildCredentialPayload("oauth2_client_credentials", {
+      token_url: "https://auth.example.com/oauth/token",
+      client_id: "cid",
+      client_secret: "csecret",
+    });
+    expect(Object.keys(payload).sort()).toEqual(["auth_scheme", "value"]);
+  });
+
+  it("oauth2_client_credentials: keeps an empty token_url so admin-api returns a clear field error", () => {
+    const payload = buildCredentialPayload("oauth2_client_credentials", {
+      client_id: "cid",
+      client_secret: "csecret",
+    });
+    expect(JSON.parse(payload.value).token_url).toBe("");
+  });
+
   it("apple_jwt: assembles nested value JSON with scheme, p8_key_pem, key_id, issuer_id", () => {
     const payload = buildCredentialPayload("apple_jwt", {
       p8_key_pem: "-----BEGIN PRIVATE KEY-----\nMIGH...\n-----END PRIVATE KEY-----",
