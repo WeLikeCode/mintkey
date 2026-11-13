@@ -10,17 +10,17 @@ dependencies = [
     "fastapi[standard]>=0.143.3",
     "sqlalchemy[asyncio]>=2.1.4",
     "asyncpg>=0.32.0",
-    "opentelemetry-sdk>=1.45.1",
+    "opentelemetry-sdk>=1.45.2",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "argon2-cffi>=25.1.0",
-    "authlib>=1.9.0",
-    "joserfc>=1.6.8",
+    "authlib>=1.9.5",
+    "joserfc>=1.8.0",
     "structlog>=26.1.0",
     "httpx>=0.27",
     "psycopg2-binary>=2.9.13",
-    "grpcio>=1.84.0",
+    "grpcio>=1.85.1",
     "protobuf>=7.36.2",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.29",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.45.2",
     "prometheus-client>=0.26.0",
     "asyncssh>=2.24.1",
 ]
@@ -30,16 +30,16 @@ packages = ["src/admin_api"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     "ruff>=0.15.22",
-    "mypy>=2.4.0",
+    "mypy>=2.4.1",
     "testcontainers[postgres]>=4.15.0",
     "grpc-stubs>=1.53.0.6",
     "types-protobuf>=7.35.1.20260906",
     "types-authlib>=1.8.0.20260911",
     "types-PyYAML>=6.0",
-    "hypothesis>=6.169.1",
+    "hypothesis>=6.170.15",
 ]
 
 [tool.uv]
