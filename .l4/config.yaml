@@ -50,11 +50,19 @@ profiles:
     model: opencode-go/deepseek-v4.1-flash
     vendor: deepseek
     auth: api_key
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
     adapter: opencode
     model: opencode-go/glm-5.3-flash
     vendor: zhipu
     auth: api_key
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
     backend: system-one
     engine: jev
@@ -74,14 +82,24 @@ profiles:
     adapter: opencode
     model: opencode/deepseek-v4.1-flash-free
     vendor: deepseek
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
     adapter: opencode
     model: opencode/glm-5.3-flash-free
     vendor: zhipu
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   nemotron-judge:           # OpenCode Zen's free NVIDIA Nemotron 3.5 Super, no key: the judge when Claude is unavailable or out of quota
     adapter: opencode
     model: opencode/nemotron-3.5-super-vl-free
     vendor: nvidia
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
   delegate-fable:           # the delegate of unattended plans (owner decision 2026-10-25): a model no implementer or judge uses (claude-judge serves claude-sonnet-5-5); the token in CLAUDE_CODE_OAUTH_TOKEN
     adapter: claude-code
     auth: subscription
