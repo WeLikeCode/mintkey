@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 def _run(coro):
     """Synchronous runner for async coroutines (no pytest-asyncio required)."""
     import asyncio
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class TestComputeHashDeterministic:

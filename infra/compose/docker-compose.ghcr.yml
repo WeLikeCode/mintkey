@@ -176,7 +176,7 @@ services:
   admin-api:
     image: ghcr.io/welikecode/mintkey-admin-api:${MINTKEY_TAG:-latest}
     restart: unless-stopped
-    mem_limit: 256m
+    mem_limit: 512m
     environment:
       DATABASE_URL: postgresql+asyncpg://mintkey_app:mintkey_app_password@postgres:5432/mintkey
       VAULT_GRPC_ADDR: vault-adapter:8084

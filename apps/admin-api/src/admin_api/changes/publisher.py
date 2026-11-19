@@ -20,9 +20,16 @@ async def notify_change(session: AsyncSession, channel: str, payload: dict[str, 
     """
     Fire pg_notify with bound parameters. Never uses f-strings.
 
+    When payload has "event" and no "event_type", the published JSON also
+    carries "event_type" with the same value; the caller's dict is not
+    modified; a payload with "event_type" is published as given.
+
     Source: ADR-0008 (bound parameters); ADR-0014.1 (global channels).
     """
+    body = dict(payload)
+    if "event" in body and "event_type" not in body:
+        body["event_type"] = body["event"]
     await session.execute(
         text("SELECT pg_notify(:channel, :payload)"),
-        {"channel": channel, "payload": json.dumps(payload)},
+        {"channel": channel, "payload": json.dumps(body)},
     )

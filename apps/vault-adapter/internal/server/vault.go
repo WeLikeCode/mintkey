@@ -5,8 +5,8 @@
 // RevokeCredential, ListVersions) using AES-256-GCM envelope encryption via
 // the crypto package and SQLite persistence via the store package.
 //
-// ValidateServiceIdentity verifies per-service boot secrets using Argon2id
-// (ADR-0014.2).  Service identities and their pre-hashed tokens are
+// ValidateServiceIdentity verifies per-service boot secrets using HMAC-SHA-256
+// under a per-process key.  Service identities and their token MACs are
 // bootstrapped into an in-memory map; there is no persistent identity store
 // in Phase 1.
 //
@@ -15,12 +15,14 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
-	"crypto/subtle"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +30,6 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/cache"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/crypto"
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
-	"golang.org/x/crypto/argon2"
 )
 
 // -----------------------------------------------------------------------
@@ -94,11 +95,11 @@ type RevokeCredentialArgs struct {
 
 // ListVersionsArgs holds the input for ListVersions.
 type ListVersionsArgs struct {
-	TenantID         string
-	ServiceID        string
-	AfterKeyVersion  uint32
-	Limit            uint32
-	CallerActorID    string
+	TenantID        string
+	ServiceID       string
+	AfterKeyVersion uint32
+	Limit           uint32
+	CallerActorID   string
 }
 
 // VersionDescriptor is a metadata-only view of one credential version.
@@ -114,9 +115,9 @@ type VersionDescriptor struct {
 
 // ListVersionsResult is returned by ListVersions.
 type ListVersionsResult struct {
-	Versions             []VersionDescriptor
-	NextAfterKeyVersion  uint32
-	CurrentKeyVersion    uint32
+	Versions            []VersionDescriptor
+	NextAfterKeyVersion uint32
+	CurrentKeyVersion   uint32
 }
 
 // RotateCredentialArgs is input for RotateCredential.
@@ -148,28 +149,10 @@ func (v *VaultService) RotateCredential(ctx context.Context, args RotateCredenti
 // Service identity types
 // -----------------------------------------------------------------------
 
-// argon2Params holds the Argon2id tuning parameters.  The values follow the
-// OWASP minimum recommendation for interactive logins; boot-time validation
-// is not latency-critical so this is deliberately conservative.
-type argon2Params struct {
-	time    uint32
-	memory  uint32
-	threads uint8
-	keyLen  uint32
-}
-
-var defaultArgon2Params = argon2Params{
-	time:    1,
-	memory:  64 * 1024, // 64 MiB
-	threads: 4,
-	keyLen:  32,
-}
-
-// serviceIdentity holds the Argon2id hash + scopes for one service.
+// serviceIdentity holds the HMAC-SHA-256 MAC + scopes for one service.
 type serviceIdentity struct {
-	tokenHash []byte   // Argon2id(token, salt, params)
-	salt      []byte   // stored alongside hash
-	scopes    []string
+	tokenMAC []byte   // HMAC-SHA-256(VaultService.identityKey, token)
+	scopes   []string // a copy of the registered scopes
 }
 
 // -----------------------------------------------------------------------
@@ -178,11 +161,12 @@ type serviceIdentity struct {
 
 // VaultService implements credential storage and service-identity validation.
 type VaultService struct {
-	kek        []byte
-	store      store.Backend
-	cache      *cache.DEKCache // encrypted-DEK cache (ADR-0014.4)
-	identityMu sync.RWMutex
-	identities map[string]*serviceIdentity // keyed by service_identity_id
+	kek         []byte
+	store       store.Backend
+	cache       *cache.DEKCache // encrypted-DEK cache (ADR-0014.4)
+	identityKey []byte          // 32 random bytes; never logged or returned
+	identityMu  sync.RWMutex
+	identities  map[string]*serviceIdentity // keyed by service_identity_id
 }
 
 // NewVaultService creates a VaultService with the given KEK and store.
@@ -199,12 +183,24 @@ func NewVaultService(kek []byte, s store.Backend, dekCache ...*cache.DEKCache) *
 	} else {
 		c = cache.New(5 * time.Minute)
 	}
-	return &VaultService{
-		kek:        kek,
-		store:      s,
-		cache:      c,
-		identities: make(map[string]*serviceIdentity),
+	identityKey := make([]byte, 32)
+	if _, err := rand.Read(identityKey); err != nil {
+		panic(fmt.Sprintf("vault: NewVaultService: identity key: %v", err))
 	}
+	return &VaultService{
+		kek:         kek,
+		store:       s,
+		cache:       c,
+		identityKey: identityKey,
+		identities:  make(map[string]*serviceIdentity),
+	}
+}
+
+// tokenMAC returns HMAC-SHA-256(v.identityKey, token).
+func (v *VaultService) tokenMAC(token []byte) []byte {
+	mac := hmac.New(sha256.New, v.identityKey)
+	mac.Write(token)
+	return mac.Sum(nil)
 }
 
 // -----------------------------------------------------------------------
@@ -430,45 +426,43 @@ func (v *VaultService) ListVersions(ctx context.Context, args ListVersionsArgs) 
 // Service identity validation
 // -----------------------------------------------------------------------
 
-// RegisterServiceIdentity hashes token with Argon2id and stores the result
-// under identityID.  Call this during bootstrap before accepting requests.
+// RegisterServiceIdentity stores an HMAC-SHA-256 MAC of token under
+// identityID.  Call this during bootstrap before accepting requests.
 func (v *VaultService) RegisterServiceIdentity(identityID string, token []byte, scopes []string) error {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return fmt.Errorf("RegisterServiceIdentity: generate salt: %w", err)
+	if identityID == "" {
+		return fmt.Errorf("RegisterServiceIdentity: empty identity id")
 	}
-	p := defaultArgon2Params
-	hash := argon2.IDKey(token, salt, p.time, p.memory, p.threads, p.keyLen)
+	if len(token) == 0 {
+		return fmt.Errorf("RegisterServiceIdentity(%s): empty token", identityID)
+	}
 
 	v.identityMu.Lock()
 	defer v.identityMu.Unlock()
 	v.identities[identityID] = &serviceIdentity{
-		tokenHash: hash,
-		salt:      salt,
-		scopes:    scopes,
+		tokenMAC: v.tokenMAC(token),
+		scopes:   slices.Clone(scopes),
 	}
 	return nil
 }
 
-// ValidateServiceIdentity verifies a service boot secret using Argon2id
-// constant-time comparison.  Returns the granted scopes and ok=true on
-// success; empty scopes and ok=false on any failure.
+// ValidateServiceIdentity verifies a service boot secret using an
+// HMAC-SHA-256 constant-time comparison.  Returns the granted scopes and
+// ok=true on success; empty scopes and ok=false on any failure.
 func (v *VaultService) ValidateServiceIdentity(ctx context.Context, identityID string, token []byte) (scopes []string, ok bool) {
+	candidate := v.tokenMAC(token)
+
 	v.identityMu.RLock()
 	identity, found := v.identities[identityID]
 	v.identityMu.RUnlock()
 
 	if !found {
-		// Still perform a dummy hash to avoid timing-based identity enumeration.
-		dummySalt := make([]byte, 16)
-		p := defaultArgon2Params
-		argon2.IDKey(token, dummySalt, p.time, p.memory, p.threads, p.keyLen)
+		// Compare against an all-zero MAC so both paths do the same work and
+		// do not leak identity existence by timing.
+		_ = hmac.Equal(candidate, make([]byte, sha256.Size))
 		return nil, false
 	}
 
-	p := defaultArgon2Params
-	candidate := argon2.IDKey(token, identity.salt, p.time, p.memory, p.threads, p.keyLen)
-	if subtle.ConstantTimeCompare(candidate, identity.tokenHash) != 1 {
+	if !hmac.Equal(candidate, identity.tokenMAC) {
 		return nil, false
 	}
 	return identity.scopes, true

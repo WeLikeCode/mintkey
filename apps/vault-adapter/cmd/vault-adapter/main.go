@@ -62,118 +62,15 @@ func main() {
 	svc := server.NewVaultService(key, st, dekCache)
 	srv := server.New(key, dekCache)
 
-	// Register the proxy-plugin service identity so the scopeInterceptor allows
-	// it to call GetCredential (vault.read) and PutCredential (vault.put).
-	// MINTKEY_VAULT_PROXY_IDENTITY_ID defaults to "svcid_proxy"; must match the
-	// proxy-plugin's MINTKEY_VAULT_PROXY_IDENTITY_ID env var.
-	// MINTKEY_VAULT_PROXY_TOKEN must be a shared secret (≥ 32 bytes) provisioned
-	// via a Docker/Kubernetes secret and identical on both sides.
-	proxyIdentityID := os.Getenv("MINTKEY_VAULT_PROXY_IDENTITY_ID")
-	if proxyIdentityID == "" {
-		proxyIdentityID = "svcid_proxy"
+	unset, err := svc.RegisterBootIdentitiesFromEnv(cfg.Env)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "vault-adapter: fatal: %v\n", err)
+		os.Exit(1)
 	}
-	proxyToken := []byte(os.Getenv("MINTKEY_VAULT_PROXY_TOKEN"))
-	if len(proxyToken) == 0 {
-		log.Printf("vault-adapter: WARNING: MINTKEY_VAULT_PROXY_TOKEN is not set; proxy-plugin credential fetches WILL fail with PERMISSION_DENIED")
-	} else {
-		if err := svc.RegisterServiceIdentity(proxyIdentityID, proxyToken, []string{"vault.read", "vault.put"}); err != nil {
-			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", proxyIdentityID, err)
-			os.Exit(1)
-		}
-		log.Printf("vault-adapter: registered proxy service identity %q with scopes [vault.read vault.put]", proxyIdentityID)
+	for _, name := range unset {
+		log.Printf("vault-adapter: WARNING: %s is not set; that identity is not registered and its calls fail with PERMISSION_DENIED", name)
 	}
-
-	// Register the admin-api service identity so the scopeInterceptor allows
-	// it to call GetCredential (vault.read), PutCredential (vault.put),
-	// PutAgentSecret (vault.secret.put), and DeleteAgentSecret (vault.secret.delete).
-	// vault.secret.read is NOT granted — admin-api never reads agent-secret plaintext
-	// (least privilege; operators provision secrets but agents own the read path).
-	// MINTKEY_VAULT_ADMIN_IDENTITY_ID defaults to "svcid_admin_api"; must match
-	// admin-api's MINTKEY_VAULT_ADMIN_IDENTITY_ID env var.
-	// MINTKEY_VAULT_ADMIN_TOKEN must be a shared secret (≥ 32 bytes) provisioned
-	// via a Docker/Kubernetes secret and identical on both sides.
-	adminIdentityID := os.Getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID")
-	if adminIdentityID == "" {
-		adminIdentityID = "svcid_admin_api"
-	}
-	adminToken := []byte(os.Getenv("MINTKEY_VAULT_ADMIN_TOKEN"))
-	if len(adminToken) == 0 {
-		log.Printf("vault-adapter: WARNING: MINTKEY_VAULT_ADMIN_TOKEN is not set; admin-api credential operations WILL fail with PERMISSION_DENIED")
-	} else {
-		if err := svc.RegisterServiceIdentity(adminIdentityID, adminToken, []string{"vault.read", "vault.put", "vault.secret.put", "vault.secret.delete"}); err != nil {
-			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", adminIdentityID, err)
-			os.Exit(1)
-		}
-		log.Printf("vault-adapter: registered admin-api service identity %q with scopes [vault.read vault.put vault.secret.put vault.secret.delete]", adminIdentityID)
-	}
-
-	// Register the SSH-proxy service identity so the scopeInterceptor allows
-	// it to call GetCredential (vault.read). The SSH proxy only reads credentials;
-	// it never writes them (vault.put is not granted).
-	// MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID defaults to "svcid_ssh_proxy"; must match
-	// the ssh-proxy's MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID env var.
-	// MINTKEY_VAULT_SSH_PROXY_TOKEN must be a shared secret (≥ 32 bytes) provisioned
-	// via a Docker/Kubernetes secret. When not set, SSH proxy credential fetches WILL
-	// fail with PERMISSION_DENIED (intentional — unprovisioned env is not a valid state).
-	sshProxyIdentityID := os.Getenv("MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID")
-	if sshProxyIdentityID == "" {
-		sshProxyIdentityID = "svcid_ssh_proxy"
-	}
-	sshProxyToken := []byte(os.Getenv("MINTKEY_VAULT_SSH_PROXY_TOKEN"))
-	if len(sshProxyToken) == 0 {
-		log.Printf("vault-adapter: MINTKEY_VAULT_SSH_PROXY_TOKEN not set; SSH proxy credential fetches WILL fail with PERMISSION_DENIED")
-	} else {
-		// vault.read for GetCredential + GetAgentByFingerprint + GetHostKeyFingerprint
-		// vault.put for StoreHostKeyFingerprint (TOFU write)
-		if err := svc.RegisterServiceIdentity(sshProxyIdentityID, sshProxyToken, []string{"vault.read", "vault.put"}); err != nil {
-			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", sshProxyIdentityID, err)
-			os.Exit(1)
-		}
-		log.Printf("vault-adapter: registered SSH proxy service identity %q with scopes [vault.read vault.put]", sshProxyIdentityID)
-	}
-
-	// Register the email-proxy service identity so ValidateServiceIdentity (and
-	// future GetCredential calls) are allowed. Email proxy has vault.read (to
-	// fetch email credentials) and vault.put is not needed.
-	// MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID defaults to "svcid_email_proxy".
-	// MINTKEY_VAULT_EMAIL_PROXY_TOKEN must be a shared secret (≥ 32 bytes)
-	// provisioned via a Docker/Kubernetes secret and identical on both sides.
-	emailProxyIdentityID := os.Getenv("MINTKEY_VAULT_EMAIL_PROXY_IDENTITY_ID")
-	if emailProxyIdentityID == "" {
-		emailProxyIdentityID = "svcid_email_proxy"
-	}
-	emailProxyToken := []byte(os.Getenv("MINTKEY_VAULT_EMAIL_PROXY_TOKEN"))
-	if len(emailProxyToken) == 0 {
-		log.Printf("vault-adapter: MINTKEY_VAULT_EMAIL_PROXY_TOKEN not set; email-proxy identity validation WILL fail with PERMISSION_DENIED")
-	} else {
-		if err := svc.RegisterServiceIdentity(emailProxyIdentityID, emailProxyToken, []string{"vault.read"}); err != nil {
-			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", emailProxyIdentityID, err)
-			os.Exit(1)
-		}
-		log.Printf("vault-adapter: registered email-proxy service identity %q with scopes [vault.read]", emailProxyIdentityID)
-	}
-
-	// Register the MCP-server service identity so the scopeInterceptor allows
-	// it to call PutAgentSecret (vault.secret.put), GetAgentSecret (vault.secret.read),
-	// and DeleteAgentSecret (vault.secret.delete) on the AgentSecretsVault service.
-	// MINTKEY_VAULT_MCP_IDENTITY_ID defaults to "svcid_mcp"; must match the
-	// mcp-server's MINTKEY_VAULT_MCP_IDENTITY_ID env var.
-	// MINTKEY_VAULT_MCP_TOKEN must be a shared secret (≥ 32 bytes) provisioned
-	// via a Docker/Kubernetes secret and identical on both sides.
-	mcpIdentityID := os.Getenv("MINTKEY_VAULT_MCP_IDENTITY_ID")
-	if mcpIdentityID == "" {
-		mcpIdentityID = "svcid_mcp"
-	}
-	mcpToken := []byte(os.Getenv("MINTKEY_VAULT_MCP_TOKEN"))
-	if len(mcpToken) == 0 {
-		log.Printf("vault-adapter: MINTKEY_VAULT_MCP_TOKEN not set; MCP-server agent-secret operations WILL fail with PERMISSION_DENIED")
-	} else {
-		if err := svc.RegisterServiceIdentity(mcpIdentityID, mcpToken, []string{"vault.secret.put", "vault.secret.read", "vault.secret.delete"}); err != nil {
-			fmt.Fprintf(os.Stderr, "vault-adapter: RegisterServiceIdentity(%s): %v\n", mcpIdentityID, err)
-			os.Exit(1)
-		}
-		log.Printf("vault-adapter: registered MCP service identity %q with scopes [vault.secret.put vault.secret.read vault.secret.delete]", mcpIdentityID)
-	}
+	log.Printf("vault-adapter: registered %d of %d boot identities", len(server.BootIdentities)-len(unset), len(server.BootIdentities))
 
 	// Wire the SSHStore so ListenAndServe registers the SSHVaultAdapter service.
 	// Only PostgresStore implements SSHStore; SQLite falls back to no SSH RPCs.

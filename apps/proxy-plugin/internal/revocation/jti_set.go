@@ -1,9 +1,14 @@
 package revocation
 
 import (
+	"context"
 	"sync"
 	"time"
 )
+
+// JTIRetention is the longest time a token can stay valid after it is revoked:
+// the broker's 3600 s maximum TTL plus the proxy's 30 s clock skew.
+const JTIRetention = 3630 * time.Second
 
 // JTIRevocationSet is a thread-safe set of revoked JTI strings with bounded
 // size. Has bounded size (max 100_000 entries by default) with time-based
@@ -49,6 +54,21 @@ func (s *JTIRevocationSet) Len() int {
 	n := len(s.revoked)
 	s.mu.RUnlock()
 	return n
+}
+
+// RunEviction calls s.Evict(retention) every interval until ctx is done, then
+// returns.
+func (s *JTIRevocationSet) RunEviction(ctx context.Context, interval, retention time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.Evict(retention)
+		}
+	}
 }
 
 // Evict removes entries whose revoked_at is older than ttl.

@@ -15,10 +15,7 @@ Source: T-1.13.3; T-1.13.5; ADR-0008; ADR-0014.7; Req AUD-4; Req 15; ADR-0027 §
 """
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import datetime, timezone
-from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -29,31 +26,9 @@ from admin_api.auth.sessions import require_platform_admin_session
 from admin_api.db.deps import get_db_session
 from admin_api.middleware.platform_admin_audit import emit_platform_admin_access
 from mintkey_models.audit import audit_emit
+from mintkey_models.audit_hash import chain_event_from_row, verify_events
 
 router = APIRouter(prefix="/v1/admin/audit")
-
-# ---------------------------------------------------------------------------
-# Pure hash-chain functions (re-implemented inline — no cross-package import)
-# ADR-0014.7 / T-1.13.2 canonical algorithm.
-# ---------------------------------------------------------------------------
-
-_GENESIS_PREFIX = "mintkey-audit-genesis-v1:"
-
-
-def _genesis_hash(tenant_id: str) -> bytes:
-    return hashlib.sha256((_GENESIS_PREFIX + tenant_id).encode()).digest()
-
-
-def _compute_event_hash(
-    event_type: str, tenant_id: str, payload: dict[str, Any], prev_hash: bytes
-) -> bytes:
-    canonical = json.dumps(
-        {"event_type": event_type, "tenant_id": tenant_id, "payload": payload},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(canonical + prev_hash).digest()
-
 
 # ---------------------------------------------------------------------------
 # Endpoint
@@ -86,66 +61,46 @@ async def verify_chain_endpoint(
         resource_type="audit_verify_chain",
     )
 
-    # Fetch all audit events for the tenant in chain order — bound params only (ADR-0008)
+    # Fetch all 13 stored columns for the tenant in chain order — bound params only (ADR-0008)
     result = await session.execute(
         text(
-            "SELECT id, event_type, tenant_id, payload, hash, prev_hash"
+            "SELECT id, tenant_id, event_type, actor_id, actor_type,"
+            " target_id, target_type, payload, at, prev_hash, hash,"
+            " request_id, trace_id"
             " FROM audit_events"
             " WHERE tenant_id = :tenant_id"
-            " ORDER BY id ASC"
+            " ORDER BY at ASC, id ASC"
         ),
         {"tenant_id": tenant_id},
     )
     rows = result.fetchall()
 
-    if not rows:
+    chain = verify_events([chain_event_from_row(row) for row in rows])
+
+    if chain.ok:
         return JSONResponse(
             {
                 "ok": True,
-                "chain_length": 0,
-                "last_event_id": None,
+                "chain_length": chain.chain_length,
+                "last_event_id": chain.last_event_id,
                 "verified_at": datetime.now(timezone.utc).isoformat(),
             }
         )
 
-    # Verify chain
-    expected_prev = _genesis_hash(tenant_id)
-
-    for i, row in enumerate(rows):
-        stored_prev: bytes = row.prev_hash
-        stored_hash: bytes = row.hash
-        payload: dict[str, Any] = row.payload if isinstance(row.payload, dict) else {}
-
-        if stored_prev != expected_prev:
-            computed = _compute_event_hash(row.event_type, str(row.tenant_id), payload, expected_prev)
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "first_bad_event_id": row.id,
-                    "expected_hash": expected_prev.hex(),
-                    "actual_hash": stored_prev.hex(),
-                }
-            )
-
-        computed = _compute_event_hash(row.event_type, str(row.tenant_id), payload, stored_prev)
-        if stored_hash != computed:
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "first_bad_event_id": row.id,
-                    "expected_hash": computed.hex(),
-                    "actual_hash": stored_hash.hex(),
-                }
-            )
-
-        expected_prev = computed
-
     return JSONResponse(
         {
-            "ok": True,
-            "chain_length": len(rows),
-            "last_event_id": rows[-1].id,
-            "verified_at": datetime.now(timezone.utc).isoformat(),
+            "ok": False,
+            "first_bad_event_id": chain.first_bad_event_id,
+            "expected_hash": (
+                chain.expected_hash.hex()
+                if chain.expected_hash is not None
+                else None
+            ),
+            "actual_hash": (
+                chain.actual_hash.hex()
+                if chain.actual_hash is not None
+                else None
+            ),
         }
     )
 

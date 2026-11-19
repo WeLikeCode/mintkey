@@ -11,9 +11,8 @@
 // inside standard gRPC length-prefixed frames. The codec is selected per-call
 // by both sides via grpc.ForceCodec(sshvault.JSONCodec{}).
 //
-// Auth: every call must supply x-mintkey-service-identity and
-// x-mintkey-service-token metadata. The required scope is "vault.read" for
-// the two read RPCs and "vault.put" for StoreHostKeyFingerprint.
+// Auth: the gRPC scope interceptor authorizes every call. The two read RPCs
+// require "vault.read" and StoreHostKeyFingerprint requires "vault.hostkey.put".
 //
 // Source: ADR-0021; chunk C7.
 package server
@@ -25,7 +24,6 @@ import (
 	"github.com/mintkey/mintkey/services/vault-adapter/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -70,10 +68,10 @@ var sshVaultServiceDesc = grpc.ServiceDesc{
 // --------------------------------------------------------------------------
 // gRPC handler functions — called by the gRPC framework via ServiceDesc.
 // Each handler:
-//   1. Validates scope via the VaultService identity store.
-//   2. Decodes the JSON-encoded request bytes.
-//   3. Calls the appropriate store method.
-//   4. Returns a JSON-encoded response or a gRPC status error.
+//   1. Decodes the JSON-encoded request bytes.
+//   2. Calls the appropriate store method.
+//   3. Returns a JSON-encoded response or a gRPC status error.
+// The scope interceptor checks the caller's identity and scope before dispatch.
 // --------------------------------------------------------------------------
 
 func _SSHVault_GetAgentByFingerprint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -135,11 +133,8 @@ func _SSHVault_StoreHostKeyFingerprint_Handler(srv interface{}, ctx context.Cont
 // --------------------------------------------------------------------------
 
 // GetAgentByFingerprint looks up the agent whose ssh_pubkey fingerprint matches
-// the one in the request. Requires scope "vault.read".
+// the one in the request. The interceptor requires scope "vault.read".
 func (s *sshVaultServer) GetAgentByFingerprint(ctx context.Context, req *sshvault.GetAgentByFingerprintRequest) (*sshvault.GetAgentByFingerprintResponse, error) {
-	if err := s.requireScope(ctx, "vault.read"); err != nil {
-		return nil, err
-	}
 	if req.Fingerprint == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "fingerprint is required")
 	}
@@ -175,11 +170,8 @@ func (s *sshVaultServer) GetAgentByFingerprint(ctx context.Context, req *sshvaul
 }
 
 // GetHostKeyFingerprint retrieves the stored SSH host key fingerprint for a
-// (tenant, service) pair. Requires scope "vault.read".
+// (tenant, service) pair. The interceptor requires scope "vault.read".
 func (s *sshVaultServer) GetHostKeyFingerprint(ctx context.Context, req *sshvault.HostKeyFingerprintRequest) (*sshvault.HostKeyFingerprintResponse, error) {
-	if err := s.requireScope(ctx, "vault.read"); err != nil {
-		return nil, err
-	}
 	if req.TenantID == "" || req.ServiceID == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "tenant_id and service_id are required")
 	}
@@ -193,11 +185,8 @@ func (s *sshVaultServer) GetHostKeyFingerprint(ctx context.Context, req *sshvaul
 }
 
 // StoreHostKeyFingerprint persists a TOFU host-key fingerprint.
-// Requires scope "vault.put".
+// The interceptor requires scope "vault.hostkey.put".
 func (s *sshVaultServer) StoreHostKeyFingerprint(ctx context.Context, req *sshvault.StoreHostKeyFingerprintRequest) (*sshvault.StoreHostKeyFingerprintResponse, error) {
-	if err := s.requireScope(ctx, "vault.put"); err != nil {
-		return nil, err
-	}
 	if req.TenantID == "" || req.ServiceID == "" || req.Fingerprint == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "tenant_id, service_id, and fingerprint are required")
 	}
@@ -207,30 +196,6 @@ func (s *sshVaultServer) StoreHostKeyFingerprint(ctx context.Context, req *sshva
 	}
 
 	return &sshvault.StoreHostKeyFingerprintResponse{}, nil
-}
-
-// --------------------------------------------------------------------------
-// Auth helper
-// --------------------------------------------------------------------------
-
-// requireScope validates the caller's service token and checks the required scope.
-func (s *sshVaultServer) requireScope(ctx context.Context, required string) error {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return status.Errorf(codes.PermissionDenied, "missing metadata")
-	}
-	tokens := md.Get("x-mintkey-service-token")
-	if len(tokens) == 0 || tokens[0] == "" {
-		return status.Errorf(codes.PermissionDenied, "missing service token")
-	}
-	scopes, valid := s.svc.ValidateServiceIdentity(ctx, extractIdentityID(md), []byte(tokens[0]))
-	if !valid {
-		return status.Errorf(codes.PermissionDenied, "invalid service token")
-	}
-	if !hasScope(scopes, required) {
-		return status.Errorf(codes.PermissionDenied, "caller lacks required scope %q", required)
-	}
-	return nil
 }
 
 // Ensure sshVaultServer satisfies the compiler (no interface defined — manual dispatch).

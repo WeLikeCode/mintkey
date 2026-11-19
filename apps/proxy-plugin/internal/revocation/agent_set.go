@@ -4,7 +4,11 @@
 // Source: ADR-0014.4; T-1.6.7.
 package revocation
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/wireid"
+)
 
 // AgentRevocationSet is a thread-safe set of revoked agent IDs.
 // Populated by the change channel subscriber from agent.revoked events.
@@ -18,17 +22,24 @@ func NewAgentRevocationSet() *AgentRevocationSet {
 	return &AgentRevocationSet{revoked: make(map[string]struct{})}
 }
 
-// Add marks agentID as revoked.
+// Add marks agentID as revoked. Ids are keyed by their canonical UUID form, so
+// the wire form, the legacy 32-hex wire form and the dashed UUID all match.
+// Add("") adds nothing.
 func (s *AgentRevocationSet) Add(agentID string) {
+	if agentID == "" {
+		return
+	}
+	key := wireid.Canonical(agentID, "agent_")
 	s.mu.Lock()
-	s.revoked[agentID] = struct{}{}
+	s.revoked[key] = struct{}{}
 	s.mu.Unlock()
 }
 
 // Contains reports whether agentID has been revoked.
 func (s *AgentRevocationSet) Contains(agentID string) bool {
+	key := wireid.Canonical(agentID, "agent_")
 	s.mu.RLock()
-	_, ok := s.revoked[agentID]
+	_, ok := s.revoked[key]
 	s.mu.RUnlock()
 	return ok
 }

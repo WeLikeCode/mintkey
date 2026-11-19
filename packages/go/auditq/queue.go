@@ -37,7 +37,6 @@
 package auditq
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -47,8 +46,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -71,10 +72,74 @@ const (
 	// initialRetryDelay is the first back-off interval.
 	initialRetryDelay = 250 * time.Millisecond
 
-	// maxDeadLetterRetries is the number of consecutive failures before an
-	// event is moved to the dead-letter file (same dir, ".dead" suffix).
-	maxDeadLetterRetries = 5
+	// drainConcurrencyDefault is the number of delivery requests in flight.
+	drainConcurrencyDefault = 4
+
+	// drainBatchSizeDefault is the number of pending events read per pass.
+	drainBatchSizeDefault = 1000
+
+	// Environment variables that tune the drainer. An unset or empty value
+	// takes its default; a value that is not an integer of at least 1 is
+	// ignored with a warning.
+	envDrainConcurrency = "MINTKEY_AUDIT_DRAIN_CONCURRENCY"
+	envDrainBatchSize   = "MINTKEY_AUDIT_DRAIN_BATCH_SIZE"
+	envRetryInitialMS   = "MINTKEY_AUDIT_RETRY_INITIAL_MS"
+	envRetryMaxMS       = "MINTKEY_AUDIT_RETRY_MAX_MS"
 )
+
+// drainSettings holds the effective drainer settings read from the
+// environment when the queue is built.
+type drainSettings struct {
+	concurrency  int
+	batchSize    int
+	initialDelay time.Duration
+	maxDelay     time.Duration
+}
+
+// drainSettingsFromEnv reads the four drain-setting environment variables.
+// Each unset or empty variable takes its default; each value that is not an
+// integer of at least 1 is replaced by its default with one WARN record naming
+// the variable. A maximum below the initial delay becomes the initial delay.
+func drainSettingsFromEnv() drainSettings {
+	s := drainSettings{
+		concurrency:  drainConcurrencyDefault,
+		batchSize:    drainBatchSizeDefault,
+		initialDelay: initialRetryDelay,
+		maxDelay:     maxRetryDelay,
+	}
+	if v, ok := positiveIntSetting(envDrainConcurrency); ok {
+		s.concurrency = v
+	}
+	if v, ok := positiveIntSetting(envDrainBatchSize); ok {
+		s.batchSize = v
+	}
+	if v, ok := positiveIntSetting(envRetryInitialMS); ok {
+		s.initialDelay = time.Duration(v) * time.Millisecond
+	}
+	if v, ok := positiveIntSetting(envRetryMaxMS); ok {
+		s.maxDelay = time.Duration(v) * time.Millisecond
+	}
+	if s.maxDelay < s.initialDelay {
+		s.maxDelay = s.initialDelay
+	}
+	return s
+}
+
+// positiveIntSetting parses name as an integer of at least 1. It reports false
+// for an unset or empty variable, and false after logging one WARN record for
+// a set value that is not an integer of at least 1.
+func positiveIntSetting(name string) (int, bool) {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return 0, false
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 1 {
+		slog.Warn("auditq: ignoring invalid setting", "name", name)
+		return 0, false
+	}
+	return v, true
+}
 
 // Event is the wire shape sent to admin-api's /v1/internal/audit/emit.
 // Payload MUST NOT contain credential plaintext (S-SEC-1).
@@ -95,7 +160,14 @@ type Queue struct {
 	serviceToken string
 	walPath      string
 
-	ch     chan Event
+	// memCh holds events whose WAL append failed; they are delivered while
+	// the process runs, as today.
+	memCh chan Event
+
+	// wakeCh is a capacity-1 signal to the drainer that new work exists. A
+	// wake that would block is dropped because a wake is already pending.
+	wakeCh chan struct{}
+
 	httpC  *http.Client
 	stopCh chan struct{}
 	doneCh chan struct{}
@@ -105,11 +177,18 @@ type Queue struct {
 	// read-filter-rename sequence, ensuring Enqueue never races with compaction.
 	walMu sync.Mutex
 
+	// deadMu serialises dead-letter appends so the file-size gauge reflects
+	// the file after the last write, even when deliveries run concurrently.
+	deadMu sync.Mutex
+
 	// metrics holds all Prometheus-format gauges and counters for this queue.
 	metrics *Metrics
 
 	// compactCfg controls when the compaction worker triggers.
 	compactCfg CompactConfig
+
+	// settings holds the drainer settings read from the environment.
+	settings drainSettings
 }
 
 // New creates a Queue targeting adminAPIURL/v1/internal/audit/emit.
@@ -136,86 +215,137 @@ func NewWithConfig(adminAPIURL, serviceToken, walPath, serviceLabel string, cc C
 		adminAPIURL:  adminAPIURL,
 		serviceToken: serviceToken,
 		walPath:      walPath,
-		ch:           make(chan Event, channelCap),
+		memCh:        make(chan Event, channelCap),
+		wakeCh:       make(chan struct{}, 1),
 		httpC:        &http.Client{Timeout: 10 * time.Second},
 		stopCh:       make(chan struct{}),
 		doneCh:       make(chan struct{}),
 		metrics:      newMetrics(serviceLabel),
 		compactCfg:   cc,
+		settings:     drainSettingsFromEnv(),
 	}
 }
 
-// Replay reads the WAL file and re-enqueues any events that were not yet
-// confirmed delivered (non-tombstone lines).  Call once after New, before
-// Start.
+// Replay sets the backlog from the events that were not yet delivered or
+// dead-lettered in the WAL. It delivers nothing itself: the drainer started by
+// Start reads the WAL. Call once after New, before Start.
 func (q *Queue) Replay() {
 	q.walMu.Lock()
-	defer q.walMu.Unlock()
-
-	f, err := os.Open(q.walPath)
+	data, err := os.ReadFile(q.walPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			q.metrics.backlogEvents.Store(0)
+			q.walMu.Unlock()
 			return // nothing to replay
 		}
-		slog.Warn("auditq: replay: open WAL", "path", q.walPath, "err", err)
+		q.walMu.Unlock()
+		slog.Warn("auditq: replay: read WAL", "path", q.walPath, "err", err)
 		return
 	}
-	defer func() { _ = f.Close() }()
+	pending := countPendingLines(data)
+	q.metrics.backlogEvents.Store(pending)
+	q.walMu.Unlock()
 
-	scanner := bufio.NewScanner(f)
-	var replayed int
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, walTombstone) {
+	if pending > 0 {
+		slog.Info("auditq: WAL has pending events", "count", pending, "wal", q.walPath)
+	}
+}
+
+// countPendingLines counts the lines of data that decode as an Event and are
+// neither blank nor tombstoned. A fragment without a terminating newline is
+// skipped until a later append terminates it.
+func countPendingLines(data []byte) int64 {
+	data = completeLines(data)
+	var pending int64
+	for _, raw := range bytes.Split(data, []byte("\n")) {
+		line := strings.TrimSpace(string(raw))
+		if line == "" || strings.HasPrefix(line, walTombstone) {
 			continue
 		}
 		var e Event
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			slog.Warn("auditq: replay: unmarshal event", "line", line, "err", err)
+		if err := json.Unmarshal(raw, &e); err != nil {
 			continue
 		}
-		select {
-		case q.ch <- e:
-			replayed++
-		default:
-			// Channel full on replay — very unlikely at startup, but log it.
-			slog.Warn("auditq: replay: channel full, event queued at WAL-only level",
-				"event_type", e.EventType)
-		}
+		pending++
 	}
-	if replayed > 0 {
-		slog.Info("auditq: replayed WAL events", "count", replayed, "wal", q.walPath)
+	return pending
+}
+
+// completeLines drops an unterminated final line so that only whole lines are
+// read; the fragment stays in the file until an append terminates it.
+func completeLines(data []byte) []byte {
+	if len(data) == 0 || data[len(data)-1] == '\n' {
+		return data
 	}
+	idx := bytes.LastIndexByte(data, '\n')
+	if idx < 0 {
+		return nil
+	}
+	return data[:idx+1]
 }
 
 // Start launches the background drainer goroutine and the WAL compaction
 // worker.  Call once after Replay.
 func (q *Queue) Start() {
+	s := q.settings
+	slog.Info("auditq: drain settings",
+		"service", q.metrics.serviceLabel,
+		"concurrency", s.concurrency,
+		"batch_size", s.batchSize,
+		"initial_retry_delay", s.initialDelay,
+		"max_retry_delay", s.maxDelay)
 	go q.drain()
 	go q.compactWorker(q.compactCfg)
 }
 
-// Enqueue appends event to the WAL (synchronous, durable) then sends it to
-// the in-memory channel (O(1) non-blocking). If the channel is full the event
-// is already persisted in the WAL and will be replayed on next startup; a
-// warning is logged.
+// Enqueue appends event to the WAL (synchronous, durable), adds it to the
+// backlog and wakes the drainer. When the append fails the event is held in
+// the in-memory channel instead, so it is delivered while the process runs.
 //
 // Enqueue is safe to call concurrently.
 func (q *Queue) Enqueue(e Event) {
-	// 1. Write to WAL first — this is the durability guarantee.
-	if err := q.appendWAL(e); err != nil {
-		slog.Error("auditq: WAL write failed — event may be lost",
+	line, err := json.Marshal(e)
+	if err != nil {
+		slog.Error("auditq: marshal event — event lost",
 			"event_type", e.EventType, "err", err)
-		// We still try the channel send below; worst case the event is
-		// lost if the process dies before delivery.
+		return
 	}
 
-	// 2. Non-blocking channel send.
+	q.walMu.Lock()
+	if werr := q.appendWALLocked(line); werr != nil {
+		slog.Error("auditq: WAL write failed — holding event in memory",
+			"event_type", e.EventType, "err", werr)
+		select {
+		case q.memCh <- e:
+			q.metrics.backlogEvents.Add(1)
+		default:
+			slog.Error("auditq: memory queue full — event lost",
+				"event_type", e.EventType)
+		}
+	} else {
+		q.metrics.backlogEvents.Add(1)
+	}
+	q.walMu.Unlock()
+
+	q.wake()
+}
+
+// wake tells the drainer that new work may exist. The channel has capacity 1,
+// so a wake that would block is dropped: one wake is already pending.
+func (q *Queue) wake() {
 	select {
-	case q.ch <- e:
+	case q.wakeCh <- struct{}{}:
 	default:
-		slog.Warn("auditq: channel full — event persisted in WAL, will drain later",
-			"event_type", e.EventType)
+	}
+}
+
+// closing reports whether Close has asked the drainer to stop.
+func (q *Queue) closing() bool {
+	select {
+	case <-q.stopCh:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -240,68 +370,137 @@ func (q *Queue) CloseWithContext(ctx context.Context) {
 	}
 }
 
-// appendWAL appends a newline-delimited JSON line to the WAL file.
-func (q *Queue) appendWAL(e Event) error {
-	b, err := json.Marshal(e)
-	if err != nil {
-		return fmt.Errorf("auditq: marshal event: %w", err)
-	}
-
-	q.walMu.Lock()
-	defer q.walMu.Unlock()
-
-	f, err := os.OpenFile(q.walPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+// appendWALLocked appends a newline-delimited JSON line to the WAL file. When
+// the file does not end with a newline (a line cut by a crash), a newline is
+// written first so the new event starts on its own line. The caller holds
+// walMu.
+func (q *Queue) appendWALLocked(line []byte) error {
+	f, err := os.OpenFile(q.walPath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("auditq: open WAL: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	if _, err := f.Write(append(b, '\n')); err != nil {
+	out := make([]byte, 0, len(line)+2)
+	info, statErr := f.Stat()
+	if statErr == nil && info.Size() > 0 {
+		var last [1]byte
+		if _, rerr := f.ReadAt(last[:], info.Size()-1); rerr == nil && last[0] != '\n' {
+			out = append(out, '\n')
+		}
+	}
+	out = append(out, line...)
+	out = append(out, '\n')
+
+	if _, err := f.Write(out); err != nil {
 		return fmt.Errorf("auditq: write WAL: %w", err)
 	}
 	return nil
 }
 
-// tombstoneWAL scans the WAL file and replaces the first occurrence of
-// a line matching event with a tombstone marker.  This is a best-effort
-// operation; failure is logged but not fatal.
-func (q *Queue) tombstoneWAL(e Event) {
-	target, err := json.Marshal(e)
-	if err != nil {
-		return
+// tombstoneWAL overwrites the WAL line of entry in place with a tombstone (~
+// followed by spaces up to the line's length), then takes the event off the
+// backlog. Before writing it checks that the bytes at the line's remembered
+// offset are still that line (compaction may have moved it) and otherwise
+// finds the first live line with the same text. It reports whether the event
+// may be considered settled; a write failure leaves the line live so the event
+// is retried.
+func (q *Queue) tombstoneWAL(entry *batchEntry) bool {
+	target := entry.line
+	if len(target) == 0 {
+		var err error
+		target, err = json.Marshal(entry.event)
+		if err != nil {
+			return false
+		}
 	}
-	targetStr := string(target)
 
 	q.walMu.Lock()
 	defer q.walMu.Unlock()
 
-	data, err := os.ReadFile(q.walPath)
+	offset, length, found, err := q.locateLineLocked(target, entry.offset)
 	if err != nil {
 		slog.Warn("auditq: tombstone: read WAL", "err", err)
-		return
+		return false
 	}
-
-	lines := strings.Split(string(data), "\n")
-	replaced := false
-	for i, line := range lines {
-		if !replaced && strings.TrimSpace(line) == targetStr {
-			lines[i] = walTombstone
-			replaced = true
+	if found {
+		if werr := q.writeTombstoneAtLocked(offset, length); werr != nil {
+			slog.Warn("auditq: tombstone: write WAL", "err", werr)
+			return false
 		}
 	}
-	if !replaced {
-		return // line already gone or never persisted
+
+	q.metrics.backlogEvents.Add(-1)
+	return true
+}
+
+// locateLineLocked returns the offset and length of the line whose raw bytes
+// equal target. It first checks the remembered offset, then scans for the
+// first live line with the same text. A missing WAL reports found=false with
+// no error. The caller holds walMu.
+func (q *Queue) locateLineLocked(target []byte, hint int64) (offset, length int64, found bool, err error) {
+	f, err := os.Open(q.walPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, 0, false, nil
+		}
+		return 0, 0, false, err
+	}
+	defer func() { _ = f.Close() }()
+
+	if hint >= 0 && len(target) > 0 {
+		buf := make([]byte, len(target))
+		if n, rerr := f.ReadAt(buf, hint); rerr == nil && n == len(buf) && bytes.Equal(buf, target) {
+			return hint, int64(len(target)), true, nil
+		}
 	}
 
-	if err := os.WriteFile(q.walPath, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
-		slog.Warn("auditq: tombstone: write WAL", "err", err)
+	data, rerr := io.ReadAll(f)
+	if rerr != nil {
+		return 0, 0, false, rerr
 	}
+	targetText := string(target)
+	var off int64
+	for _, raw := range bytes.Split(data, []byte("\n")) {
+		lineLen := int64(len(raw))
+		text := strings.TrimSpace(string(raw))
+		if text != "" && !strings.HasPrefix(text, walTombstone) && text == strings.TrimSpace(targetText) {
+			return off, lineLen, true, nil
+		}
+		off += lineLen + 1
+	}
+	return 0, 0, false, nil
+}
+
+// writeTombstoneAtLocked overwrites length bytes at offset with ~ followed by
+// spaces, keeping the file size and the line's trailing newline intact. The
+// caller holds walMu.
+func (q *Queue) writeTombstoneAtLocked(offset, length int64) error {
+	if length <= 0 {
+		return nil
+	}
+	buf := make([]byte, length)
+	for i := range buf {
+		buf[i] = ' '
+	}
+	buf[0] = walTombstone[0]
+
+	f, err := os.OpenFile(q.walPath, os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	_, err = f.WriteAt(buf, offset)
+	return err
 }
 
 // deadLetterWAL appends the event to a side-file named <walPath>.dead so
 // operators can inspect permanently failing events.  Only counts and file-size
 // metadata are reflected in metrics — no plaintext from the event (S-SEC-1).
 func (q *Queue) deadLetterWAL(e Event, lastErr error) {
+	q.deadMu.Lock()
+	defer q.deadMu.Unlock()
+
 	b, _ := json.Marshal(map[string]any{
 		"event":    e,
 		"last_err": lastErr.Error(),
@@ -324,70 +523,296 @@ func (q *Queue) deadLetterWAL(e Event, lastErr error) {
 		q.metrics.deadLetterFileSizeBytes.Store(info.Size())
 	}
 
-	slog.Error("auditq: event moved to dead-letter file after max retries",
-		"event_type", e.EventType, "dead_letter", path)
+	slog.Error("auditq: event moved to dead-letter file",
+		"event_type", e.EventType, "dead_letter", path, "err", lastErr)
 }
 
-// drain is the background worker.  It pulls events from the channel and calls
-// emit for each, with exponential back-off on failure.
+// deadLetterUnreadableLocked appends a record for an unreadable WAL line to
+// <walPath>.dead, counts it and refreshes the file-size gauge. The caller
+// holds walMu.
+func (q *Queue) deadLetterUnreadableLocked(text string) {
+	q.deadMu.Lock()
+	defer q.deadMu.Unlock()
+
+	b, _ := json.Marshal(map[string]any{
+		"line":     text,
+		"last_err": "unreadable WAL line",
+		"at":       time.Now().UTC().Format(time.RFC3339),
+	})
+	path := q.walPath + ".dead"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		slog.Error("auditq: dead-letter open", "err", err)
+		return
+	}
+	defer func() { _ = f.Close() }()
+	_, _ = f.Write(append(b, '\n'))
+
+	q.metrics.deadLetterTotal.Add(1)
+	if info, statErr := os.Stat(path); statErr == nil {
+		q.metrics.deadLetterFileSizeBytes.Store(info.Size())
+	}
+
+	slog.Error("auditq: unreadable WAL line moved to dead-letter file",
+		"dead_letter", path, "line", text)
+}
+
+// batchEntry is one event read from the WAL or held in memory for delivery.
+type batchEntry struct {
+	event      Event
+	line       []byte // raw WAL line bytes; nil for a memory event
+	offset     int64  // offset of line in the WAL
+	fromMemory bool
+	settled    bool
+}
+
+// drain is the background worker. It reads pending events from the WAL (plus
+// the events held in memory), delivers them in rounds of up to the configured
+// concurrency, and waits a capped, progress-based delay after a round in which
+// nothing was delivered or refused.
 func (q *Queue) drain() {
 	defer close(q.doneCh)
+
+	delay := q.settings.initialDelay
 	for {
-		select {
-		case e := <-q.ch:
-			q.emitWithRetry(e)
-		case <-q.stopCh:
-			// Drain remaining in-flight events before exiting.
-		drainLoop:
-			for {
-				select {
-				case e := <-q.ch:
-					q.emitWithRetry(e)
-				default:
-					break drainLoop
-				}
+		batch := q.readBatch()
+		if len(batch) == 0 {
+			if q.closing() {
+				return
 			}
+			select {
+			case <-q.wakeCh:
+				continue
+			case <-q.stopCh:
+				return
+			}
+		}
+
+		progressed := false
+		for i := 0; i < len(batch); {
+			size := q.settings.concurrency
+			if size > len(batch)-i {
+				size = len(batch) - i
+			}
+			round := batch[i : i+size]
+			i += size
+
+			delivered, lastErr := q.deliverRound(round)
+			if delivered > 0 {
+				delay = q.settings.initialDelay
+				progressed = true
+				continue
+			}
+			if q.closing() {
+				q.returnMemory(batch)
+				return
+			}
+
+			next := nextRetryDelay(delay, q.settings.maxDelay)
+			slog.Warn("auditq: drain round made no progress",
+				"events", len(round),
+				"delay", delay,
+				"next_delay", next,
+				"err", lastErr)
+			if !q.waitDelay(delay) {
+				q.returnMemory(batch)
+				return
+			}
+			delay = next
+		}
+
+		q.returnMemory(batch)
+		if q.closing() && !progressed {
 			return
 		}
 	}
 }
 
-// emitWithRetry calls emit and retries on failure with exponential back-off
-// until maxDeadLetterRetries consecutive failures, after which the event is
-// moved to the dead-letter file and tombstoned from the WAL.
-func (q *Queue) emitWithRetry(e Event) {
-	delay := initialRetryDelay
-	for attempt := 1; attempt <= maxDeadLetterRetries; attempt++ {
-		err := q.emit(e)
-		if err == nil {
-			q.tombstoneWAL(e)
-			return
+// readBatch reads up to the batch size of pending events from the WAL in file
+// order, then every event waiting in the memory channel. It sets the backlog
+// from the whole read (pending WAL events plus memory events), under walMu so
+// that a concurrent append cannot race with the store.
+func (q *Queue) readBatch() []*batchEntry {
+	q.walMu.Lock()
+	defer q.walMu.Unlock()
+
+	entries := make([]*batchEntry, 0)
+	var pending int64
+
+	data, err := os.ReadFile(q.walPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("auditq: drain: read WAL", "path", q.walPath, "err", err)
 		}
-		slog.Warn("auditq: emit failed",
-			"event_type", e.EventType,
-			"attempt", attempt,
-			"err", err)
-		if attempt < maxDeadLetterRetries {
-			// Check if we've been asked to stop; honour shutdown deadline.
-			select {
-			case <-q.stopCh:
-				// Best-effort: one more try then give up.
-				if err2 := q.emit(e); err2 == nil {
-					q.tombstoneWAL(e)
-				}
-				return
-			case <-time.After(delay):
+	} else {
+		var offset int64
+		for _, raw := range bytes.Split(completeLines(data), []byte("\n")) {
+			lineLen := int64(len(raw))
+			line := strings.TrimSpace(string(raw))
+			if line == "" || strings.HasPrefix(line, walTombstone) {
+				offset += lineLen + 1
+				continue
 			}
-			if delay < maxRetryDelay {
-				delay *= 2
-				if delay > maxRetryDelay {
-					delay = maxRetryDelay
+			var e Event
+			if err := json.Unmarshal(raw, &e); err != nil {
+				q.deadLetterUnreadableLocked(string(raw))
+				if werr := q.writeTombstoneAtLocked(offset, lineLen); werr != nil {
+					slog.Warn("auditq: drain: tombstone unreadable line", "err", werr)
 				}
+				offset += lineLen + 1
+				continue
 			}
+			pending++
+			if len(entries) < q.settings.batchSize {
+				entries = append(entries, &batchEntry{
+					event:  e,
+					line:   append([]byte(nil), raw...),
+					offset: offset,
+				})
+			}
+			offset += lineLen + 1
 		}
 	}
-	q.tombstoneWAL(e)
-	q.deadLetterWAL(e, fmt.Errorf("max retries exceeded"))
+
+	for {
+		select {
+		case e := <-q.memCh:
+			entries = append(entries, &batchEntry{event: e, fromMemory: true})
+			pending++
+		default:
+			q.metrics.backlogEvents.Store(pending)
+			return entries
+		}
+	}
+}
+
+// deliverRound delivers the entries of one round, one goroutine per entry, and
+// settles each entry as soon as the sink answers it. It returns the number of
+// events delivered or refused, and the first error of a retried entry.
+func (q *Queue) deliverRound(entries []*batchEntry) (int, error) {
+	var wg sync.WaitGroup
+	var settled atomic.Int64
+	var firstErr error
+	var errMu sync.Mutex
+
+	recordErr := func(err error) {
+		errMu.Lock()
+		if firstErr == nil {
+			firstErr = err
+		}
+		errMu.Unlock()
+	}
+
+	for _, entry := range entries {
+		wg.Add(1)
+		go func(entry *batchEntry) {
+			defer wg.Done()
+
+			status, err := q.emit(entry.event, entry.line)
+			switch {
+			case isRejected(status):
+				if q.settleRejected(entry, status) {
+					settled.Add(1)
+				} else {
+					recordErr(fmt.Errorf("auditq: dead-letter %s", entry.event.EventType))
+				}
+			case err == nil && status >= 200 && status < 300:
+				if q.settleDelivered(entry) {
+					settled.Add(1)
+				} else {
+					recordErr(fmt.Errorf("auditq: tombstone %s", entry.event.EventType))
+				}
+			default:
+				if err == nil {
+					err = fmt.Errorf("auditq: emit returned HTTP %d", status)
+				}
+				recordErr(err)
+			}
+		}(entry)
+	}
+
+	wg.Wait()
+	return int(settled.Load()), firstErr
+}
+
+// settleDelivered settles an entry the sink accepted with a 2xx answer.
+func (q *Queue) settleDelivered(entry *batchEntry) bool {
+	if entry.fromMemory {
+		q.walMu.Lock()
+		q.metrics.backlogEvents.Add(-1)
+		q.walMu.Unlock()
+		entry.settled = true
+		return true
+	}
+	if !q.tombstoneWAL(entry) {
+		return false
+	}
+	entry.settled = true
+	return true
+}
+
+// settleRejected dead-letters and tombstones an entry the sink refused.
+func (q *Queue) settleRejected(entry *batchEntry, status int) bool {
+	q.deadLetterWAL(entry.event, fmt.Errorf("rejected: HTTP %d", status))
+	if entry.fromMemory {
+		q.walMu.Lock()
+		q.metrics.backlogEvents.Add(-1)
+		q.walMu.Unlock()
+		entry.settled = true
+		return true
+	}
+	if !q.tombstoneWAL(entry) {
+		return false
+	}
+	entry.settled = true
+	return true
+}
+
+// returnMemory puts the memory events of batch that were neither delivered nor
+// refused back into the memory channel, so a later pass retries them.
+func (q *Queue) returnMemory(batch []*batchEntry) {
+	for _, entry := range batch {
+		if !entry.fromMemory || entry.settled {
+			continue
+		}
+		select {
+		case q.memCh <- entry.event:
+		default:
+			slog.Error("auditq: memory queue full — event lost",
+				"event_type", entry.event.EventType)
+		}
+	}
+}
+
+// waitDelay waits d, returning false when the queue is closing.
+func (q *Queue) waitDelay(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-q.stopCh:
+		return false
+	}
+}
+
+// nextRetryDelay doubles current up to maxDelay. A non-positive current, or one
+// already above half of maxDelay, jumps to maxDelay.
+func nextRetryDelay(current, maxDelay time.Duration) time.Duration {
+	if current <= 0 || current > maxDelay/2 {
+		return maxDelay
+	}
+	return 2 * current
+}
+
+// isRejected reports whether status is a final refusal by the sink.
+func isRejected(status int) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return true
+	default:
+		return false
+	}
 }
 
 // TriggerCompact runs one compaction pass synchronously (blocking the caller
@@ -414,11 +839,18 @@ func (q *Queue) MetricsHandler() http.HandlerFunc {
 	return q.metrics.MetricsHandler()
 }
 
-// emit POSTs the event to admin-api's /v1/internal/audit/emit endpoint.
-func (q *Queue) emit(e Event) error {
-	body, err := json.Marshal(e)
-	if err != nil {
-		return fmt.Errorf("auditq: marshal event: %w", err)
+// emit POSTs line to admin-api's /v1/internal/audit/emit endpoint. When line is
+// nil (a memory event) the event is marshalled first. It returns the sink's
+// HTTP status (0 when no answer was read) and an error for any answer that is
+// not 2xx.
+func (q *Queue) emit(e Event, line []byte) (int, error) {
+	body := line
+	if len(body) == 0 {
+		var err error
+		body, err = json.Marshal(e)
+		if err != nil {
+			return 0, fmt.Errorf("auditq: marshal event: %w", err)
+		}
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -428,14 +860,14 @@ func (q *Queue) emit(e Event) error {
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return fmt.Errorf("auditq: build request: %w", err)
+		return 0, fmt.Errorf("auditq: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Mintkey-Service-Token", q.serviceToken)
 
 	resp, err := q.httpC.Do(req)
 	if err != nil {
-		return fmt.Errorf("auditq: POST: %w", err)
+		return 0, fmt.Errorf("auditq: POST: %w", err)
 	}
 	defer func() {
 		_, _ = io.Copy(io.Discard, resp.Body)
@@ -443,7 +875,7 @@ func (q *Queue) emit(e Event) error {
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("auditq: emit returned HTTP %d", resp.StatusCode)
+		return resp.StatusCode, fmt.Errorf("auditq: emit returned HTTP %d", resp.StatusCode)
 	}
-	return nil
+	return resp.StatusCode, nil
 }

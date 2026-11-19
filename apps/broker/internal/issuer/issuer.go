@@ -2,6 +2,7 @@
 //
 // Claims: iss="mintkey/broker", sub=agent_<ULID>, aud=[svc_<ULID>],
 // tnt=tenant_<ULID> (prefixed ULID — NOT slug), scope, jti=jti_<ULID>, iat, exp.
+// Optional claims: service_kind, methods, path_prefix.
 // JWS header carries kid (the active key's ULID).
 //
 // Sources: ADR-0006, ADR-0008, ADR-0017.11, T-1.5.3.
@@ -23,7 +24,9 @@ type TokenRequest struct {
 	ServiceID   string
 	TenantID    string // MUST be prefixed ULID (tenant_<ULID>), NOT a slug
 	Scope       string
-	ServiceKind string // optional — "email" for email_services tokens
+	ServiceKind string   // optional — "email" for email_services tokens
+	Methods     []string // optional — HTTP methods the token permits
+	PathPrefix  string   // optional — absolute path prefix the token permits
 	TTLSeconds  int
 }
 
@@ -61,8 +64,8 @@ func (i *Issuer) Issue(req TokenRequest) (string, error) {
 		"iss":        "mintkey/broker",
 		"sub":        req.AgentID,
 		"aud":        []string{req.ServiceID},
-		"tnt":        req.TenantID, // prefixed ULID — ADR-0017.11, ADR-0008
-		"tenant_id":  req.TenantID, // flat copy for ssh-proxy compatibility
+		"tnt":        req.TenantID,  // prefixed ULID — ADR-0017.11, ADR-0008
+		"tenant_id":  req.TenantID,  // flat copy for ssh-proxy compatibility
 		"service_id": req.ServiceID, // flat copy for ssh-proxy compatibility
 		"scope":      req.Scope,
 		"jti":        jti,
@@ -72,6 +75,13 @@ func (i *Issuer) Issue(req TokenRequest) (string, error) {
 	// service_kind — optional claim; omit when empty to keep tokens lean.
 	if req.ServiceKind != "" {
 		claims["service_kind"] = req.ServiceKind
+	}
+	// methods / path_prefix — optional narrowing claims; omit when empty.
+	if len(req.Methods) > 0 {
+		claims["methods"] = req.Methods
+	}
+	if req.PathPrefix != "" {
+		claims["path_prefix"] = req.PathPrefix
 	}
 
 	headerBytes, err := json.Marshal(header)

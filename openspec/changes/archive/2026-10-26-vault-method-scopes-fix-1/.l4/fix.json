@@ -1,0 +1,14 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:vault-method-scopes",
+  "round": 1,
+  "findings": [
+    "F-2813828d"
+  ],
+  "chores": [
+    "F-2813828d"
+  ],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": []
+}
