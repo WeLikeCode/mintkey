@@ -36,6 +36,20 @@ INTEGRATION = pytest.mark.skipif(
     reason="Requires full stack",
 )
 
+# Go import declarations: `import "path"`, `import alias "path"` and the
+# parenthesised block form `import ( ... )`.
+_GO_IMPORT_SINGLE = re.compile(r'^import\s+(?:[\w.]+\s+)?"([^"]+)"', re.MULTILINE)
+_GO_IMPORT_BLOCK = re.compile(r"^import\s*\((.*?)^\)", re.MULTILINE | re.DOTALL)
+_GO_IMPORT_SPEC = re.compile(r'^\s*(?:[\w.]+\s+)?"([^"]+)"', re.MULTILINE)
+
+
+def _go_import_paths(source: str) -> list[str]:
+    """Return the import paths declared in a Go source file."""
+    paths = _GO_IMPORT_SINGLE.findall(source)
+    for block in _GO_IMPORT_BLOCK.findall(source):
+        paths.extend(_GO_IMPORT_SPEC.findall(block))
+    return paths
+
 
 # ---------------------------------------------------------------------------
 # Unit assertions (always run)
@@ -92,7 +106,10 @@ def test_vault_adapter_standalone() -> None:
         f"No non-test .go files found under {VAULT_ADAPTER_INTERNAL}"
     )
 
-    # Patterns that would indicate a dependency on the admin-api service.
+    # Import paths that would indicate a dependency on the admin-api service.
+    # Only import paths are checked: identifiers and string literals that name
+    # the admin-api (the "svcid_admin_api" service identity, for example) are
+    # not dependencies.
     forbidden_patterns = (
         "mintkey/admin-api",
         "mintkey/services/admin",
@@ -103,9 +120,12 @@ def test_vault_adapter_standalone() -> None:
     violations: list[str] = []
     for go_file in sorted(go_files):
         source = go_file.read_text(encoding="utf-8")
-        for pattern in forbidden_patterns:
-            if pattern in source:
-                violations.append(f"{go_file.relative_to(REPO_ROOT)}: imports '{pattern}'")
+        for import_path in _go_import_paths(source):
+            for pattern in forbidden_patterns:
+                if pattern in import_path:
+                    violations.append(
+                        f"{go_file.relative_to(REPO_ROOT)}: imports '{import_path}'"
+                    )
 
     assert not violations, (
         "vault-adapter internal packages must not depend on admin-api — "

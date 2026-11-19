@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -33,7 +34,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 import argon2
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -49,6 +50,8 @@ from admin_api.services.audit_emit_rate_limiter import (
 )
 from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/internal")
 
@@ -84,6 +87,10 @@ INVALID_KEY_RESPONSE: dict[str, object] = {
     "title": "Invalid agent key",
     "status": 401,
     "mintkey:code": "mintkey:invalid_agent_key",
+}
+
+VERIFY_UNAVAILABLE_RESPONSE: dict[str, object] = {
+    "mintkey:code": "mintkey:verify_unavailable",
 }
 
 
@@ -185,10 +192,11 @@ async def validate_agent_key(
     # so the loop stays free and concurrent validations do not serialise.
     try:
         await _verify_argon2(row.api_key_hash, api_key)
-    except VerifyMismatchError:
+    except (VerificationError, InvalidHashError):
         return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
-    except Exception:
-        return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
+    except Exception as exc:
+        logger.warning("validate-agent-key: verify failed (%s)", type(exc).__name__)
+        return JSONResponse(status_code=503, content=VERIFY_UNAVAILABLE_RESPONSE)
 
     if row.status != "active":
         # Revoked/suspended — same body as any other failure (Req 6 AC2)

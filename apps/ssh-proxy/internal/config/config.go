@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 // Config holds all configuration for the SSH Proxy.
@@ -172,7 +174,11 @@ func Load(configPath string) (*Config, error) {
 	if v := os.Getenv("MINTKEY_VAULT_SSH_PROXY_IDENTITY_ID"); v != "" {
 		cfg.VaultIdentityID = v
 	}
-	if v := os.Getenv("MINTKEY_VAULT_SSH_PROXY_TOKEN"); v != "" {
+	v, err := svcid.FromEnv("MINTKEY_VAULT_SSH_PROXY_TOKEN")
+	if err != nil {
+		return nil, err
+	}
+	if v != "" {
 		cfg.VaultToken = v
 	}
 

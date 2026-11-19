@@ -103,6 +103,15 @@ def create_app() -> FastAPI:
             ctx, err = await validate_agent_key(token)
             if ctx is not None:
                 request.state.agent_context = ctx
+            elif err == "service_unavailable":
+                # The key was never judged (timeout / connection error / 5xx).
+                # Answer 503 with Retry-After; do not run the route. The body is
+                # a constant so it says nothing about the key.
+                return JSONResponse(
+                    status_code=503,
+                    content={"code": "mintkey:auth_unavailable"},
+                    headers={"Retry-After": "1"},
+                )
         return await call_next(request)
 
     @app.get("/health")

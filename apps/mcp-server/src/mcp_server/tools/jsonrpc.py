@@ -180,6 +180,11 @@ TOOLS: list[dict] = [
                     ),
                     "default": "call",
                 },
+                "methods": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "path_prefix": {"type": "string"},
             },
             "required": ["service_id"],
             "additionalProperties": False,
@@ -557,10 +562,15 @@ async def _dispatch_tool(
                 {"code": "mintkey:invalid_params", "detail": "'service_id' argument is required"},
             )
         action = args.get("action", "call")
+        body_args: dict = {"service_id": service_id, "action": action}
+        if "methods" in args:
+            body_args["methods"] = args["methods"]
+        if "path_prefix" in args:
+            body_args["path_prefix"] = args["path_prefix"]
         return await client.post(
             "/v1/tools/request_token",
             headers=auth_header,
-            json={"service_id": service_id, "action": action},
+            json=body_args,
         )
 
     # Agent secret tools (ADR-0025)

@@ -16,12 +16,11 @@ Sources:
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import sys
 import os
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -33,6 +32,13 @@ for p in (ADMIN_API_SRC, MODELS_SRC):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from mintkey_models.audit_hash import (  # noqa: E402
+    canonical_event_fields,
+    canonical_json_bytes,
+    chain_hash,
+    genesis_hash,
+)
+
 VERIFY_URL = "/v1/admin/audit/verify-chain"
 TENANT_ID = "tenant_00000000000000000000000001"
 
@@ -43,40 +49,44 @@ async def _noop_platform_admin():
 
 
 # ---------------------------------------------------------------------------
-# Chain helpers (mirrors audit-verify-job/verify.py logic for test setup)
+# Chain helpers (the canonical form shared with the writer and verifiers)
 # ---------------------------------------------------------------------------
-
-_GENESIS_PREFIX = "mintkey-audit-genesis-v1:"
-
-
-def _genesis_hash(tenant_id: str) -> bytes:
-    return hashlib.sha256((_GENESIS_PREFIX + tenant_id).encode()).digest()
-
-
-def _compute_event_hash(event_type: str, tenant_id: str, payload: dict, prev_hash: bytes) -> bytes:
-    canonical = json.dumps(
-        {"event_type": event_type, "tenant_id": tenant_id, "payload": payload},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
-    return hashlib.sha256(canonical + prev_hash).digest()
 
 
 def _build_chain_rows(n: int, tenant_id: str = TENANT_ID):
-    """Return a list of mock DB rows with a valid hash chain."""
+    """Return a list of rows with a valid hash chain, as Postgres returns them."""
     rows = []
-    prev = _genesis_hash(tenant_id)
+    prev = genesis_hash(str(tenant_id))
     for i in range(n):
         payload = {"seq": i}
-        h = _compute_event_hash("test.event", tenant_id, payload, prev)
-        row = MagicMock()
-        row.id = f"audit_evt_{i:03d}"
-        row.event_type = "test.event"
-        row.tenant_id = tenant_id
-        row.payload = payload
-        row.hash = h
-        row.prev_hash = prev
-        row.at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        at = datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=i)
+        fields = canonical_event_fields(
+            event_id=f"audit_evt_{i:03d}",
+            tenant_id=tenant_id,
+            event_type="test.event",
+            actor_id=None,
+            actor_type="system",
+            target_id=None,
+            target_type=None,
+            payload=payload,
+            at=at,
+        )
+        h = chain_hash(canonical_json_bytes(fields), prev)
+        row = SimpleNamespace(
+            id=f"audit_evt_{i:03d}",
+            tenant_id=tenant_id,
+            event_type="test.event",
+            actor_id=None,
+            actor_type="system",
+            target_id=None,
+            target_type=None,
+            payload=payload,
+            at=at,
+            prev_hash=prev,
+            hash=h,
+            request_id=None,
+            trace_id=None,
+        )
         rows.append(row)
         prev = h
     return rows
