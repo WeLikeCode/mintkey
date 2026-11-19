@@ -9,7 +9,7 @@
 # Range-header and TLS paths this proxy serves). Upstream v7.15.5 has no replace directives, so only x/net and what
 # it requires move. Go back to the upstream image once it ships a build with a fixed Go.
 # Pinned 2026-10-17; re-pin every quarter.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS proxy
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS proxy
 RUN mkdir -p /tmp/build && cd /tmp/build && \
     printf 'module oauth2-proxy-build\ngo 1.26\n' > go.mod && \
     GOWORK=off go get github.com/oauth2-proxy/oauth2-proxy/v7@v7.15.5 golang.org/x/net@v0.61.0 && \
@@ -18,7 +18,7 @@ RUN mkdir -p /tmp/build && cd /tmp/build && \
       -o /bin/oauth2-proxy github.com/oauth2-proxy/oauth2-proxy/v7
 
 # Pinned 2026-10-17; re-pin every quarter.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 # wget is needed for the HEALTHCHECK; xxd is no longer needed (cookie secret
 # is passed via --cookie-secret-file, not read/decoded in the entrypoint).
