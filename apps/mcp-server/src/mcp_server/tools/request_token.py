@@ -81,6 +81,22 @@ def _denial_hint(reason: str, agent_id: str, service_id: str, action: str) -> Op
 class TokenRequest(BaseModel):
     service_id: str
     action: str
+    methods: Optional[list[str]] = None
+    path_prefix: Optional[str] = None
+
+
+def _scope_claims_http_only() -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={
+            "code": "mintkey:validation_failed",
+            "reason_code": "scope_claims_http_only",
+            "hint": (
+                "methods and path_prefix apply to HTTP services only; "
+                "omit them for SSH and email services."
+            ),
+        },
+    )
 
 
 @router.post("/request_token")
@@ -185,6 +201,8 @@ async def request_token(
         if _is_wire_or_uuid:
             email_esvc_uuid = await resolve_email_service_id(body.service_id, tenant_id, session)
             if email_esvc_uuid is not None:
+                if body.methods is not None or body.path_prefix is not None:
+                    return _scope_claims_http_only()
                 return await _handle_email_service_token(
                     session=session,
                     agent_id=agent_id,
@@ -264,23 +282,45 @@ async def request_token(
     svc_auth_scheme: str = svc_row.auth_scheme if svc_row else ""
     is_ssh = svc_auth_scheme in _SSH_AUTH_SCHEMES
 
+    if is_ssh and (body.methods is not None or body.path_prefix is not None):
+        return _scope_claims_http_only()
+
     # 5. Call broker to issue a real JWT.
     # Pass the DB UUID to the broker — broker is downstream and always uses UUIDs.
     # DO NOT change the broker payload format (out-of-scope for OPS-CC).
     broker_url = os.getenv("BROKER_BASE_URL", "http://broker:8083")
     mcp_token = os.getenv("MINTKEY_MCP_SERVICE_TOKEN", "")
+    broker_payload: dict = {
+        "agent_id": agent_id,
+        "service_id": db_service_id,
+        "tenant_id": tenant_id,
+        "scope": body.action,
+        "ttl_seconds": 600,
+    }
+    if body.methods is not None:
+        broker_payload["methods"] = body.methods
+    if body.path_prefix is not None:
+        broker_payload["path_prefix"] = body.path_prefix
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{broker_url}/v1/issue",
-            json={
-                "agent_id": agent_id,
-                "service_id": db_service_id,
-                "tenant_id": tenant_id,
-                "scope": body.action,
-                "ttl_seconds": 600,
-            },
+            json=broker_payload,
             headers={"X-Mintkey-Service-Token": mcp_token},
             timeout=5.0,
+        )
+    if resp.status_code == 400:
+        try:
+            _broker_body = resp.json()
+        except Exception:
+            _broker_body = None
+        _title = (
+            _broker_body.get("title")
+            if isinstance(_broker_body, dict) and _broker_body.get("title")
+            else "Invalid token request"
+        )
+        return JSONResponse(
+            status_code=400,
+            content={"code": "mintkey:validation_failed", "title": _title},
         )
     if resp.status_code != 200:
         return JSONResponse(

@@ -47,6 +47,25 @@ type kongRoute struct {
 	Plugins   []kongPlugin `yaml:"plugins,omitempty"`
 }
 
+// routingHeaderPlugins returns the request-transformer plugin that adds the
+// service and tenant routing headers. Both the path route and the virtual-host
+// route carry it, so the proxy-plugin can address the service in either form.
+func routingHeaderPlugins(svc ServiceEntry) []kongPlugin {
+	return []kongPlugin{
+		{
+			Name: "request-transformer",
+			Config: map[string]any{
+				"add": map[string]any{
+					"headers": []string{
+						"X-Mintkey-Service-ID:" + svc.ID,
+						"X-Mintkey-Tenant-ID:" + svc.TenantID,
+					},
+				},
+			},
+		},
+	}
+}
+
 // GenerateDeclarativeYAML produces Kong declarative YAML (format version 3.0)
 // for the given service list. Each service receives:
 //  1. A path route  /v1/call/<service_id>          (ADR-0007 option A)
@@ -61,6 +80,7 @@ func GenerateDeclarativeYAML(services []ServiceEntry, proxyPluginURL string) (st
 	}
 
 	for _, svc := range services {
+		plugins := routingHeaderPlugins(svc)
 		ks := kongService{
 			// All Kong services point to the proxy-plugin which validates JWTs,
 			// fetches credentials from the Vault Adapter, and reverse-proxies.
@@ -70,30 +90,19 @@ func GenerateDeclarativeYAML(services []ServiceEntry, proxyPluginURL string) (st
 				{
 					// strip_path: true removes /v1/call/<svc_id> so the proxy-plugin
 					// receives the bare API path (e.g. /api-key-header).
-					// request-transformer injects routing metadata used by the
-					// classical-key branch (ADR-0018) to identify the service and tenant
-					// without relying on the URL path after stripping.
+					// Both routes carry request-transformer, which injects the routing
+					// metadata used to identify the service and tenant without relying
+					// on the URL path after stripping.
 					Name:      fmt.Sprintf("%s-path", svc.ID),
 					Paths:     []string{fmt.Sprintf("/v1/call/%s", svc.ID)},
 					StripPath: true,
-					Plugins: []kongPlugin{
-						{
-							Name: "request-transformer",
-							Config: map[string]any{
-								"add": map[string]any{
-									"headers": []string{
-										"X-Mintkey-Service-ID:" + svc.ID,
-										"X-Mintkey-Tenant-ID:" + svc.TenantID,
-									},
-								},
-							},
-						},
-					},
+					Plugins:   plugins,
 				},
 				{
 					Name:      fmt.Sprintf("%s-vhost", svc.ID),
 					Hosts:     []string{fmt.Sprintf("%s.%s.proxy.local", svc.Slug, svc.TenantSlug)},
 					StripPath: false,
+					Plugins:   plugins,
 				},
 			},
 		}

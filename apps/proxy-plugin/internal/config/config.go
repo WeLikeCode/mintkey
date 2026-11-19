@@ -5,11 +5,13 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/mintkey/mintkey/packages/go/auditq"
+	"github.com/mintkey/mintkey/packages/go/svcid"
 )
 
 // AudEnforcement controls how the proxy-plugin enforces the JWT aud-vs-URL
@@ -47,6 +49,12 @@ type Config struct {
 	AuditWALPath string // path to the WAL file (default /var/lib/mintkey/proxy-audit.wal)
 	// WAL compaction (#27)
 	AuditCompact auditq.CompactConfig
+	secretErr    error
+}
+
+// SecretErr returns the error of reading the service tokens in Load, or nil.
+func (c *Config) SecretErr() error {
+	return c.secretErr
 }
 
 // Load reads configuration from environment variables, applying sensible
@@ -58,18 +66,20 @@ func Load() *Config {
 	brokerAddr := getEnv("BROKER_ADDR", "broker:8083")
 	brokerBaseURL := getEnv("BROKER_BASE_URL", fmt.Sprintf("http://%s", brokerAddr))
 	env := getEnv("MINTKEY_ENV", "dev")
+	proxyServiceToken, proxyServiceTokenErr := svcid.FromEnv("MINTKEY_PROXY_SERVICE_TOKEN")
+	vaultIdentityToken, vaultIdentityTokenErr := svcid.FromEnv("MINTKEY_VAULT_PROXY_TOKEN")
 	return &Config{
-		Env:               env,
-		VaultAddrGRPC:     getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
-		JWKSEndpoint:      fmt.Sprintf("http://%s/.well-known/jwks.json", brokerAddr),
-		PluginSocket:      getEnv("PLUGIN_SOCKET", "/tmp/proxy-plugin.sock"),
-		PluginPort:        getEnvInt("PLUGIN_PORT", 8086),
-		DefaultTarget:     getEnv("DEFAULT_TARGET", ""),
+		Env:                env,
+		VaultAddrGRPC:      getEnv("VAULT_GRPC_ADDR", "vault-adapter:8084"),
+		JWKSEndpoint:       fmt.Sprintf("http://%s/.well-known/jwks.json", brokerAddr),
+		PluginSocket:       getEnv("PLUGIN_SOCKET", "/tmp/proxy-plugin.sock"),
+		PluginPort:         getEnvInt("PLUGIN_PORT", 8086),
+		DefaultTarget:      getEnv("DEFAULT_TARGET", ""),
 		BrokerBaseURL:      brokerBaseURL,
-		ProxyServiceToken:  getEnv("MINTKEY_PROXY_SERVICE_TOKEN", ""),
+		ProxyServiceToken:  proxyServiceToken,
 		AudEnforcement:     loadAudEnforcement(env),
 		VaultIdentityID:    getEnv("MINTKEY_VAULT_PROXY_IDENTITY_ID", "svcid_proxy"),
-		VaultIdentityToken: getEnv("MINTKEY_VAULT_PROXY_TOKEN", ""),
+		VaultIdentityToken: vaultIdentityToken,
 		// Audit async emission (#22)
 		AdminAPIURL:  getEnv("MINTKEY_ADMIN_API_URL", "http://admin-api:8000"),
 		AuditWALPath: getEnv("MINTKEY_AUDIT_WAL_PATH", "/var/lib/mintkey/proxy-audit.wal"),
@@ -78,6 +88,7 @@ func Load() *Config {
 			IntervalSec:    getEnvInt("MINTKEY_AUDIT_WAL_COMPACT_INTERVAL_SEC", 300),
 			ThresholdBytes: getEnvInt64("MINTKEY_AUDIT_WAL_COMPACT_THRESHOLD_BYTES", 64<<20),
 		},
+		secretErr: errors.Join(proxyServiceTokenErr, vaultIdentityTokenErr),
 	}
 }
 

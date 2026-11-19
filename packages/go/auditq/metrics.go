@@ -34,6 +34,10 @@ type Metrics struct {
 	// after the last compaction.
 	walPendingEvents atomic.Int64
 
+	// backlogEvents is a gauge: number of audit events not yet delivered or
+	// dead-lettered, including events held in memory.
+	backlogEvents atomic.Int64
+
 	// serviceLabel is the Prometheus label value for {service="..."}.
 	serviceLabel string
 }
@@ -87,6 +91,14 @@ func writeMetrics(w io.Writer, m *Metrics) {
 			"# TYPE auditq_wal_pending_events gauge\n"+
 			"auditq_wal_pending_events{service=%q} %d\n",
 		svc, m.walPendingEvents.Load(),
+	)
+
+	// auditq_backlog_events
+	_, _ = fmt.Fprintf(w,
+		"# HELP auditq_backlog_events Number of audit events not yet delivered or dead-lettered.\n"+
+			"# TYPE auditq_backlog_events gauge\n"+
+			"auditq_backlog_events{service=%q} %d\n",
+		svc, m.backlogEvents.Load(),
 	)
 }
 

@@ -726,6 +726,21 @@ tools:
           maximum: 3600
           description: |
             Optional override of the service's default TTL.
+        methods:
+          type: array
+          minItems: 1
+          maxItems: 7
+          uniqueItems: true
+          items:
+            type: string
+            enum: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS]
+          description: "Optional HTTP methods the token permits, 1 to 7 distinct values."
+        path_prefix:
+          type: string
+          pattern: "^/"
+          minLength: 1
+          maxLength: 512
+          description: "Optional absolute path prefix the token permits."
       required: [service_id, action]
     output_schema:
       $schema: "https://json-schema.org/draft/2020-12/schema"

@@ -14,13 +14,16 @@ import hashlib
 import json
 import sys
 import os
+from datetime import datetime, timezone
 
 import pytest
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 VERIFY_JOB_DIR = os.path.join(REPO_ROOT, "apps/audit-verify-job")
-if VERIFY_JOB_DIR not in sys.path:
-    sys.path.insert(0, VERIFY_JOB_DIR)
+MODELS_DIR = os.path.join(REPO_ROOT, "packages/python/mintkey-models")
+for _path in (MODELS_DIR, VERIFY_JOB_DIR):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from verify import (  # noqa: E402
     AuditEvent,
@@ -54,6 +57,7 @@ def _build_chain(n: int, tenant_id: str = TENANT_ID):
             payload=payload,
             hash=b"\x00" * 32,   # placeholder, filled below
             prev_hash=prev,
+            at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         computed = compute_event_hash(event, prev)
         event.hash = computed
