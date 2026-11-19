@@ -7,8 +7,8 @@ name = "admin-api"
 version = "0.1.0-preview.1"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[standard]>=0.143.3",
-    "sqlalchemy[asyncio]>=2.1.4",
+    "fastapi[standard]>=0.163.1",
+    "sqlalchemy[asyncio]>=2.1.8",
     "asyncpg>=0.32.0",
     "opentelemetry-sdk>=1.45.2",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
