@@ -90,6 +90,9 @@ jobs:
           #     the tree before this entry; the runtime never loads them (they sit unmodified in the
           #     image's node_modules only because the Dockerfile runs a full pnpm install). Dependabot
           #     #305 (4.11 -> 4.13/4.14) failed 'incompatible licenses' without this.
+          #   - certifi: MPL-2.0 (file-level weak copyleft), used unmodified as the CA bundle of requests/httpx in
+          #     admin-api, mcp-server and seed-job. 2026.11.20 is the first release without the compromised emSign
+          #     root (GHSA-6q48-6c7w-9gw2, CRITICAL); the Trivy fix (2026-11) fails 'incompatible licenses' without this.
           #   - tinymce: GPL-2.0-or-later (dual-licensed; pnpm view tinymce@7.9.3 license).
           #     Transitive dep pulled by @adminjs/design-system (MIT). The GPL applies to the
           #     TinyMCE editor library itself; it does not propagate copyleft obligations to
@@ -119,6 +122,7 @@ jobs:
             pkg:pypi/protobuf,
             pkg:pypi/typing-extensions,
             pkg:pypi/psycopg2-binary,
+            pkg:pypi/certifi,
             pkg:golang/github.com/beorn7/perks,
             pkg:golang/github.com/cespare/xxhash/v2,
             pkg:golang/github.com/go-logr/logr,

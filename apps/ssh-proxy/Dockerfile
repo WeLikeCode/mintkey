@@ -5,8 +5,8 @@
 # Build via compose: docker compose --env-file .env -f infra/compose/docker-compose.yml build ssh-proxy
 # Or from repo root: docker build -f apps/ssh-proxy/Dockerfile -t mintkey-ssh-proxy .
 
-# Pinned 2026-06-19; re-pin every quarter.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+# Pinned 2026-11-22; re-pin every quarter.
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 WORKDIR /workspace
 
