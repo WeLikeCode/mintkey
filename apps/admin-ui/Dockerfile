@@ -17,6 +17,10 @@ RUN pnpm install --frozen-lockfile
 # in place: its bundled brace-expansion, undici and http-cache-semantics are HIGH in Trivy (2026-10; the last
 # has no fix).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# The runtime runs src/index.ts with tsx (esbuild) and never type-checks: TypeScript is a build and CI tool only.
+# Since TypeScript 7 the compiler is a native Go binary (@typescript/typescript-<platform>), and 7.0.2 is built with
+# Go 1.26.4 and golang.org/x/text 0.38.0 (HIGH in Trivy, 2026-11). Remove the compiler from the runtime image.
+RUN rm -rf node_modules/typescript node_modules/.pnpm/typescript@* node_modules/.pnpm/@typescript+typescript-*
 
 COPY tsconfig.json ./
 COPY src ./src
