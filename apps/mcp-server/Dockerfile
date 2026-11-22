@@ -1,11 +1,11 @@
 # MCP Server — Python 3.14 + FastAPI (ADR-0009, ADR-0012)
 # Build context must be repo root so packages/python/mintkey-models/ is accessible.
-# Pinned 2026-10-17; re-pin every quarter.
+# Pinned 2026-11-22; re-pin every quarter.
 # uv's documented pattern: the uv binary copied onto python:3.14-slim-bookworm, because the
 # ghcr.io/astral-sh/uv:python3.12-bookworm-slim image still shipped Debian 12.13 (2026-10: perl-base, krb5,
 # pcre2 HIGH/CRITICAL fixed only in later point releases). Both FROM lines are digest-pinned for Dependabot.
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
-FROM python:3.14-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
+FROM python:3.14-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
 COPY --from=uv /uv /uvx /usr/local/bin/
 # The base image's pip vendors msgpack 1.1.2 / urllib3 2.7.0 / setuptools 70.3.0 (Trivy HIGH). Dependencies are
 # installed by uv, so pip is not needed at runtime.

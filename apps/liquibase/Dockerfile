@@ -5,6 +5,8 @@ FROM liquibase/liquibase:4.27.0@sha256:141a9fb5df99e43be49e507dc1892a65cd7b93c9e
 
 # Trivy gate (container-scan.yml): fix what is fixable instead of allow-listing it.
 #  - gpgv: apt security update (CVE-2025-68973).
+#  - apt: security update to 2.4.15ubuntu0.1 (CVE-2026-109518); the 4.27.0 digest still ships 2.4.11.
+#  - libbrotli1: security update to 1.0.9-2ubuntu0.1 (CVE-2026-111497).
 #  - pgjdbc: replace the bundled 42.7.2 with the pinned 42.7.12 (CVE-2026-42198, CVE-2026-54291);
 #    Mintkey only migrates Postgres.
 #  - mssql-jdbc, snowflake-jdbc, lpm: unused by Mintkey (Postgres only, no
@@ -14,7 +16,7 @@ ADD --checksum=sha256:31fbf6f06b2217fb51d5100cee51b22625cc81640da0679b47914e54c1
     https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.12/postgresql-42.7.12.jar \
     /liquibase/internal/lib/postgresql.jar
 RUN apt-get update \
- && apt-get install -y --no-install-recommends --only-upgrade gpgv \
+ && apt-get install -y --no-install-recommends --only-upgrade gpgv apt libbrotli1 \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /liquibase/internal/lib/mssql-jdbc.jar /liquibase/internal/lib/snowflake-jdbc.jar /liquibase/bin/lpm \
  && chmod 0644 /liquibase/internal/lib/postgresql.jar
