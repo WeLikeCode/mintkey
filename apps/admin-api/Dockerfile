@@ -1,15 +1,15 @@
-# Admin API — Python 3.14 + FastAPI (ADR-0005, ADR-0012)
+# Admin API — Python 3.15 + FastAPI (ADR-0005, ADR-0012)
 # Build context must be repo root so packages/python/mintkey-models/ is accessible.
 # Pinned 2026-11-22; re-pin every quarter.
-# uv's documented pattern: the uv binary copied onto python:3.14-slim-bookworm, because the
+# uv's documented pattern: the uv binary copied onto python:3.15-slim-bookworm, because the
 # ghcr.io/astral-sh/uv:python3.12-bookworm-slim image still shipped Debian 12.13 (2026-10: perl-base, krb5,
 # pcre2 HIGH/CRITICAL fixed only in later point releases). Both FROM lines are digest-pinned for Dependabot.
-FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
-FROM python:3.14-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
+FROM ghcr.io/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d AS uv
+FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9
 COPY --from=uv /uv /uvx /usr/local/bin/
 # The base image's pip vendors msgpack 1.1.2 / urllib3 2.7.0 / setuptools 70.3.0 (Trivy HIGH). Dependencies are
 # installed by uv, so pip is not needed at runtime.
-RUN rm -rf /usr/local/lib/python3.14/site-packages/pip /usr/local/lib/python3.14/site-packages/pip-*.dist-info /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+RUN rm -rf /usr/local/lib/python3.15/site-packages/pip /usr/local/lib/python3.15/site-packages/pip-*.dist-info /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.15
 
 WORKDIR /app
 
