@@ -560,7 +560,7 @@ CVE-2026-42506
 CVE-2026-27145
 
 # ── Debian 12 (bookworm) base, 2026-10 — no Debian fix released yet ─────────
-# Images: admin-api, mcp-server (python:3.12-slim-bookworm), seed-job, mock-backend (python:3.14-slim-bookworm),
+# Images: admin-api, mcp-server (python:3.12-slim-bookworm), seed-job, mock-backend (python:3.15-slim-bookworm),
 # admin-ui (node:26-bookworm-slim), all at Debian 12.15. Trivy reports no FixedVersion (status affected or
 # fix_deferred) for each. Drop an entry once Debian ships a fix: the quarterly base re-pin then picks it up.
 # The services run as non-root (admin-ui as `node`); seed-job runs as root but, like every service, without
@@ -617,7 +617,7 @@ CVE-2026-84782
 CVE-2026-16742
 
 # ── 2026-11 additions — no fix released yet ─────────────────────────────────
-# Debian 12 (bookworm) 12.15 images: admin-api, mcp-server, seed-job, mock-backend (python:3.14-slim-bookworm) and
+# Debian 12 (bookworm) 12.15 images: admin-api, mcp-server, seed-job, mock-backend (python:3.15-slim-bookworm) and
 # admin-ui (node:26-bookworm-slim). The Debian security tracker lists each source package below as "vulnerable" for
 # bookworm (checked 2026-11-22). Drop an entry once Debian ships a fix: the quarterly base re-pin picks it up.
 
