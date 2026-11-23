@@ -13,12 +13,12 @@ dependencies = [
     "opentelemetry-sdk>=1.45.2",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "argon2-cffi>=25.1.0",
-    "authlib>=1.9.5",
+    "authlib>=1.9.10",
     "joserfc>=1.8.0",
     "structlog>=26.1.0",
     "httpx>=0.27",
     "psycopg2-binary>=2.9.13",
-    "grpcio>=1.85.1",
+    "grpcio>=1.85.3",
     "protobuf>=7.36.2",
     "opentelemetry-exporter-otlp-proto-grpc>=1.45.2",
     "prometheus-client>=0.26.0",
@@ -39,7 +39,7 @@ dev = [
     "types-protobuf>=7.35.1.20260906",
     "types-authlib>=1.8.0.20260911",
     "types-PyYAML>=6.0",
-    "hypothesis>=6.170.15",
+    "hypothesis>=6.170.17",
 ]
 
 [tool.uv]
