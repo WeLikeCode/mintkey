@@ -37,7 +37,7 @@ dev = [
     "testcontainers[postgres]>=4.15.0",
     "grpc-stubs>=1.53.0.6",
     "types-protobuf>=7.35.1.20260906",
-    "types-authlib>=1.8.0.20260911",
+    "types-authlib>=1.8.0.20261106",
     "types-PyYAML>=6.0",
     "hypothesis>=6.170.15",
 ]
