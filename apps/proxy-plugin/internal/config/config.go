@@ -35,7 +35,7 @@ type Config struct {
 	JWKSEndpoint      string         // URL of the broker's /.well-known/jwks.json
 	PluginSocket      string         // Unix socket path for the go-pdk server (future)
 	PluginPort        int            // HTTP listen port for the reverse proxy
-	DefaultTarget     string         // fallback upstream URL when X-Mintkey-Target header absent
+	DefaultTarget     string         // kept for deployments that still set DEFAULT_TARGET; the proxy does not read it
 	BrokerBaseURL     string         // base URL for broker's /v1/api-keys/resolve (ADR-0018)
 	ProxyServiceToken string         // X-Mintkey-Service-Token for broker auth (ADR-0018)
 	AudEnforcement    AudEnforcement // strict | permissive (ADR-0004 addendum)

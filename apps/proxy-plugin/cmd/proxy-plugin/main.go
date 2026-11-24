@@ -613,25 +613,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prefer target URL from vault (registered base_url); fall back to X-Mintkey-Target header
-	// for backward compatibility with credentials registered before this change.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only; the
+	// X-Mintkey-Target header and cfg.DefaultTarget take no part (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -797,24 +784,11 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -904,24 +878,11 @@ func (h *proxyHandler) handleHTTPDigest(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -1033,24 +994,11 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -1175,18 +1123,10 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 	}
 	defer clear(credResp.Plaintext)
 
-	target := credResp.TargetURL
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 

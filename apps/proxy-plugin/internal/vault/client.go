@@ -70,7 +70,7 @@ type GetCredentialResponse struct {
 	QueryParam string
 
 	// TargetURL is the service's registered base_url stored at credential registration time.
-	// When non-empty the proxy should prefer this over the X-Mintkey-Target header.
+	// It is the only source of the upstream the proxy sends the request to.
 	TargetURL string
 }
 

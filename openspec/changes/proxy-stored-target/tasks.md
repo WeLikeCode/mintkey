@@ -53,7 +53,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 3. The proxy uses the stored target only
 
-- [ ] 3.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/stored_target_test.go` (package `main`). Helpers:
+- [x] 3.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/stored_target_test.go` (package `main`). Helpers:
   `startFakeVault(t, resp *vaultv1.GetCredentialResponse) *vault.Client` serves `GetCredential` on `127.0.0.1:0` from a
   struct that embeds `vaultv1.UnimplementedVaultAdapterServer` and returns `proto.Clone(resp)`, and returns
   `vault.NewClient(addr, "", "")`; `countingUpstream(t)` returns an `httptest.Server` and a function that gives its request
