@@ -19,8 +19,8 @@ and `rotate_credential` in `apps/admin-api/src/admin_api/api/credentials.py`) an
 stores (PostgreSQL, SQLite, HashiCorp); the migration touches the PostgreSQL one.
 
 The scrubber (`Scrub`) removes the response headers `Authorization`, `Cookie`, `Set-Cookie`, `X-Auth-Token` and
-`X-Api-Key`, reads at most 256 KiB of the body, replaces JWT-shaped strings, `api_key=<value>` and `sk_`/`pk_` tokens with
-`[REDACTED]`, and sets `resp.Body` to the scanned copy. Applied to live traffic it must also keep the bytes past 256 KiB
+`X-Api-Key`, reads at most 256 KiB of the body, replaces JWT-shaped strings with `[REDACTED_JWT]`, `api_key=<value>` with `api_key=[REDACTED]` and `sk_`/`pk_` tokens with
+`[REDACTED]` (the markers of `response.go`, kept as they are), and sets `resp.Body` to the scanned copy. Applied to live traffic it must also keep the bytes past 256 KiB
 and the length headers right; both are specified here. These pattern rules and header removals apply to proxied traffic
 only when `MINTKEY_PROXY_SCRUB_PATTERNS` is true (D8); the redaction of the injected credential applies always.
 
@@ -36,10 +36,18 @@ func resolveTarget(credResp *vault.GetCredentialResponse) (*url.URL, string) // 
 // ModifyResponse refuses an encoded body, leaves an event stream unbuffered, and otherwise calls scrubber.ScrubWith(resp,
 // h.cfg.ScrubPatterns, injected...) and logs a detected echo; ErrorHandler answers 502 with the texts of the spec. The flow sets its own
 // Director after the call, as it does today.
+//
+// Two unexported errors tell the causes apart. ModifyResponse returns errEncodedResponse (an encoded body) or
+// errBodyUnreadable (ScrubWith.Err set: the scanned part of the body could not be read, for example a gzip body that does
+// not decode), after closing resp.Body. httputil.ReverseProxy passes any error of ModifyResponse to ErrorHandler, which
+// checks errors.Is(err, errEncodedResponse), then errors.Is(err, errBodyUnreadable), and answers every other error
+// (a failed round trip) with "upstream unreachable".
 func (h *proxyHandler) newUpstreamProxy(target *url.URL, base http.RoundTripper, injected ...[]byte) *httputil.ReverseProxy
 
 // scrubber/response.go
 // patterns false: only the exact-value redaction of secrets; patterns true: also the header removals and body patterns of Scrub.
+// ScrubResult gains Err error: the error of reading the scanned part of the body (nil otherwise); the body is then the
+// bytes read so far and the caller must not forward it.
 func ScrubWith(resp *http.Response, patterns bool, secrets ...[]byte) ScrubResult
 func Scrub(resp *http.Response) ScrubResult // = ScrubWith(resp, true)
 
@@ -61,7 +69,7 @@ stay in `config.Config` (compose and the Helm chart set it); only their comments
 
 **D2. Typed 502 texts.** 502 already means a vault error, a missing target and an unreachable upstream. The new texts
 (`no target URL stored for this credential`, `invalid target URL`, `upstream unreachable`, `encoded response not
-supported`) let a test and an operator tell them apart. The existing `bad gateway: vault error` is unchanged.
+supported`, `upstream response unreadable`) let a test and an operator tell them apart. The existing `bad gateway: vault error` is unchanged.
 
 **D3. The backfill takes http(s) base URLs only and is a plain UPDATE.** An SSH service's `base_url` (`ssh://...`) is the
 SSH proxy's concern and stays out of an HTTP target. `set_config('app.platform_admin_view', 'on', true)` makes the
@@ -71,7 +79,9 @@ own base URL.
 
 **D4. Exact-value redaction next to the patterns.** The patterns (when on, D8) find credentials of a recognisable shape; an
 opaque bearer value or a basic-auth password has none, and upstreams that echo request headers (debugging endpoints) return it as is. The
-proxy knows the value it injected, so it removes that value. Secrets shorter than 8 bytes are not matched, because they
+proxy knows the value it injected, so it removes that value; inside a header value or a body only the matching text is
+replaced (`Bearer <token>` becomes `Bearer [REDACTED]`), and each value of a header with several values is scrubbed on its
+own. Secrets shorter than 8 bytes are not matched, because they
 would also match unrelated text; the three forms (raw, standard base64 for `Authorization: Basic ...`, query-escaped for
 the query-parameter scheme) are the ones the injector writes.
 
@@ -99,11 +109,17 @@ test key). They are therefore applied only when the proxy runs with `MINTKEY_PRO
 ## Risks and edge cases
 
 - With the pattern rules on (D8), an upstream that returns a JWT, a `Set-Cookie` or an `sk_` string to its caller on
-  purpose gets `[REDACTED]` or no header, as ADR-0014.4 describes; with the default, only the injected value is removed.
+  purpose gets `[REDACTED_JWT]`, `[REDACTED]` or no header, as ADR-0014.4 describes; with the default, only the injected value is removed.
 - Credentials of the SQLite or HashiCorp stores with an empty target (created before the target was recorded) answer 502
   after this change; the PostgreSQL store is the one the compose and Helm deployments use.
 - Tests that call the flows directly pass a `GetCredentialResponse` with `TargetURL` set (`proxy_test.go`,
   `data_plane_paths_test.go`, `oauth2_client_credentials_dispatch_test.go`); they are unaffected.
+
+- A body that fails while being read after the scanned 256 KiB (a truncated tail) is not refused: the status line is
+  already sent, so `httputil.ReverseProxy` aborts the copy as it does for any proxied response. A body that fails inside the scanned
+  256 KiB (a gzip body that does not decode) is refused with `upstream response unreadable`.
+- The migration number 033 is a file name; Liquibase runs the includes in the master's order, and the change set reads only
+  tables that exist at the base, so another unit taking 033 or running before or after it changes nothing.
 
 ## Follow-ups
 

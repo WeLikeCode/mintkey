@@ -41,7 +41,8 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
   when `patterns` is true it applies the header removals and the three patterns as `Scrub` does today, and for every
   call it then applies the secrets (each secret of at least 8 bytes in its raw, `base64.StdEncoding` and
   `url.QueryEscape` forms, longest first, `bytes.ReplaceAll` with `[REDACTED]`), replaces
-  every header value that contains a secret form (the header keeps its name), sets `resp.Body` to the scrubbed head
+  each secret form inside each value of each header (only the matching text; the header keeps its name and its other
+  values), stores the read error of the head in `ScrubResult.Err`, sets `resp.Body` to the scrubbed head
   followed by the unread rest (`io.MultiReader`, closing the original), and, only when the head changed, deletes
   `Content-Length` and sets `resp.ContentLength` to -1. The `Detected` and `Locations` results are as before, with
   `header:<Name>` for a redacted header value. Update the package comment (the scan bound, the tail, the secrets).
@@ -92,7 +93,8 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
   buffered" with a 5 s read tolerance and a release channel; `TestEncodedBodiesAreDecodedOrRefused` covers "encoded bodies
   are decoded or refused" (the upstream uses `compress/gzip` when its request has `Accept-Encoding: gzip`);
   `TestUnreachableUpstreamAnswersWithText` covers "an unreachable upstream answers 502 with a text" (the target is the URL of
-  a closed `httptest` server). They stay red until `newUpstreamProxy` exists and the flows use it (the second run of the two
+  a closed `httptest` server); `TestSecretInsideLongerValueAndMultiValueHeader` covers "a secret inside a longer value and
+  in a multi-value header"; `TestUndecodableBodyIsRefused` covers "a body that fails to decode is refused". They stay red until `newUpstreamProxy` exists and the flows use it (the second run of the two
   setting tests reads `ScrubPatterns` of the loaded config by `reflect.ValueOf(cfg).Elem().FieldByName("ScrubPatterns")`
   and `t.Fatal`s naming the missing field).
   New file `apps/proxy-plugin/internal/config/scrub_patterns_test.go` (package `config_test`): `TestScrubPatternsFromEnvironment`
@@ -102,7 +104,8 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
   `MINTKEY_PROXY_SCRUB_PATTERNS`, false on an empty or unparsable value; the field's comment says the pattern rules are
   off by default), then create `apps/proxy-plugin/cmd/proxy-plugin/upstream.go` with `newUpstreamProxy` as design.md gives it (a small
   `upstreamTransport` type whose `RoundTrip` clones the request, deletes `Accept-Encoding` and calls `base`, or
-  `http.DefaultTransport` when `base` is nil; `ModifyResponse` and `ErrorHandler` as described; the log line is
+  `http.DefaultTransport` when `base` is nil; the unexported `errEncodedResponse` and `errBodyUnreadable`, which `ModifyResponse`
+  returns after closing the body and `ErrorHandler` tells apart with `errors.Is`, as design.md gives it; the log line is
   `proxy-plugin: credential echo removed (svc=<safeID> locations=<names>)`), and replace the five
   `httputil.NewSingleHostReverseProxy(targetURL)` calls of `main.go` with it: the digest flow passes its digest transport as
   `base` and nothing as `injected`, the others pass `injected` as design.md lists it, and the Directors stay as they are.

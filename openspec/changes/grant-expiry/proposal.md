@@ -20,7 +20,8 @@ hours window, not an expiry, so neither exists.
 - The operator API accepts `expires_at` on a grant, answers `expires_at`, `expired`, `grantor_type` and `grantor_id` on
   every grant it returns, and the tenant grant list takes a `grantor_agent_id` filter. A live grant ends early or is
   renewed only by revoking it: the same agent, service and action with another expiry answers 409; an expired grant is
-  replaced by granting again.
+  replaced by granting again. Concurrent writers of one agent, service and action are serialised by a transaction-level
+  advisory lock inside `write_grant`.
 - An expired grant is absent for the agent: `request_token` answers 403 `grant_expired` and writes `token.denied`;
   `mintkey_list_services`, `mintkey_discover` and `mintkey_describe_service` do not show it; the classical API key
   creation and the agent grant counts ignore it.
@@ -49,6 +50,7 @@ hours window, not an expiry, so neither exists.
 - Operators: run the migration with the release. Existing grants have no expiry and `grantor_type` `operator`; nothing
   changes for them. A new request field and new response fields are additive.
 - Out of scope: email grants, long-lived service API keys already issued, an expiry change on an existing grant
-  (revoke and grant again), the proxy's handling of a revoked grant's tokens, any agent-side grant route.
+  (revoke and grant again), the proxy's handling of a revoked grant's tokens, and any agent-side grant route (`agent-granted-access` adds it; this change
+  gives it the write path, the grantor type `agent` and the cap it calls).
 - Plan order: this change merges before `agent-roles-and-ownership` (both append to `db.changelog-master.yaml` and
   `audit-event.schema.json`), and `revoke_permission` is also on the path of the proxy's revocation change.

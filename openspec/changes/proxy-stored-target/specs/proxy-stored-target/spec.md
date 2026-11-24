@@ -17,8 +17,8 @@ SHALL NOT reach the upstream. The new function in `apps/proxy-plugin/cmd/proxy-p
 
 ```go
 // resolveTarget returns the parsed target, or nil and the text of the 502 answer. The target must parse, use the scheme
-// http or https and have a host; an empty target gives "bad gateway: no target URL stored for this credential" and any
-// other failure "bad gateway: invalid target URL".
+// http or https and have a host; a nil credResp or an empty target gives "bad gateway: no target URL stored for this
+// credential" and any other failure "bad gateway: invalid target URL".
 func resolveTarget(credResp *vault.GetCredentialResponse) (*url.URL, string)
 ```
 
@@ -36,6 +36,11 @@ returns nil.
   `cfg.DefaultTarget` both naming a running upstream
 - **THEN** each answer is 502 with the body `bad gateway: no target URL stored for this credential`, and no upstream
   receives a request
+
+#### Scenario: a missing credential response has no target
+- **WHEN** `resolveTarget(nil)` is called, and a second time with a response whose `TargetURL` is `https://api.example.test/base`
+- **THEN** the first returns a nil URL and `bad gateway: no target URL stored for this credential`; the second returns the
+  parsed URL and an empty text
 
 #### Scenario: a stored target that is not an http or https URL is refused
 - **WHEN** the stored target is `ssh://host:22`, `/relative/path`, `http://` or `://x`
@@ -66,11 +71,15 @@ ScrubResult` SHALL replace every occurrence, in the scanned body and in every he
 bytes in its raw, standard-base64 and URL-query-escaped forms with `[REDACTED]`, for every service. Only when `patterns` is
 true SHALL it also apply the pattern rules of `Scrub`: removal of the response headers `Authorization`, `Cookie`,
 `Set-Cookie`, `X-Auth-Token` and `X-Api-Key`, and replacement in the body of JWT-shaped strings, `api_key=<value>` and
-`sk_`/`pk_` tokens. `Scrub(resp)` SHALL equal `ScrubWith(resp, true)`. `config.Config` SHALL gain `ScrubPatterns bool`
+`sk_`/`pk_` tokens, with the markers `Scrub` already writes: `[REDACTED_JWT]` for a JWT, `api_key=[REDACTED]` (the name and
+separator are kept) and `[REDACTED]` for an `sk_`/`pk_` token. Only the matching text of a header value or a body is
+replaced, and each value of a header with several values is scrubbed on its own. `Scrub(resp)` SHALL equal
+`ScrubWith(resp, true)`. `ScrubResult` SHALL gain `Err error`, the error of reading the scanned part of the body. `config.Config` SHALL gain `ScrubPatterns bool`
 (`apps/proxy-plugin/internal/config/config.go`), set by `Load` from `MINTKEY_PROXY_SCRUB_PATTERNS` through
 `strconv.ParseBool`, false when the variable is unset, empty or not a boolean. A detected echo SHALL be logged with the
-service id and the locations (`header:<Name>` or `body`), never with a value. An upstream failure SHALL answer 502 with the
-body `bad gateway: upstream unreachable`.
+service id and the locations (`header:<Name>` or `body`), never with a value. An upstream failure (a failed round trip) SHALL answer 502 with the
+body `bad gateway: upstream unreachable`; a response whose scanned part cannot be read (`ScrubResult.Err` set, for example
+a gzip body that does not decode) SHALL answer 502 with the body `bad gateway: upstream response unreadable`.
 
 #### Scenario: a credential echoed by the upstream does not reach the caller
 - **WHEN** the generic flow (bearer value `opaque-token-0123456789`) and the classical-key flow call an upstream that
@@ -83,10 +92,16 @@ body `bad gateway: upstream unreachable`.
 
 #### Scenario: the pattern rules apply only when the setting is on
 - **WHEN** the generic flow calls an upstream that answers 200 with the header `Set-Cookie: sid=abc12345` and the body
-  `{"jwt":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl","key":"sk_live_abcdefghijkl"}` (it echoes no injected value),
-  once with `ScrubPatterns` false and once true
-- **THEN** the first caller receives the same body and the `Set-Cookie` header unchanged; the second receives no `Set-Cookie`
-  header and the body `{"jwt":"[REDACTED_JWT]","key":"[REDACTED]"}`
+  `{"jwt":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl","key":"sk_live_abcdefghijkl","q":"api_key=abcdefgh12345678"}`
+  (a real three-part base64url JWT shape; the body echoes no injected value), once with `ScrubPatterns` false and once true
+- **THEN** the first caller receives the same body byte for byte and the `Set-Cookie` header unchanged; the second receives no
+  `Set-Cookie` header and the body `{"jwt":"[REDACTED_JWT]","key":"[REDACTED]","q":"api_key=[REDACTED]"}`
+
+#### Scenario: a secret inside a longer value and in a multi-value header
+- **WHEN** the generic flow (bearer value `opaque-token-0123456789`) calls an upstream that answers with the header
+  `X-Echo: Bearer opaque-token-0123456789` and two `X-Multi` values, `first=opaque-token-0123456789` and `second=clean`
+- **THEN** the caller's `X-Echo` is `Bearer [REDACTED]`, its `X-Multi` values are `first=[REDACTED]` and `second=clean`
+  in that order
 
 #### Scenario: the setting is read from the environment
 - **WHEN** `config.Load()` runs with `MINTKEY_PROXY_SCRUB_PATTERNS` unset, `""`, `true`, `TRUE`, `1`, `false`, `0`, `yes`
@@ -102,6 +117,11 @@ body `bad gateway: upstream unreachable`.
 - **WHEN** the upstream answers 404 with a header `X-Request-Id: r-1` and a JSON body that contains no secret and no
   pattern the scrubber matches, in each of the five flows
 - **THEN** the caller receives status 404, that header, the same body bytes, and the `Content-Length` of the upstream
+
+#### Scenario: a body that fails to decode is refused
+- **WHEN** an upstream answers 200 with `Content-Encoding: gzip` (set only when it was offered gzip) and the body bytes
+  `not gzip at all`
+- **THEN** the answer is 502 with the body `bad gateway: upstream response unreadable`, not `upstream unreachable`
 
 #### Scenario: an unreachable upstream answers 502 with a text
 - **WHEN** the stored target is a closed local port
@@ -124,7 +144,8 @@ and SHALL remove the header and set `resp.ContentLength` to -1 when it changed.
 The transport of `newUpstreamProxy` SHALL remove the caller's `Accept-Encoding` before the upstream call (the Go transport
 then asks for gzip itself and decodes it). A response that still carries a `Content-Encoding` other than `identity`
 (and is not a bodiless answer: HEAD, 204, 304) SHALL be refused with 502 and the body `bad gateway: encoded response not
-supported`. A response whose `Content-Type` is `text/event-stream` SHALL have its headers scrubbed and its body streamed
+supported`: `ModifyResponse` returns an unexported `errEncodedResponse` and `ErrorHandler` answers with that text when
+`errors.Is(err, errEncodedResponse)`, and with `upstream unreachable` for any other error that is not `errBodyUnreadable`. A response whose `Content-Type` is `text/event-stream` SHALL have its headers scrubbed and its body streamed
 without buffering.
 
 #### Scenario: encoded bodies are decoded or refused

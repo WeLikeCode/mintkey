@@ -20,7 +20,8 @@ with `newUpstreamProxy`.
   `GetCredential` answer (response header). `vault.proto` documents it in comments; no generated stub changes (design D6).
   `VaultAdapterClient.put_credential` takes `egress_scope: str = ""`.
 - The vault adapter validates and stores the scope (`any`, `public`; no value keeps the scope of the current version so a
-  rotation cannot widen it), returns it with every credential, and carries it through the SQLite, PostgreSQL and
+  rotation cannot widen it; the not-found answer of every store is `sql.ErrNoRows`, wrapped; lookup and write of a service are
+  serialised in the process), returns it with every credential, and carries it through the SQLite, PostgreSQL and
   HashiCorp stores, the DEK cache and the two migration commands.
 - The proxy reads the header into `EgressScope`; for anything but empty or `any` it builds the flow's reverse proxy over a
   transport whose dial function refuses any non-public resolved address (`egress.NewPublicTransport`) and answers 502
@@ -35,7 +36,7 @@ with `newUpstreamProxy`.
 
 - Changed: `docs/architecture/contracts/vault-adapter/vault.proto` (comments only), `apps/admin-api/src/admin_api/services/vault_client.py`,
   `apps/admin-api/db/changelog/db.changelog-master.yaml`,
-  `apps/vault-adapter/internal/{server/vault.go,server/grpc.go,cache/dek_cache.go,store/store.go,store/sqlite.go,store/postgres.go,store/hashicorp_doc.go}`,
+  `apps/vault-adapter/internal/{server/vault.go,server/grpc.go,cache/dek_cache.go,store/sqlite.go,store/postgres.go,store/hashicorp_doc.go}`,
   `apps/vault-adapter/cmd/vault-migrate-sqlite-to-pg/main.go`, `apps/vault-adapter/cmd/vault-migrate-pg-to-hashicorp/main.go`,
   `apps/proxy-plugin/internal/vault/client.go`, `apps/proxy-plugin/cmd/proxy-plugin/main.go`,
   `apps/proxy-plugin/cmd/proxy-plugin/upstream.go`.

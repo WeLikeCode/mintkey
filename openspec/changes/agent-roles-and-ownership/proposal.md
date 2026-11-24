@@ -20,9 +20,11 @@ them: no agent route, no agent tool and no permission check on an agent yet.
   (a context without a role is a consumer).
 - Service responses of the operator API carry `owner_agent_id` and `created_by_agent_id`; `GET .../services` takes an
   optional `owner_agent_id` filter. A new route `POST /v1/tenants/{tenant_id}/services/{service_id}/transfer` lets an
-  operator set the owner to an active publisher of the tenant, or back to operators.
+  operator set the owner to an active publisher of the tenant, or back to operators; a changed owner also publishes
+  `service.ownership_transferred` on `mintkey:service` (payload in design.md).
 - The audit contract gains `agent.role.changed` and `service.ownership_transferred`, each written with the operator as
   the actor.
+- Demoting a publisher changes nothing but its role: its services and their grants stay until an operator transfers them.
 - A shared module `mintkey_models.roles` holds the two role names.
 
 ## Capabilities
@@ -56,4 +58,4 @@ them: no agent route, no agent tool and no permission check on an agent yet.
 1. **Problem statement**: nothing records an agent's role or a service's owner.
 2. **Expected behavior**: role and owner exist, default to consumer and operator, and only an operator changes them.
 3. **Verification target**: the admin-api, mintkey-models and MCP pytest suites as `.l4/gates/test.sh` runs them.
-4. **Owner decisions needed**: none; see design.md, Decisions.
+4. **Owner decisions needed**: none; see design.md, Decisions (D8 settles what a demotion does).

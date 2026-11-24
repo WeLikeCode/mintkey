@@ -51,7 +51,12 @@ const egressScopeMetadataKey = "x-mintkey-egress-scope"
 
 **D1. A put that names no scope keeps the current version's scope.** `VaultService.PutCredential` with no scope reads the
 current version's record (`store.Backend.Get` with version 0) and reuses its scope (`any` when the store reports no such
-row). A rotation by an operator (`rotate_credential` calls `put_credential` without the argument) therefore cannot turn a
+row: an error satisfying `errors.Is(err, sql.ErrNoRows)`, or a `(nil, nil)` result. The three stores all wrap
+`sql.ErrNoRows` today: SQLite in `Get`, PostgreSQL after `pgx.ErrNoRows` and HashiCorp for an empty index, a missing
+version document and `ErrSecretNotFound`; a store that signals absence another way must map it to that sentinel). Lookup and
+write run under one mutex per `(tenant, service)`, so a put that names no scope cannot overwrite the scope a concurrent
+put has just set; the adapter is a single instance (`deploy/helm/mintkey/templates/stateful/vault-adapter.yaml` sets
+`replicas: 1`), and a second instance would need a database-level lock, which this change does not add. A rotation by an operator (`rotate_credential` calls `put_credential` without the argument) therefore cannot turn a
 `public` credential into `any`. A lookup that fails for another reason fails the put, so a store error never stores `any`.
 Naming `any` or `public` sets it. The rule lives once, in the service, for all stores.
 
@@ -88,6 +93,19 @@ adapter and proxy scenarios stay the same.
 **D7. Tests of the PostgreSQL and HashiCorp stores.** Their live tests need Docker or a server and are not part of the gate.
 The gate decides the store behaviour through the SQLite store (same `store.Backend` contract, through the gRPC server),
 the HashiCorp document functions, and a source test that every file handling `target_url` also handles the scope.
+
+**D8. OAuth2 token exchanges keep their own guard.** The connect-time check wraps the transport of the upstream request. The
+token endpoint of the two OAuth2 flows comes from the credential payload and is called through `credential/ssrf.go`
+(`NewTokenExchanger`), which stays as it is, with its own ranges. In this plan only operators store an OAuth2 credential,
+which is `any`: `agent-service-publishing` accepts no OAuth2 scheme from an agent, so no `public` credential reaches an
+exchange. A later change that lets an agent store one must also route its exchange through `egress.NewPublicTransport`.
+
+**D9. Test support lives in the unit's own file.** `public_egress_test.go` defines `startScopedFakeVault(t, resp
+*vaultv1.GetCredentialResponse, scope string) *vault.Client` (a gRPC server over `UnimplementedVaultAdapterServer` whose
+`GetCredential` calls `grpc.SetHeader(ctx, metadata.Pairs("x-mintkey-egress-scope", scope))` when `scope` is not empty and
+returns `proto.Clone(resp)`) and `scopedFlows(t, h, target, scope)`, which builds the five calls as `callFlows` does but with
+that fake vault and, for the direct calls, the scope set by reflection. It calls `countingUpstream` of `stored_target_test.go`
+and edits no other test file.
 
 ## Risks and edge cases
 
