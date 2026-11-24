@@ -28,7 +28,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 2. The scrubber keeps the whole body and a consistent length
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/internal/scrubber/response_tail_test.go` (package `scrubber_test`):
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/internal/scrubber/response_tail_test.go` (package `scrubber_test`):
   `TestScrubKeepsBodyPastScanBound` and `TestScrubUnchangedBodyKeepsLength` cover the scenario "Scrub keeps the tail of a
   large body and the length stays consistent" with the bodies as written there, where `<apikey>` and `<skey>` are the test
   values of the spec built in the test (`"api_key=" + <16 lowercase letters and digits>`, `"sk_live_" + <12 lowercase letters>`; no secret-shaped literal
