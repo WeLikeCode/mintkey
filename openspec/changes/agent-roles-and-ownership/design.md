@@ -36,8 +36,8 @@ and the grants stay (the agent-publishing change binds a credential to its targe
 
 **D3. The role travels with the key check.** `validate-agent-key` adds `role` to its 200 body; the MCP server keeps
 the body as the agent context. A context with no `role` (an older admin-api, a test) is a `consumer`: the reader
-defaults to the less powerful role. The row's `role` is read with `getattr(row, "role", "consumer")` so a row without
-the attribute (the existing test's) still answers 200.
+defaults to the less powerful role. The row's `role` is read with `normalize_role(getattr(row, "role", None))`, so a row without
+the attribute (the existing test's) or with a NULL or unknown value is a `consumer` and still answers 200.
 
 **D4. One vocabulary.** `mintkey_models.roles` (standard library only) gives both services the same names and the
 same fallback; admin-api and the MCP server import it.
@@ -71,7 +71,7 @@ failing statement answers 500 and none is committed.
 
 ## Interfaces
 
-`mintkey_models/roles.py` (given to `agent-service-publishing`, `agent-granted-access`, `agent-access-requests` and the
+`mintkey_models/roles.py` (given to `agent-principal-and-egress`, `agent-service-routes`, `agent-service-tools`, `agent-granted-access`, `agent-access-requests` and the
 admin UI):
 
 ```python
@@ -118,6 +118,6 @@ Wire shapes (operator API, tenant session):
 ## Relation to the other changes
 
 Assumes `tenant-session-routes` is merged: both new routes carry `require_tenant_session`, which is the route-level
-authentication rule it establishes. `agent-service-publishing` reads `agents.role` through the key check and the
+authentication rule it establishes. `agent-principal-and-egress` reads `agents.role` through the key check and `agent-service-routes` reads the
 owner columns through its own statements; `admin-ui-agent-governance` reads the fields and filters above. The
 agent-side tools check `role` themselves; no operator route reads it.

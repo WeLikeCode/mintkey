@@ -46,4 +46,4 @@ with `newUpstreamProxy`.
   `apps/vault-adapter/internal/store/hashicorp_egress_scope_test.go`, `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go`.
 - Callers: no existing caller names a scope, so every credential stays `any` and nothing changes for operators.
 - Operators: run the migration before the new vault adapter starts (the adapter's PostgreSQL queries name the column).
-- Depends on: `proxy-stored-target`. Used by: `agent-service-publishing`, which passes `public` for agent-owned services.
+- Depends on: `proxy-stored-target`. Used by: `agent-service-routes`, which passes `public` for agent-owned services.

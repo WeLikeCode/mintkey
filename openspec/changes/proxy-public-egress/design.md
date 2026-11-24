@@ -71,9 +71,9 @@ the URL's host name, because `http.Transport` takes the server name from the URL
 **D4. Ranges.** Those of the spec: unspecified (`0.0.0.0/8`, `::`), loopback, private, link-local, carrier-grade NAT,
 unique-local and multicast addresses plus the reserved block `240.0.0.0/4`, with IPv4-mapped addresses unwrapped first.
 Everything else counts as public, including documentation and benchmarking ranges. The store-time rule of
-`agent-service-publishing` (`mintkey_models.egress.address_is_public`, which accepts global unicast addresses only) is
+`agent-principal-and-egress` (`mintkey_models.egress.address_is_public`, which accepts global unicast addresses only) is
 deliberately stricter: it also refuses those documentation and benchmarking ranges and the other special-purpose blocks,
-and `agent-service-publishing` applies it to every name an agent supplies. The two rules differ in the safe direction: the
+and `agent-service-routes` applies it to every name an agent supplies. The two rules differ in the safe direction: the
 connect-time check refuses nothing that the store-time check accepted, and it is the one that applies to a name whose
 address changes after it was stored.
 
@@ -97,7 +97,7 @@ the HashiCorp document functions, and a source test that every file handling `ta
 **D8. OAuth2 token exchanges keep their own guard.** The connect-time check wraps the transport of the upstream request. The
 token endpoint of the two OAuth2 flows comes from the credential payload and is called through `credential/ssrf.go`
 (`NewTokenExchanger`), which stays as it is, with its own ranges. In this plan only operators store an OAuth2 credential,
-which is `any`: `agent-service-publishing` accepts no OAuth2 scheme from an agent, so no `public` credential reaches an
+which is `any`: `agent-service-routes` accepts no OAuth2 scheme from an agent, so no `public` credential reaches an
 exchange. A later change that lets an agent store one must also route its exchange through `egress.NewPublicTransport`.
 
 **D9. Test support lives in the unit's own file.** `public_egress_test.go` defines `startScopedFakeVault(t, resp

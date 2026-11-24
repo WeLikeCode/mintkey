@@ -74,7 +74,9 @@
           "id": "openspec:agent-granted-access",
           "depends_on": [
             "openspec:agent-service-tools",
-            "openspec:grant-expiry"
+            "openspec:grant-expiry",
+            "openspec:agent-service-routes",
+            "openspec:agent-principal-and-egress"
           ]
         },
         {
