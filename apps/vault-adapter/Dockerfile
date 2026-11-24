@@ -1,7 +1,7 @@
 # Vault Adapter — Go 1.27, multi-stage, distroless (ADR-0011)
 # Build context must be repo root (go.work workspace includes shared packages/go/ packages).
 # Pinned 2026-05-18; re-pin every quarter.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 WORKDIR /workspace
 
@@ -25,14 +25,16 @@ WORKDIR /workspace/apps/vault-adapter
 RUN go build -o /vault-adapter ./cmd/vault-adapter
 
 # Build grpc_health_probe from source so it inherits the same Go stdlib as the
-# builder image (Go 1.27.2), avoiding the stdlib CVEs of any pre-built binary.
+# builder image (Go 1.27.4), avoiding the stdlib CVEs of any pre-built binary.
 # Use a throwaway module to pin golang.org/x/net, x/text and google.golang.org/grpc
 # to the versions the services use, overriding grpc-health-probe's own go.mod
-# (2026-10: CVE-2026-46600, CVE-2026-56852, CVE-2026-78669, CVE-2026-84304, CVE-2026-84445).
+# (2026-10: CVE-2026-46600, CVE-2026-56852, CVE-2026-78669, CVE-2026-84304, CVE-2026-84445;
+# 2026-11: x/net 0.62.0 and go-jose/v4 4.1.6 for CVE-2026-116587, which the probe's own go.mod pins at 4.1.5).
 RUN mkdir -p /tmp/grpc-build && cd /tmp/grpc-build && \
     printf 'module grpc-build\ngo 1.26\n' > go.mod && \
-    GOWORK=off go get github.com/grpc-ecosystem/grpc-health-probe@v0.4.59 golang.org/x/net@v0.61.0 \
-        golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.84.0 && \
+    GOWORK=off go get github.com/grpc-ecosystem/grpc-health-probe@v0.4.59 golang.org/x/net@v0.62.0 \
+        golang.org/x/text@v0.43.0 google.golang.org/grpc@v1.84.0 \
+        github.com/go-jose/go-jose/v4@v4.1.6 && \
     GOWORK=off go build -o /grpc_health_probe github.com/grpc-ecosystem/grpc-health-probe/... && \
     chmod +x /grpc_health_probe
 

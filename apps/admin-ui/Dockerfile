@@ -1,5 +1,5 @@
-# Pinned 2026-10-17; re-pin every quarter.
-FROM node:26-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913
+# Pinned 2026-11-22; re-pin every quarter.
+FROM node:26-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1
 WORKDIR /app
 
 # node:26 images no longer bundle corepack (removed from Node >=25 dists);
@@ -17,6 +17,10 @@ RUN pnpm install --frozen-lockfile
 # in place: its bundled brace-expansion, undici and http-cache-semantics are HIGH in Trivy (2026-10; the last
 # has no fix).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# The runtime runs src/index.ts with tsx (esbuild) and never type-checks: TypeScript is a build and CI tool only.
+# Since TypeScript 7 the compiler is a native Go binary (@typescript/typescript-<platform>), and 7.0.2 is built with
+# Go 1.26.4 and golang.org/x/text 0.38.0 (HIGH in Trivy, 2026-11). Remove the compiler from the runtime image.
+RUN rm -rf node_modules/typescript node_modules/.pnpm/typescript@* node_modules/.pnpm/@typescript+typescript-*
 
 COPY tsconfig.json ./
 COPY src ./src

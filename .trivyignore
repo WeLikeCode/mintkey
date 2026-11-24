@@ -1,4 +1,4 @@
-# Mintkey Trivy allow-list — review by 2027-01-17 (3 months from last update)
+# Mintkey Trivy allow-list — review by 2027-02-22 (3 months from last update)
 #
 # ── Secret scanning suppressions ─────────────────────────────────────────────
 # gcp-service-account: Trivy secret scanner was firing on the format hint template
@@ -15,6 +15,9 @@ gcp-service-account
 #   for Debian base image Perl/gnutls/sqlite/zlib/bzip2 packages.
 # Updated: 2026-10-17 (fix/trivy-gate-2026-10) — the 2026-10 Debian 12 base CVEs that Debian has not
 #   fixed yet; every fixable finding of that scan was fixed in the images instead.
+# Updated: 2026-11-22 (fix/trivy-gate-2026-11) — the 2026-11 findings that have no fix: five Debian 12 CVEs
+#   (linux-pam, zlib, SQLite x3) and one TinyMCE CVE whose fixed 7.x release is not on npm; every finding with a
+#   fix was fixed in the images instead (Go modules and builders, Python locks, Debian/Ubuntu apt, pnpm overrides).
 # Every CVE here is individually listed; no blanket severity downgrade.
 # Re-evaluate at expiry: upgrade base images or accept renewed allowance.
 
@@ -557,7 +560,7 @@ CVE-2026-42506
 CVE-2026-27145
 
 # ── Debian 12 (bookworm) base, 2026-10 — no Debian fix released yet ─────────
-# Images: admin-api, mcp-server (python:3.12-slim-bookworm), seed-job, mock-backend (python:3.14-slim-bookworm),
+# Images: admin-api, mcp-server (python:3.12-slim-bookworm), seed-job, mock-backend (python:3.15-slim-bookworm),
 # admin-ui (node:26-bookworm-slim), all at Debian 12.15. Trivy reports no FixedVersion (status affected or
 # fix_deferred) for each. Drop an entry once Debian ships a fix: the quarterly base re-pin then picks it up.
 # The services run as non-root (admin-ui as `node`); seed-job runs as root but, like every service, without
@@ -612,3 +615,47 @@ CVE-2026-84782
 #   systemd-homed local privilege escalation via a missing home-record signature check.
 #   Only the libraries are present; no systemd or systemd-homed runs in the containers.
 CVE-2026-16742
+
+# ── 2026-11 additions — no fix released yet ─────────────────────────────────
+# Debian 12 (bookworm) 12.15 images: admin-api, mcp-server, seed-job, mock-backend (python:3.15-slim-bookworm) and
+# admin-ui (node:26-bookworm-slim). The Debian security tracker lists each source package below as "vulnerable" for
+# bookworm (checked 2026-11-22). Drop an entry once Debian ships a fix: the quarterly base re-pin picks it up.
+
+# CVE-2025-6020  linux-pam (libpam0g, libpam-modules, libpam-modules-bin, libpam-runtime) 1.5.2-6+deb12u2
+#   pam_namespace follows user-controlled paths: local privilege escalation through symlink and race attacks.
+#   Needs a local PAM session that loads pam_namespace; no container runs login, sshd, su or any PAM-based
+#   service, and none configures pam_namespace. The libraries are only present as Debian base packages.
+CVE-2025-6020
+
+# CVE-2026-85091  zlib (zlib1g) 1:1.2.13.dfsg-1
+#   Heap buffer overflow in gz_vacate(): the gzFile write API (gzwrite and friends) after a failed write().
+#   Python's gzip/zlib modules and Node's zlib use the deflate/inflate stream API, not the gz* file API, and no
+#   service writes gzip files through the C gz* functions. Fixed upstream in zlib 1.3.2-4 (Debian unstable only).
+CVE-2026-85091
+
+# CVE-2026-119373  sqlite3 (libsqlite3-0) 3.40.1-2+deb12u2 (Python images only)
+#   Heap overflow in FTS5 fts5MergeRowidLists() for detail=none tables with negative rowids and prefix MATCH.
+#   Needs SQLite's FTS5 and attacker-chosen SQL or data. No service uses SQLite: they use PostgreSQL (asyncpg,
+#   psycopg2) and no service code imports sqlite3. The library is a dependency of the CPython base image.
+CVE-2026-119373
+
+# CVE-2026-119374  sqlite3 (libsqlite3-0) 3.40.1-2+deb12u2 (Python images only)
+#   Heap overflow in FTS5 fts5DoSecureDelete() from a corrupted FTS5 index in an attacker-supplied database file.
+#   No service opens a SQLite database file (see CVE-2026-119373).
+CVE-2026-119374
+
+# CVE-2026-119379  sqlite3 (libsqlite3-0) 3.40.1-2+deb12u2 (Python images only)
+#   Heap overflow in sqlite3changeset_apply() of the session extension from crafted changesets.
+#   No service applies SQLite changesets (see CVE-2026-119373).
+CVE-2026-119379
+
+# ── admin-ui, 2026-11 ───────────────────────────────────────────────────────
+
+# CVE-2026-116675  tinymce 7.9.3 (npm, via adminjs -> @adminjs/design-system) HIGH — fixed 7.9.4 and 8.9.3
+#   Stored XSS: the media plugin creates data-mce-object elements before sanitisation.
+#   tinymce 7.9.4 is not published on npm (7-latest is 7.9.3), and 7.9.2 carries three other HIGH findings
+#   (CVE-2026-47759, CVE-2026-47761, CVE-2026-47762, all fixed in 7.9.3). 8.x is a major jump for the editor
+#   wrapper AdminJS bundles (@tinymce/tinymce-react 4.3.2), untested here. AdminJS mounts TinyMCE (media plugin on by
+#   default) only for `richtext` properties; no Mintkey resource declares one (no richtext or tinymce reference in
+#   apps/admin-ui/src), so the editor is never rendered. Remove this entry when 7.9.4 is published.
+CVE-2026-116675

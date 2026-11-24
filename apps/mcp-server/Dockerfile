@@ -1,15 +1,15 @@
-# MCP Server — Python 3.14 + FastAPI (ADR-0009, ADR-0012)
+# MCP Server — Python 3.15 + FastAPI (ADR-0009, ADR-0012)
 # Build context must be repo root so packages/python/mintkey-models/ is accessible.
-# Pinned 2026-10-17; re-pin every quarter.
-# uv's documented pattern: the uv binary copied onto python:3.14-slim-bookworm, because the
+# Pinned 2026-11-22; re-pin every quarter.
+# uv's documented pattern: the uv binary copied onto python:3.15-slim-bookworm, because the
 # ghcr.io/astral-sh/uv:python3.12-bookworm-slim image still shipped Debian 12.13 (2026-10: perl-base, krb5,
 # pcre2 HIGH/CRITICAL fixed only in later point releases). Both FROM lines are digest-pinned for Dependabot.
-FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
-FROM python:3.14-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
+FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
+FROM python:3.15-slim-bookworm@sha256:96599df822d0e1c6bb700014a05c7f3c8cabc6e0f7ff3c4f9f69cee033b4b5d9
 COPY --from=uv /uv /uvx /usr/local/bin/
 # The base image's pip vendors msgpack 1.1.2 / urllib3 2.7.0 / setuptools 70.3.0 (Trivy HIGH). Dependencies are
 # installed by uv, so pip is not needed at runtime.
-RUN rm -rf /usr/local/lib/python3.14/site-packages/pip /usr/local/lib/python3.14/site-packages/pip-*.dist-info /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+RUN rm -rf /usr/local/lib/python3.15/site-packages/pip /usr/local/lib/python3.15/site-packages/pip-*.dist-info /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.15
 
 WORKDIR /app
 
