@@ -79,29 +79,45 @@ replaced, and each value of a header with several values is scrubbed on its own.
 `strconv.ParseBool`, false when the variable is unset, empty or not a boolean. A detected echo SHALL be logged with the
 service id and the locations (`header:<Name>` or `body`), never with a value. An upstream failure (a failed round trip) SHALL answer 502 with the
 body `bad gateway: upstream unreachable`; a response whose scanned part cannot be read (`ScrubResult.Err` set, for example
-a gzip body that does not decode) SHALL answer 502 with the body `bad gateway: upstream response unreadable`.
+a gzip body that does not decode) SHALL answer 502 with the body `bad gateway: upstream response unreadable`. An entry of
+`secrets` that is nil or empty SHALL be skipped (nothing is replaced for it), as a flow whose credential value or OAuth2
+token is empty injects nothing to redact.
+
+Test values (constants built in the tests; this folder never writes a secret-shaped literal): `<tokenA>` is the text
+`opaque-token-` followed by the digits `0123456789`; `<tokenB>` the text `exchanged-token-` followed by `ABCDEF123`;
+`<tokenC>` the text `pass word&x=` followed by `1234`; `<jwt>` a string of three base64url segments (no padding) joined by
+dots, built from the JSON `{"alg":"HS256","typ":"JWT"}`, the JSON `{"sub":"x"}` and 32 bytes of 0x01, in that order;
+`<skey>` the text `sk_live_` followed by 12 lowercase letters; `<apikey>` the text `api_key=` followed by 16 lowercase
+letters and digits.
 
 #### Scenario: a credential echoed by the upstream does not reach the caller
-- **WHEN** the generic flow (bearer value `opaque-token-0123456789`) and the classical-key flow call an upstream that
-  answers 200 with the JSON body `{"echo":"Bearer opaque-token-0123456789","other":"fine"}`, the header
-  `X-Echo: opaque-token-0123456789` and the header `Set-Cookie: sid=abc12345`, with `ScrubPatterns` false (the default)
+- **WHEN** the generic flow (bearer value `<tokenA>`) and the classical-key flow call an upstream that
+  answers 200 with the JSON body `{"echo":"Bearer <tokenA>","other":"fine"}`, the header
+  `X-Echo: <tokenA>` and the header `Set-Cookie: sid=abc12345`, with `ScrubPatterns` false (the default)
   and again true
 - **THEN** in both runs the caller's body is `{"echo":"Bearer [REDACTED]","other":"fine"}`, the `X-Echo` value is
   `[REDACTED]`, the status is 200, and neither the body nor the headers contain the token; the `Set-Cookie` header is
   present with its value in the first run and absent in the second
 
 #### Scenario: the pattern rules apply only when the setting is on
-- **WHEN** the generic flow calls an upstream that answers 200 with the header `Set-Cookie: sid=abc12345` and the body
-  `{"jwt":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl","key":"sk_live_abcdefghijkl","q":"api_key=abcdefgh12345678"}`
-  (a real three-part base64url JWT shape; the body echoes no injected value), once with `ScrubPatterns` false and once true
+- **WHEN** the generic flow calls an upstream that answers 200 with the header `Set-Cookie: sid=abc12345` and the JSON
+  body with `jwt` the string `<jwt>`, `key` the string `<skey>` and `q` the string `<apikey>` (the body echoes no injected
+  value), once with `ScrubPatterns` false and once true
 - **THEN** the first caller receives the same body byte for byte and the `Set-Cookie` header unchanged; the second receives no
-  `Set-Cookie` header and the body `{"jwt":"[REDACTED_JWT]","key":"[REDACTED]","q":"api_key=[REDACTED]"}`
+  `Set-Cookie` header and the JSON body with `jwt` `[REDACTED_JWT]`, `key` `[REDACTED]` and `q` `api_key=[REDACTED]`
 
 #### Scenario: a secret inside a longer value and in a multi-value header
-- **WHEN** the generic flow (bearer value `opaque-token-0123456789`) calls an upstream that answers with the header
-  `X-Echo: Bearer opaque-token-0123456789` and two `X-Multi` values, `first=opaque-token-0123456789` and `second=clean`
+- **WHEN** the generic flow (bearer value `<tokenA>`) calls an upstream that answers with the header
+  `X-Echo: Bearer <tokenA>` and two `X-Multi` values, `first=<tokenA>` and `second=clean`
 - **THEN** the caller's `X-Echo` is `Bearer [REDACTED]`, its `X-Multi` values are `first=[REDACTED]` and `second=clean`
   in that order
+
+#### Scenario: short secrets, encoded forms and empty secrets
+- **WHEN** the generic flow runs with the bearer value `abc1234` (7 bytes) and the upstream echoes it in its body; with the
+  bearer value `<tokenC>` and the upstream echoes `<tokenC>` as `base64.StdEncoding` text and as `url.QueryEscape` text; and
+  with an empty bearer value and a body `{"x":"y"}`
+- **THEN** the first body is returned byte for byte; in the second both echoes become `[REDACTED]` and no form of
+  `<tokenC>` remains; the third body is `{"x":"y"}` byte for byte, with no `[REDACTED]` anywhere
 
 #### Scenario: the setting is read from the environment
 - **WHEN** `config.Load()` runs with `MINTKEY_PROXY_SCRUB_PATTERNS` unset, `""`, `true`, `TRUE`, `1`, `false`, `0`, `yes`
@@ -109,9 +125,9 @@ a gzip body that does not decode) SHALL answer 502 with the body `bad gateway: u
 - **THEN** `ScrubPatterns` is false, false, true, true, true, false, false, false and false
 
 #### Scenario: the exchanged token of the OAuth2 flows is redacted too
-- **WHEN** `handleOAuth2ClientCredentials` and `handleOAuth2PasswordGrant` exchange the token `exchanged-token-ABCDEF123`
+- **WHEN** `handleOAuth2ClientCredentials` and `handleOAuth2PasswordGrant` exchange the token `<tokenB>`
   and the upstream echoes it in its body
-- **THEN** the caller's body contains `[REDACTED]` and not `exchanged-token-ABCDEF123`
+- **THEN** the caller's body contains `[REDACTED]` and not `<tokenB>`
 
 #### Scenario: a clean response passes through unchanged
 - **WHEN** the upstream answers 404 with a header `X-Request-Id: r-1` and a JSON body that contains no secret and no
@@ -134,10 +150,9 @@ and SHALL remove the header and set `resp.ContentLength` to -1 when it changed.
 
 #### Scenario: Scrub keeps the tail of a large body and the length stays consistent
 - **WHEN** `scrubber.Scrub` runs on a response with `Content-Length: 307200` whose body is 307200 bytes of spaces with the
-  text `api_key=abcdefgh12345678` followed by a newline at byte 100 and the text `sk_live_abcdefghijkl` followed by a
+  text `<apikey>` followed by a newline at byte 100 and the text `<skey>` followed by a
   newline at byte 296960 (290 KiB, past the scan bound); and on a second response of 307200 spaces
-- **THEN** the first body reads to its end with 307194 bytes, holds `api_key=[REDACTED]`, still holds
-  `sk_live_abcdefghijkl` at its place after the shortened part, and the response has no `Content-Length` header and
+- **THEN** the first body reads to its end with 307194 bytes (`<apikey>` has 24 bytes and `api_key=[REDACTED]` 18), holds `api_key=[REDACTED]`, still holds `<skey>` at its place after the shortened part, and the response has no `Content-Length` header and
   `ContentLength` -1; the second body is returned byte for byte with `Content-Length` 307200 and `ContentLength` 307200
 
 ### Requirement: Bodies the proxy cannot scan are streamed or refused explicitly
@@ -145,8 +160,10 @@ The transport of `newUpstreamProxy` SHALL remove the caller's `Accept-Encoding` 
 then asks for gzip itself and decodes it). A response that still carries a `Content-Encoding` other than `identity`
 (and is not a bodiless answer: HEAD, 204, 304) SHALL be refused with 502 and the body `bad gateway: encoded response not
 supported`: `ModifyResponse` returns an unexported `errEncodedResponse` and `ErrorHandler` answers with that text when
-`errors.Is(err, errEncodedResponse)`, and with `upstream unreachable` for any other error that is not `errBodyUnreadable`. A response whose `Content-Type` is `text/event-stream` SHALL have its headers scrubbed and its body streamed
-without buffering.
+`errors.Is(err, errEncodedResponse)`, and with `upstream unreachable` for any other error that is not `errBodyUnreadable`. A response whose `Content-Type` is `text/event-stream` SHALL have its headers scrubbed by
+`scrubber.ScrubHeaders(resp *http.Response, patterns bool, secrets ...[]byte) ScrubResult` (in `response.go`: the header
+removals and the secret replacement in header values that `ScrubWith` applies, and nothing on the body; `ScrubWith` uses it for its header part) and its body streamed without buffering; an injected secret echoed in an event body is NOT
+redacted, because a stream is never read ahead.
 
 #### Scenario: encoded bodies are decoded or refused
 - **WHEN** the caller sends `Accept-Encoding: br`, an upstream that records the header answers gzip when it is offered
@@ -158,4 +175,6 @@ without buffering.
 #### Scenario: an event stream is not buffered
 - **WHEN** an upstream answers `Content-Type: text/event-stream`, writes one event, flushes, and waits until the test
   releases it; the caller reads through a running instance of the handler (generic flow)
-- **THEN** the caller reads the first event within 5 seconds, before the upstream finishes
+  and the response carries the header `X-Echo: <tokenA>` and the event text `data: <tokenA>`
+- **THEN** the caller reads the first event within 5 seconds, before the upstream finishes, with the `X-Echo` header
+  `[REDACTED]` and the event text as written (holding `<tokenA>`)

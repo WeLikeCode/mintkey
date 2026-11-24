@@ -2,16 +2,14 @@
 
 ## Context
 
-Facts at the base (staging `2c4c814`) plus the changes merged before this one; the requirements name symbols, the anchors
-are for review only.
+Facts at the base (staging `2c4c814`) plus the changes merged before this one; the requirements name symbols.
 
-- Agent keys are checked by `POST /v1/internal/validate-agent-key` (`ADM/api/internal.py:135`), which first sets
-  `app.platform_admin_view` to `on` for its transaction (line 159); `set_tenant_context` never turns it off. Its test
-  patches `internal._verify_argon2` and counts two `execute` calls.
-- `CsrfMiddleware` refuses a cookie-less POST outside `csrf_exempt` paths (`ADM/main.py:124`); a later change exempts
-  `/v1/agent`.
-- The existing operator-side check `resolve_hostname_is_private` (`ADM/services/credential_service.py:50`) takes no deny
-  list and does not refuse a name that fails to resolve; agents use `mintkey_models.egress`, which does both.
+- Agent keys are checked by `POST /v1/internal/validate-agent-key` in `admin_api/api/internal.py`, whose first statement sets
+  `app.platform_admin_view` to `on` (with a sentinel `app.current_tenant`) for its transaction; `set_tenant_context` never
+  turns it off. Its test patches `internal._verify_argon2` and feeds two `execute` results: that statement and the lookup.
+- `CsrfMiddleware` refuses a cookie-less POST outside `csrf_exempt` paths; a later change exempts `/v1/agent`.
+- The operator-side check `resolve_hostname_is_private` (`admin_api/services/credential_service.py`) takes no deny list and
+  does not refuse a name that fails to resolve; agents use `mintkey_models.egress`, which does both.
 
 ## Relied on (given by the named change; not redefined here)
 
@@ -24,24 +22,30 @@ are for review only.
 ## Decisions
 
 **D1. The key check is shared and runs outside the route's transaction.** It moves to `internal.check_agent_key`, which
-`validate_agent_key` calls without a change of behaviour. `require_agent_principal` runs it in its own session from
-`AsyncSessionLocal`, closed before the route's session opens, so `platform_admin_view` is never on in a route's
-transaction; each later route calls `set_tenant_context(session, principal.tenant_id)` and pins its statements to the
-tenant. The tenant always comes from the principal, never from a path or a body.
+issues the `set_config` statement (platform view on) as its own first statement and then the lookup, so the view is turned on
+only in the session the check is given; `validate_agent_key` calls it and issues nothing itself, so its two statements and
+its behaviour are unchanged. `require_agent_principal` opens a dedicated session from `AsyncSessionLocal`, runs the check,
+commits and closes it before the route's session opens, so `platform_admin_view` is never on in a route's transaction; each
+later route calls `set_tenant_context(session, principal.tenant_id)` and pins its statements to the tenant. The tenant
+always comes from the principal, never from a path or a body. A database failure while checking is a 503
+`mintkey:verify_unavailable`, never a principal.
 
 **D2. Only the Bearer key.** `X-API-Key`, cookies and other schemes are not accepted, so an operator session can never
 open an agent route and an agent key can never open an operator route.
 
 **D3. One place refuses a role.** `require_publisher_principal` raises 403 `mintkey:role_forbidden` for a role other than
 `publisher` after `record_denied_operation` wrote `agent.operation.denied` from a session of its own, so the event survives
-the raised error. The `operation` it records on a REST route is the literal `"<METHOD> <path>"` of the request, for
+the raised error; it binds the principal's tenant (never the platform view) before `audit_emit`. The `operation` it records on a REST route is the literal `"<METHOD> <path>"` of the request, for
 example `POST /v1/agent/services`, taken from `request.method` and `request.url.path` (at most 256 characters). The MCP
 server records the tool name instead (`agent-service-tools`). When the audit write fails the refusal is still answered
 (403) and the failure is logged: a refusal never depends on its record.
 
 **D4. Added: the event's `role` is the normalized role**, so an unknown stored value is recorded as `consumer`.
 
-**D5. Added: the egress rule is stricter than the proxy's.** `address_is_public` accepts global unicast addresses only; the
+**D5. Added: egress edge cases.** A trailing dot is removed before the checks; a `*.suffix` entry never matches the bare
+suffix; an unparsable address is not public.
+
+**D6. Added: the egress rule is stricter than the proxy's.** `address_is_public` accepts global unicast addresses only; the
 proxy's connect-time rule (`proxy-public-egress`) may accept a wider set. The difference is in the safe direction.
 
 ## Interfaces
@@ -56,7 +60,8 @@ Module signatures are in the requirements of the two specs, not repeated here. G
 
 ## Failure cases
 
-- No usable credential: 401 before any database work. A rejected key: the status and body `validate-agent-key` answers.
+- No usable credential: 401 before any database work. A rejected key: the status and body `validate-agent-key` answers. A
+  database failure while checking: 503 `mintkey:verify_unavailable`, the dedicated session closed.
 - A consumer on a publisher dependency: 403 and one event; the audit write failing: 403 and no event.
 - A name that fails to resolve, resolves to nothing or to one non-public address: `unresolvable` or `non_public_address`.
 

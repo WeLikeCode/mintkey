@@ -23,18 +23,14 @@ requester_agent_id) WHERE status = 'pending'`; indexes on `(tenant_id, service_i
 requester_agent_id, status)`; row-level security with a `tenant_isolation` policy that has the text of the policy in
 `004-services.yaml`; and a `GRANT SELECT, INSERT, UPDATE, DELETE ... TO mintkey_app`, each changeset with a rollback.
 `mintkey_models/db.py` SHALL gain a model `ServiceAccessRequest` with exactly those columns (`actions` as
-`ARRAY(Text)`), and the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table. The gate that
-must pass is `tests/acceptance/test_sqlalchemy_mirror.py` (`test_liquibase_tables_have_sqlalchemy_models` and
-`test_tenant_scoped_models_match_rls_test_table_list`, which imports `TENANT_SCOPED` from that file and needs a model for each
-entry); the architecture test itself needs Docker and is not run by the L4 gate, so only its set is edited.
+`ARRAY(Text)`), and the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table. The architecture test needs Docker and is not run by the L4 gate, so only its set is edited.
 
 #### Scenario: the changelog creates the table
 - **WHEN** the changelog is parsed as YAML and the master changelog is read
-- **THEN** the `createTable` has the columns above with the types, defaults, nullability and the three foreign keys with their
+- **THEN** the `createTable` has the columns above with types, defaults, nullability and the three foreign keys with their
   `onDelete`, the SQL text contains each check and the partial index, the RLS changeset text contains
-  `tenant_id = current_setting('app.current_tenant', true)::uuid` and `app.platform_admin_view`, one SQL change contains
-  `GRANT SELECT, INSERT, UPDATE, DELETE` and `mintkey_app`, every changeset has a `rollback`, and exactly one include in
-  the master names `032-service-access-requests.yaml`
+  `tenant_id = current_setting('app.current_tenant', true)::uuid` and `app.platform_admin_view`, one SQL change has the
+  `GRANT` to `mintkey_app`, every changeset has a `rollback`, and the master has exactly one include of the file
 
 #### Scenario: the mirror and the RLS list know the table
 - **WHEN** `mintkey_models.db` is imported, `tests/architecture/test_rls_coverage.py` is read as text, and
@@ -45,12 +41,9 @@ entry); the architecture test itself needs Docker and is not run by the L4 gate,
 ### Requirement: The audit contract lists the request events
 `docs/architecture/contracts/events/audit-event.schema.json` SHALL define `ev_access_request_created`, `_approved`, `_denied`,
 `_cancelled` and `_expired` (event types `access_request.created` and so on, target type `access_request`), each in
-`oneOf` and `discriminator.mapping`, and add `access_request` to the `target_type` enum. Payload keys (all required unless
-marked): created `{request_id, service_id, requester_agent_id, action, requested_ttl_seconds}`; approved `{request_id,
-service_id, requester_agent_id, action, grant_id, expires_at, decided_by_type, decided_by_id (nullable)}`; denied
-`{request_id, service_id, requester_agent_id, action, decided_by_type, decided_by_id (nullable), decision_note (nullable)}`;
-cancelled `{request_id, service_id, requester_agent_id, action}`; expired `{request_id, service_id, requester_agent_id,
-action, pending_until}`.
+`oneOf` and `discriminator.mapping`, and add `access_request` to the `target_type` enum. Every payload has the required keys `request_id, service_id, requester_agent_id, action`, and these more: created
+`requested_ttl_seconds`; approved `grant_id, expires_at, decided_by_type, decided_by_id` (nullable); denied `decided_by_type,
+decided_by_id` (nullable), `decision_note` (nullable); cancelled none; expired `pending_until`.
 
 #### Scenario: the contract lists them
 - **WHEN** the schema is loaded as JSON
@@ -87,8 +80,8 @@ service is owned by the requester), 409 `already_granted` (a live grant of the r
 PENDING_WINDOW_SECONDS`, write `access_request.created` (actor the requester, `actor_type` `agent`), and return
 `access_request_view`. An `IntegrityError` on the insert SHALL raise 409 `request_pending`.
 
-`AccessRequestError(status_code: int, code: str, title: str, **detail: Any)` and `access_request_view(row) -> dict` SHALL
-give the interface named in design: the view keys `{id, service_id, service_slug, service_name, requester_agent_id,
+`AccessRequestError(status_code: int, code: str, title: str, **detail: Any)` (an `Exception` whose attributes are the same
+names, `detail` a dict) and `access_request_view(row) -> dict` SHALL give the view keys `{id, service_id, service_slug, service_name, requester_agent_id,
 requester_agent_name, actions, reason, requested_ttl_seconds, status, decided_by_type, decided_by_id, decided_at,
 decision_note, grant_id, created_at, pending_until}` with `areq_`, `svc_`, `agent_` and `perm_` ids, `decided_by_id` in the form that
 `decided_by_type` names (an `agent` decider as an `agent_` id, an `operator` decider as the operator's UUID text, because
@@ -131,24 +124,31 @@ request), raise 409 `request_not_pending` with `status` unless it is pending, th
 ### Requirement: The owner or an operator decides a request
 `decide_access_request(session, *, tenant_id: UUID, request_id: str, decision: str, decider: Grantor, ttl_seconds: int |
 None, note: str | None, now: datetime) -> dict` SHALL select the request with its service's owner `FOR UPDATE` (404
-`not_found` without a row), and for an agent decider raise 403 `not_owner` unless the service's `owner_agent_id` is the
-decider, then 403 `self_decision` when the requester is the decider; raise 409 `request_not_pending` unless the status is
-`pending`. A `deny` SHALL set `status` `denied` with the decider, `decided_at` and `decision_note`, write
+`not_found` without a row); for an agent decider raise 403 `not_owner` unless the service's `owner_agent_id` is the decider,
+then 403 `self_decision` when the requester is the decider (an operator is never a requester); then 409 `request_not_pending`
+unless the status is `pending`. A `deny` SHALL set `status` `denied` with the decider, `decided_at` and `decision_note`, write
 `access_request.denied` and return the view. An `approve` SHALL raise 409 `requester_not_active` unless the requester's agent
-row (tenant-pinned) has status `active`; compute `ttl = approved_ttl_seconds(requested_ttl_seconds, ttl_seconds,
+row (tenant-pinned) is `active`; compute `ttl = approved_ttl_seconds(requested_ttl_seconds, ttl_seconds,
 agent_grant_max_ttl_seconds())`; call `write_grant` for the requester, the service, the action, `{}` constraints,
 `expires_at = now + ttl`, the decider and `now` (a `GrantConflict` raises 409 `grant_conflict`); set `status` `approved`, the
 decider, `decided_at`, `decision_note` and `grant_id`; write `agent.permission.granted` (when the grant was created; payload
-from `grant_granted_audit_payload`) and `access_request.approved`; and return the view plus `grant: {id, action,
-expires_at}`. A `GrantExpiryError` from `write_grant` SHALL raise 422 `invalid_expires_at` with its `reason` (the request
-stays pending, nothing is written); any other exception, `audit_emit` raising included, propagates unchanged and the
-function never commits, so the route's session rolls back and the request stays pending. `approved_ttl_seconds(requested: int, approved: int | None, cap: int) -> int` SHALL return the smallest of
-`requested`, `approved` (ignored when None) and `cap`. Events name the decider as actor (`operator` or `agent`).
+from `grant_granted_audit_payload`) and `access_request.approved`; and return the view plus `grant: {id (the `perm_` wire
+id), action, expires_at}`. A `GrantExpiryError` from `write_grant` SHALL raise 422 `invalid_expires_at` with its `reason` (the
+request stays pending, nothing is written); any other exception, `audit_emit` included, propagates and the function never
+commits, so the route's session rolls back and the request stays pending. Events name the decider as actor; an operator
+decider with `Grantor.id` None stores `decided_by_id` null and writes `actor_id` None.
 
-#### Scenario: ttl arithmetic
+`approved_ttl_seconds(requested: int, approved: int | None, cap: int) -> int` SHALL return the smallest of `requested`,
+`approved` (ignored when None) and `cap`. `check_decision_ttl(value: object) -> int | None` SHALL return None for None and the
+value for an `int` from 60 to 7776000 (a `bool` is not one), and otherwise raise `AccessRequestError` 422 `invalid_ttl`, title
+`Invalid ttl_seconds`, with `reason` `ttl_not_integer` (a string, boolean, float or other type) or `ttl_out_of_range`; routes
+call it on a decision's `ttl_seconds` before `decide_access_request`.
+
+#### Scenario: ttl arithmetic and the decision ttl check
 - **WHEN** `approved_ttl_seconds` runs with (3600, None, 604800), (3600, 600, 604800), (3600, 7200, 604800) and (7776000,
-  None, 604800)
-- **THEN** it returns 3600, 600, 3600 and 604800
+  None, 604800); and `check_decision_ttl` with None, 60, 7776000, 59, 7776001, `"600"`, `600.0` and `True`
+- **THEN** the first returns 3600, 600, 3600 and 604800; the second returns None, 60 and 7776000, then raises 422
+  `invalid_ttl` with `reason` `ttl_out_of_range` twice and `ttl_not_integer` three times
 
 #### Scenario: the owner approves
 - **WHEN** the owner agent approves a pending request for 3600 seconds requested and 1800 approved, with `MINTKEY_AGENT_GRANT_MAX_TTL`
@@ -160,9 +160,9 @@ function never commits, so the route's session rolls back and the request stays 
 
 #### Scenario: an operator approves and the cap applies
 - **WHEN** an operator approves a request for 7776000 seconds with `MINTKEY_AGENT_GRANT_MAX_TTL` `3600` and no approved
-  TTL, for a service with no owner
+  TTL, for a service with no owner; and again as `Grantor("operator", None)`
 - **THEN** `write_grant` received `Grantor("operator", <id>)` and `expires_at` `now` plus 3600; the events name the
-  operator as actor
+  operator as actor; the second time `decided_by_id` is null, both events have `actor_id` None and `self_decision` is not raised
 
 #### Scenario: a denial
 - **WHEN** the owner denies with the note `not now`
@@ -192,9 +192,12 @@ function never commits, so the route's session rolls back and the request stays 
 
 ### Requirement: Requests are listed by their audience
 `list_access_requests(session, *, tenant_id: UUID, now: datetime, requester_agent_id: str | None = None, owner_agent_id: str |
-None = None, service_id: str | None = None, status: str | None = None) -> list[dict]` SHALL select the tenant's requests
+None = None, service_ref: str | None = None, status: str | None = None) -> list[dict]` SHALL select the tenant's requests
 (joined with `services` and `agents` for the names), apply each given filter in SQL, order by `created_at` descending, limit
-200, and return views. `get_access_request(session, *, tenant_id: UUID, request_id: str, now: datetime) -> dict` SHALL return
+200, and return views. The agent ids are database UUID text (the routes decode wire ids). `service_ref` is a `svc_` wire id
+or a slug, resolved as in `create_access_request` but inside the same SELECT, pinned to the tenant: a `svc_` value that does
+not decode with prefix `svc` raises 422 `invalid_id` with `field` `service_id` (after the sweep, before any other
+statement); a slug filters on `services.slug`; an unknown slug or service gives an empty list, never an error. `get_access_request(session, *, tenant_id: UUID, request_id: str, now: datetime) -> dict` SHALL return
 the view or raise 404 `not_found`.
 
 #### Scenario: get
@@ -202,6 +205,8 @@ the view or raise 404 `not_found`.
 - **THEN** the first returns the view and the second raises 404 `not_found`
 
 #### Scenario: filters reach the statement
-- **WHEN** the list runs with no filter, with the requester, with the owner and a status, and with a service
-- **THEN** the statements pin the tenant, the filtered ones bind the given ids and status, and the order and the limit are
-  in every statement
+- **WHEN** the list runs with no filter, with the requester, with the owner and a status, with `service_ref` `payments`
+  (the fake answers no row), with `service_ref` `svc_` plus a valid body, and with `svc_xyz`
+- **THEN** the statements pin the tenant, the filtered ones bind the given ids and status, the slug `payments` or the decoded
+  service id, the order and the limit are in every statement, the slug call returns `[]`, and `svc_xyz` raises 422
+  `invalid_id` (`field` `service_id`) with no statement after the sweep

@@ -72,7 +72,7 @@ below 1, and 7776000 when it is larger than 7776000. `is_expired(expires_at, now
 @dataclass(frozen=True)
 class Grantor:
     type: str                      # "operator" | "agent"
-    id: str | None                 # DB uuid text of the operator or the agent
+    id: str | None                 # DB uuid text (`str(operator_id)`, `str(agent_id)`) of the operator or the agent
 @dataclass(frozen=True)
 class GrantRecord:
     id: str; wire_id: str; agent_id: str; service_id: str; action: str   # ids as DB uuid text; wire_id is perm_...
@@ -95,23 +95,22 @@ def grant_wire_fields(record_or_row: Any, now: datetime) -> dict[str, Any]
 that the agent and the service exist). Its first statement SHALL be the transaction-level advisory lock `SELECT
 pg_advisory_xact_lock(hashtextextended(:key, 0))` with `key` equal to `grant:<tenant_id>:<agent_id>:<service_id>:<action>`
 (ids as DB uuid text), so concurrent writers of one (agent, service, action) run one after the other until their
-transactions end and the second sees the first's row; no unique constraint is added, because rows written before this
-change may repeat a key and a "live rows only" constraint cannot name `now()`. It SHALL select the row of (tenant, agent,
+transactions end and the second sees the first's row (no unique constraint: older rows may repeat a key). It SHALL select the row of (tenant, agent,
 service, action) with `ORDER BY (expires_at IS NULL) DESC, expires_at DESC, created_at DESC, id LIMIT 1` (the ordering of
 `request_token`, so a live row comes first when one exists): a live row with equal
 constraints and expiry is returned with `created` false; a live row with other constraints or another expiry raises
 `GrantConflict`; an expired row (`is_expired`) is deleted; then it SHALL insert the grant with `grantor_type`, `grantor_id`,
-`expires_at` and `created_by` (the grantor id, or the agent id without one), upsert the budget counter when the constraints
+`expires_at` and `created_by` (the UUID column, bound the grantor id, or the agent id without one), upsert the budget counter when the constraints
 have a budget, and return the new record. For an existing row each of `expires_at`, `grantor_type`, `grantor_id` and
-`created_at` is read with the rule that a value of the wrong type reads as its default (`expires_at` None, `grantor_type` `operator`, `grantor_id` None, `created_at` None). `delete_grant` SHALL select the matching row (and agent, when given),
+`created_at` of the wrong type reads as its default (None, `operator`, None, None). `delete_grant` SHALL select the matching row (and agent, when given),
 delete it and return its record, or return None and delete nothing. The payload builders SHALL give: granted `{perm_id,
 agent_id, service_id, action, constraints, expires_at (ISO or null), grantor_type, grantor_id}`; revoked `{permission_id,
 agent_id, service_id, action, grantor_type, grantor_id, revoked_by_type, revoked_by_id}`; NOTIFY `{event:
 "agent.permission.revoked", tenant_id, agent_id, permission_id, service_id, revoked_at}`; ids in wire form (`agent_`, `svc_`,
 `perm_`), a value that is not a UUID text passing through, `tenant_id` the UUID text. In the NOTIFY payload `revoked_at` SHALL
 be a string: the ISO-8601 timestamp in UTC with an offset, `revoked_at.astimezone(timezone.utc).isoformat()` (a naive
-datetime reads as UTC), for example `2026-11-25T10:00:00+00:00`, with `+00:00` and never `Z`, and with `.123456` before the
-offset when the datetime has microseconds. The proxy's revocation change parses it. `grant_wire_fields` SHALL give `{"expires_at": ISO or null,
+datetime reads as UTC), for example `2026-11-25T10:00:00+00:00` (never `Z`). The proxy's revocation change parses it. `grant_wire_fields` (its first argument a `GrantRecord` or any row or object with the attributes `expires_at`,
+`grantor_type` and `grantor_id`) SHALL give `{"expires_at": ISO or null,
 "expired": bool, "grantor_type": str, "grantor_id": str or null}`: the `agent_...` wire id for an agent grantor, the
 operator's UUID text otherwise, `operator` for a missing type.
 
@@ -162,8 +161,11 @@ the grantor or `created_by`. It SHALL answer, as flat JSON bodies like the route
 `detail`), 422 `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason": "<the GrantExpiryError reason>"}`
 for a `GrantExpiryError`, and 409 `{"mintkey:code": "permission_constraints_conflict", "title": "A permission grant with
 different constraints already exists"}` (the existing body) for a `GrantConflict`; an `expires_at` that is not a datetime
-is refused by request validation, unchanged. It SHALL keep its 201 and idempotent 200 answers. Every grant object of
-the operator API SHALL carry `expires_at`, `expired`, `grantor_type` and `grantor_id`. `DELETE .../permissions/{id}` SHALL
+is refused by request validation, unchanged. It SHALL keep its 201 and idempotent 200 answers. Every grant object returned by the operator API's list routes
+(`GET .../agents/{agent_id}/permissions` and `GET /v1/tenants/{tenant_id}/permissions`), by `get_permission` (`GET
+/v1/tenants/{tenant_id}/permissions/{permission_id}`) and by the grant create route SHALL carry `expires_at`, `expired`,
+`grantor_type` and `grantor_id`; the bodies of the PATCH route (`{id, tenant_id, constraints, updated_at}`) and of the budget
+routes SHALL NOT change. `DELETE .../permissions/{id}` SHALL
 call `delete_grant`, and for a deleted grant emit `agent.permission.revoked` with the revoked payload (actor the
 operator) and publish the revoked NOTIFY payload on `mintkey:agent`, and for no row answer 204 and emit nothing.
 `GET /v1/tenants/{tenant_id}/permissions` SHALL accept `grantor_agent_id`, an `agent_` wire id or a UUID, and return only the
@@ -184,13 +186,19 @@ grants with `grantor_type = 'agent'` and `grantor_id` equal to that agent's UUID
   "permission_constraints_conflict", "title": "A permission grant with different constraints already exists"}` with status
   422, 422 and 409; no INSERT ran
 
-#### Scenario: the lists show the new fields
-- **WHEN** the agent list and the tenant list run over a grant with a past expiry, one with none and one given by an
-  agent, and the tenant list runs with `?grantor_agent_id=<agent wire id>` and with `?grantor_agent_id=x`
-- **THEN** the objects show `expired` true; `expired` false with `expires_at` null; `grantor_type` `agent` with the
-  agent's wire id; the filter returns only the agent's grant (its SELECT text contains `grantor_type = 'agent'` and `grantor_id`, with the
-  agent's UUID bound) and `x` answers 422 with `"mintkey:code": "invalid_id"`; the SELECT texts contain `expires_at`,
-  `grantor_type` and `grantor_id`
+#### Scenario: the lists and the single grant show the new fields
+- **WHEN** the agent list, the tenant list and `get_permission` run over a grant with a past expiry, one with none and one
+  given by an agent (the fake rows hold the three columns), and the SELECT texts are read
+- **THEN** the objects show `expired` true with the past `expires_at`; `expired` false with `expires_at` null and
+  `grantor_type` `operator`; `grantor_type` `agent` with `grantor_id` the agent's wire id; and each SELECT text contains
+  `expires_at`, `grantor_type` and `grantor_id`
+
+#### Scenario: the grantor filter and the unchanged bodies
+- **WHEN** the tenant list runs with `?grantor_agent_id=<agent wire id>` and with `?grantor_agent_id=x`; and the PATCH route
+  and the budget reset route run for a stored grant
+- **THEN** the filter's SELECT text contains `grantor_type = 'agent'` and `grantor_id` with the agent's UUID bound, and `x`
+  answers 422 with `"mintkey:code": "invalid_id"`; the PATCH body has exactly the keys `id`, `tenant_id`, `constraints` and
+  `updated_at`, and the reset body exactly `permission_id`, `used` and `reset_at`, neither with any of the four fields
 
 #### Scenario: revoke names what it revoked
 - **WHEN** an operator revokes a stored grant, and then an id with no row

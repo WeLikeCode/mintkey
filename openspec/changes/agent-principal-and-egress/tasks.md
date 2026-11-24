@@ -15,25 +15,27 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 - [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_key_check.py` (a fake session answering the key lookup by
   substring; `internal._verify_argon2` patched as `tests/unit/admin_api/test_validate_agent_key_errors.py` does), covering
-  the two scenarios of "The key check is one function"; the second scenario also runs
+  the two scenarios of "The key check is one function" (recording fake sessions); the second scenario also runs
   `tests/unit/admin_api/test_validate_agent_key_errors.py` unchanged. Then in `apps/admin-api/src/admin_api/api/internal.py`
-  move the lookup, the verify and the expiry branches of `validate_agent_key` into `check_agent_key(session, api_key)`, so
-  that `validate_agent_key` answers exactly as before.
+  move the `set_config` statement, the lookup, the verify and the expiry branches of `validate_agent_key` into
+  `check_agent_key(session, api_key)` (the `set_config` statement first), so that `validate_agent_key` issues no statement
+  of its own and answers exactly as before.
 
 ## 3. The principal
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the four scenarios of "An agent key
-  yields a principal": `admin_api.auth.agent_principal.AsyncSessionLocal` is patched with a factory of fake
-  async-context-manager sessions, `internal.check_agent_key` with an `AsyncMock`; the handler runs inside a `FastAPI()`
+- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the five scenarios of "An agent key
+  yields a principal": `admin_api.auth.agent_principal.AsyncSessionLocal` is patched with a factory of recording fake
+  async-context-manager sessions, `internal.check_agent_key` with an `AsyncMock` (the last scenario uses the real function); the handler runs inside a `FastAPI()`
   with a probe route. Red stubs `apps/admin-api/src/admin_api/auth/agent_principal.py` with every name of the spec
   (`AgentPrincipal`, `AgentApiError`, `agent_api_error_handler`, `require_agent_principal`, `require_publisher_principal`,
-  `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler and `require_agent_principal`.
+  `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler and `require_agent_principal` (dedicated session, commit,
+  close, 503 on a database failure).
 
 - [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
   /v1/agent/probe` that depends on `require_publisher_principal`, `require_agent_principal` overridden to return an
   `AgentPrincipal`, `AsyncSessionLocal` patched with a fake session factory and `audit_emit` patched at
   `admin_api.auth.agent_principal`), covering the two scenarios of "A role that is too low is refused and recorded". Then
-  fill in `require_publisher_principal` and `record_denied_operation` in
+  fill in `require_publisher_principal` and `record_denied_operation` (tenant context first, no platform view) in
   `apps/admin-api/src/admin_api/auth/agent_principal.py`.
 
 ## 4. The audit contract

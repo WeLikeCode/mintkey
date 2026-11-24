@@ -50,6 +50,7 @@ func (h *proxyHandler) newUpstreamProxy(target *url.URL, base http.RoundTripper,
 // bytes read so far and the caller must not forward it.
 func ScrubWith(resp *http.Response, patterns bool, secrets ...[]byte) ScrubResult
 func Scrub(resp *http.Response) ScrubResult // = ScrubWith(resp, true)
+func ScrubHeaders(resp *http.Response, patterns bool, secrets ...[]byte) ScrubResult // header part only; ModifyResponse uses it for an event stream
 
 // config/config.go
 // Config.ScrubPatterns bool, from MINTKEY_PROXY_SCRUB_PATTERNS (strconv.ParseBool; unset, empty or unparsable: false)
@@ -89,7 +90,8 @@ the query-parameter scheme) are the ones the injector writes.
 decodes before the scrub (the decoded response loses its `Content-Encoding` and `Content-Length`). An upstream that
 encodes anyway (for example `br`) cannot be scanned, so the response is refused with 502 instead of forwarded. HEAD, 204
 and 304 answers have no body and are not refused. An event stream (`Content-Type: text/event-stream`) is the exception to
-buffering: waiting for 256 KiB or the end of the stream would hold the first event back, so only its headers are scrubbed.
+buffering: waiting for 256 KiB or the end of the stream would hold the first event back, so only its headers are scrubbed
+(`ScrubHeaders`), and a secret echoed in an event body is not redacted (a follow-up).
 
 **D6. The scan bound stays 256 KiB** (ADR-0014.4). The bytes past it reach the caller unchanged; a secret that straddles
 or lies beyond the bound is not matched.

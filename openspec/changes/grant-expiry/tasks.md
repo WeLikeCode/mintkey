@@ -43,7 +43,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 3. The operator API
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_permissions_expiry.py`, covering the four scenarios of "The
+- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_permissions_expiry.py`, covering the five scenarios of "The
   operator API takes an expiry and records the grantor". Change the existing
   `tests/unit/admin_api/test_permissions.py::test_revoke_returns_204_and_notifies` only in its set-up: build its app
   with `existing_perm` set to a `types.SimpleNamespace` grant row (agent, service, action, constraints, grantor
@@ -57,7 +57,8 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   for the 422, as the route's `invalid_id` answer is built), replace the DELETE statement of `revoke_permission` by `delete_grant`
   with the audit and NOTIFY payload builders (nothing emitted for None), and add the new columns to the four SELECTs
   of `list_permissions`, `list_tenant_permissions` and `get_permission` and to their objects, plus the `grantor_agent_id`
-  parameter. The PATCH and the budget routes are unchanged.
+  parameter. The bodies of the PATCH and the budget routes are unchanged (the scenario "the grantor filter and the unchanged
+  bodies" runs the PATCH and the reset route).
 
 ## 4. Expired grants are absent
 

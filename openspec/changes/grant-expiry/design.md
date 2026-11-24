@@ -79,6 +79,9 @@ refused); the budget routes and the proxy's budget read are reached only after a
 
 ## Interfaces
 
+The four wire fields (`expires_at`, `expired`, `grantor_type`, `grantor_id`) are carried by the grant objects of the two list
+routes, `get_permission` and the grant create route; the PATCH body and the budget bodies do not change.
+
 The module signatures, record fields, payload keys and wire shapes are in the requirements of `specs/grant-expiry/spec.md`
 (not repeated here). Token denial: 403 `{"code": "mintkey:not_authorized", "reason_code": "grant_expired", agent_id,
 service_id, action, "hint"}` plus a `token.denied` event with the same `reason_code`.
@@ -88,6 +91,11 @@ service_id, action, "hint"}` plus a `token.denied` event with the same `reason_c
 - An invalid `expires_at` (past, no offset; for an agent also missing or beyond the cap): 422 or `GrantExpiryError`,
   no row, no event. A malformed `MINTKEY_AGENT_GRANT_MAX_TTL`: the default. Another expiry on an existing grant: 409,
   the stored grant unchanged. A row with no or a non-datetime `expires_at`: no expiry. Email grants: unchanged.
+- Legacy duplicate rows: `write_grant` looks at the first row of the ordering only; other expired duplicates stay, and
+  every reader ignores them. The advisory lock is released when the writer's transaction ends, committed or rolled back,
+  and has no timeout of its own: a second writer waits for the first. A revoke that finds no row writes no event and
+  sends no NOTIFY (D8): the proxy's revocation change reacts to a deleted grant only.
+- The changelog directory holds 001 to 029 at the base, so `030` is free; `proxy-grant-revocation` follows this change.
 
 ## Relation to the other changes
 

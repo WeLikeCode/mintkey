@@ -14,7 +14,8 @@ are shared by the changes that follow, so they come first and carry no route of 
   (reads only `Authorization: Bearer mk_agent_...`, validates the key in a session of its own, yields the principal with
   tenant, agent and role), `require_publisher_principal` and `record_denied_operation`.
 - `admin_api.api.internal.check_agent_key(session, api_key)` is the key check that `POST /v1/internal/validate-agent-key`
-  already runs, extracted so the principal dependency uses the same code; the endpoint answers exactly as before.
+  already runs (its first statement turns the platform view on in the session it is given), extracted so the principal
+  dependency uses the same code in a dedicated session; the endpoint answers exactly as before.
 - `mintkey_models.egress` gives `check_agent_target_url` and its helpers: https only, no IP literal, no internal name, every
   resolved address public. Nothing else calls it in this change.
 - The audit contract gains the event `agent.operation.denied`, written when a role refuses an operation.

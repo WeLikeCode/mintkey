@@ -18,7 +18,8 @@ hours window, not an expiry, so neither exists.
   `delete_grant`, the audit and NOTIFY payload builders, `grant_wire_fields`). The operator's grant route uses them, so
   `granted_by` in a body is ignored and the grantor is the operator of the session.
 - The operator API accepts `expires_at` on a grant, answers `expires_at`, `expired`, `grantor_type` and `grantor_id` on
-  every grant it returns, and the tenant grant list takes a `grantor_agent_id` filter. A live grant ends early or is
+  every grant object of the two list routes, `get_permission` and the create route (the PATCH and budget bodies are
+  unchanged), and the tenant grant list takes a `grantor_agent_id` filter. A live grant ends early or is
   renewed only by revoking it: the same agent, service and action with another expiry answers 409; an expired grant is
   replaced by granting again. Concurrent writers of one agent, service and action are serialised by a transaction-level
   advisory lock inside `write_grant`.

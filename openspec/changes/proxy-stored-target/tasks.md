@@ -30,14 +30,18 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 - [ ] 2.1 Tests first, new file `apps/proxy-plugin/internal/scrubber/response_tail_test.go` (package `scrubber_test`):
   `TestScrubKeepsBodyPastScanBound` and `TestScrubUnchangedBodyKeepsLength` cover the scenario "Scrub keeps the tail of a
-  large body and the length stays consistent" with the bodies exactly as written there (build them with
+  large body and the length stays consistent" with the bodies as written there, where `<apikey>` and `<skey>` are the test
+  values of the spec built in the test (`"api_key=" + <16 lowercase letters and digits>`, `"sk_live_" + <12 lowercase letters>`; no secret-shaped literal
+  is written in the file) (build them with
   `bytes.Repeat([]byte(" "), 307200)` and `copy` at the two offsets; the response has `Header["Content-Length"]` and
   `ContentLength` set to 307200). The first asserts the body read to its end has 307194 bytes, contains
-  `api_key=[REDACTED]` and `sk_live_abcdefghijkl`, that `Content-Length` is absent from the header and `ContentLength` is
+  `api_key=[REDACTED]` and the `<skey>` text, that `Content-Length` is absent from the header and `ContentLength` is
   -1; it stays red until `Scrub` passes the bytes past 256 KiB on. The second asserts a second 307200-byte response is returned
   byte for byte with header and `ContentLength` unchanged; it passes before the change and guards it.
   Then in `apps/proxy-plugin/internal/scrubber/response.go` add `ScrubWith(resp *http.Response, patterns bool, secrets
-  ...[]byte) ScrubResult` and make `Scrub(resp)` call it with `true` and no secrets. `ScrubWith` reads the first 256 KiB;
+  ...[]byte) ScrubResult` and make `Scrub(resp)` call it with `true` and no secrets; add `ScrubHeaders(resp *http.Response, patterns
+  bool, secrets ...[]byte) ScrubResult` (the header removals and the secret replacement in header values, no body read), which
+  `ScrubWith` calls for its header part and `ModifyResponse` calls alone for an event stream; skip a nil or empty secret. `ScrubWith` reads the first 256 KiB;
   when `patterns` is true it applies the header removals and the three patterns as `Scrub` does today, and for every
   call it then applies the secrets (each secret of at least 8 bytes in its raw, `base64.StdEncoding` and
   `url.QueryEscape` forms, longest first, `bytes.ReplaceAll` with `[REDACTED]`), replaces
@@ -55,7 +59,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
   `vault.NewClient(addr, "", "")`; `countingUpstream(t)` returns an `httptest.Server` and a function that gives its request
   count and last headers; `callFlows(t, h, targetFor, header)` runs the five flows against one stored-target value and
   returns the five recorders: generic (`h.vaultClient =
-  startFakeVault(...)` with a bearer credential `opaque-token-0123456789`, a token from `buildScopeClaimsJWT(t,
+  startFakeVault(...)` with a bearer credential `<tokenA>`, a token from `buildScopeClaimsJWT(t,
   testSvcUUIDA, nil)` in `h.pubKeys["testkey"]`, `GET /v1/call/<testSvcUUIDA>/echo`), classical key (`h.ckHandler =
   classicalkey.NewHandler(classicalkey.Config{BrokerURL: <httptest broker answering {"api_key_id":"k1","agent_id":"agent_ck",
   "service_id":"<testSvcUUIDA>","allowed_actions":["call"]}>, CacheTTL: time.Minute})`, bearer `mk_svckey_test`, headers
@@ -87,14 +91,17 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
   does not reach the caller" (generic and classical flows, the upstream builds the body from the request's `Authorization`
   header and sets `X-Echo` and `Set-Cookie`; each runs with `h.cfg` as `testHandler` builds it and again with `h.cfg =
   config.Load()` under `t.Setenv("MINTKEY_PROXY_SCRUB_PATTERNS", "true")`); `TestPatternRulesFollowTheSetting` covers
-  "the pattern rules apply only when the setting is on" the same way; `TestExchangedTokenIsRedacted` covers "the exchanged token of the OAuth2 flows
+  "the pattern rules apply only when the setting is on" the same way (the test builds `<jwt>`, `<skey>` and `<apikey>` of the
+  spec: the JWT as `base64.RawURLEncoding` of the two JSON texts and of `bytes.Repeat([]byte{1}, 32)` joined by dots); `TestExchangedTokenIsRedacted` covers "the exchanged token of the OAuth2 flows
   is redacted too"; `TestCleanResponsePassesThrough` covers "a clean response passes through unchanged" (all five flows);
   `TestEventStreamIsNotBuffered` serves the handler with `httptest.NewServer(h)` and covers "an event stream is not
-  buffered" with a 5 s read tolerance and a release channel; `TestEncodedBodiesAreDecodedOrRefused` covers "encoded bodies
+  buffered" with a 5 s read tolerance and a release channel (it also asserts the `X-Echo` header is redacted and the event
+  text is not); `TestEncodedBodiesAreDecodedOrRefused` covers "encoded bodies
   are decoded or refused" (the upstream uses `compress/gzip` when its request has `Accept-Encoding: gzip`);
   `TestUnreachableUpstreamAnswersWithText` covers "an unreachable upstream answers 502 with a text" (the target is the URL of
   a closed `httptest` server); `TestSecretInsideLongerValueAndMultiValueHeader` covers "a secret inside a longer value and
-  in a multi-value header"; `TestUndecodableBodyIsRefused` covers "a body that fails to decode is refused". They stay red until `newUpstreamProxy` exists and the flows use it (the second run of the two
+  in a multi-value header"; `TestUndecodableBodyIsRefused` covers "a body that fails to decode is refused"; `TestShortEncodedAndEmptySecrets` covers "short secrets, encoded forms and
+  empty secrets" (bearer values `abc1234`, `<tokenC>` and empty). They stay red until `newUpstreamProxy` exists and the flows use it (the second run of the two
   setting tests reads `ScrubPatterns` of the loaded config by `reflect.ValueOf(cfg).Elem().FieldByName("ScrubPatterns")`
   and `t.Fatal`s naming the missing field).
   New file `apps/proxy-plugin/internal/config/scrub_patterns_test.go` (package `config_test`): `TestScrubPatternsFromEnvironment`
