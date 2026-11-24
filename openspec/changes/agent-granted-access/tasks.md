@@ -23,12 +23,13 @@ does, and `AdminApiClient.agent_request`.
 
 ## 2. The routes
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_grants_create.py`, covering the five scenarios of "An
-  owner gives time-boxed access" (the cap scenario sets `MINTKEY_AGENT_GRANT_MAX_TTL` with `monkeypatch.setenv` and runs
+- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_grants_create.py`, covering the six scenarios of "An
+  owner gives time-boxed access" (the cap scenario and the real-write-path scenario set `MINTKEY_AGENT_GRANT_MAX_TTL` with `monkeypatch.setenv` where they need the cap and run
   the real `admin_api.services.grants.write_grant` over the fake session, which answers the SELECT of the existing row with
-  no row). Red creates `apps/admin-api/src/admin_api/api/agent_grants.py` with a `router` and no routes. Then add
+  no row, or with a live row, as the scenario says). Red creates `apps/admin-api/src/admin_api/api/agent_grants.py` with a `router` and no routes. Then add
   `POST ""` (`Body` model with `extra="forbid"`, `Constraints` imported from `admin_api.api.permissions`, `ttl_seconds`
-  as `StrictInt`) and map `GrantExpiryError` and `GrantConflict` as the requirement says.
+  as `StrictInt`) and map `GrantExpiryError` (the flat 422 body, with `max_ttl_seconds` for `expires_at_too_far`) and
+  `GrantConflict` as the requirement says.
 
 - [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_agent_grants_revoke_list.py`, covering the scenarios of "An
   owner revokes any grant of its service" and "An owner lists the live grants of its service". Then add the two routes
@@ -43,8 +44,9 @@ does, and `AdminApiClient.agent_request`.
   `MINTKEY_AUDIT_HMAC_KEY` and `MINTKEY_VAULT_BACKEND=sqlite` set as `tests/unit/admin_api/test_agent_routes_isolation.py`
   does, walks the routes and their dependency trees, reads `apps/admin-api/src/admin_api/main.py` as text, and sends the
   keyless request with `httpx.ASGITransport`; the consumer calls override `require_agent_principal` and patch
-  `admin_api.auth.agent_principal.AsyncSessionLocal` and `audit_emit` as `tests/unit/admin_api/test_agent_principal.py`
-  does), covering the two scenarios of "The grant routes are agent routes for publishers". Then in
+  `admin_api.auth.agent_principal.AsyncSessionLocal` and `audit_emit` as `tests/unit/admin_api/test_agent_role_refusal.py`
+  does), covering the two scenarios of "The grant routes are agent routes for publishers" (the operation strings of the
+  role refusals are the literals of the scenario). Then in
   `apps/admin-api/src/admin_api/api/agent.py` add `from admin_api.api import agent_grants` and
   `router.include_router(agent_grants.router)`. `tests/acceptance/openapi_snapshot.json` does not change (no module is
   imported by `main.py`); `tests/unit/admin_api/test_agent_routes_isolation.py` passes unchanged.
@@ -62,10 +64,8 @@ does, and `AdminApiClient.agent_request`.
 - [ ] 5.1 Tests first, new file `apps/mcp-server/tests/test_agent_grant_tools.py`, covering the four scenarios of "The
   publisher grant tools reach the routes with the caller's key" (JSON-RPC through `create_app()` and
   `httpx.ASGITransport`; REST by the same client with `Authorization: Bearer mk_agent_x`; `tools.yaml` through
-  `yaml.safe_load`). Change the existing test `apps/mcp-server/tests/test_service_publishing_tools.py`: where it compares
-  the publisher's `tools/list` names with the ten existing names plus the four publisher names, it SHALL expect those
-  plus `mintkey_grant_access`, `mintkey_revoke_access` and `mintkey_list_service_grants` (the three new tests of this task
-  assert membership, not a count, so the next change does not break them). Then create
+  `yaml.safe_load`). The tests of this task assert
+  membership (the names that must be present and absent), not equality or a count, and no existing test file changes. Then create
   `apps/mcp-server/src/mcp_server/tools/access_grants.py` (three REST handlers over `guard_agent_tool` and
   `forward_agent_call`), include its router in `apps/mcp-server/src/mcp_server/main.py`, add the three `TOOLS` entries (no `title` key,
   as `test_tools_list_no_titles` checks) and `_dispatch_tool` branches in `apps/mcp-server/src/mcp_server/tools/jsonrpc.py` (the loopback calls

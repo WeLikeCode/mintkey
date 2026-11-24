@@ -29,8 +29,9 @@ response, context)` with `context.currentAdmin` `{operatorId: "op_123", tenantId
 - [ ] 2.1 Tests first, new file `apps/admin-ui/tests/GovernanceComponents.render.test.tsx` (jsdom project; `adminjs`
   and `@adminjs/design-system` are the stubs of `vitest.render.config.ts`; `recordAction` comes from
   `apps/admin-ui/tests/__mocks__/adminjs-stub.ts` as in `apps/admin-ui/tests/AgentSecretNewForm.render.test.tsx`), covering the
-  two render scenarios of "Generic components render the new views"; new file
-  `apps/admin-ui/tests/test_governance_wiring.test.ts` reads `apps/admin-ui/src/components/index.ts` as text for the third. Red
+  the four render scenarios of "Generic components render the new views"; new file
+  `apps/admin-ui/tests/test_governance_wiring.test.ts` reads `apps/admin-ui/src/components/index.ts` as text for the
+  registration scenario. Red
   creates `apps/admin-ui/src/components/actions/PayloadActionForm.tsx`, `sections/AgentGovernancePanel.tsx` and
   `properties/GrantExpiryBadge.tsx` (default exports rendering null) and registers them in
   `apps/admin-ui/src/components/index.ts`. Then fill the components in, using the helpers of task 1.1 and the section

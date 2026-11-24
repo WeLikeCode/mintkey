@@ -3,8 +3,8 @@
 ## Purpose
 
 A publisher agent gives other agents of its tenant time-boxed access to the services it owns, lists who has it and takes
-it back. The routes are agent routes (authenticated by the agent key only), the grants are written through the shared
-write path with the agent as grantor, and three MCP tools reach the routes with the caller's key.
+it back. The routes are agent routes (authenticated by the agent key only) and the grants are written through the shared
+write path with the agent as grantor. The MCP tools are `agent-grant-tools`.
 
 ## ADDED Requirements
 
@@ -24,8 +24,9 @@ tenant. `main.py` SHALL NOT import the module.
 #### Scenario: consumers and keyless calls are refused
 - **WHEN** a consumer principal calls each route (through `require_agent_principal` overridden to return it), and a
   request has no `Authorization` header
-- **THEN** the consumer gets 403 `mintkey:role_forbidden` with one `agent.operation.denied` event per call and no
-  statement for grants; the keyless request gets 401 `mintkey:auth_required`
+- **THEN** the consumer gets 403 `mintkey:role_forbidden` with one `agent.operation.denied` event per call, whose operation
+  is the request line sent (`POST /v1/agent/grants`, `GET /v1/agent/grants` and `POST /v1/agent/grants/<grant_id>/revoke`
+  with the id used), and no statement for grants; the keyless request gets 401 `mintkey:auth_required`
 
 ### Requirement: Wire ids, the grantee and the grant view have one implementation
 `admin_api.services.agent_grants` SHALL give:
@@ -75,9 +76,13 @@ are merged in; `created_at` is ISO text or null.
 <principal agent id>)` and the same `now`. For a created grant it SHALL write `agent.permission.granted` (payload from
 `grant_granted_audit_payload`, `actor_type` `agent`, `actor_id` the caller, `target_type` `permission`) and answer 201
 with `grant_view`; for an identical live grant (`created` false) it SHALL answer 200 with the view and write nothing. A
-`GrantExpiryError` SHALL answer 422 `mintkey:ttl_too_large` with `max_ttl_seconds` (`agent_grant_max_ttl_seconds()`) for
-the reason `expires_at_too_far`, else 422 `mintkey:invalid_expiry` with the `reason`; a `GrantConflict` SHALL answer 409
-`mintkey:grant_conflict` with a `hint` to revoke first. The grantor and the tenant SHALL come from the principal only.
+`GrantExpiryError` SHALL answer 422 with the flat body `{"mintkey:code": "invalid_expires_at", "title": "Invalid
+expires_at", "reason": <the error's reason>}` that `grant-expiry` answers on the operator route, plus `max_ttl_seconds`
+(`agent_grant_max_ttl_seconds()`) when the reason is `expires_at_too_far`; a `GrantConflict` SHALL answer 409
+`{"code": "mintkey:grant_conflict", "hint": ...}` with a hint to revoke first. The grantor and the tenant SHALL come from the
+principal only. Concurrent requests for the same agent, service and action are serialised by `write_grant` (it takes a
+transaction-scoped advisory lock on that key first, as `grant-expiry` specifies), so the second sees the row of the first
+and answers 200 or 409, never a duplicate row or a server error.
 
 #### Scenario: a grant is created
 - **WHEN** a publisher that owns the service posts a valid body for an active agent, with `ttl_seconds` 3600 and a
@@ -90,17 +95,24 @@ the reason `expires_at_too_far`, else 422 `mintkey:invalid_expiry` with the `rea
 #### Scenario: the cap
 - **WHEN** `MINTKEY_AGENT_GRANT_MAX_TTL` is `3600` and the route runs with the real `write_grant` over a fake session, for
   `ttl_seconds` 3600 and 3601
-- **THEN** the first answers 201; the second answers 422 `mintkey:ttl_too_large` with `max_ttl_seconds` 3600, and the
-  fake session saw no INSERT and no audit event
+- **THEN** the first answers 201; the second answers 422 with `{"mintkey:code": "invalid_expires_at", "title": "Invalid
+  expires_at", "reason": "expires_at_too_far", "max_ttl_seconds": 3600}`, and the fake session saw no INSERT and no audit
+  event
 
 #### Scenario: an identical grant and a conflict
-- **WHEN** `write_grant` returns a record with `created` false, and then raises `GrantConflict`
+- **WHEN** `write_grant` (replaced) returns a record with `created` false, and then raises `GrantConflict`
 - **THEN** the first answers 200 with the view and writes no event; the second answers 409 `mintkey:grant_conflict`
   and writes no event
 
+#### Scenario: a live grant with another expiry, through the real write path
+- **WHEN** the route runs with the real `write_grant` over a fake session whose SELECT of the (tenant, agent, service,
+  action) row returns a live grant that expires an hour later than the requested one, and then returns no row
+- **THEN** the first answers 409 `mintkey:grant_conflict` with no INSERT and no event, the second answers 201; in both the
+  first statement `write_grant` ran holds the advisory lock call
+
 #### Scenario: not the owner
 - **WHEN** a publisher grants on a service owned by another agent, on an operator-owned service, on a service of another
-  tenant, and on an unknown slug (the fake `require_owned_service` lookups answer as in `agent-service-publishing`)
+  tenant, and on an unknown slug (the fake `require_owned_service` lookups answer as in `agent-service-routes`)
 - **THEN** the answers are 403 `mintkey:not_owner`, 403 `mintkey:not_owner`, 404 `mintkey:not_found` and 404
   `mintkey:not_found`; `write_grant` was not called and no event was written; a publisher that only holds a grant on the
   service gets the first answer too
@@ -153,76 +165,3 @@ expires_at > now()` and be pinned to the tenant and the service. A missing `serv
 - **WHEN** a publisher lists another agent's service, an operator-owned service, an unknown slug, and no `service_id`
 - **THEN** the answers are 403 `mintkey:not_owner` twice, 404 `mintkey:not_found` and 422 `validation_failed`, and no
   grant SELECT ran
-
-### Requirement: Shared helpers forward an agent tool call
-`mcp_server/tools/agent_forward.py` SHALL give:
-
-```python
-async def guard_agent_tool(session: AsyncSession, agent_ctx: dict[str, Any] | None, tool_name: str) -> JSONResponse | None
-async def forward_agent_call(request: Request, method: str, path: str,
-                             json_body: dict[str, Any] | None = None) -> JSONResponse
-def invalid_params(detail: str) -> JSONResponse
-def matches_pattern(value: object, pattern: str) -> bool
-```
-`guard_agent_tool` SHALL return 401 `{"code": "mintkey:auth_required"}` for no context, else the result of
-`enforce_tool_role(session, agent_ctx, tool_name)`. `forward_agent_call` SHALL take the key from
-`agent_key_from_request` (401 `mintkey:auth_required` when None), call `AdminApiClient().agent_request(method, path, key,
-json_body)`, relay a status below 500 with its JSON body (`{}` when it is not JSON), and answer 502
-`{"code": "mintkey:admin_api_unavailable"}` for a status of 500 or more or any exception. `invalid_params(detail)` SHALL
-answer 422 `{"code": "mintkey:invalid_params", "detail": detail}`. `matches_pattern` SHALL be true for a `str` that
-`re.fullmatch` accepts and that is not made only of dots.
-
-#### Scenario: guard and forward
-- **WHEN** `guard_agent_tool` runs with no context, with a consumer context for `mintkey_grant_access`, and with a
-  publisher context; and `forward_agent_call` runs with `agent_request` answering 201 JSON, 404 JSON, 200 with a non-JSON
-  body, 500, and raising `httpx.ConnectError`, and with a request that has no agent key
-- **THEN** the guard returns 401, a 403 `mintkey:role_forbidden` (one `agent.operation.denied` event) and None; the
-  forward answers 201 with the body, 404 with the body, 200 with `{}`, 502, 502, and 401 with no `agent_request` call
-
-#### Scenario: argument checks
-- **WHEN** `matches_pattern` runs with `my-svc.v2` and `^[A-Za-z0-9_.-]{1,128}$`, then `..`, `.`, `a/b`, an empty string and
-  `7`
-- **THEN** the results are true, false, false, false, false and false
-
-### Requirement: The publisher grant tools reach the routes with the caller's key
-`TOOLS` in `mcp_server/tools/jsonrpc.py` SHALL list these tools, each with `additionalProperties: false`, and
-`mcp_server/tools/access_grants.py` SHALL give their REST handlers (`router = APIRouter(prefix="/v1/tools")`, included
-by `main.py`): `mintkey_grant_access` (POST `/v1/tools/grant_access`; required `service_id`, `agent_id`, `ttl_seconds`;
-optional `action`, `constraints`), `mintkey_revoke_access` (POST `/v1/tools/revoke_access`; required `grant_id`) and
-`mintkey_list_service_grants` (GET `/v1/tools/list_service_grants`; required `service_id`). Each handler SHALL call
-`guard_agent_tool` first, then reject a missing required argument, an unknown key, a `service_id` that fails
-`matches_pattern` with `^[A-Za-z0-9_.-]{1,128}$`, an `agent_id` that fails `^agent_[0-9A-Za-z]{26,32}$`, a `grant_id` that
-fails `^perm_[0-9A-Za-z]{26,32}$`, an `action` that fails `GRANT_ACTION_PATTERN`, a `ttl_seconds` that is not an integer
-(a boolean is not one), and a `constraints` that is not an object, with `invalid_params` and no `agent_request` call; then
-it SHALL call `forward_agent_call` with `POST /v1/agent/grants` and the arguments as the body, `POST
-/v1/agent/grants/<grant_id percent-encoded>/revoke` with no body, and `GET /v1/agent/grants?service_id=<percent-encoded>`.
-`tools/list` and `tools/call` SHALL follow the registry of `agent-service-publishing`. `docs/architecture/contracts/mcp/tools.yaml`
-SHALL list the three tools with `x-mintkey-role: "publisher"` and, in each `input_schema.properties`, the keys of the
-tool's `inputSchema.properties`.
-
-#### Scenario: the list and the call follow the role
-- **WHEN** `tools/list` runs for a consumer, a context with no role and a publisher, and a consumer calls
-  `mintkey_grant_access`
-- **THEN** the first two lists contain none of the three names and the publisher's list contains all three (and still the
-  tools of `agent-service-publishing`); the call answers the JSON-RPC error `-32003` with `data.code`
-  `mintkey:role_forbidden`, one `agent.operation.denied` event and no `agent_request` call
-
-#### Scenario: a publisher call is forwarded
-- **WHEN** a publisher calls each tool with valid arguments (`ttl_seconds` 3600, `service_id` `my-svc.v2`) and
-  `agent_request` answers 201, 200 and 200 with JSON bodies
-- **THEN** it was called with `POST /v1/agent/grants` and the five arguments as the body, `POST
-  /v1/agent/grants/perm_.../revoke` with no body, and `GET /v1/agent/grants?service_id=my-svc.v2`, each with the caller's
-  key, and each result is not an error and holds the body
-
-#### Scenario: bad arguments and failures
-- **WHEN** `mintkey_grant_access` gets `ttl_seconds` `"3600"`, `true` and `3600.5`, an `agent_id` `x`, an extra key
-  `tenant_id`, no `service_id`, a `constraints` of `[]` and an `action` of `a b`; `mintkey_revoke_access` gets `grant_id`
-  `../x`; `mintkey_list_service_grants` gets `service_id` `a/b`; and `agent_request` answers 409 with a body, 500, and
-  raises `httpx.ConnectError`
-- **THEN** the first ten answer 422 `mintkey:invalid_params` without an `agent_request` call; the REST answers are 409
-  with that body, then 502 `mintkey:admin_api_unavailable` twice
-
-#### Scenario: the contract lists the tools
-- **WHEN** `tools.yaml` is loaded
-- **THEN** the three tools have `x-mintkey-role` `publisher`, and each `input_schema.properties` has the keys of its `TOOLS`
-  entry's `inputSchema.properties`

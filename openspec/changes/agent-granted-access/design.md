@@ -15,16 +15,23 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
 
 ## Relied on (given by the named change; not redefined here)
 
-- `agent-service-publishing`: `AgentPrincipal(tenant_id, agent_id, role)`, `AgentApiError(status_code, body, headers)`,
-  `require_agent_principal`, `require_publisher_principal`, `admin_api.services.agent_publishing.require_owned_service(
-  session, principal, service_ref)` (the owned service row, whose `id` is used here, or 404 `mintkey:not_found` / 403
-  `mintkey:not_owner`), `admin_api/api/agent.py` (`router`, prefix `/v1/agent`), the route-family rules (no DELETE, no
-  `transfer` or `role` in a path), `mcp_server.policy.roles` (`PUBLISHER_TOOLS` already names the three tools,
-  `enforce_tool_role`), `AdminApiClient.agent_request`, `agent_key_from_request`, the `-32003` mapping of a 403
+- `agent-principal-and-egress`: `AgentPrincipal(tenant_id, agent_id, role)`, `AgentApiError(status_code, body, headers)`,
+  `require_agent_principal`, `require_publisher_principal` (403 `mintkey:role_forbidden`; the operation it records on a
+  REST route is `"<METHOD> <path>"`).
+- `agent-service-routes`: `admin_api.services.agent_publishing.require_owned_service(session, principal, service_ref)` (the
+  owned service row, whose `id` is used here, or 404 `mintkey:not_found` / 403 `mintkey:not_owner`), `admin_api/api/agent.py`
+  (`router`, prefix `/v1/agent`) and the route-family rules (no DELETE, no `transfer` or `role` in a path).
+- `agent-service-tools`: `mcp_server.policy.roles` (`PUBLISHER_TOOLS` already names the three tools, `enforce_tool_role`,
+  which records the tool name), `AdminApiClient.agent_request`, `agent_key_from_request`, the `-32003` mapping of a 403
   `mintkey:role_forbidden` answer, and the `x-mintkey-role` key of `tools.yaml`.
+- Chain: `agent-service-tools` depends on `agent-service-routes`, which depends on `agent-principal-and-egress`; this change
+  depends on `agent-service-tools` directly and reaches the other two through it.
 - `grant-expiry`: `Grantor`, `GrantRecord`, `GrantConflict`, `write_grant`, `delete_grant`, `grant_granted_audit_payload`,
   `grant_revoked_audit_payload`, `grant_revoked_notify_payload`, `grant_wire_fields`, `GrantExpiryError` and
-  `agent_grant_max_ttl_seconds`. `write_grant` checks the cap for an agent grantor, so this change never repeats it.
+  `agent_grant_max_ttl_seconds`. `write_grant` checks the cap for an agent grantor, so this change never repeats it; it takes
+  a transaction-scoped advisory lock on the (tenant, agent, service, action) key before it selects, so concurrent grants of
+  one key run one after the other; and the flat 422 body `{"mintkey:code": "invalid_expires_at", "title", "reason"}` is the
+  answer of its operator route for a bad expiry.
 - `proxy-grant-revocation` consumes the NOTIFY that `grant_revoked_notify_payload` builds; this change only publishes it.
 
 ## Decisions
@@ -47,8 +54,9 @@ the operator route does.
 free string operators use, since a service has no action list.
 
 **D6. Added: `ttl_seconds` instead of `expires_at`.** An integer from 60 to 7776000 (the ceiling of the cap). The route
-answers the computed `expires_at`. A value above the configured cap answers 422 `mintkey:ttl_too_large` with
-`max_ttl_seconds` (the current cap).
+answers the computed `expires_at`. A value above the configured cap answers the flat 422 body of `grant-expiry`
+(`mintkey:code` `invalid_expires_at`, `reason` `expires_at_too_far`) with `max_ttl_seconds` (the current cap) added, so a
+client reads one error shape on the operator and the agent surface.
 
 **D7. Added: the grantee.** `agent_id` is an `agent_...` wire id of an active agent of the caller's tenant other than the
 caller (`require_grant_target`); any role may be a grantee. There is no tool that lists agents: a publisher learns ids
@@ -59,14 +67,23 @@ owner or itself): after a transfer the grants stay, and the new owner answers fo
 is 404 with nothing written.
 
 **D9. Added: one live grant per agent, service and action.** A repeat with another TTL while the grant is live answers
-409 `mintkey:grant_conflict` (`grant-expiry` D7); the owner revokes first. The identical case is not reachable through
-`ttl_seconds` in practice and answers 200 without an event.
+409 `mintkey:grant_conflict` (`grant-expiry` D7); the owner revokes first. The identical case (`created` false, 200, no
+event) is a defensive branch that `ttl_seconds` cannot reach, since each call computes a new `expires_at`; its scenario
+replaces `write_grant`, and the real write path is tested by the conflict scenario. Two concurrent requests for one key are
+serialised by the advisory lock of `write_grant`: the second sees the first's row and answers 409, never a duplicate.
 
 **D10. Added: the list shows live grants.** An expired grant is absent (`grant-expiry` D3), so the list selects only rows
 with `expires_at IS NULL OR expires_at > now()`.
 
 **D11. Added: shared forwarding helpers.** `mcp_server.tools.agent_forward` holds the steps every agent tool repeats (the
 context and role check, then the forward with the 502 mapping); `agent-access-requests` uses it too. `service_publishing.py` is left as it is.
+
+**D13. Added: the recorded operation.** The role refusal records the operation as the request line on a route (`POST
+/v1/agent/grants`, `GET /v1/agent/grants`, `POST /v1/agent/grants/<grant id>/revoke`) and as the tool name on a tool
+(`mintkey_grant_access`, `mintkey_revoke_access`, `mintkey_list_service_grants`).
+
+**D14. Added: the tool's `constraints` schema.** An object with the five keys of the closed `Constraints` model, each an
+object; the inner shapes stay with the route, so a change of the model never needs a tool schema change.
 
 **D12. Audit actors.** Every event of these routes has `actor_type` `agent` and `actor_id` the caller (`agent.permission.granted`
 and `.revoked` with the grantor and the revoker in the payload), never the request body.
@@ -81,9 +98,8 @@ Given to `agent-access-requests` and `admin-ui-agent-governance`:
   (signatures in the spec).
 - Error bodies of the new routes carry `code`: 401 `mintkey:auth_required`; 403 `mintkey:role_forbidden`,
   `mintkey:not_owner`; 404 `mintkey:not_found`; 409 `mintkey:grant_conflict`; 422 `validation_failed`,
-  `mintkey:invalid_id` (`field`), `mintkey:invalid_target` (`reason`: `invalid_id`, `self`, `agent_not_active`),
-  `mintkey:ttl_too_large`,
-  `mintkey:invalid_expiry` (`reason`).
+  `mintkey:invalid_id` (`field`), `mintkey:invalid_target` (`reason`: `invalid_id`, `self`, `agent_not_active`), and the
+  flat body `mintkey:code` `invalid_expires_at` (`reason`, plus `max_ttl_seconds` for `expires_at_too_far`).
 
 ## Failure cases
 
@@ -97,7 +113,7 @@ Given to `agent-access-requests` and `admin-ui-agent-governance`:
 
 ## Relation to the other changes
 
-Merges after `agent-service-publishing` and `grant-expiry`. `agent-access-requests` creates its grants with the same
+Merges after `agent-service-tools` and `grant-expiry`. `agent-access-requests` creates its grants with the same
 `write_grant` and uses `decode_wire_id` and `agent_forward`. `admin-ui-agent-governance` shows what these routes write
 (`grantor_type` `agent`) through the operator API of `grant-expiry`.
 

@@ -10,7 +10,10 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
 - Writes go through `apiWrite` with `operatorOptsFromAdmin(currentAdmin)` and `tenantIdFromAdmin(currentAdmin)`; reads of a
   BFF action use `currentAdmin.sessionToken` as the `mintkey_session` cookie and add `X-Platform-Admin: true` for a platform
   admin (`RestResource._sessionHeaders`, `crossTenantServicesList`).
-- `getCredentialStatus` (`UI/lib/credential-status.ts`) turns `auth_scheme` and `current_key_version` into a label; admin-api
+- `getCredentialStatus` (`apps/admin-ui/src/lib/credential-status.ts`, on the base) turns `auth_scheme` and
+  `current_key_version` into a label (`auth_scheme` `none` gives `n/a (no auth)`); the operator list
+  `GET /v1/tenants/{tenant_id}/permissions` already takes `agent_id` (a UUID or `agent_` id) today, and
+  `grant-expiry` adds `grantor_agent_id`; admin-api
   reads `current_key_version` as the maximum version of the active credentials, so a cleared credential reads 0.
 - `ConfirmAction` posts an empty body; existing tests read `services.ts` and `agents.ts` as text and `index.ts` for wiring.
 - `UI/resources/audit.ts` lists event types, actor types and target types as `availableValues`.
@@ -35,7 +38,8 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
   `created_at`, `pending_until`) and the error codes `request_not_pending`, `grant_conflict`, `requester_not_active`,
   `already_granted`.
 - The audit event names come from `agent-roles-and-ownership` (`agent.role.changed`, `service.ownership_transferred`),
-  `agent-service-publishing` (`agent.operation.denied`, `service.credential.set`, `service.credential.cleared`) and
+  `agent-principal-and-egress` (`agent.operation.denied`), `agent-service-routes` (`service.credential.set`,
+  `service.credential.cleared`) and
   `agent-access-requests` (`access_request.created`, `.approved`, `.denied`, `.cancelled`, `.expired`; target type
   `access_request`; actor type `system` for `.expired`).
 
@@ -89,7 +93,8 @@ spec), the resource `AccessRequestsResource` (`id` `access_requests`) and the co
 
 ## Relation to the other changes
 
-Merges after `agent-access-requests`, `agent-service-publishing`, `agent-roles-and-ownership` and `grant-expiry`. It changes no admin-api route; the
+Merges after `agent-access-requests`, `agent-service-routes`, `agent-principal-and-egress`, `agent-roles-and-ownership` and
+`grant-expiry`. It changes no admin-api route; the
 audit filter lists are the UI's own copy of the contract's event names.
 
 ## Open questions

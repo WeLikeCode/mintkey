@@ -23,7 +23,10 @@ requester_agent_id) WHERE status = 'pending'`; indexes on `(tenant_id, service_i
 requester_agent_id, status)`; row-level security with a `tenant_isolation` policy that has the text of the policy in
 `004-services.yaml`; and a `GRANT SELECT, INSERT, UPDATE, DELETE ... TO mintkey_app`, each changeset with a rollback.
 `mintkey_models/db.py` SHALL gain a model `ServiceAccessRequest` with exactly those columns (`actions` as
-`ARRAY(Text)`), and `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table.
+`ARRAY(Text)`), and the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table. The gate that
+must pass is `tests/acceptance/test_sqlalchemy_mirror.py` (`test_liquibase_tables_have_sqlalchemy_models` and
+`test_tenant_scoped_models_match_rls_test_table_list`, which imports `TENANT_SCOPED` from that file and needs a model for each
+entry); the architecture test itself needs Docker and is not run by the L4 gate, so only its set is edited.
 
 #### Scenario: the changelog creates the table
 - **WHEN** the changelog is parsed as YAML and the master changelog is read
@@ -34,9 +37,10 @@ requester_agent_id, status)`; row-level security with a `tenant_isolation` polic
   the master names `032-service-access-requests.yaml`
 
 #### Scenario: the mirror and the RLS list know the table
-- **WHEN** `mintkey_models.db` is imported and `tests/architecture/test_rls_coverage.py` is read as text
+- **WHEN** `mintkey_models.db` is imported, `tests/architecture/test_rls_coverage.py` is read as text, and
+  `tests/acceptance/test_sqlalchemy_mirror.py` runs
 - **THEN** `ServiceAccessRequest.__tablename__` is `service_access_requests`, its column keys are those of the
-  `createTable`, and the text of the RLS test lists `"service_access_requests"` in `TENANT_SCOPED`
+  `createTable`, the text of the RLS test lists `"service_access_requests"` in `TENANT_SCOPED`, and both mirror tests pass
 
 ### Requirement: The audit contract lists the request events
 `docs/architecture/contracts/events/audit-event.schema.json` SHALL define `ev_access_request_created`, `_approved`, `_denied`,
@@ -58,7 +62,8 @@ action, pending_until}`.
 expire_pending_requests(session: AsyncSession, tenant_id: UUID, now: datetime) -> int`, which SHALL run `UPDATE
 service_access_requests SET status = 'expired' WHERE tenant_id = :tid AND status = 'pending' AND pending_until <= :now
 RETURNING ...`, write one `access_request.expired` event per returned row (`actor_type` `system`, `actor_id` None,
-`target_type` `access_request`) and return the count. Every public function below SHALL call it before any other
+`target_type` `access_request`) and return the count. The `status = 'pending'` condition of the UPDATE makes the flip happen
+once: two concurrent sweeps cannot return the same row, so a request expires, and is audited, once. Every public function below SHALL call it before any other
 statement.
 
 #### Scenario: overdue requests expire once
@@ -85,8 +90,9 @@ PENDING_WINDOW_SECONDS`, write `access_request.created` (actor the requester, `a
 `AccessRequestError(status_code: int, code: str, title: str, **detail: Any)` and `access_request_view(row) -> dict` SHALL
 give the interface named in design: the view keys `{id, service_id, service_slug, service_name, requester_agent_id,
 requester_agent_name, actions, reason, requested_ttl_seconds, status, decided_by_type, decided_by_id, decided_at,
-decision_note, grant_id, created_at, pending_until}` with `areq_`, `svc_`, `agent_` and `perm_` ids, an agent decider as an
-`agent_` id and an operator decider as UUID text, timestamps as ISO text or null, and a missing attribute read as null.
+decision_note, grant_id, created_at, pending_until}` with `areq_`, `svc_`, `agent_` and `perm_` ids, `decided_by_id` in the form that
+`decided_by_type` names (an `agent` decider as an `agent_` id, an `operator` decider as the operator's UUID text, because
+operator ids have no wire form elsewhere in the API), timestamps as ISO text or null, and a missing attribute read as null.
 
 #### Scenario: a request is created
 - **WHEN** an agent asks for a service by slug with `ttl_seconds` 3600, action `call` and a reason with surrounding spaces
@@ -117,7 +123,8 @@ request), raise 409 `request_not_pending` with `status` unless it is pending, th
 `agent`, `decided_by_id` the requester and `decided_at` `now`, write `access_request.cancelled` and return the view.
 
 #### Scenario: cancel, and what cannot be cancelled
-- **WHEN** a requester cancels its pending request; another agent cancels it; the request is approved; the id is unknown
+- **WHEN** a requester cancels its pending request (the id passed in its `areq_` form, and again for another pending request
+  in the 32-hex form `decode_wire_id` also accepts); another agent cancels it; the request is approved; the id is unknown
 - **THEN** the first updates the row (status `cancelled`) and writes one event; the others raise 404 `not_found`, 409
   `request_not_pending` (status `approved`) and 404 `not_found`, with no UPDATE and no event
 
@@ -133,7 +140,9 @@ agent_grant_max_ttl_seconds())`; call `write_grant` for the requester, the servi
 `expires_at = now + ttl`, the decider and `now` (a `GrantConflict` raises 409 `grant_conflict`); set `status` `approved`, the
 decider, `decided_at`, `decision_note` and `grant_id`; write `agent.permission.granted` (when the grant was created; payload
 from `grant_granted_audit_payload`) and `access_request.approved`; and return the view plus `grant: {id, action,
-expires_at}`. `approved_ttl_seconds(requested: int, approved: int | None, cap: int) -> int` SHALL return the smallest of
+expires_at}`. A `GrantExpiryError` from `write_grant` SHALL raise 422 `invalid_expires_at` with its `reason` (the request
+stays pending, nothing is written); any other exception, `audit_emit` raising included, propagates unchanged and the
+function never commits, so the route's session rolls back and the request stays pending. `approved_ttl_seconds(requested: int, approved: int | None, cap: int) -> int` SHALL return the smallest of
 `requested`, `approved` (ignored when None) and `cap`. Events name the decider as actor (`operator` or `agent`).
 
 #### Scenario: ttl arithmetic
@@ -168,9 +177,14 @@ expires_at}`. `approved_ttl_seconds(requested: int, approved: int | None, cap: i
   (status `denied`) and 404 `not_found`; every refusal ran no UPDATE, no `write_grant` and wrote no event
 
 #### Scenario: approval blocked
-- **WHEN** the requester's agent row is `revoked`; and `write_grant` raises `GrantConflict`
-- **THEN** the answers are 409 `requester_not_active` and 409 `grant_conflict`; the request row was not updated, no event was
-  written and the status stays `pending`
+- **WHEN** the requester's agent row is `revoked`; `write_grant` raises `GrantConflict`; and it raises `GrantExpiryError`
+  with reason `expires_at_in_past`
+- **THEN** the answers are 409 `requester_not_active`, 409 `grant_conflict` and 422 `invalid_expires_at` with that
+  `reason`; the request row was not updated, no event was written and the status stays `pending`
+
+#### Scenario: a failing dependency does not leave half a decision
+- **WHEN** `audit_emit` raises `RuntimeError` for `access_request.approved` after `write_grant` returned
+- **THEN** `decide_access_request` raises that `RuntimeError`, and the fake session saw no `commit` call
 
 #### Scenario: an overdue request cannot be decided
 - **WHEN** the sweep flips the request to `expired` before the decision

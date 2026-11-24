@@ -43,6 +43,6 @@ not know the new event types.
   `agent-roles-and-ownership` and `agent-access-requests` with the operator's session, as the other resources do.
 - Out of scope: an expiry on the operator's grant form, a picker for the new owner (the form takes an id), constraints at
   approval, Playwright tests (`apps/admin-ui/e2e` is not run by the L4 gate), changes to admin-api.
-- Depends on: `grant-expiry`, `agent-roles-and-ownership`, `agent-service-publishing` (the audit event names
-  `agent.operation.denied`, `service.credential.set` and `service.credential.cleared` that the audit filter lists and its
-  test finds in the contract) and `agent-access-requests`.
+- Depends on: `grant-expiry`, `agent-roles-and-ownership`, `agent-principal-and-egress` (the audit event name
+  `agent.operation.denied`), `agent-service-routes` (`service.credential.set` and `service.credential.cleared`; both the audit
+  filter lists and its test finds them in the contract) and `agent-access-requests`.

@@ -10,16 +10,20 @@ which route, how bodies and ids are checked, and how errors are answered.
 ### Requirement: The agent request routes
 `admin_api/api/agent_access_requests.py` SHALL give a `router` (no prefix), included by `admin_api/api/agent.py`, with:
 `POST /access-requests` (any agent: `require_agent_principal`; body `{service_id, ttl_seconds, action?, reason?}`, no
-other key, `service_id` matching `^[A-Za-z0-9_.-]{1,128}$` and not only dots, `ttl_seconds` an integer from 60 to
+other key, `service_id` matching `^[A-Za-z0-9_.-]{1,128}$` and not only dots (a value starting with `svc_` must decode as a service
+id, else 422 `mintkey:invalid_id` with `field` `service_id`; the MCP tool checks only the pattern and relays that answer), `ttl_seconds` an integer from 60 to
 7776000, `action` matching `GRANT_ACTION_PATTERN` (default `call`), `reason` at most 500 characters; answers 201 with the
-view); `GET /access-requests` (any agent; optional `status` among the five statuses or `all`; the caller's own requests);
-`POST /access-requests/{request_id}/cancel` (any agent); `GET /incoming-access-requests` (`require_publisher_principal`;
+view); `GET /access-requests` (any agent; optional `status` among the five statuses or `all`, absent or `all` meaning no status
+filter; the caller's own requests; answers 200 `{"access_requests": [view, ...]}`);
+`POST /access-requests/{request_id}/cancel` (any agent; answers 200 with the cancelled view); `GET /incoming-access-requests` (`require_publisher_principal`;
 `status` default `pending`, `all` allowed; optional `service_id`; the requests for services the caller owns, through
-`owner_agent_id`) and `POST /incoming-access-requests/{request_id}/decision` (publisher; body `{decision: "approve" |
+`owner_agent_id`; answers 200 `{"access_requests": [view, ...]}`) and `POST /incoming-access-requests/{request_id}/decision` (publisher; body `{decision: "approve" |
 "deny", ttl_seconds?, note?}` with no other key, `ttl_seconds` only with `approve`, `note` at most 500 characters,
-decider `Grantor("agent", <caller>)`). Handlers SHALL call `set_tenant_context` first, decode ids with `decode_wire_id`
+decider `Grantor("agent", <caller>)`; answers 200 with the decided view, plus `grant` for an approval). A route turns
+`all` into no status filter before it calls `list_access_requests`, which takes a status or None. Handlers SHALL call `set_tenant_context` first, decode ids with `decode_wire_id`
 (`areq`, `agent`; 422 `mintkey:invalid_id` with `field`), and map `AccessRequestError` to `AgentApiError` with the body `{"code":
-"mintkey:<code>", "title", ...detail}`.
+"mintkey:<code>", "title", ...detail}`, except `invalid_expires_at`, whose body on both surfaces is the flat
+`{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason": <reason>}` of `grant-expiry`.
 
 #### Scenario: the route table obeys the family rules
 - **WHEN** the routes of `create_app()` are walked, and `admin_api/main.py` is read as text
@@ -29,8 +33,9 @@ decider `Grantor("agent", <caller>)`). Handlers SHALL call `set_tenant_context` 
 
 #### Scenario: any agent asks, lists and cancels
 - **WHEN** a consumer principal posts a valid request body, lists with `?status=pending` and `?status=all`, and cancels an id
-- **THEN** the answers are 201, 200, 200 and 200 (the list calls bind the caller as requester), the cancel call passes the
-  decoded request id and the caller, `set_tenant_context` was called with the principal's tenant before each service
+- **THEN** the answers are 201, 200, 200 and 200 (the list calls bind the caller as requester, `pending` as the status
+  and then no status; both bodies are `{"access_requests": [...]}`), the cancel call passes the decoded request id and the
+  caller and its body is the view, `set_tenant_context` was called with the principal's tenant before each service
   function, and `?status=weird` answers 422 `validation_failed`
 
 #### Scenario: refused bodies and ids
@@ -43,11 +48,18 @@ decider `Grantor("agent", <caller>)`). Handlers SHALL call `set_tenant_context` 
   and sends `{"decision": "deny", "ttl_seconds": 60}`, `{"decision": "maybe"}`; and a consumer calls both incoming routes
 - **THEN** the list binds the caller as owner and status `pending`, then all statuses; the decision calls pass
   `Grantor("agent", <caller>)`, the decision and the ttl; the two bad bodies answer 422 `validation_failed`; the consumer gets
-  403 `mintkey:role_forbidden` with one `agent.operation.denied` event per call
+  403 `mintkey:role_forbidden` with one `agent.operation.denied` event per call (operations `GET
+  /v1/agent/incoming-access-requests` and `POST /v1/agent/incoming-access-requests/<id>/decision` as sent)
 
 #### Scenario: errors keep their code
 - **WHEN** the service function raises `AccessRequestError` 409 `request_not_pending` with `status` `approved`
 - **THEN** the answer is 409 with `{"code": "mintkey:request_not_pending", "status": "approved", "title": ...}`
+
+#### Scenario: an expiry error has the flat body
+- **WHEN** the service function raises `AccessRequestError` 422 `invalid_expires_at` with `reason` `expires_at_in_past`, on the
+  decision route
+- **THEN** the answer is 422 with exactly `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason":
+  "expires_at_in_past"}`
 
 ### Requirement: The operator request routes
 `admin_api/api/access_requests.py` SHALL give `router = APIRouter(prefix="/v1/tenants/{tenant_id}/access-requests")`,
@@ -56,7 +68,9 @@ tenant_id)` first: `GET ""` (`status`, `service_id`, `requester_agent_id`, `owne
 `decode_wire_id`; answers `{"access_requests": [...]}`), `GET "/{request_id}"`, `POST "/{request_id}/approve"` (`{ttl_seconds?,
 note?}`) and `POST "/{request_id}/deny"` (`{note?}`), each body without other keys. The decider is `Grantor("operator", <operator id
 of get_session_context>)`, with a None id when there is no context. `AccessRequestError` SHALL be answered as `{"mintkey:code":
-<code>, "title", ...detail}`; a bad id 422 `invalid_id`; a bad body or filter 422 `validation_failed`. Operators decide any request.
+<code>, "title", ...detail}`; a bad id 422 `{"mintkey:code": "invalid_id", "title", "field": <the parameter name>}`; a bad body or filter 422
+`validation_failed`; `service_id` filters take a `svc_` wire id (any other `svc_...` value that does not decode is
+`invalid_id` with `field` `service_id`). Operators decide any request.
 
 #### Scenario: list and get
 - **WHEN** an operator lists with `?status=pending&owner_agent_id=<agent wire id>`, with `?status=weird`, with
@@ -69,16 +83,18 @@ of get_session_context>)`, with a None id when there is no context. `AccessReque
   whose `operator_id` is a UUID
 - **THEN** the approval calls `decide_access_request` with `Grantor("operator", <that id>)`, `approve`, 600 and the note, and
   answers 200 with the view and `grant`; the denial answers 200 with the view; a request that is not pending answers 409
-  `request_not_pending`
+  `request_not_pending`, and an `AccessRequestError` 422 `invalid_expires_at` answers the flat body `{"mintkey:code":
+  "invalid_expires_at", "title": "Invalid expires_at", "reason": ...}`
 
 #### Scenario: no session, extra keys
 - **WHEN** a call has no `mintkey_session` cookie, and a body has `{"ttl_seconds": 60, "decision": "approve"}`
 - **THEN** the first answers 401 with no statement, the body answers 422 `validation_failed`
 
 #### Scenario: the router is registered once
-- **WHEN** `main.py` is read as text and `tests/acceptance/openapi_snapshot.json` is loaded
-- **THEN** `main.py` imports `router as access_requests_router` from `admin_api.api.access_requests`, includes it once, and the
-  snapshot maps `access_requests` to `/v1/tenants/{tenant_id}/access-requests`
+- **WHEN** `main.py` is read as text, `tests/acceptance/openapi_snapshot.json` is loaded and
+  `tests/acceptance/test_openapi_parity.py` runs
+- **THEN** `main.py` imports `router as access_requests_router` from `admin_api.api.access_requests`, includes it once, the
+  snapshot maps `access_requests` to `/v1/tenants/{tenant_id}/access-requests`, and the parity test passes
 
 ### Requirement: The request tools reach the routes with the caller's key
 `TOOLS` in `mcp_server/tools/jsonrpc.py` SHALL list five tools with `additionalProperties: false`, and
@@ -99,15 +115,21 @@ percent-encoded) and `POST /v1/agent/incoming-access-requests/<id>/decision` (`d
 and `input_schema.properties` equal in keys to each `inputSchema.properties`.
 
 #### Scenario: the lists equal the registry
-- **WHEN** `tools/list` runs for a consumer and a publisher
-- **THEN** the consumer's names equal `CONSUMER_TOOLS` and the publisher's equal `PUBLISHER_TOOLS` of
-  `mcp_server.policy.roles` (13 and 22 names), and no entry has a `title` key
+- **WHEN** `tools/list` runs for a consumer and a publisher, after every change of the plan is merged
+- **THEN** the consumer's names are the ten existing tools (`mintkey_bootstrap`, `mintkey_list_services`,
+  `mintkey_discover`, `mintkey_describe_service`, `mintkey_get_openapi`, `mintkey_request_token`, `secret_put`, `secret_get`,
+  `secret_list`, `secret_delete`) plus `mintkey_request_access`, `mintkey_list_my_access_requests` and
+  `mintkey_cancel_access_request` (13 names, equal to `CONSUMER_TOOLS` of `agent-service-tools`), the publisher's are those
+  plus `mintkey_service_create`, `mintkey_service_update`, `mintkey_service_set_credential`, `mintkey_list_my_services`,
+  `mintkey_grant_access`, `mintkey_revoke_access`, `mintkey_list_service_grants`, `mintkey_list_incoming_access_requests` and
+  `mintkey_decide_access_request` (22 names, equal to `PUBLISHER_TOOLS`), and no entry has a `title` key
 
 #### Scenario: roles
 - **WHEN** a consumer calls `mintkey_decide_access_request` and `mintkey_list_incoming_access_requests`, and calls
   `mintkey_request_access` with valid arguments (`agent_request` answers 201)
 - **THEN** the first two answer the JSON-RPC error `-32003` with `data.code` `mintkey:role_forbidden`, one
-  `agent.operation.denied` event each and no `agent_request` call; the third is forwarded and its result holds the body
+  `agent.operation.denied` event each (operations `mintkey_decide_access_request` and
+  `mintkey_list_incoming_access_requests`) and no `agent_request` call; the third is forwarded and its result holds the body
 
 #### Scenario: publisher calls are forwarded
 - **WHEN** a publisher calls the five tools with valid arguments and `agent_request` answers 200 or 201

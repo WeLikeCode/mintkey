@@ -24,12 +24,12 @@ leave `editProperties` without it. The virtual show property `_governance` SHALL
 `{"role": "publisher"}` or `{"role": "consumer"}` and no other key. `makePublisher` SHALL be visible only for an agent whose
 `params.status` is not `revoked` and whose role is not `publisher`; `makeConsumer` only for an agent whose role is
 `publisher`. On a refusal the handler SHALL answer an error notice with `governanceErrorMessage(body, "Failed to change
-role")`; on success a success notice naming the new role.
+role")`; on success a success notice whose message is exactly `Role set to publisher.` or `Role set to consumer.`
 
 #### Scenario: promote and demote
 - **WHEN** each handler runs on POST with the admin-api mock answering 200
 - **THEN** `fetch` was called once with the URL ending `/v1/tenants/tenant_abc/agents/agent_X`, method `PATCH` and a JSON body
-  equal to `{"role":"publisher"}` (then `{"role":"consumer"}`), the notice type is `success`, and each action's `component` is
+  equal to `{"role":"publisher"}` (then `{"role":"consumer"}`), the notice is `{type: "success", message: "Role set to publisher."}` (then `... consumer.`), and each action's `component` is
   `Components.ConfirmAction` with a non-empty `custom.description`
 
 #### Scenario: visibility and refusal
@@ -55,8 +55,9 @@ the filter `owner_agent_id` (in `filterKeys` and `filterProperties`, its descrip
 `decorateServiceRecord` in `recordTransform` after the `proxy_url` assignment. It SHALL have the record action
 `transferOwnership` with `Components.PayloadActionForm` and `custom.fields` of one field `to_agent_id`, whose handler on POST
 calls `apiWrite` with `POST /v1/tenants/<tenantId>/services/<recordId>/transfer` and exactly the body of
-`transferBody(request.payload)`, and answers a success notice or an error notice from `governanceErrorMessage(body,
-"Failed to transfer ownership")`.
+`transferBody(request.payload)`, and answers the success notice `Ownership transferred to <agent id>.` (or `Ownership transferred to operators.` for a null
+target) or an error notice from `governanceErrorMessage(body, "Failed to transfer ownership")`. The action is visible for
+every service record. The `owner` and `credential` virtual properties come from `decorateServiceRecord`.
 
 #### Scenario: owner and credential columns
 - **WHEN** `ServicesResource.adminResource.find` runs over a fetch mock listing an operator-owned service with
@@ -70,7 +71,8 @@ calls `apiWrite` with `POST /v1/tenants/<tenantId>/services/<recordId>/transfer`
   answering 200, and then with the mock answering 422 `{"mintkey:code": "invalid_transfer_target", "reason":
   "agent_not_publisher"}`
 - **THEN** the bodies sent are exactly `{"to_agent_id":"agent_C"}` and `{"to_agent_id":null}` to the URL ending
-  `/services/svc_X/transfer`, and the refusal gives the notice `The new owner must be an agent with the publisher role.`
+  `/services/svc_X/transfer`, `isVisible` of the action is true for an `active` and for a `disabled` service record, the success notices are `Ownership transferred to agent_C.` and `Ownership transferred to
+  operators.`, and the refusal gives the notice `The new owner must be an agent with the publisher role.`
 
 ### Requirement: Permissions show the grantor and the expiry
 `apps/admin-ui/src/resources/permissions.ts` SHALL declare `expires_at`, `expired`, `grantor_type`, `grantor_id`, `grantor`,
@@ -110,14 +112,15 @@ SHALL register it after the permissions resource.
 (fields `ttl_seconds` and `note` for approve, `note` for deny), visible only when `params.status` is `pending`. Their handlers
 on POST SHALL build the body with `decisionBody(request.payload, kind)` (an invalid value answers an error notice with its
 `error` and no call), call `apiWrite` with `POST /v1/tenants/<tenantId>/access-requests/<recordId>/approve` or `/deny` and that
-body, and answer a success notice (for an approval it names `grant.expires_at`) or an error notice from
+body, and answer a success notice (`Approved; access ends <grant.expires_at>.` for an approval, `Request denied.` for a denial) or an error notice from
 `governanceErrorMessage(body, "Failed to decide the request")`.
 
 #### Scenario: approve and deny
 - **WHEN** `approveRequest` runs with `{ttl_seconds: "600", note: "ok"}` and the mock answering 200 with `grant.expires_at`;
   then `denyRequest` with `{note: "no"}`
 - **THEN** the calls are `POST .../access-requests/areq_X/approve` with the body `{"ttl_seconds":600,"note":"ok"}` and `POST
-  .../deny` with `{"note":"no"}`, and the approval notice contains the expiry
+  .../deny` with `{"note":"no"}`, the approval notice is `Approved; access ends <the mock's grant.expires_at>.` and the denial
+  notice `Request denied.`
 
 #### Scenario: bad input, refusals and visibility
 - **WHEN** `approveRequest` runs with `{ttl_seconds: "59"}`; with the mock answering 409 `{"mintkey:code":

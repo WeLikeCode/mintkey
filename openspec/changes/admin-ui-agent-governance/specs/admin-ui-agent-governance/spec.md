@@ -29,7 +29,8 @@ export function governanceErrorMessage(body: unknown, fallback: string): string
 ```
 `normalizeRole` SHALL return `publisher` for `"publisher"` and `consumer` for anything else. `ownerLabel` SHALL return
 `operators` for null, undefined, `""` and `"operators"`, else the id. `credentialLabel` SHALL return the label of
-`getCredentialStatus({auth_scheme, current_key_version, status})` of `credential-status.ts`. `expiryBadge` SHALL return
+`getCredentialStatus({auth_scheme, current_key_version, status})` of `credential-status.ts` (on the base branch, `none` gives
+`n/a (no auth)`). `expiryBadge` SHALL return
 state `expired` and label `Expired` when `expired` is true, else `none` and `No expiry` when `expires_at` is null or
 absent, else `active` and `Expires <expires_at>`; it SHALL NOT read the clock. `grantorLabel` SHALL return `grantor_id` for
 `grantor_type` `agent` (the word `agent` without an id) and `operator` otherwise. `formatTtl` SHALL return `<n> d` for a
@@ -39,7 +40,9 @@ another integer, and `—` for anything that is not a finite integer. `decorateS
 SHALL add `action` (the `actions` array joined with `, `, or `—`) and `requested_ttl` (`formatTtl` of
 `requested_ttl_seconds`); each SHALL keep every other key. `transferBody` SHALL return `{to_agent_id: null}` for a missing
 payload, a missing, empty, blank or `operators` value, else the trimmed id. `decisionBody` SHALL read `ttl_seconds` (approve
-only; empty means absent; a whole number from 60 to 7776000, as a number or digit string) and `note` (trimmed; empty means
+only; a string is trimmed and an empty one means absent; valid is a JavaScript integer, or a trimmed string of digits only,
+whose value is from 60 to 7776000; a non-integer number such as 3600.5, a negative number, a boolean, and a string with a
+sign, a decimal point, an exponent or other characters are invalid) and `note` (trimmed; empty means
 absent; at most 500 characters) and SHALL return `{ok: false, error}` for an invalid value, with the error text `Lifetime
 must be a whole number of seconds from 60 to 7776000.` or `Note must be at most 500 characters.`. `governanceErrorMessage`
 SHALL map the body's `mintkey:code` to a message (`invalid_transfer_target` with `reason` `agent_not_publisher`: `The new
@@ -76,10 +79,12 @@ active.`; `already_granted`: `The agent already holds a live grant for this serv
 #### Scenario: the transfer and decision bodies
 - **WHEN** `transferBody` runs with `undefined`, `{to_agent_id: ""}`, `{to_agent_id: " operators "}`, `{to_agent_id: null}`
   and `{to_agent_id: " agent_C "}`; and `decisionBody` runs for approve with `{ttl_seconds: "3600", note: " ok "}`, `{ttl_seconds:
-  ""}`, `{ttl_seconds: 59}`, `{ttl_seconds: "1.5"}`, `{note: "x".repeat(501)}`, and for deny with `{ttl_seconds: "99999999",
+  ""}`, `{ttl_seconds: 59}`, `{ttl_seconds: "1.5"}`, `{ttl_seconds: 3600.5}`, `{ttl_seconds: -60}`, `{ttl_seconds: " 600 "}`,
+  `{ttl_seconds: "6e2"}`, `{ttl_seconds: true}`, `{note: "x".repeat(501)}`, and for deny with `{ttl_seconds: "99999999",
   note: "no"}` and `undefined`
 - **THEN** the transfer bodies are `{to_agent_id: null}` four times, then `{to_agent_id: "agent_C"}`; the decisions are
-  `{ok: true, body: {ttl_seconds: 3600, note: "ok"}}`, `{ok: true, body: {}}`, the lifetime error twice, the note error,
+  `{ok: true, body: {ttl_seconds: 3600, note: "ok"}}`, `{ok: true, body: {}}`, the lifetime error for 59, `"1.5"`, 3600.5,
+  -60, `"6e2"` and `true`, `{ok: true, body: {ttl_seconds: 600}}` for `" 600 "`, the note error,
   `{ok: true, body: {note: "no"}}` (the lifetime ignored) and `{ok: true, body: {}}`
 
 #### Scenario: error messages
@@ -90,9 +95,10 @@ active.`; `already_granted`: `The agent already holds a live grant for this serv
 
 ### Requirement: One server-side read gathers an agent's governance data
 `apps/admin-ui/src/lib/governance-bff.ts` SHALL export `readHeaders(currentAdmin)`, `governanceUrls(tenantId, agentId)` and
-`fetchGovernanceSummary({apiUrl, tenantId, agentId, currentAdmin}): Promise<GovernanceSummary>`. `readHeaders` SHALL return
-`{Cookie: "mintkey_session=<token>"}` for a session token and add `X-Platform-Admin: "true"` only when `isPlatformAdmin` is
-`true`. `governanceUrls` SHALL return the paths `owned_services` `/v1/tenants/<t>/services?owner_agent_id=<a>`,
+`fetchGovernanceSummary({apiUrl, tenantId, agentId, currentAdmin}): Promise<GovernanceSummary>`. `readHeaders` SHALL build each header on its own:
+`Cookie: "mintkey_session=<token>"` only when `currentAdmin.sessionToken` is a non-empty string, and `X-Platform-Admin:
+"true"` only when `currentAdmin.isPlatformAdmin` is `true`; a null `currentAdmin` or one with neither gives `{}`, and a
+platform admin without a session token gives `{"X-Platform-Admin": "true"}` alone. `governanceUrls` SHALL return the paths `owned_services` `/v1/tenants/<t>/services?owner_agent_id=<a>`,
 `grants_received` `/v1/tenants/<t>/permissions?agent_id=<a>`, `grants_given` `/v1/tenants/<t>/permissions?grantor_agent_id=<a>`,
 `requests_made` `/v1/tenants/<t>/access-requests?requester_agent_id=<a>` and `requests_incoming`
 `/v1/tenants/<t>/access-requests?owner_agent_id=<a>&status=pending`, the ids percent-encoded.
@@ -104,7 +110,8 @@ entry in `errors` naming the section, and SHALL NOT stop the others.
 #### Scenario: urls and headers
 - **WHEN** `governanceUrls("t1", "agent_A")` and `readHeaders` run for a session `{sessionToken: "tok"}`, a platform admin
   `{sessionToken: "tok", isPlatformAdmin: true}` and `null`
-- **THEN** the five paths are exactly those above; the headers are the cookie, the cookie plus `X-Platform-Admin`, and `{}`
+- **THEN** the five paths are exactly those above; the headers are the cookie, the cookie plus `X-Platform-Admin`, and `{}`;
+  for `{isPlatformAdmin: true}` without a token they are `{"X-Platform-Admin": "true"}`
 
 #### Scenario: the summary and its partial failure
 - **WHEN** the fetch mock answers the five URLs with lists, and again with the fourth answering 500 and the fifth throwing
@@ -116,9 +123,11 @@ entry in `errors` naming the section, and SHALL NOT stop the others.
 `AgentGovernancePanel` (`./sections/AgentGovernancePanel`) and `GrantExpiryBadge` (`./properties/GrantExpiryBadge`).
 `PayloadActionForm` SHALL render one text input per entry of `action.custom.fields` (`{name, label, hint?}`), a submit
 button and a cancel link, and on submit call `ApiClient.recordAction` with `method` `post` and `data` the raw string values
-by field name, then show the returned notice. `AgentGovernancePanel` SHALL call `recordAction` with `actionName`
-`governanceSummary` for the record's id and render the five sections with their rows, the errors, and `GrantExpiryBadge`
-for each grant. `GrantExpiryBadge` SHALL render `record.params.expiry` with the `data-testid` `grant-expiry-<state>`
+by field name, then show the returned notice; when the call rejects it shows the notice `Request failed.` of type `error`. `AgentGovernancePanel` SHALL call `recordAction` with `actionName`
+`governanceSummary` for the record's id, read the summary from `response.data.summary` (the handler answers `{record,
+summary}`), and render the five sections with their rows, the entries of `summary.errors`, and `GrantExpiryBadge` for each
+grant. When the `recordAction` call rejects, or the answer has no `data.summary`, it SHALL render the single line
+`Could not load governance data.` and no section. `GrantExpiryBadge` SHALL render `record.params.expiry` with the `data-testid` `grant-expiry-<state>`
 of `record.params.expiry_state`.
 
 #### Scenario: the components are registered
@@ -131,8 +140,16 @@ of `record.params.expiry_state`.
 - **THEN** `recordAction` was called once with `method` `post` and `data` `{ttl_seconds: "600", note: "ok"}`, and the notice
   `Done` is on screen
 
+#### Scenario: the form's call fails
+- **WHEN** `PayloadActionForm` is submitted and `recordAction` rejects
+- **THEN** the notice `Request failed.` of type `error` is on screen and the typed values are still in the inputs
+
 #### Scenario: the panel and the badge
 - **WHEN** `AgentGovernancePanel` renders with a mocked `recordAction` returning a summary with one owned service, one grant
   received (`expiry_state` `expired`) and an error entry, and `GrantExpiryBadge` renders for `expiry_state` `active`
 - **THEN** the panel shows the service row, the grant with `grant-expiry-expired`, and the error text; the badge shows
   `grant-expiry-active` with its label
+
+#### Scenario: the summary cannot be loaded
+- **WHEN** `AgentGovernancePanel` renders with `recordAction` rejecting, and again with an answer `{data: {}}`
+- **THEN** both show `Could not load governance data.` and neither shows a section heading
