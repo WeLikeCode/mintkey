@@ -9,7 +9,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 1. The backfill of stored targets
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_target_backfill.py` (the `sys.path` header and
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_target_backfill.py` (the `sys.path` header and
   `REPO_ROOT` of `tests/unit/admin_api/test_notify_event_type.py`; PyYAML is a dependency of the project):
   `test_backfill_changelog_fills_empty_targets_only` covers the scenario "the changelog fills empty targets only": it
   loads `apps/admin-api/db/changelog/033-credential-target-backfill.yaml` with `yaml.safe_load`, finds the one SQL change
