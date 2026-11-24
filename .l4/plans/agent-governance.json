@@ -49,23 +49,43 @@
           ]
         },
         {
-          "id": "openspec:agent-service-publishing",
+          "id": "openspec:agent-principal-and-egress",
           "depends_on": [
+            "openspec:agent-roles-and-ownership"
+          ]
+        },
+        {
+          "id": "openspec:agent-service-routes",
+          "depends_on": [
+            "openspec:agent-principal-and-egress",
             "openspec:agent-roles-and-ownership",
             "openspec:proxy-public-egress"
           ]
         },
         {
+          "id": "openspec:agent-service-tools",
+          "depends_on": [
+            "openspec:agent-service-routes",
+            "openspec:agent-principal-and-egress",
+            "openspec:agent-roles-and-ownership"
+          ]
+        },
+        {
           "id": "openspec:agent-granted-access",
           "depends_on": [
-            "openspec:agent-service-publishing",
+            "openspec:agent-service-tools",
             "openspec:grant-expiry"
           ]
         },
         {
           "id": "openspec:agent-access-requests",
           "depends_on": [
-            "openspec:agent-granted-access"
+            "openspec:agent-granted-access",
+            "openspec:agent-service-tools",
+            "openspec:agent-service-routes",
+            "openspec:agent-principal-and-egress",
+            "openspec:grant-expiry",
+            "openspec:agent-roles-and-ownership"
           ]
         },
         {
@@ -73,7 +93,8 @@
           "depends_on": [
             "openspec:grant-expiry",
             "openspec:agent-roles-and-ownership",
-            "openspec:agent-service-publishing",
+            "openspec:agent-principal-and-egress",
+            "openspec:agent-service-routes",
             "openspec:agent-access-requests"
           ]
         }

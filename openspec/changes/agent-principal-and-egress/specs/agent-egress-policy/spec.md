@@ -40,3 +40,7 @@ non-empty list of addresses that are all public (`unresolvable`: the resolver ra
 - **THEN** the reasons are `non_public_address` nine times, then `unresolvable` twice; the two URLs pass; and
   `address_is_public` is true for `93.184.216.34` and `2606:2800:220:1:248:1893:25c8:1946` and false for `192.168.1.1`,
   `::1` and `100.64.0.1`
+
+#### Scenario: the deny list reader
+- **WHEN** `egress_deny_names()` runs with the variable unset, `" Corp.Example.com , ,*.X.net"` and an empty string
+- **THEN** the results are `()`, `("corp.example.com", "*.x.net")` and `()`
