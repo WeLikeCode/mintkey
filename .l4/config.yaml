@@ -142,7 +142,7 @@ ci:
 yolo:
   review:
     accept_by_agents: true  # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
-    max_dependency_chars: 30000  # the hardening plan's units are 23-35k each; the readiness judge reads a prerequisite's proposal, spec and design whole
+    max_dependency_chars: 50000  # the agent-governance plan's units are 17-45k characters each; the readiness judge reads a prerequisite's proposal, spec and design whole
   hold:                     # every spec, existing and new, is opt-in by plan: nothing runs until a plan lists it
   - "*"
 delegate:                   # on for unattended plans (owner decision 2026-10-25); only units of an active plan (scope yolo)

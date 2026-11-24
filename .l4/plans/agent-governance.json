@@ -1,0 +1,84 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "agent-governance",
+  "target": "staging",
+  "merge": "human",
+  "limits": {
+    "max_cost_usd": 80,
+    "max_unit_attempts": 2,
+    "max_runs": 80
+  },
+  "external_dependencies": [],
+  "batches": [
+    {
+      "id": "agent-governance",
+      "depends_on": [],
+      "units": [
+        {
+          "id": "openspec:proxy-stored-target",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:tenant-session-routes",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:proxy-public-egress",
+          "depends_on": [
+            "openspec:proxy-stored-target"
+          ]
+        },
+        {
+          "id": "openspec:grant-expiry",
+          "depends_on": [
+            "openspec:tenant-session-routes"
+          ]
+        },
+        {
+          "id": "openspec:proxy-grant-revocation",
+          "depends_on": [
+            "openspec:proxy-public-egress",
+            "openspec:grant-expiry"
+          ]
+        },
+        {
+          "id": "openspec:agent-roles-and-ownership",
+          "depends_on": [
+            "openspec:tenant-session-routes",
+            "openspec:grant-expiry"
+          ]
+        },
+        {
+          "id": "openspec:agent-service-publishing",
+          "depends_on": [
+            "openspec:agent-roles-and-ownership",
+            "openspec:proxy-public-egress"
+          ]
+        },
+        {
+          "id": "openspec:agent-granted-access",
+          "depends_on": [
+            "openspec:agent-service-publishing",
+            "openspec:grant-expiry"
+          ]
+        },
+        {
+          "id": "openspec:agent-access-requests",
+          "depends_on": [
+            "openspec:agent-granted-access"
+          ]
+        },
+        {
+          "id": "openspec:admin-ui-agent-governance",
+          "depends_on": [
+            "openspec:grant-expiry",
+            "openspec:agent-roles-and-ownership",
+            "openspec:agent-service-publishing",
+            "openspec:agent-access-requests"
+          ]
+        }
+      ]
+    }
+  ],
+  "exclude": []
+}
