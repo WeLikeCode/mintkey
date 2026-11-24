@@ -59,21 +59,30 @@ in `apps/admin-api`.
 
 ## 4. The proxy refuses non-public addresses
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scope)`, whose
-  `GetCredential` sets the response header with `grpc.SetHeader(ctx, metadata.Pairs("x-mintkey-egress-scope", scope))` when
-  `scope` is not empty, and `scopedFlows(t, h, target, scope)`, which copies the setup of `callFlows` in
+- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scopes ...string)`, whose
+  `GetCredential` sets the response header with `grpc.SetHeader` and one `x-mintkey-egress-scope` pair per scope, and
+  `scopedFlows(t, h, target, scope)`, which copies the setup of `callFlows` in
   `stored_target_test.go` (generic and classical-key flows through the scoped fake vault; for the three direct `handle*`
   calls the scope is set on `vault.GetCredentialResponse` with `reflect.ValueOf(credResp).Elem().FieldByName("EgressScope")`).
   It calls `countingUpstream` of that file and never edits `stored_target_test.go` or any other existing test file.
   `TestPublicScopeRefusesNonPublicTargets` covers "a public credential is never sent to a non-public address" for every
   target of the scenario in every flow; `TestOtherScopesAreUnchanged` covers "the other scopes are unchanged";
   `TestUnknownScopeIsTreatedAsPublic` covers "an unknown scope is treated as public"; `TestScopeArrivesFromVault` covers
-  "the scope arrives from the vault". They stay red until the proxy reads the scope and guards the connection.
+  "the scope arrives from the vault"; `TestPublicScopeRefusesLoopbackName` covers "a name that resolves only to loopback is
+  refused"; `TestPublicScopeNameWithoutAddress` covers "a name that answers no address is refused" (the request context ends
+  after five seconds); `TestPublicScopeIgnoresProxyEnvironment` covers "an environment proxy is never used": it runs
+  `exec.Command(os.Args[0], "-test.run=^TestPublicScopeIgnoresProxyEnvironmentChild$")` with `HTTP_PROXY`, `HTTPS_PROXY` and a
+  marker variable in the environment and fails unless the child exits 0; the child test does nothing unless the marker is set,
+  and makes the five calls. Every test first checks the `EgressScope` field by reflection, so each stays red at the base for
+  that reason, until the proxy reads the scope and guards the connection. The properties named as known limits in design
+  "Risks" (the public side, several addresses, the checked IP) have no test and none is promised.
   Then create `apps/proxy-plugin/internal/egress/public.go` as the spec and design.md give it (the ranges as `net.IPNet`
   values parsed once; `IsPublicIP` unwraps `To4()` first); add `EgressScope string` to `vault.GetCredentialResponse`,
   filled from the response header through the call option `grpc.Header(&md)` in `GetCredential` of
   `apps/proxy-plugin/internal/vault/client.go`; add the handler field `publicTransport http.RoundTripper` (created in
-  `newProxyHandler` with `egress.NewPublicTransport()`) and `egressBase`; in the five flows pass
-  `h.egressBase(credResp.EgressScope, nil)` as `base` of `newUpstreamProxy` and to `credential.NewDigestTransport`; and
+  `newProxyHandler` with `egress.NewPublicTransport()`) and `egressBase`; in the four flows other
+  than digest pass `h.egressBase(credResp.EgressScope, nil)` as `base` of `newUpstreamProxy`, and in the digest flow build
+  `credential.NewDigestTransport(credResp.Plaintext, h.egressBase(credResp.EgressScope, nil))` and pass that digest transport as
+  `base` (the guard is its inner transport, design "The digest flow"); and
   extend the `ErrorHandler` of `newUpstreamProxy` in `apps/proxy-plugin/cmd/proxy-plugin/upstream.go` with the
   `ErrTargetNotPublic` case (the `proxy-stored-target` texts are otherwise unchanged).

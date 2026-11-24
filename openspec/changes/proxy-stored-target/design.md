@@ -60,7 +60,7 @@ func ScrubHeaders(resp *http.Response, patterns bool, secrets ...[]byte) ScrubRe
 flows pass `[]byte(oauthResult.Token)` (the exchanged token, not the client secret, which is never sent upstream); the
 digest flow passes nothing (it sends a hash, so only the pattern rules, when on, apply to its responses). Later
 changes of the plan rely on `newUpstreamProxy` and on its `base` parameter (`proxy-public-egress` passes a guarded
-transport) and on `resolveTarget`.
+transport as `base`, and in the digest flow as the inner transport of the digest transport) and on `resolveTarget`.
 
 ## Decisions
 

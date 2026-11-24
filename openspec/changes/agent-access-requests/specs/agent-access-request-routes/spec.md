@@ -11,28 +11,28 @@ which route, how bodies and ids are checked, and how errors are answered.
 `admin_api/api/agent_access_requests.py` SHALL give a `router` (no prefix), included by `admin_api/api/agent.py`, with:
 `POST /access-requests` (any agent: `require_agent_principal`; body `{service_id, ttl_seconds, action?, reason?}`, no other
 key, `service_id` per the rule below, `ttl_seconds` an integer from 60 to 7776000, `action` matching `GRANT_ACTION_PATTERN`
-(default `call`), `reason` at most 500 characters; answers 201 with the view); `GET /access-requests` (any agent; optional
+(default `call`), `reason` a string of at most 500 characters (counted as sent, before the strip of `create_access_request`; a number is refused); answers 201 with the view); `GET /access-requests` (any agent; optional
 `status` among the five statuses or `all`; the caller's own requests; answers 200 `{"access_requests": [view, ...]}`);
 `POST /access-requests/{request_id}/cancel` (any agent; answers 200 with the cancelled view); `GET /incoming-access-requests`
 (`require_publisher_principal`; `status` default `pending`, `all` allowed; optional `service_id`; the requests for services
 the caller owns, through `owner_agent_id`; answers 200 `{"access_requests": [view, ...]}`) and `POST
 /incoming-access-requests/{request_id}/decision` (publisher; body `{decision: "approve" | "deny", ttl_seconds?, note?}`, no
-other key, `ttl_seconds` only with `approve` and checked by `check_decision_ttl`, `note` at most 500 characters, decider
+other key, `ttl_seconds` only with `approve` and checked by `check_decision_ttl`, `note` a string of at most 500 characters, counted as sent, decider
 `Grantor("agent", <caller>)`; answers 200 with the decided view, plus `grant` for an approval). A route turns `all` into no
 status filter before it calls `list_access_requests`, which takes a status or None.
 
 The `service_id` rule (agent routes and tools): the create body field and the incoming-list query parameter match
-`^[A-Za-z0-9_.-]{1,128}$` and are not only dots (else 422 `validation_failed`; the MCP tools check only the pattern and relay
-the answer), and are a slug or a `svc_` wire id. A value starting with `svc_` must decode with `decode_wire_id` (prefix `svc`),
-else 422 `mintkey:invalid_id` with `field` `service_id`; any other value is a slug. Both forms are resolved among the caller's
-tenant's services only (by `create_access_request` for the body, by `list_access_requests` for the filter). An unknown slug,
-or an id of no service of the tenant, gives 404 `mintkey:not_found` on create and a 200 empty list `{"access_requests": []}` on
-the incoming list (which hides whether the service exists).
+`^[A-Za-z0-9_.-]{1,128}$` and are not only dots (else 422 `validation_failed`; the MCP tools check only the pattern). A value
+starting with `svc_` must decode with `decode_wire_id` (prefix `svc`), else 422 `mintkey:invalid_id` with `field` `service_id`;
+any other value is a slug. Both resolve among the caller's tenant's services only. An unknown slug or an id of no such service
+gives 404 `mintkey:not_found` on create and a 200 `{"access_requests": []}` on the incoming list (it hides whether the service
+exists).
 
 Handlers SHALL call `set_tenant_context` first, decode ids with `decode_wire_id` (`areq`, `agent`; 422 `mintkey:invalid_id`
-with `field`), and map `AccessRequestError` to `AgentApiError` with the body `{"code": "mintkey:<code>", "title",
-...detail}`, except `invalid_expires_at` and `invalid_ttl`, whose body on both surfaces is the flat `{"mintkey:code": <code>,
-"title": <title>, "reason": <reason>}` of `grant-expiry` (titles "Invalid expires_at" and "Invalid ttl_seconds").
+with `field`), and map `AccessRequestError` to `AgentApiError` with the flat body `{"mintkey:code": "mintkey:<code>", "title",
+...detail}` (the key of the error bodies of `agent-service-routes`), except `invalid_expires_at` and `invalid_ttl`, whose code
+value is bare on both surfaces, `{"mintkey:code": <code>, "title": <title>, "reason": <reason>}` as in `grant-expiry` (titles
+"Invalid expires_at" and "Invalid ttl_seconds").
 
 #### Scenario: the route table obeys the family rules
 - **WHEN** the routes of `create_app()` are walked, and `admin_api/main.py` is read as text
@@ -42,13 +42,13 @@ with `field`), and map `AccessRequestError` to `AgentApiError` with the body `{"
 
 #### Scenario: any agent asks, lists and cancels
 - **WHEN** a consumer principal posts a valid request body, lists with `?status=pending` and `?status=all`, and cancels an id
-- **THEN** the answers are 201, 200, 200 and 200 (the list calls bind the caller as requester, `pending` as the status
-  and then no status; both bodies are `{"access_requests": [...]}`), the cancel call passes the decoded request id and the
-  caller and its body is the view, `set_tenant_context` was called with the principal's tenant before each service
-  function, and `?status=weird` answers 422 `validation_failed`
+- **THEN** the answers are 201, 200, 200 and 200 (the list calls bind the caller as requester and `pending`, then no status;
+  both bodies are `{"access_requests": [...]}`), the cancel call passes the decoded request id and the caller and answers
+  the view, `set_tenant_context` was called with the principal's tenant before each service function, and `?status=weird`
+  answers 422 `validation_failed`
 
 #### Scenario: refused bodies and ids
-- **WHEN** the body has `ttl_seconds` 59, `"3600"` or 7776001, a `reason` of 501 characters, an extra key `agent_id`, no
+- **WHEN** the body has `ttl_seconds` 59, `"3600"` or 7776001, a `reason` of 501 characters or `7`, an extra key `agent_id`, no
   `service_id`; and the cancel id is `areq_xyz`
 - **THEN** the bodies answer 422 `validation_failed` and the id 422 `mintkey:invalid_id`; no service function ran
 
@@ -57,10 +57,10 @@ with `field`), and map `AccessRequestError` to `AgentApiError` with the body `{"
   `?service_id=svc_xyz` (the patched `list_access_requests` raises `AccessRequestError` 422 `invalid_id` with `field`
   `service_id`), `?service_id=a/b` and `?service_id=..`; and a consumer posts a body with `service_id` `payments` and one with
   `a/b`
-- **THEN** the list calls receive `service_ref` exactly as sent (`payments`, then the `svc_` text) with the caller as owner
-  and answer 200; the third answers 422 `mintkey:invalid_id` with `field` `service_id`; the fourth and fifth answer 422
-  `validation_failed` with no service call; the first post passes `service_ref` `payments` to `create_access_request` and
-  answers 201, the second answers 422 `validation_failed` with no call
+- **THEN** the first two list calls receive `service_ref` as sent with the caller as owner and answer 200; the third answers
+  422 `mintkey:invalid_id` with `field` `service_id`; the fourth and fifth answer 422 `validation_failed` with no service call;
+  the first post passes `service_ref` `payments` to `create_access_request` and answers 201, the second answers 422
+  `validation_failed` with no call
 
 #### Scenario: publishers decide, consumers do not
 - **WHEN** a publisher lists incoming requests (no status, then `all`), approves with `ttl_seconds` 600, denies with a note,
@@ -79,14 +79,14 @@ with `field`), and map `AccessRequestError` to `AgentApiError` with the body `{"
 #### Scenario: errors keep their code
 - **WHEN** the service function raises `AccessRequestError` 409 `request_not_pending` with `status` `approved`, and 422
   `invalid_expires_at` with `reason` `expires_at_in_past`, on the decision route
-- **THEN** the answers are 409 with `{"code": "mintkey:request_not_pending", "status": "approved", "title": ...}` and 422 with
+- **THEN** the answers are 409 with `{"mintkey:code": "mintkey:request_not_pending", "status": "approved", "title": ...}` and 422 with
   exactly `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason": "expires_at_in_past"}`
 
 ### Requirement: The operator request routes
 `admin_api/api/access_requests.py` SHALL give `router = APIRouter(prefix="/v1/tenants/{tenant_id}/access-requests")`,
 imported by `main.py`, whose four routes depend on `require_tenant_session` and call `set_tenant_context(session,
-tenant_id)` first: `GET ""` (`status` (a status or `all`, meaning no filter), `service_id`, `requester_agent_id`, `owner_agent_id` filters; ids decode
-with `decode_wire_id`; answers `{"access_requests": [...]}`), `GET "/{request_id}"`, `POST "/{request_id}/approve"` (`{ttl_seconds?,
+tenant_id)` first: `GET ""` (filters `status` (a status or `all`: no filter), `service_id`, `requester_agent_id`,
+`owner_agent_id`; ids decode with `decode_wire_id`; answers `{"access_requests": [...]}`), `GET "/{request_id}"`, `POST "/{request_id}/approve"` (`{ttl_seconds?,
 note?}`, `ttl_seconds` checked by `check_decision_ttl` like the agent decision: integer, 60 to 7776000, else the flat 422
 `invalid_ttl`) and `POST "/{request_id}/deny"` (`{note?}`), each body without other keys. The decider is `Grantor("operator", <operator id
 of get_session_context>)`, with a None id when there is no context. `AccessRequestError` SHALL be answered as `{"mintkey:code":
@@ -131,8 +131,9 @@ decode with prefix `svc` is 422 `invalid_id` with `field` `service_id`). Operato
 `decide_access_request`; required `request_id`, `decision`; optional `ttl_seconds`, `note`). Handlers SHALL call
 `guard_agent_tool`, reject with `invalid_params` (and no `agent_request` call) a missing required argument, an unknown key, a
 `service_id` failing `matches_pattern` with `^[A-Za-z0-9_.-]{1,128}$`, a `request_id` failing `^areq_[0-9A-Za-z]{26,32}$`,
-a non-integer `ttl_seconds` (a boolean is not one), a `decision` other than `approve` or `deny`, a `status` outside the
-five statuses and `all`, or a string longer than 500 characters in `reason` or `note`; then call `forward_agent_call` with
+an `action` failing `matches_pattern` with `^[A-Za-z0-9_.:-]{1,64}$` (the value of `GRANT_ACTION_PATTERN`), a non-integer `ttl_seconds` (a boolean is not one), a
+`decision` other than `approve` or `deny`, a `status` that is not one of the five statuses and `all` (any type), or a `reason`
+or `note` that is not a string or has more than 500 characters; then call `forward_agent_call` with
 `POST /v1/agent/access-requests` (arguments as the body), `GET /v1/agent/access-requests?status=...`, `POST
 /v1/agent/access-requests/<id>/cancel`, `GET /v1/agent/incoming-access-requests?status=...&service_id=...` (given arguments only,
 percent-encoded) and `POST /v1/agent/incoming-access-requests/<id>/decision` (`decision`, `ttl_seconds`, `note` as the body).
@@ -160,10 +161,11 @@ and `input_schema.properties` equal in keys to each `inputSchema.properties`.
 
 #### Scenario: bad arguments and failures
 - **WHEN** `mintkey_request_access` gets `ttl_seconds` `"3600"`, `true`, no `service_id`, a `service_id` `a/b`, an extra
-  key `tenant_id`, a `reason` of 501 characters; `mintkey_decide_access_request` gets `decision` `maybe`, `request_id`
-  `../x` and a `note` of 501 characters; `mintkey_list_my_access_requests` gets `status` `weird`; and `agent_request`
-  answers 409 with a body, 500, and raises `httpx.ConnectError`
-- **THEN** the first ten answer 422 `mintkey:invalid_params` without an `agent_request` call; the REST answers are 409
+  key `tenant_id`, a `reason` of 501 characters, a `reason` `7` and an `action` `a b`; `mintkey_decide_access_request` gets
+  `decision` `maybe`, `request_id` `../x`, a `note` of 501 characters and a `note` `5`; `mintkey_list_my_access_requests` gets
+  `status` `weird`; `mintkey_list_incoming_access_requests` gets `status` `["pending"]`; and `agent_request` answers 409 with
+  a body, 500, and raises `httpx.ConnectError`
+- **THEN** the first fourteen answer 422 `mintkey:invalid_params` without an `agent_request` call; the REST answers are 409
   with that body, then 502 `mintkey:admin_api_unavailable` twice
 
 #### Scenario: the contract lists the tools

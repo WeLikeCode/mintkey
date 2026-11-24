@@ -20,12 +20,12 @@ with `newUpstreamProxy`.
   `GetCredential` answer (response header). `vault.proto` documents it in comments; no generated stub changes (design D6).
   `VaultAdapterClient.put_credential` takes `egress_scope: str = ""`.
 - The vault adapter validates and stores the scope (`any`, `public`; no value keeps the scope of the current version so a
-  rotation cannot widen it; the not-found answer of every store is `sql.ErrNoRows`, wrapped; lookup and write of a service are
+  rotation cannot widen it; the not-found answer of every store is `sql.ErrNoRows`, wrapped, as it already is at the base; lookup and write of a service are
   serialised in the process), returns it with every credential, and carries it through the SQLite, PostgreSQL and
   HashiCorp stores, the DEK cache and the two migration commands.
 - The proxy reads the header into `EgressScope`; for anything but empty or `any` it builds the flow's reverse proxy over a
   transport whose dial function refuses any non-public resolved address (`egress.NewPublicTransport`) and answers 502
-  `bad gateway: target address not allowed`.
+  `bad gateway: target address not allowed`; in the digest flow that transport is the inner transport of the digest transport.
 
 ## Capabilities
 

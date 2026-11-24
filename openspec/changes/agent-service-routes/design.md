@@ -10,7 +10,7 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
   `services.current_key_version`. `update_service` edits `vault.credentials` with SQL (line 1473). No vault call deletes a
   credential.
 - `CsrfMiddleware` refuses a cookie-less POST outside `csrf_exempt` paths (`ADM/main.py:124`). The global 422 handler
-  answers with `str(exc)`, which carries the input.
+  (`validation_error_handler`) answers `{"mintkey:code": "validation_failed", "title": str(exc)}`, and `str(exc)` carries the input.
 - `tests/acceptance/test_openapi_parity.py` snapshots `module -> prefix` for every `router` that `main.py` imports
   (`from admin_api.api.<module> import router`), reading the first `APIRouter(... prefix=...)` of the module.
 - Wire ids (`admin_api.utils.wire_ids`): `svc_` plus 26 Crockford characters, or 32 hex characters, decoded by
@@ -26,7 +26,7 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
   operator-owned) and `mintkey_models.roles`. Services carry no owner column before it.
 - `proxy-public-egress`: `VaultAdapterClient.put_credential(..., egress_scope: str = "")` and the vault column
   `egress_scope` (`any` or `public`; a credential stored with `public` is connect-checked by the proxy).
-- Delivered before them: `tenant-session-routes`, `grant-expiry`, `proxy-stored-target`.
+- Nothing else: this change uses no symbol of `tenant-session-routes`, `grant-expiry` or `proxy-stored-target`.
 
 ## Decisions
 
@@ -44,7 +44,7 @@ there is no vault delete call, and `update_service` already edits that table wit
 `api_key_header`, `api_key_query` and `basic_auth` (opaque values); a PATCH may only choose among these four, and a service
 that has another scheme (one an operator made and transferred) cannot receive an agent credential until its scheme is
 changed to one of the four. The header and query-parameter names are set with the value; no update field changes them.
-The credential route parses its own body, because the global 422 handler carries the input.
+The credential route parses its own body, because its value is a secret.
 
 **D4. Egress.** The URL check applies at create and, when the field changes, at update; a failed resolution refuses. The
 credential route passes `egress_scope="public"` to `put_credential`, so a credential of an agent-owned service is never
@@ -56,6 +56,21 @@ owner or none gives 403 `mintkey:not_owner`; another tenant's service is not fou
 
 **D6. Added: validation.** Name pattern `^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$`; update fields are set-only (no rename, no
 clearing, no `status`); `extra="forbid"` on every body.
+
+**D10. Added: one error body, and no echoed input.** Every error this change raises is `{"mintkey:code": <code>, "title": <fixed
+text>, ...detail}` (the table is in the requirement "Every error of the service routes has one body"). The key is the one
+of the operator routes and the shared handler; the route codes keep the `mintkey:` prefix the sibling changes already cite,
+and 422 is `validation_failed`, the handler's value, so there is one 422 code. POST, PATCH and PUT credential read the body
+themselves (`parse_agent_body`, hand validation for the PUT) and declare no request model: the shared handler puts
+`str(exc)`, input included, in its title. Fixed titles mean no answer repeats a caller's value, whether secret (the
+credential) or not (a name or URL). The 401, 403 `role_forbidden` and 503 bodies belong to `agent-principal-and-egress` and
+are not restated here.
+
+**D11. Added: answers come from the write.** Create and PATCH use `RETURNING` and the PUT reuses the `now` it bound, so no
+route re-reads the row; after a clearing PATCH `credential_set` is false. A PATCH that changes something sends the
+`mintkey:service` NOTIFY `service.updated` like `update_service`; the credential PUT sends the `mintkey:credential` NOTIFY of
+step 6 of `create_credential` (`credential.registered` for key version 1, else `credential.rotated`; ids, never the value).
+Every handler calls `set_tenant_context` first.
 
 **D7. Added: one writer at a time per service.** The credential route and the update route both select the service row
 `FOR UPDATE` as their first service statement (`require_owned_service(..., for_update=True)`). A credential write and a
@@ -79,11 +94,12 @@ Given to `agent-service-tools`, `agent-granted-access` and `agent-access-request
 - `admin_api/api/agent.py`: `router = APIRouter(prefix="/v1/agent")`, extended by later changes with `include_router`.
 - `admin_api.services.agent_publishing`: `parse_service_ref`, `require_owned_service`, `service_view` (signatures in the
   spec).
+- `parse_agent_body` (same module): the 422 reader of D10.
 - Routes: `POST` and `GET /v1/agent/services`, `PATCH /v1/agent/services/{service_ref}`, `PUT
   /v1/agent/services/{service_ref}/credential`; bodies and answers are in the requirements.
-- Error bodies carry `code`: 400 `mintkey:target_not_allowed` `{field, reason, hint}`; 401 and 503 from the principal; 403
-  `mintkey:role_forbidden`, `mintkey:not_owner`; 404 `mintkey:not_found`; 409 `mintkey:slug_conflict`; 422
-  `validation_failed` or `mintkey:validation_failed`; 502 `mintkey:vault_unavailable`.
+- Error bodies (D10), key `mintkey:code`: 400 `mintkey:target_not_allowed` `{field, reason}`; 403 `mintkey:not_owner`; 404
+  `mintkey:not_found`; 409 `mintkey:slug_conflict`; 422 `validation_failed` `{field}`; 502 `mintkey:vault_unavailable`; 401 and
+  503 and the 403 `role_forbidden` are the principal's.
 
 ## Failure cases
 

@@ -23,7 +23,7 @@ requester_agent_id) WHERE status = 'pending'`; indexes on `(tenant_id, service_i
 requester_agent_id, status)`; row-level security with a `tenant_isolation` policy that has the text of the policy in
 `004-services.yaml`; and a `GRANT SELECT, INSERT, UPDATE, DELETE ... TO mintkey_app`, each changeset with a rollback.
 `mintkey_models/db.py` SHALL gain a model `ServiceAccessRequest` with exactly those columns (`actions` as
-`ARRAY(Text)`), and the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table. The architecture test needs Docker and is not run by the L4 gate, so only its set is edited.
+`ARRAY(Text)`), and the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` SHALL list the table.
 
 #### Scenario: the changelog creates the table
 - **WHEN** the changelog is parsed as YAML and the master changelog is read
@@ -55,9 +55,8 @@ decided_by_id` (nullable), `decision_note` (nullable); cancelled none; expired `
 expire_pending_requests(session: AsyncSession, tenant_id: UUID, now: datetime) -> int`, which SHALL run `UPDATE
 service_access_requests SET status = 'expired' WHERE tenant_id = :tid AND status = 'pending' AND pending_until <= :now
 RETURNING ...`, write one `access_request.expired` event per returned row (`actor_type` `system`, `actor_id` None,
-`target_type` `access_request`) and return the count. The `status = 'pending'` condition of the UPDATE makes the flip happen
-once: two concurrent sweeps cannot return the same row, so a request expires, and is audited, once. Every public function below SHALL call it before any other
-statement.
+`target_type` `access_request`) and return the count. Its `status = 'pending'` condition means two concurrent sweeps cannot
+return the same row, so a request expires, and is audited, once. Every public function below SHALL call it first.
 
 #### Scenario: overdue requests expire once
 - **WHEN** the UPDATE returns two rows, and then none
@@ -80,12 +79,12 @@ service is owned by the requester), 409 `already_granted` (a live grant of the r
 PENDING_WINDOW_SECONDS`, write `access_request.created` (actor the requester, `actor_type` `agent`), and return
 `access_request_view`. An `IntegrityError` on the insert SHALL raise 409 `request_pending`.
 
-`AccessRequestError(status_code: int, code: str, title: str, **detail: Any)` (an `Exception` whose attributes are the same
-names, `detail` a dict) and `access_request_view(row) -> dict` SHALL give the view keys `{id, service_id, service_slug, service_name, requester_agent_id,
-requester_agent_name, actions, reason, requested_ttl_seconds, status, decided_by_type, decided_by_id, decided_at,
-decision_note, grant_id, created_at, pending_until}` with `areq_`, `svc_`, `agent_` and `perm_` ids, `decided_by_id` in the form that
-`decided_by_type` names (an `agent` decider as an `agent_` id, an `operator` decider as the operator's UUID text, because
-operator ids have no wire form elsewhere in the API), timestamps as ISO text or null, and a missing attribute read as null.
+`AccessRequestError(status_code: int, code: str, title: str, **detail: Any)` (an `Exception` with those attributes, `detail` a
+dict) and `access_request_view(row) -> dict` SHALL give the view keys `{id, service_id, service_slug, service_name,
+requester_agent_id, requester_agent_name, actions, reason, requested_ttl_seconds, status, decided_by_type, decided_by_id,
+decided_at, decision_note, grant_id, created_at, pending_until}` with `areq_`, `svc_`, `agent_` and `perm_` ids,
+`decided_by_id` in the form `decided_by_type` names (an `agent` as an `agent_` id, an `operator` as the operator's UUID text),
+timestamps as ISO text or null, and a missing attribute read as null.
 
 #### Scenario: a request is created
 - **WHEN** an agent asks for a service by slug with `ttl_seconds` 3600, action `call` and a reason with surrounding spaces
@@ -94,8 +93,8 @@ operator ids have no wire form elsewhere in the API), timestamps as ISO text or 
   the view has status `pending` and null decision fields
 
 #### Scenario: a request by service id, and refusals in order
-- **WHEN** the reference is a decodable `svc_` id and the reason is blank; and then is `svc_xyz`, an unknown slug, a service owned by the requester,
-  a service for which a live grant exists, and a service with a pending request
+- **WHEN** the reference is a decodable `svc_` id and the reason is blank; and then is `svc_xyz`, an unknown slug, a service
+  owned by the requester, a service with a live grant, and a service with a pending request
 - **THEN** the first inserts with `reason` null; the others raise 422 `invalid_id`, 404 `not_found`, 422 `invalid_request` (`own_service`),
   409 `already_granted` and 409 `request_pending` (with `request_id`), and none of them ran an INSERT or wrote an event
 
@@ -111,15 +110,23 @@ operator ids have no wire form elsewhere in the API), timestamps as ISO text or 
 
 ### Requirement: A requester cancels its own pending request
 `cancel_access_request(session, *, tenant_id: UUID, requester_agent_id: str, request_id: str, now: datetime) -> dict` SHALL
-select the request pinned to the tenant and the requester (404 `not_found` otherwise, also for another agent's
-request), raise 409 `request_not_pending` with `status` unless it is pending, then set `status` `cancelled`, `decided_by_type`
-`agent`, `decided_by_id` the requester and `decided_at` `now`, write `access_request.cancelled` and return the view.
+select the request pinned to the tenant and the requester with `FOR UPDATE` (404 `not_found` otherwise, also for another
+agent's request), raise 409 `request_not_pending` with `status` unless it is pending, then run an UPDATE with `AND status =
+'pending'` and `RETURNING` that sets `status` `cancelled`, `decided_by_type` `agent`, `decided_by_id` the requester and
+`decided_at` `now`, write `access_request.cancelled` and return the view. An UPDATE that returns no row (a decision won the
+race) raises 409 `request_not_pending` with `status` null and writes no event.
 
 #### Scenario: cancel, and what cannot be cancelled
 - **WHEN** a requester cancels its pending request (the id passed in its `areq_` form, and again for another pending request
-  in the 32-hex form `decode_wire_id` also accepts); another agent cancels it; the request is approved; the id is unknown
-- **THEN** the first updates the row (status `cancelled`) and writes one event; the others raise 404 `not_found`, 409
+  in the 32-hex form `decode_wire_id` also accepts); another agent cancels it; the request was approved before the cancel;
+  the id is unknown
+- **THEN** the first updates the row (status `cancelled`) and writes one event; the SELECT contains `FOR UPDATE` and binds the
+  tenant and the requester, and the UPDATE contains `status = 'pending'`; the others raise 404 `not_found`, 409
   `request_not_pending` (status `approved`) and 404 `not_found`, with no UPDATE and no event
+
+#### Scenario: a cancel that loses the race
+- **WHEN** the SELECT answers a pending row but the UPDATE returns no row
+- **THEN** the function raises 409 `request_not_pending` with `status` null, and writes no event
 
 ### Requirement: The owner or an operator decides a request
 `decide_access_request(session, *, tenant_id: UUID, request_id: str, decision: str, decider: Grantor, ttl_seconds: int |
@@ -127,7 +134,8 @@ None, note: str | None, now: datetime) -> dict` SHALL select the request with it
 `not_found` without a row); for an agent decider raise 403 `not_owner` unless the service's `owner_agent_id` is the decider,
 then 403 `self_decision` when the requester is the decider (an operator is never a requester); then 409 `request_not_pending`
 unless the status is `pending`. A `deny` SHALL set `status` `denied` with the decider, `decided_at` and `decision_note`, write
-`access_request.denied` and return the view. An `approve` SHALL raise 409 `requester_not_active` unless the requester's agent
+`access_request.denied` and return the view. Both UPDATEs of a decision carry `AND status = 'pending'` and `RETURNING`; one that
+returns no row raises 409 `request_not_pending` (`status` null) and the route's rollback removes any grant written before it. An `approve` SHALL raise 409 `requester_not_active` unless the requester's agent
 row (tenant-pinned) is `active`; compute `ttl = approved_ttl_seconds(requested_ttl_seconds, ttl_seconds,
 agent_grant_max_ttl_seconds())`; call `write_grant` for the requester, the service, the action, `{}` constraints,
 `expires_at = now + ttl`, the decider and `now` (a `GrantConflict` raises 409 `grant_conflict`); set `status` `approved`, the
@@ -183,8 +191,11 @@ call it on a decision's `ttl_seconds` before `decide_access_request`.
   `reason`; the request row was not updated, no event was written and the status stays `pending`
 
 #### Scenario: a failing dependency does not leave half a decision
-- **WHEN** `audit_emit` raises `RuntimeError` for `access_request.approved` after `write_grant` returned
-- **THEN** `decide_access_request` raises that `RuntimeError`, and the fake session saw no `commit` call
+- **WHEN** `audit_emit` raises `RuntimeError` for `access_request.approved` after `write_grant` returned; the request is
+  `denied`; and the UPDATE of an approval returns no row
+- **THEN** the calls raise that `RuntimeError`, 409 `request_not_pending` (status `denied`) and 409 `request_not_pending`
+  (status null); the fake session saw no `commit` and no `rollback` call (the route's session owns both), and the UPDATE
+  statements of a decision contain `status = 'pending'`
 
 #### Scenario: an overdue request cannot be decided
 - **WHEN** the sweep flips the request to `expired` before the decision

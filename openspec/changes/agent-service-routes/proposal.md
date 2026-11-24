@@ -17,6 +17,9 @@ service, hand it over, change a role or point a target at an internal address. T
   `main.py` registers `agent_api_error_handler` and exempts `/v1/agent` from the CSRF check.
 - A credential is write-only (`{service_id, credential_set, updated_at}`), bound to its target (an agent update of
   `base_url` or `auth_scheme` deletes it in the same transaction) and stored with the vault `egress_scope` `public`.
+- One error body for every route of the family: `{"mintkey:code": <code>, "title": <fixed text>, ...}`, the shape of the
+  operator routes and the shared handler, with one 422 code (`validation_failed`); the routes with a body read it themselves,
+  so no answer repeats a value the caller sent.
 - `base_url` and `openapi_url` from an agent pass `check_agent_target_url` (https, public addresses only).
 - The audit contract gains `service.credential.set` and `service.credential.cleared`; `service.registered` may carry
   `owner_agent_id` and `service.updated` may list `auth_scheme`.

@@ -10,38 +10,39 @@ routes write.
 
 ### Requirement: A credential is written, never read, and bound to its target
 `PUT /v1/agent/services/{service_ref}/credential` SHALL read its JSON body itself, not through request-model validation, so
-that no refusal echoes the input: it SHALL answer 422 `{"code": "mintkey:validation_failed", "field": <name>, "title": <fixed
-text>}` for a body that is not a JSON object, has a key other than `value`, `header_name` and `query_param`, or has a bad
-field. It accepts `{value, header_name?, query_param?}`, `value` 1 to 8192 characters without CR, LF or NUL, for an owned
+that no refusal echoes the input (the value is a secret): it SHALL answer the 422 of "Every error of the service routes has one
+body" (`{"mintkey:code": "validation_failed", "title": "Invalid request body", "field": <name or null>}`) for a body that is
+not a JSON object, has a key other than `value`, `header_name` and `query_param` (`field` null), or has a bad field. It accepts `{value, header_name?, query_param?}`, `value` 1 to 8192 characters without CR, LF or NUL, for an owned
 service only, resolved through `require_owned_service(..., for_update=True)`. A service whose `auth_scheme` is not one of
-`bearer_token`, `api_key_header`, `api_key_query`, `basic_auth` SHALL answer 422 `mintkey:validation_failed` with `field`
+`bearer_token`, `api_key_header`, `api_key_query`, `basic_auth` SHALL answer that 422 with `field`
 `auth_scheme`. `api_key_header` needs `header_name` (`^[A-Za-z0-9-]{1,64}$`, not `host`, `content-length`,
 `transfer-encoding`, `connection` or `x-mintkey-*`, any case), `api_key_query` needs `query_param`
 (`^[A-Za-z0-9_.-]{1,64}$`), the other schemes take neither. The route SHALL call `VaultAdapterClient.put_credential` once
 with the service's `auth_scheme`, `base_url` as `target_url` and `egress_scope="public"` (the parameter of
 `proxy-public-egress`); in the request's transaction supersede the active `credentials` rows of the service, insert the new
-metadata row and set `services.current_key_version`; write `service.credential.set`; and answer 200 with exactly
-`{service_id, credential_set: true, updated_at}`. Neither the response, an audit payload, nor any statement parameter SHALL
-contain the value, a hash, a prefix, a length or a fingerprint of it. A vault failure SHALL answer 502
-`mintkey:vault_unavailable` before any metadata statement or event.
+metadata row and set `services.current_key_version` and `updated_at` (one `now` value, returned as `updated_at`, no re-read); write
+`service.credential.set`; send the `mintkey:credential` NOTIFY of step 6 of `create_credential` (`credential.registered` for key
+version 1, else `credential.rotated`; `tenant_id`, `service_id` and the `cred_` id, no value); and answer 200 with exactly `{service_id, credential_set: true, updated_at}`; the tenant context is set first. Neither the response, an audit payload, nor any statement parameter SHALL
+contain the value, a hash, a prefix, a length or a fingerprint of it. A vault failure SHALL answer the 502
+`mintkey:vault_unavailable` of that requirement before any metadata statement or event.
 
 #### Scenario: a bearer credential
 - **WHEN** a publisher puts the value `s3cret-value-123` on an owned `bearer_token` service
 - **THEN** `put_credential` was called once with that value as `plaintext`, the base URL as `target_url` and `egress_scope`
-  `public`, and no statement names `egress_scope`; the answer has exactly the three keys; and the text of the
-  response, of every `audit_emit` call and of every statement and its parameters does not contain `s3cret-value-123`
+  `public`, and no statement names `egress_scope`; the answer has exactly the three keys, with the `updated_at` bound in the `services` UPDATE; one `mintkey:credential` NOTIFY `credential.registered` was sent; and the text of the
+  response, of the NOTIFY, of every `audit_emit` call and of every statement and its parameters does not contain `s3cret-value-123`
 
 #### Scenario: header and query names
 - **WHEN** an `api_key_header` service gets no `header_name`, `Host`, `X-Mintkey-Test`, then `X-Api-Key`; a `bearer_token`
   service gets a `header_name`; an `api_key_query` service gets no `query_param`
-- **THEN** all but the fourth answer 422 `mintkey:validation_failed`; the fourth answers 200 with `X-Api-Key` passed to
+- **THEN** all but the fourth answer 422 `validation_failed`; the fourth answers 200 with `X-Api-Key` passed to
   `put_credential`
 
 #### Scenario: bad values, other owners, a failing vault, an unsupported scheme
 - **WHEN** the value is empty, 8193 characters long or `s3cret-value-123` plus a line feed; the service belongs to another
   agent; `put_credential` raises; or the service's scheme is `ssh_private_key`
-- **THEN** the answers are 422 `mintkey:validation_failed` three times (no body contains `s3cret-value-123`), 403
-  `mintkey:not_owner`, 502 `mintkey:vault_unavailable` and 422 `mintkey:validation_failed` with `field` `auth_scheme`; no
+- **THEN** the answers have the bodies of that requirement and "Every error of the service routes has one body": 422 `validation_failed` three times (no body contains `s3cret-value-123`), 403
+  `mintkey:not_owner`, 502 `mintkey:vault_unavailable` and 422 `validation_failed` with `field` `auth_scheme`; no
   metadata statement and no event ran, and `put_credential` was not called for the last
 
 #### Scenario: the row is locked before the vault write

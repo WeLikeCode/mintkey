@@ -13,7 +13,8 @@ string key it reads. Two commands copy rows between stores by naming columns (`c
 `x-mintkey-service-token`) in its scope interceptor, and the admin-api client sends the same two pairs on every call.
 
 The proxy (`apps/proxy-plugin`) builds its reverse proxy in five flows; after `proxy-stored-target` each calls
-`h.newUpstreamProxy(target, base, injected...)` and the digest flow builds `credential.NewDigestTransport(payload, base)`.
+`h.newUpstreamProxy(target, base, injected...)`, and the digest flow passes the digest transport it builds as that `base`
+(`credential.NewDigestTransport(payload, inner)`, whose `inner` is the transport that carries each request).
 `internal/credential/ssrf.go` holds the dial-time guard of the OAuth2 token exchanges; it keeps its own ranges and behaviour.
 The new guard is separate (`internal/egress`): it checks the ranges of this spec, including carrier-grade NAT, and dials the
 address it checked.
@@ -26,8 +27,8 @@ Given to later changes: the column `vault.credentials.egress_scope`; `put_creden
 value `public` makes the stored credential connect-checked; the empty value keeps the current version's scope); the metadata
 key `x-mintkey-egress-scope` on `PutCredential` and `GetCredential`; and on the proxy `egress.IsPublicIP`,
 `egress.PublicDialContext`, `egress.NewPublicTransport`, `egress.ErrTargetNotPublic` and
-`(*proxyHandler).egressBase(scope string, base http.RoundTripper) http.RoundTripper` (returns `base` for `""` and `any`, the
-handler's shared public transport otherwise).
+`(*proxyHandler).egressBase(scope string, base http.RoundTripper) http.RoundTripper` (returns `base` itself for `""` and `any`,
+so a nil stays a nil interface; the handler's shared public transport otherwise).
 
 ```go
 // egress/public.go
@@ -41,11 +42,19 @@ func NewPublicTransport() *http.Transport // a clone of http.DefaultTransport wi
 const egressScopeMetadataKey = "x-mintkey-egress-scope"
 // PutCredential: md, _ := metadata.FromIncomingContext(ctx); md.Get(egressScopeMetadataKey)  // none, one, or many
 // GetCredential: grpc.SetHeader(ctx, metadata.Pairs(egressScopeMetadataKey, result.EgressScope)) once, after the lookup
-// proxy client, internal/vault/client.go: call option grpc.Header(&md); EgressScope = first value of md.Get(key), or ""
+// proxy client, internal/vault/client.go: call option grpc.Header(&md); EgressScope = "" for no value, the value for one, "public" for several
 ```
 
 `newProxyHandler` creates one `publicTransport` (connection pooling) and `egressBase` returns it. The `ErrorHandler` of
-`newUpstreamProxy` maps `errors.Is(err, egress.ErrTargetNotPublic)` to the 502 text of the spec.
+`newUpstreamProxy` maps `errors.Is(err, egress.ErrTargetNotPublic)` to the 502 text of the spec; any other dial error (a lookup
+that failed or answered nothing) keeps `upstream unreachable`.
+
+**The digest flow.** It builds `credential.NewDigestTransport(credResp.Plaintext, h.egressBase(credResp.EgressScope, nil))` and
+passes the result as `base` of `newUpstreamProxy`, as `proxy-stored-target` says: the guarded transport is the digest
+transport's inner transport, so the request and its retry after the 401 challenge both dial through the guard. For `any` the
+inner transport is nil and `NewDigestTransport` falls back to `http.DefaultTransport`, as at the base. The digest library
+(`github.com/icholy/digest` v1.1.0) returns the inner `RoundTrip` error unchanged, so `errors.Is(err, ErrTargetNotPublic)` holds
+in the `ErrorHandler`. The other four flows pass `h.egressBase(credResp.EgressScope, nil)` as `base`.
 
 ## Decisions
 
@@ -79,7 +88,8 @@ address changes after it was stored.
 
 **D5. No environment proxy.** `NewPublicTransport` sets `Proxy` to nil so `HTTP_PROXY` cannot move the connection to an
 address the guard never sees. Redirects are not followed (a reverse proxy returns them to the caller), so each connection
-is made for the stored target.
+is made for the stored target. Go reads the proxy variables once per process and never proxies a loopback target, so the
+scenario runs a child process of the test binary and uses a non-loopback refused target (D9).
 
 **D6. The scope travels in call metadata, not in new message fields.** The generated stubs (`packages/go/vault/v1`,
 `apps/admin-api/src/admin_api/services/vault_pb2.py`, the MCP copy) are checked in, were produced by different protoc
@@ -101,9 +111,9 @@ which is `any`: `agent-service-routes` accepts no OAuth2 scheme from an agent, s
 exchange. A later change that lets an agent store one must also route its exchange through `egress.NewPublicTransport`.
 
 **D9. Test support lives in the unit's own file.** `public_egress_test.go` defines `startScopedFakeVault(t, resp
-*vaultv1.GetCredentialResponse, scope string) *vault.Client` (a gRPC server over `UnimplementedVaultAdapterServer` whose
-`GetCredential` calls `grpc.SetHeader(ctx, metadata.Pairs("x-mintkey-egress-scope", scope))` when `scope` is not empty and
-returns `proto.Clone(resp)`) and `scopedFlows(t, h, target, scope)`, which builds the five calls as `callFlows` does but with
+*vaultv1.GetCredentialResponse, scopes ...string) *vault.Client` (a gRPC server over `UnimplementedVaultAdapterServer` whose
+`GetCredential` calls `grpc.SetHeader` with one `x-mintkey-egress-scope` pair per given scope, none when there are no scopes,
+and returns `proto.Clone(resp)`) and `scopedFlows(t, h, target, scope)`, which builds the five calls as `callFlows` does but with
 that fake vault and, for the direct calls, the scope set by reflection. It calls `countingUpstream` of `stored_target_test.go`
 and edits no other test file.
 
@@ -113,8 +123,15 @@ and edits no other test file.
 - The first request of a `public` credential pays one DNS lookup per new connection; pooled connections are reused.
 - Mid-rollout: an old adapter returns no header (the proxy reads `any`); a new adapter before the migration fails on its
   queries, so the migration is applied first.
-- The classification of the public side (an address just outside a refused range) is not tested against a live network;
-  the tests cover each refused range, IPv4 and IPv6, through the proxy.
+- Known limits: no test can decide these without a network, so they hold by construction. (1) The public side of
+  `IsPublicIP`: a public address makes the guard accept and the transport really connect, so the red tests only cover the
+  refused ranges, their first and last edges and the unwrapped IPv4-mapped forms, through the proxy; an implementation that
+  refused everything would pass them, and only the `any` scenarios (which do not use the guard) show the proxy still
+  connecting. (2) "Any non-public address among several refuses": the guard checks every resolved address before it dials
+  one, and the proxy's resolver is `net.DefaultResolver`, so no test can make a name resolve to a public and a non-public
+  address. (3) "The dial uses the checked IP": the dialer is given `net.JoinHostPort(ip.String(), port)` of a checked address,
+  never the name. (4) An empty answer is an error: a name with no address is covered only through `.invalid`. The `.invalid`
+  scenario assumes a resolver that does not answer that reserved name, as RFC 6761 requires.
 - A client that does not send the metadata (an older admin-api) stores the current scope, which for a new service is `any`.
 
 ## Follow-ups

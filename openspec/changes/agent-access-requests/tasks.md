@@ -3,18 +3,19 @@
 Each task writes its tests first and sees them fail for the reason it names, then changes the code; the red step stubs a
 new module with the names and signatures of the spec (functions raise `NotImplementedError`). Run the touched
 suites, `ruff check`, `mypy --strict` (`apps/admin-api`, `packages/python/mintkey-models`) and `ruff check src/` in
-`apps/mcp-server`; `tests/acceptance/test_sqlalchemy_mirror.py` must pass after task 1.1 and
-`tests/acceptance/test_openapi_parity.py` after task 4.3 (both are in the L4 gate). No test needs a database, a network or a clock.
+`apps/mcp-server`; `test_sqlalchemy_mirror.py` must pass after task 1.1 and `test_openapi_parity.py` after task 4.3 (both in
+`tests/acceptance/`, in the L4 gate). No test needs a database, a network or a clock.
 
 Service tests use a fake session whose `async execute(statement, params=None)` records `(str(statement), params)`, answers
 by substrings of the statement (`FROM services`, `FROM agents`, `FROM permission_grants`, `FROM service_access_requests`,
-`UPDATE service_access_requests`, `FOR UPDATE`) and can raise `IntegrityError`; `audit_emit` and `write_grant` are patched at
-`admin_api.services.access_requests`, and `set_tenant_context` at the route module under test. Agent route tests build a
-`FastAPI()` with the router under `APIRouter(prefix="/v1/agent")`, `agent_api_error_handler` and `validation_error_handler`,
-`require_agent_principal` overridden to return an `AgentPrincipal`, and the service functions patched at
-`admin_api.api.agent_access_requests`. Operator route tests override `get_db_session`, `require_tenant_session` (a no-op) and
-`get_session_context` (returning `types.SimpleNamespace(operator_id=<UUID>, tenant_id=<UUID>)`) and patch the service
-functions at `admin_api.api.access_requests`. MCP tests patch `validate_agent_key` in `mcp_server.main` and `mcp_server.tools.jsonrpc` as
+`UPDATE service_access_requests`, `FOR UPDATE`; an UPDATE may answer no row), counts `commit` and `rollback` calls and can
+raise `IntegrityError`; `audit_emit` and `write_grant` are patched at `admin_api.services.access_requests`, and
+`set_tenant_context` at the route module under test. Agent route tests build a `FastAPI()` with the router under
+`APIRouter(prefix="/v1/agent")`, `agent_api_error_handler` and `validation_error_handler`, `require_agent_principal`
+overridden to return an `AgentPrincipal`, and the service functions patched at `admin_api.api.agent_access_requests`. Operator
+route tests override `get_db_session`, `require_tenant_session` (a no-op) and `get_session_context` (returning
+`types.SimpleNamespace(operator_id=<UUID>, tenant_id=<UUID>)`) and patch the service functions at `admin_api.api.access_requests`.
+MCP tests patch `validate_agent_key` in `mcp_server.main` and `mcp_server.tools.jsonrpc` as
 `apps/mcp-server/tests/test_tools_list_trim.py` does, and `AdminApiClient.agent_request`.
 
 ## 1. The schema
@@ -23,11 +24,10 @@ functions at `admin_api.api.access_requests`. MCP tests patch `validate_agent_ke
   `Path(__file__).resolve().parents[3]`, `yaml.safe_load`, `from mintkey_models import db`), covering the two scenarios of
   "The schema stores access requests"; it fails before the change. Then create
   `apps/admin-api/db/changelog/032-service-access-requests.yaml` (changesets `032-service-access-requests`,
-  `-checks`, `-indexes`, `-rls`, `-grant`, each with a rollback; the RLS text copies the policy of
-  `apps/admin-api/db/changelog/004-services.yaml`), append its include to `apps/admin-api/db/changelog/db.changelog-master.yaml`,
-  add `ServiceAccessRequest` to `packages/python/mintkey-models/mintkey_models/db.py` and add `"service_access_requests"`
-  to the set `TENANT_SCOPED` in `tests/architecture/test_rls_coverage.py` (only the set changes). The end state of the task:
-  `tests/acceptance/test_sqlalchemy_mirror.py` passes.
+  `-checks`, `-indexes`, `-rls`, `-grant`, each with a rollback; the RLS text copies `004-services.yaml`), append its include to
+  `apps/admin-api/db/changelog/db.changelog-master.yaml`, add `ServiceAccessRequest` to
+  `packages/python/mintkey-models/mintkey_models/db.py` and `"service_access_requests"` to the set `TENANT_SCOPED` in
+  `tests/architecture/test_rls_coverage.py` (only the set changes). End state: `test_sqlalchemy_mirror.py` passes.
 
 ## 2. The audit contract
 
@@ -45,11 +45,11 @@ functions at `admin_api.api.access_requests`. MCP tests patch `validate_agent_ke
   the view, the error class and `create_access_request`; the request id is `uuid.uuid4()`, its wire form
   `db_uuid_to_wire(id, "areq")`.
 
-- [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_access_requests_decide.py`, covering the scenario of "A requester
+- [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_access_requests_decide.py`, covering the two scenarios of "A requester
   cancels its own pending request", the eight scenarios of "The owner or an operator decides a request" (with
   `monkeypatch.setenv` and `delenv` for `MINTKEY_AGENT_GRANT_MAX_TTL`; the sweep scenario makes the fake `UPDATE` return the
   request), the two scenarios of "Requests are listed by their audience" and the second scenario of "Pending requests end after 72
-  hours" (every function sweeps first, all five functions). Then fill in
+  hours" (all five functions). Then fill in
   `cancel_access_request`, `decide_access_request`, `list_access_requests` and `get_access_request` in
   `apps/admin-api/src/admin_api/services/access_requests.py`.
 
@@ -58,7 +58,7 @@ functions at `admin_api.api.access_requests`. MCP tests patch `validate_agent_ke
 - [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_agent_access_requests_routes.py`, covering the six scenarios of
   "The agent request routes" other than the route table (a consumer principal for the first, a publisher for the others; the
   consumer scenario patches `admin_api.auth.agent_principal.AsyncSessionLocal` and `audit_emit` as
-  `tests/unit/admin_api/test_agent_role_refusal.py` does). Red creates `apps/admin-api/src/admin_api/api/agent_access_requests.py`
+  `test_agent_role_refusal.py` in that directory does). Red creates `apps/admin-api/src/admin_api/api/agent_access_requests.py`
   with a `router` and no routes. Then add the five routes (bodies with `extra="forbid"` and `StrictInt` for the create `ttl_seconds`; the
   `ttl_seconds` of a decision typed `object` and passed to `check_decision_ttl`) and in `apps/admin-api/src/admin_api/api/agent.py`
   `router.include_router(agent_access_requests.router)`.
@@ -74,9 +74,9 @@ functions at `admin_api.api.access_requests`. MCP tests patch `validate_agent_ke
   `tests/acceptance/openapi_snapshot.json`), covering the route-table scenario of "The agent request routes" and the
   registration scenario of "The operator request routes". Then in `apps/admin-api/src/admin_api/main.py` import and include
   `router as access_requests_router`. In the same task edit the data fixture `tests/acceptance/openapi_snapshot.json`: add
-  exactly the entry `"access_requests": "/v1/tenants/{tenant_id}/access-requests"` (keys are sorted: before `"agent_secrets"`)
-  and change no other line. Design D8 authorises this edit (if L4 raises a data-fixture question, allow exactly this entry).
-  The end state: `tests/acceptance/test_openapi_parity.py` and the new test pass.
+  exactly the entry `"access_requests": "/v1/tenants/{tenant_id}/access-requests"` before `"agent"` (keys are sorted;
+  `agent-service-routes` added `"agent"`) and change no other line. Design D7 authorises this edit. End state:
+  `tests/acceptance/test_openapi_parity.py` and the new test pass.
 
 ## 5. The tools
 
