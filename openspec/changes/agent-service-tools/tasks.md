@@ -18,8 +18,10 @@ names that must be absent), not equality with a fixed set.
 
 - [ ] 2.1 Tests first, new file `apps/mcp-server/tests/test_service_publishing_tools.py`, covering the four scenarios of "The
   publisher tools reach admin-api with the caller's key" (JSON-RPC through `create_app()` and `httpx.ASGITransport` as
-  `test_tools_list_trim.py` does; REST by the same client with `Authorization: Bearer mk_agent_x`). Then add
-  `agent_key_from_request` to `apps/mcp-server/src/mcp_server/auth/agent_key.py` and `agent_request` to
+  `test_tools_list_trim.py` does; REST by the same client with `Authorization: Bearer mk_agent_x`, and once with only `X-API-Key: mk_agent_x`; the scenario
+  "the key forms and a detail that never echoes a value" captures log records with `caplog`). Then add
+  `agent_key_from_request` to `apps/mcp-server/src/mcp_server/auth/agent_key.py` (Bearer first, then `X-API-Key`; the
+  middleware in `apps/mcp-server/src/mcp_server/main.py` calls it instead of its own header parsing) and `agent_request` to
   `apps/mcp-server/src/mcp_server/admin_api_client.py`; create `apps/mcp-server/src/mcp_server/tools/service_publishing.py`
   (four REST routes) and include its router in `apps/mcp-server/src/mcp_server/main.py`; in
   `apps/mcp-server/src/mcp_server/tools/jsonrpc.py` add the four `TOOLS` entries (no `title` key, as `test_tools_list_no_titles`

@@ -54,6 +54,11 @@ the MCP server writes `"code": "mintkey:..."` in 98 places, for example `mintkey
 `/v1/tenants/...` keep admin-api's flat `{"mintkey:code": "<name>", "title": "<text>", ...}`. Codes keep their names; only
 the key and the `mintkey:` prefix placement follow the audience.
 
+- **The key the tools forward is the key the middleware checked.** The agent-key middleware accepts `Authorization: Bearer`
+  and `X-API-Key`; `agent_key_from_request` reads both in the same order and the middleware calls it, so a tool never sees a
+  valid context without a key to forward. **A 422 detail names arguments, never values:** `mintkey_service_set_credential`
+  carries a secret, so no answer or log line is built from an argument's value or a validation exception's text.
+
 ## Interfaces
 
 Given to `agent-granted-access`, `agent-access-requests`:

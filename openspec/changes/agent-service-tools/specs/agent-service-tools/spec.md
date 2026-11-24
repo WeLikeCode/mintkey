@@ -8,8 +8,10 @@ its own key to the routes of `agent-service-routes`.
 ## ADDED Requirements
 
 ### Requirement: The publisher tools reach admin-api with the caller's key
-`mcp_server/auth/agent_key.py` SHALL give `agent_key_from_request(request: Request) -> str | None` (the `mk_agent_...` token of
-an `Authorization: Bearer` header, else None); `AdminApiClient.agent_request(method: str, path: str, api_key: str, json:
+`mcp_server/auth/agent_key.py` SHALL give `agent_key_from_request(request: Request) -> str | None`, which reads the key the
+same way and in the same order as the agent-key middleware of `mcp_server/main.py` does: the `mk_agent_...` token of an
+`Authorization: Bearer` header, else the `mk_agent_...` value of an `X-API-Key` header, else None (the middleware calls it,
+so the key a tool forwards is the key the middleware validated); `AdminApiClient.agent_request(method: str, path: str, api_key: str, json:
 dict[str, Any] | None = None) -> httpx.Response` (10 s timeout) SHALL send `Authorization: Bearer <api_key>`. `TOOLS` SHALL
 list these tools, each with `additionalProperties: false` (REST path `/v1/tools/<name without mintkey_>`):
 `mintkey_service_create` (POST `service_create`; required `name`, `base_url`, `auth_scheme`; optional `display_name`,
@@ -21,7 +23,9 @@ answer a JSON-RPC error `-32003` with the REST body as `data`. Each REST handler
 SHALL answer 401 `{"code": "mintkey:auth_required", "title": "Agent key required"}` without a context, call
 `enforce_tool_role`, check the arguments (a missing required one, an unknown key, or a `service_id` that does not match
 `^[A-Za-z0-9_.-]{1,128}$` or is only dots, answers 422 `{"code": "mintkey:invalid_params", "title": "Invalid parameters",
-"detail": <text>}` without calling admin-api), and forward with the caller's
+"detail": <text>}` without calling admin-api; `<text>` is built only from fixed words and argument NAMES — `missing argument
+<name>`, `unknown argument <name>` or `invalid service_id` — and never holds an argument's value, an exception's text or a part
+of `value`), and forward with the caller's
 key, the `service_id` percent-encoded in the path, relaying a status below 500 with its JSON body (`{}` when it is not
 JSON) and answering 502 `{"code": "mintkey:admin_api_unavailable", "title": "Admin API unavailable"}` for a status of 500 or more or any
 exception. The
@@ -41,6 +45,14 @@ the update and the credential tool the body holds every argument except `service
 - **THEN** it was called with `POST /v1/agent/services`, `PATCH /v1/agent/services/<id>`, `PUT
   /v1/agent/services/<id>/credential` and `GET /v1/agent/services`, the caller's key and the arguments (without
   `service_id` in the body), and each result is not an error and holds the body
+
+#### Scenario: the key forms and a detail that never echoes a value
+- **WHEN** a publisher calls `mintkey_list_my_services` over REST once with `Authorization: Bearer mk_agent_x` and once with
+  only `X-API-Key: mk_agent_x`; and `mintkey_service_set_credential` gets `service_id` `a/b` with a `value` built in the test
+  from the text `canary-` and 24 random hex digits, and once an extra key `note` holding the same value
+- **THEN** both list calls forward with `Authorization: Bearer mk_agent_x`; both credential calls answer 422 whose `detail` is
+  `invalid service_id` and `unknown argument note`, and the canary text appears in no response body and in no log record the
+  test captures
 
 #### Scenario: bad arguments and failures
 - **WHEN** `mintkey_service_update` gets `service_id` `../internal/x`, `a/b`, `a?b`, `.`, `..` or no `service_id`, and
