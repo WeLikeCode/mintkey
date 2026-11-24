@@ -26,7 +26,9 @@ proxy. The `GrantRevocationSet`, `Add`, `Refuses` and `WithGrantRevocations` sig
 ```go
 // changes.HandleNotification, new case:
 case "agent.permission.revoked":
-	// both ids are required: otherwise return an error naming the missing field and add nothing.
+	// both ids are required: otherwise return an error naming the missing field and add nothing. This check runs before the
+	// nil check below, so an event without an id is an error whatever the subscriber holds; an event with both ids and no set
+	// returns nil.
 	// revoked_at: time.Parse(time.RFC3339Nano, v) (fractional seconds are accepted); absent or unparsable -> receipt time;
 	// later than receipt + 30 s -> receipt time (a clock that runs ahead cannot refuse tokens issued after the receipt).
 	s.grants.Add(evt.AgentID, evt.ServiceID, revokedAt) // s.grants nil: nothing
@@ -64,6 +66,10 @@ errors as it does for malformed payloads, so nothing is added. The proxy cannot 
 existing sets, as `proxy-token-revocation` does; `NewSubscriber`'s signature is unchanged and the option keeps its four-argument
 callers (the existing subscriber tests) working.
 
+**D7. The tenant is not compared.** The event carries `tenant_id` for the audit trail and for other consumers; the proxy
+matches on (agent, service) only, because both ids are globally unique UUIDs, and a token of a pair in another tenant cannot
+exist.
+
 ## Relation to the other changes
 
 Assumes `grant-expiry` (the payload and its `revoked_at` format). It follows `proxy-public-egress`: both change
@@ -76,6 +82,11 @@ handler as that change leaves it.
   today. The tokens concerned expire within an hour.
 - The check needs the proxy's `DATABASE_URL` for the subscriber, like the other revocation events.
 - An agent with several grants on one service sees all its earlier tokens for the service refused after one revocation (D1).
+- Clock skew: `revoked_at` comes from admin-api's clock and `iat` from the broker's. The rule compares them as they are, so
+  with the broker's clock `s` seconds behind admin-api's, a token issued just after a revocation can be refused for up to `s`
+  seconds (the agent asks again), and with it `s` seconds ahead, a token issued just before the revocation can carry an `iat`
+  later than `revoked_at` and pass. The services share one host or one NTP-synchronised cluster, and no tolerance is added
+  (a tolerance would refuse fresh tokens); this is a documented risk of the design, not a tested behaviour.
 - A token with `sub` not in either id form compares by exact string, as the agent set does.
 
 ## Follow-ups

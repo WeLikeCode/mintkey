@@ -4,8 +4,8 @@
 
 Facts at the base (staging `2c4c814`); the requirements name symbols, the anchors are for review only.
 
-- `permission_grants` (`CL/006`, `CL/011`) has `created_by` NOT NULL and no expiry; only the route keeps one row per
-  (agent, service, action).
+- `permission_grants` (`CL/006`, `CL/011`) has `created_by` NOT NULL, no expiry and no unique constraint; only the route
+  keeps one row per (agent, service, action), so rows written before this change may repeat a key.
 - `grant_permission` (`ADM/api/permissions.py:537`): steps 6 to 10 select an existing row (equal constraints: 200,
   other: 409 `permission_constraints_conflict`), insert with `created_by = body.granted_by or agent_uuid` (line 658),
   upsert the budget counter, emit `agent.permission.granted` with `actor_id=None`. `revoke_permission` (line 736)
@@ -27,7 +27,8 @@ TEXT NOT NULL DEFAULT `'operator'` with a CHECK, `grantor_id` UUID NULL. Existin
 `created_by` holds a body value or the grantee's id, so nothing is back-filled from it.
 
 **D2. The grantor is the caller.** The operator route takes it from `get_session_context` (type `operator`, id the
-operator, or None with no context); an agent route takes it from the agent key (type `agent`, the agent id).
+operator, or None with no context); an agent route of a later change (`agent-granted-access`) takes it from the agent key
+(type `agent`, the agent id).
 `granted_by` in a body is accepted and ignored. `created_by` stays NOT NULL: it is the grantor id, or the grantee's
 id when the grantor id is unknown (the value the code used before for a missing `granted_by`).
 
@@ -56,6 +57,16 @@ equal constraints and expiry is idempotent (200 for the operator route); a live 
 expiry is a conflict (409). An expired grant is absent (D3), so `write_grant` deletes it and inserts the new one in the same
 call, with no event for the deletion: an expired grant is renewed by granting again, a live one by revoking it first (the
 revoke is audited and reaches the proxy). There is no expiry PATCH.
+
+**D7b. Concurrent writers are serialised by an advisory lock.** `write_grant` is the path of the operator route and, later, of
+the agent grant tools and the approval of access requests, so two writers of one (agent, service, action) can meet. Its first
+statement is `pg_advisory_xact_lock(hashtextextended(key, 0))`: the second writer waits until the first transaction ends, then
+selects and sees its row (read committed), so the outcome is the sequential one: an identical request is idempotent, another
+expiry is a `GrantConflict`, and never two rows. A unique constraint was rejected: old rows may already repeat a key (the
+migration would fail), and "live rows only" cannot be a partial index because `now()` is not immutable. The lock is held until
+the caller's transaction ends, which is the request's session. The reader (`request_token`) and the writer's select share the
+ordering `(expires_at IS NULL) DESC, expires_at DESC, created_at DESC, id`, so with legacy duplicates the grant that lasts longest
+decides, and the result of a read does not depend on row order.
 
 **D8. Revoking a missing grant is nothing to do.** `delete_grant` returns None when no row matches; the operator route
 still answers 204 but writes no audit event and sends no NOTIFY (before this change it did both). The revoke events now

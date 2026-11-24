@@ -18,14 +18,16 @@ caller.
   from `vault.GetCredentialResponse.TargetURL` only. A missing, unparsable or non-http(s) target answers 502 with a text
   that names the cause. `X-Mintkey-Target` is still removed from the upstream request; `DEFAULT_TARGET` stays a parsed but
   unused setting.
-- Liquibase `033-credential-target-backfill.yaml` fills every empty `vault.credentials.target_url` from the service's
+- Liquibase `033-credential-target-backfill.yaml` (a name only: it reads `vault.credentials` and `public.services`, which exist
+  at the base, so it needs no other change and its position among the includes is free) fills every empty `vault.credentials.target_url` from the service's
   `base_url` (http and https only), so credentials stored before the target was recorded keep working.
 - A new `newUpstreamProxy` builds the reverse proxy of every flow with a response scrubber and typed 502 answers.
   `scrubber.ScrubWith` adds exact-value redaction of the injected credential (raw, base64 and query-escaped forms) for every
-  service, and applies the pattern rules of `Scrub` (header removals, JWT, `api_key=` and `sk_` strings) only when the new
-  proxy setting `MINTKEY_PROXY_SCRUB_PATTERNS` is true (default false); `Scrub`
+  service, and applies the pattern rules of `Scrub` (header removals, JWT, `api_key=` and `sk_` strings, with the markers `Scrub` already
+  writes: `[REDACTED_JWT]`, `api_key=[REDACTED]`, `[REDACTED]`) only when the new proxy setting `MINTKEY_PROXY_SCRUB_PATTERNS`
+  is true (default false); `Scrub`
   keeps the part of a body that lies past its 256 KiB scan bound and keeps the length headers consistent. Event streams
-  are not buffered, and responses with an encoding the proxy cannot read are refused.
+  are not buffered, and responses with an encoding the proxy cannot read, or a body that fails to decode, are refused.
 
 ## Capabilities
 

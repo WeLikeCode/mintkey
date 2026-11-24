@@ -44,7 +44,9 @@ same fallback; admin-api and the MCP server import it.
 
 **D5. Role and owner filters run after the query.** The agent and service list statements are explicit string
 branches (a convention of the two modules); a filter that adds a branch per combination would double them. Both
-filters are applied to the fetched rows, so no statement changes except the added columns.
+filters are applied to the fetched rows, so no statement changes except the added columns. Neither list has a `LIMIT`, an
+offset or a page at the base (`list_agents` and `list_services` return every row of the tenant), so the filtered result is
+exact; a later change that adds paging must move the filter into SQL.
 
 **D6. Audit and wire ids.** `agent.role.changed` and `service.ownership_transferred` write `actor_type` `operator` and
 `actor_id` = the operator id from `get_session_context` (None when there is no context, as in tests that skip the
@@ -56,6 +58,16 @@ Adding the types to the admin UI's audit filter list (`apps/admin-ui/src/resourc
 
 **D7. Numbering and plan order.** This change's changelog is `031`; `grant-expiry` takes `030`. Both append to
 `db.changelog-master.yaml`, so `grant-expiry` merges first.
+
+**D8. Demotion changes nothing else.** The role PATCH writes the agent's role and `updated_at` and nothing more: a demoted
+publisher keeps the services it owns and the grants on them, and the operator hands the services back with the transfer
+route when it wants to. An automatic hand-back would silently change what other agents' grants point at. No owner decision remains.
+
+**D9. Transfer checks run in a fixed order.** Body, ids, the service (read `FOR UPDATE`, so two transfers of one service
+serialise and `from_agent_id` is the owner they found), a target equal to the current owner (200, nothing written, even if
+that agent has since been demoted or revoked: the owner does not change), the target agent, its status, its role. A revoked
+consumer is therefore `agent_not_active`. The UPDATE, the audit event and the NOTIFY run in the request's transaction; a
+failing statement answers 500 and none is committed.
 
 ## Interfaces
 
@@ -72,6 +84,8 @@ def normalize_role(value: object) -> str  # a value in AGENT_ROLES unchanged, an
 Wire shapes (operator API, tenant session):
 
 - Agent object gains `"role": "consumer" | "publisher"`. `GET /v1/tenants/{tenant_id}/agents?role=publisher` filters.
+- Error bodies are flat JSON (keys at the top level, as the routes' existing answers; the spec's error requirement lists
+  them): `validation_failed` and `invalid_id` carry a `title`, `invalid_transfer_target` a `title` and a `reason`.
 - `PATCH /v1/tenants/{tenant_id}/agents/{agent_id}`, body `{"role": "consumer" | "publisher"}` (no other key), answers
   200 with the agent object. 404 `{"mintkey:code": "not_found", "title": "Agent not found"}` for an unknown id; 422
   `validation_failed` for any other body.
@@ -80,7 +94,10 @@ Wire shapes (operator API, tenant session):
   lists the operator-owned ones; any other value answers 422 `invalid_id`.
 - `POST /v1/tenants/{tenant_id}/services/{service_id}/transfer`, body `{"to_agent_id": "agent_..." | null}` (the key is
   required), answers 200 with the service object. Errors: 404 `not_found` (service, or an agent of another tenant),
-  422 `invalid_id`, 422 `{"mintkey:code": "invalid_transfer_target", "reason": "agent_not_active" | "agent_not_publisher"}`.
+  422 `invalid_id`, 422 `{"mintkey:code": "invalid_transfer_target", "title": "Transfer target not allowed", "reason":
+  "agent_not_active" | "agent_not_publisher"}`. A transfer that changes the owner publishes `notify_change(session,
+  "mintkey:service", {"event": "service.ownership_transferred", "tenant_id": <UUID text>, "service_id": "svc_...",
+  "from_agent_id": "agent_..." | null, "to_agent_id": "agent_..." | null})`; the proxy and the UI do not read it yet.
 - `POST /v1/internal/validate-agent-key` 200 body: `{"agent_id", "tenant_id", "status", "role"}`.
 - `AdminApiClient.validate_agent_key` returns `AgentContext(agent_id, tenant_id, role="consumer")`.
 - Audit payloads: `agent.role.changed` `{agent_id, from_role, to_role}`, target type `agent`;
@@ -90,9 +107,12 @@ Wire shapes (operator API, tenant session):
 
 - A role value outside the two names, an extra key, or no body: 422, nothing written.
 - The agent or service of another tenant: 404 (the statements are tenant-pinned and row-level security applies).
-- The target of a transfer is a revoked agent or a consumer: 422, nothing written.
+- The target of a transfer is a revoked agent or a consumer: 422, nothing written; a revoked consumer is `agent_not_active`.
+- A transfer to the current owner: 200, nothing written, even when that agent is now a consumer or revoked.
+- A failing statement or database: 500, and the UPDATE, the audit event and the NOTIFY of the request are not committed.
 - Setting the role or the owner a row already has: 200, no UPDATE, no audit event, no NOTIFY.
-- No session cookie on either route: 401 from `require_tenant_session`, before any statement.
+- No session cookie on either route: 401 from `require_tenant_session`, before any statement (the tests keep the real
+  dependency and a recording `get_db_session`, so the absence of statements is observed).
 - The migration on a database with agents and services: they keep working; `role` is `consumer`, owners are NULL.
 
 ## Relation to the other changes
@@ -101,8 +121,3 @@ Assumes `tenant-session-routes` is merged: both new routes carry `require_tenant
 authentication rule it establishes. `agent-service-publishing` reads `agents.role` through the key check and the
 owner columns through its own statements; `admin-ui-agent-governance` reads the fields and filters above. The
 agent-side tools check `role` themselves; no operator route reads it.
-
-## Open questions
-
-- Should a demoted publisher's services be handed back to operators automatically? Recommendation: no; the operator
-  transfers them, because an automatic hand-back would silently change what other agents' grants point at.

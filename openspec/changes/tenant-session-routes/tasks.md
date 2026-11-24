@@ -29,13 +29,15 @@ Each task writes its tests first and sees them fail for the reason it names, the
   POST `/v1/tenants/{T}/agents/{AG}/permissions/{PM}/budget/reset`, with `T = TA`.
   `test_requests_without_a_session_are_refused_before_any_statement` (parametrised over the table) sends each with no
   cookie and asserts 401, `resp.json()["detail"]["mintkey:code"] == "unauthenticated"` and an empty `statements` list.
-  `test_a_session_of_another_tenant_is_refused_before_any_statement` sends each with the cookie `mintkey_session=x` under
+  `test_an_unknown_or_expired_session_is_refused_before_any_statement` sends each with the cookie `mintkey_session=x` under
+  `patch("admin_api.auth.sessions.validate_session", new=AsyncMock(return_value=None))` and asserts 401, code `unauthenticated`
+  and no statement. `test_a_session_of_another_tenant_is_refused_before_any_statement` sends each with the cookie `mintkey_session=x` under
   `patch("admin_api.auth.sessions.validate_session", new=AsyncMock(return_value=SimpleNamespace(operator_id="op-1",
   tenant_id=TB)))` and `patch("admin_api.auth.sessions._is_operator_platform_admin", new=AsyncMock(return_value=False))`
   and asserts 403, code `permission_denied` and no statement. `test_a_session_of_the_tenant_or_a_platform_admin_reaches_the_handler`
   runs each twice, once with the session's tenant `TA` and `_is_operator_platform_admin` false, once with tenant `TB` and
-  it true, and asserts the status is neither 401 nor 403 and `statements` is not empty. The first two HTTP
-  tests stay red until the dependency answers before the handler runs; the third guards the reachable case.
+  it true, and asserts the status is neither 401 nor 403 and `statements` is not empty. The first three HTTP
+  tests stay red until the dependency answers before the handler runs; the fourth guards the reachable case.
   Then add `_authz: None = Depends(require_tenant_session)` as the last parameter of the seven handlers named in the spec
   (import `from admin_api.auth.sessions import require_tenant_session` in `budgets.py` and `budget_consumers.py`;
   `permissions.py` has it) and one docstring line in each saying the route requires the tenant session. Nothing else in

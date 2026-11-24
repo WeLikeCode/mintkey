@@ -37,6 +37,11 @@ that file is not run by the L4 gate, so the gate decides the rule through the un
 - **THEN** every answer is 401 with `detail["mintkey:code"]` equal to `unauthenticated`, and the fake database session
   recorded no statement
 
+#### Scenario: an unknown or expired session is refused before any statement
+- **WHEN** the same seven requests carry the cookie `mintkey_session=x` and `validate_session` resolves it to None
+- **THEN** every answer is 401 with `detail["mintkey:code"]` equal to `unauthenticated`, and the fake session recorded no
+  statement
+
 #### Scenario: a session of another tenant is refused before any statement
 - **WHEN** the same seven requests carry a session cookie that `validate_session` resolves to an operator of tenant
   `bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb` who is not a platform admin
@@ -46,7 +51,8 @@ that file is not run by the L4 gate, so the gate decides the rule through the un
 #### Scenario: a session of the tenant, or a platform admin, reaches the handler
 - **WHEN** the same seven requests carry a session of tenant `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa` and, in a second run,
   a session of tenant `bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb` whose operator is a platform admin
-- **THEN** no answer is 401 or 403, and the fake session recorded at least one statement for each request
+- **THEN** no answer is 401 or 403, and the fake session recorded at least one statement for each request (every handler
+  runs `set_tenant_context`, a `SELECT set_config(...)`, before any lookup)
 
 ### Requirement: A background document describes the governance model
 The file `docs/architecture/agent-governance.md` SHALL exist, SHALL be at most 6,000 characters, SHALL contain exactly the

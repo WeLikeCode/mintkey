@@ -29,12 +29,15 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   module `apps/admin-api/src/admin_api/services/grant_expiry.py` with the names and signatures of the spec (functions
   raising `NotImplementedError`), so the tests fail by assertion. Then fill it in.
 
-- [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_grants_service.py`, covering the six scenarios of "One write
+- [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_grants_service.py`, covering the seven scenarios of "One write
   path creates and removes grants" (the fake session answers a statement containing `FROM permission_grants` with the
-  stored row or None); red stubs the module `apps/admin-api/src/admin_api/services/grants.py` with the names and
+  stored row or None; for "two concurrent writes of one grant" the test defines, in this file, a fake pair of sessions over
+  one in-memory table, whose `execute` of a statement containing `pg_advisory_xact_lock` waits on an `asyncio.Lock` per key
+  that `commit()` releases, and which records each session's statements in order); red stubs the module `apps/admin-api/src/admin_api/services/grants.py` with the names and
   signatures of the spec. Then fill it in: the select, compare, insert and budget-counter statements are those of
   steps 6, 8 and 9 of `grant_permission` in `apps/admin-api/src/admin_api/api/permissions.py`, extended with the new
-  columns and parameters; they stay in the route's SQL style (string literals, bound parameters). Move `_new_perm_id`, the 128-bit id derivation and
+  columns and parameters; they stay in the route's SQL style (string literals, bound parameters); the advisory lock statement comes first and the
+  select carries the `ORDER BY ... LIMIT 1` of the spec. Move `_new_perm_id`, the 128-bit id derivation and
   `_budget_period_bounds` from `apps/admin-api/src/admin_api/api/permissions.py` into `grants.py` and import them back
   there, so that `from admin_api.api.permissions import _budget_period_bounds` (used by existing tests) still works.
 
@@ -50,7 +53,8 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   `PermissionGrantRequest` (a value without an offset reaches `check_grant_expiry`, which refuses it) (keep `granted_by`, unused), build the grantor from `Depends(get_session_context)`, replace
   steps 6 to 9 of `grant_permission` by `write_grant` (keep the agent and service checks, the 422/404 answers and the
   audit and 201/200 responses, with `grant_granted_audit_payload` and the four wire fields), turn the 409 and the
-  expiry errors into the answers of the requirement, replace the DELETE statement of `revoke_permission` by `delete_grant`
+  expiry errors into the flat `JSONResponse` bodies of the requirement (`{"mintkey:code": ..., "title": ..., "reason": ...}`
+  for the 422, as the route's `invalid_id` answer is built), replace the DELETE statement of `revoke_permission` by `delete_grant`
   with the audit and NOTIFY payload builders (nothing emitted for None), and add the new columns to the four SELECTs
   of `list_permissions`, `list_tenant_permissions` and `get_permission` and to their objects, plus the `grantor_agent_id`
   parameter. The PATCH and the budget routes are unchanged.
@@ -58,13 +62,13 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 ## 4. Expired grants are absent
 
 - [ ] 4.1 Tests first, new file `apps/mcp-server/tests/test_grant_expiry_tokens.py`, covering the scenarios of "An
-  expired grant is absent for the agent" about `request_token` and of "A token never outlives its grant" (the
+  expired grant is absent for the agent" about `request_token` (including "the grant select is ordered") and of "A token never outlives its grant" (the
   `request_token` setup of `apps/mcp-server/tests/test_request_token_scope_claims.py`: monkeypatched
   `resolve_service_id`, a fake `httpx` recording the broker payload, `session.execute` answering the grant row, then
   the service row). Red stubs `apps/mcp-server/src/mcp_server/policy/grant_expiry.py` with the names of the spec. The
   tests fail before the change (the broker is called, `ttl_seconds` is 600). Then fill in `grant_ttl_seconds`; in
   `apps/mcp-server/src/mcp_server/tools/request_token.py` select `expires_at` with the grant (add `ORDER BY
-  (expires_at IS NULL) DESC, expires_at DESC`), read it with `getattr(grant, "expires_at", None)`, deny before the
+  (expires_at IS NULL) DESC, expires_at DESC, created_at DESC, id`; the statement keeps its `LIMIT 1`), read it with `getattr(grant, "expires_at", None)`, deny before the
   rate-limit check with a new branch of `_denial_hint` and `_emit_denial`, and send the computed `ttl_seconds` in the
   broker payload (the email path keeps 600).
 

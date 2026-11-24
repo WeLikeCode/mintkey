@@ -9,8 +9,9 @@ The admin-api route tests build a `FastAPI()` that includes the router under tes
 execute(statement, params=None)` records `(str(statement), params)` and answers by substrings of the statement text,
 override `require_tenant_session` with a no-op and `get_session_context` with a function returning
 `types.SimpleNamespace(operator_id=<UUID>, tenant_id=<UUID>)`, register `validation_error_handler`, and patch
-`audit_emit` and `notify_change` at the router module (`admin_api.api.agents`, `admin_api.api.services`). The tests of
-"no session" override nothing and send no cookie.
+`audit_emit` and `notify_change` at the router module (`admin_api.api.agents`, `admin_api.api.services`). The tests of "no
+session" keep the real `require_tenant_session`, send no cookie, and override only `get_db_session` with the recording fake
+(and register `validation_error_handler`), so a 401 is shown with no statement recorded; they never reach a real database.
 
 ## 1. One role vocabulary
 
@@ -32,7 +33,8 @@ override `require_tenant_session` with a no-op and `get_session_context` with a 
 ## 3. Agent role in the operator API and in the key check
 
 - [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_roles.py`, covering the scenarios of "Agent responses
-  carry the role", "An operator sets an agent's role" and the first scenario of "The agent-key check reports the role"
+  carry the role", "An operator sets an agent's role", "A demotion changes nothing else", the role-PATCH half of "the error
+  bodies" and the first scenario of "The agent-key check reports the role"
   (the last one calls `admin_api.api.internal.validate_agent_key` with a fake session of two results as
   `tests/unit/admin_api/test_validate_agent_key_errors.py` does, `_verify_argon2` patched to succeed, and counts the
   `execute` calls). Each fails before the change (no `role` key, no PATCH route, no `role` in the 200 body). Then in
@@ -52,14 +54,15 @@ override `require_tenant_session` with a no-op and `get_session_context` with a 
 ## 4. Service owner in the operator API, and the transfer
 
 - [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_service_ownership.py`, covering the scenarios of "Service
-  responses carry the owner", "An operator transfers a service's ownership" and "Operators keep full control of every
-  service". The fake session answers the agent lookup of the transfer (a statement containing `FROM agents`) with a
+  responses carry the owner", "An operator transfers a service's ownership" (with `admin_api.api.services.notify_change`
+  patched and its calls compared with the payloads of the spec), "Operators keep full control of every service" and the
+  transfer half of "the error bodies". The fake session answers the agent lookup of the transfer (a statement containing `FROM agents`) with a
   row of `status` and `role`, and the service lookup (a statement containing `FROM services`) with a service row. Each
   fails before the change (no owner keys, no transfer route, the SELECTs lack the columns). Then in
   `apps/admin-api/src/admin_api/api/services.py` add the two columns to the four SELECTs and to
   `_service_row_to_dict`, add the `owner_agent_id` query parameter to `list_services` (filter after the fetch), and add
   the transfer route, its body model (`to_agent_id: Optional[str]` with no default, so the key is required), the
-  target checks, the UPDATE, the audit event and the NOTIFY. Decode the agent id with `_wire_id_to_uuid(value,
+  service lookup `FOR UPDATE`, the checks in the order of the spec, the UPDATE, the audit event and the NOTIFY. Decode the agent id with `_wire_id_to_uuid(value,
   "agent_")` of `admin_api.api.agents` and encode with `db_uuid_to_wire(value, "agent")`.
 
 ## 5. The audit contract

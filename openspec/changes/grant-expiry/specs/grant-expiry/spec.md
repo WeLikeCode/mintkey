@@ -92,7 +92,13 @@ def grant_wire_fields(record_or_row: Any, now: datetime) -> dict[str, Any]
 ```
 
 `write_grant` SHALL run `check_grant_expiry` before any statement (the caller has set the tenant context and checked
-that the agent and the service exist). It SHALL select the row of (tenant, agent, service, action): a live row with equal
+that the agent and the service exist). Its first statement SHALL be the transaction-level advisory lock `SELECT
+pg_advisory_xact_lock(hashtextextended(:key, 0))` with `key` equal to `grant:<tenant_id>:<agent_id>:<service_id>:<action>`
+(ids as DB uuid text), so concurrent writers of one (agent, service, action) run one after the other until their
+transactions end and the second sees the first's row; no unique constraint is added, because rows written before this
+change may repeat a key and a "live rows only" constraint cannot name `now()`. It SHALL select the row of (tenant, agent,
+service, action) with `ORDER BY (expires_at IS NULL) DESC, expires_at DESC, created_at DESC, id LIMIT 1` (the ordering of
+`request_token`, so a live row comes first when one exists): a live row with equal
 constraints and expiry is returned with `created` false; a live row with other constraints or another expiry raises
 `GrantConflict`; an expired row (`is_expired`) is deleted; then it SHALL insert the grant with `grantor_type`, `grantor_id`,
 `expires_at` and `created_by` (the grantor id, or the agent id without one), upsert the budget counter when the constraints
@@ -122,6 +128,14 @@ operator's UUID text otherwise, `operator` for a missing type.
   and the fourth runs one DELETE of the expired row and one INSERT and returns `created` true; a `MagicMock` row as the
   existing grant reads as `operator`, no grantor id and no expiry
 
+#### Scenario: two concurrent writes of one grant
+- **WHEN** two sessions of an in-memory fake, which shares one grant table and implements `pg_advisory_xact_lock` as a lock
+  held until that session's `commit()`, run `write_grant` at the same time through `asyncio.gather` with the same agent,
+  service, action, constraints and expiry; and again with two different expiries
+- **THEN** the first run stores exactly one row, one result has `created` true and the other `created` false; the second
+  run stores exactly one row, one call returns and the other raises `GrantConflict`; in both runs the first statement of
+  each session is the lock statement with the `key` of the requirement
+
 #### Scenario: a rule violation writes nothing
 - **WHEN** `write_grant` runs for an agent grantor with no expiry, a past expiry and an expiry beyond the cap
 - **THEN** each raises `GrantExpiryError` and the fake session saw no statement
@@ -144,12 +158,17 @@ operator's UUID text otherwise, `operator` for a missing type.
 ### Requirement: The operator API takes an expiry and records the grantor
 `POST /v1/tenants/{tenant_id}/agents/{agent_id}/permissions` SHALL accept `expires_at` and SHALL call `write_grant`
 with `Grantor("operator", <operator id of get_session_context>)`; a `granted_by` in the body SHALL NOT influence
-the grantor or `created_by`. It SHALL answer 422 `invalid_expires_at` with the error's `reason` for a `GrantExpiryError`,
-409 `permission_constraints_conflict` for a `GrantConflict`, and keep its 201 and idempotent 200 answers. Every grant object of
+the grantor or `created_by`. It SHALL answer, as flat JSON bodies like the route's existing `invalid_id` answer (the keys are at the top level, not under
+`detail`), 422 `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason": "<the GrantExpiryError reason>"}`
+for a `GrantExpiryError`, and 409 `{"mintkey:code": "permission_constraints_conflict", "title": "A permission grant with
+different constraints already exists"}` (the existing body) for a `GrantConflict`; an `expires_at` that is not a datetime
+is refused by request validation, unchanged. It SHALL keep its 201 and idempotent 200 answers. Every grant object of
 the operator API SHALL carry `expires_at`, `expired`, `grantor_type` and `grantor_id`. `DELETE .../permissions/{id}` SHALL
 call `delete_grant`, and for a deleted grant emit `agent.permission.revoked` with the revoked payload (actor the
 operator) and publish the revoked NOTIFY payload on `mintkey:agent`, and for no row answer 204 and emit nothing.
-`GET /v1/tenants/{tenant_id}/permissions` SHALL accept `grantor_agent_id`.
+`GET /v1/tenants/{tenant_id}/permissions` SHALL accept `grantor_agent_id`, an `agent_` wire id or a UUID, and return only the
+grants with `grantor_type = 'agent'` and `grantor_id` equal to that agent's UUID (422 `{"mintkey:code": "invalid_id", "title":
+"Invalid agent_id"}` for a value that does not decode).
 
 #### Scenario: a grant with an expiry
 - **WHEN** an operator posts a grant with `expires_at` one day ahead and `"granted_by": "agent_other"`
@@ -160,15 +179,18 @@ operator) and publish the revoked NOTIFY payload on `mintkey:agent`, and for no 
 #### Scenario: invalid and conflicting requests
 - **WHEN** the body has `expires_at` one hour ago, `"2030-01-01T00:00:00"` (no offset), and a future expiry for an agent,
   service and action that already have a live grant with another expiry
-- **THEN** the answers are 422 `invalid_expires_at` (reasons `expires_at_in_past`, `expires_at_timezone_required`) and
-  409 `permission_constraints_conflict`; no INSERT ran
+- **THEN** the answers are the JSON bodies `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason":
+  "expires_at_in_past"}`, the same with `"expires_at_timezone_required"`, and `{"mintkey:code":
+  "permission_constraints_conflict", "title": "A permission grant with different constraints already exists"}` with status
+  422, 422 and 409; no INSERT ran
 
 #### Scenario: the lists show the new fields
 - **WHEN** the agent list and the tenant list run over a grant with a past expiry, one with none and one given by an
   agent, and the tenant list runs with `?grantor_agent_id=<agent wire id>` and with `?grantor_agent_id=x`
 - **THEN** the objects show `expired` true; `expired` false with `expires_at` null; `grantor_type` `agent` with the
-  agent's wire id; the filter returns only the agent's grant and `x` answers 422 `invalid_id`; the SELECT texts
-  contain `expires_at`, `grantor_type` and `grantor_id`
+  agent's wire id; the filter returns only the agent's grant (its SELECT text contains `grantor_type = 'agent'` and `grantor_id`, with the
+  agent's UUID bound) and `x` answers 422 with `"mintkey:code": "invalid_id"`; the SELECT texts contain `expires_at`,
+  `grantor_type` and `grantor_id`
 
 #### Scenario: revoke names what it revoked
 - **WHEN** an operator revokes a stored grant, and then an id with no row
@@ -177,7 +199,9 @@ operator) and publish the revoked NOTIFY payload on `mintkey:agent`, and for no 
   audit event and no NOTIFY
 
 ### Requirement: An expired grant is absent for the agent
-`request_token` SHALL select the grant with its `expires_at`, and when it is not None and `grant_ttl_seconds` returns
+`request_token` SHALL select the grant of (agent, service, action) with its `expires_at` and with `ORDER BY (expires_at IS NULL)
+DESC, expires_at DESC, created_at DESC, id LIMIT 1`, so that when several rows exist (written before this change) the one
+that lasts longest decides, a grant without an expiry beating any with one, and ties go to the newest row; and when it is not None and `grant_ttl_seconds` returns
 None SHALL answer 403 `mintkey:not_authorized` with `reason_code` `grant_expired` and a `hint`, write `token.denied` with
 that reason, and call neither the rate limiter, the time-window check nor the broker. `mintkey_list_services`,
 `mintkey_discover` and `mintkey_describe_service` SHALL select only grants for which `(expires_at IS NULL OR expires_at >
@@ -188,6 +212,11 @@ now())`; the classical key creation (`api_keys.py`) and every grant count and ac
   2 seconds left
 - **THEN** both answer 403 with `reason_code` `grant_expired`, a `token.denied` event with that reason is written for
   each, and the broker is not called
+
+#### Scenario: the grant select is ordered
+- **WHEN** `request_token` runs on a recording fake session
+- **THEN** the statement that reads `permission_grants` contains `ORDER BY (expires_at IS NULL) DESC, expires_at DESC,
+  created_at DESC, id` and `LIMIT 1`, and it selects `expires_at`
 
 #### Scenario: a grant without an expiry behaves as before
 - **WHEN** the grant row has no `expires_at` attribute, a null one, or a non-datetime value

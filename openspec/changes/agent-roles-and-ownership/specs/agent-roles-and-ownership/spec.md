@@ -41,7 +41,8 @@ The columns SHALL NOT be added to `mintkey_models/db.py`.
 Every agent object of the operator API (create 201, `GET .../agents`, `GET .../agents/{agent_id}`) SHALL carry `role`.
 `_agent_row_to_dict` SHALL read it as `normalize_role(getattr(row, "role", None))`, and the five statements that select
 agent columns SHALL select `a.role`. `GET /v1/tenants/{tenant_id}/agents` SHALL accept `role` (`consumer` or
-`publisher`) and return only agents of that role, and answer 422 `validation_failed` for another value.
+`publisher`) and return only agents of that role, and answer 422 `validation_failed` (the flat body of the error requirement) for another value. The list statements have no
+limit and no page at the base, so the filter over the fetched rows is exact.
 
 #### Scenario: a new agent is a consumer
 - **WHEN** an operator creates an agent
@@ -56,6 +57,25 @@ agent columns SHALL select `a.role`. `GET /v1/tenants/{tenant_id}/agents` SHALL 
 - **WHEN** the list is called with `?role=publisher` over two rows of roles `publisher` and `consumer`, and with
   `?role=admin`
 - **THEN** the first answers 200 with the one publisher, the second answers 422 `validation_failed`
+
+### Requirement: The operator routes answer errors in one flat shape
+Every error answer of the three operator routes of this change (the role PATCH, the transfer, and the two list filters; an `owner_agent_id` filter that does not decode answers `invalid_id`
+with `title` `Invalid owner_agent_id`)
+SHALL be a flat JSON object with the keys at the top level, not under `detail`, as the routes' existing answers are:
+`{"mintkey:code": "validation_failed", "title": <text>}` for a body or query value that fails validation (the handler
+registered in `main.py`; the text is not pinned), `{"mintkey:code": "invalid_id", "title": "Invalid agent_id" | "Invalid
+service_id" | "Invalid owner_agent_id"}` for an id that does not decode, `{"mintkey:code": "not_found", "title": "Agent not found" | "Service not
+found"}`, and `{"mintkey:code": "invalid_transfer_target", "title": "Transfer target not allowed", "reason":
+"agent_not_active" | "agent_not_publisher"}`. A missing session answers 401 with `detail["mintkey:code"]` equal to
+`unauthenticated`, from `require_tenant_session`.
+
+#### Scenario: the error bodies
+- **WHEN** the role PATCH gets `{"role": "admin"}`, `agent_` plus 26 undecodable characters, and an unknown agent id; and the
+  transfer gets a consumer target, an unknown service, and an undecodable service id
+- **THEN** the bodies are, in order, `mintkey:code` `validation_failed` with a `title`; `invalid_id` with `title` `Invalid
+  agent_id`; `not_found` with `title` `Agent not found`; `invalid_transfer_target` with `reason` `agent_not_publisher` and
+  `title` `Transfer target not allowed`; `not_found` with `title` `Service not found`; and `invalid_id` with `title` `Invalid
+  service_id`, each with the keys at the top level
 
 ### Requirement: An operator sets an agent's role
 `PATCH /v1/tenants/{tenant_id}/agents/{agent_id}` SHALL carry `require_tenant_session` and accept the body
@@ -81,8 +101,20 @@ the role it SHALL answer 200 and run no UPDATE and write no event.
   404 `not_found`, and the undecodable id answers 422 `invalid_id`
 
 #### Scenario: no session
-- **WHEN** the PATCH carries no `mintkey_session` cookie
-- **THEN** the answer is 401 and no statement ran
+- **WHEN** the PATCH carries no `mintkey_session` cookie, with the real `require_tenant_session` in the app and only
+  `get_db_session` overridden by a recording fake session
+- **THEN** the answer is 401 with `detail["mintkey:code"]` equal to `unauthenticated`, and the recording session saw no
+  statement
+
+### Requirement: A demotion changes nothing else
+Setting an agent's role from `publisher` to `consumer` SHALL change only the agent's `role` (and `updated_at`): the
+services the agent owns stay owned by it and its grants stay, and an operator moves the services with the transfer route
+when it wants them back. The PATCH SHALL run no `UPDATE`, `INSERT` or `DELETE` on any table but `agents`.
+
+#### Scenario: a demoted publisher keeps its services
+- **WHEN** an operator patches a publisher that owns a service to `consumer`
+- **THEN** the answer is 200, one `agent.role.changed` event is written, and the only write statement that ran is the one
+  `UPDATE agents`; no `UPDATE`, `INSERT` or `DELETE` names `services` or `permission_grants`
 
 ### Requirement: The agent-key check reports the role
 `POST /v1/internal/validate-agent-key` SHALL select `role` with the agent and answer 200 with
@@ -122,34 +154,48 @@ services with that owner; any other value SHALL answer 422 `invalid_id`.
 ### Requirement: An operator transfers a service's ownership
 `POST /v1/tenants/{tenant_id}/services/{service_id}/transfer` SHALL carry `require_tenant_session` and require the body
 `{"to_agent_id": "agent_..." | null}`. A target SHALL be an agent of the same tenant whose status is `active` and whose
-role is `publisher`; `null` makes the service operator-owned. A transfer that changes the owner SHALL run one
+role is `publisher`; `null` makes the service operator-owned. The checks SHALL run in this order, the first failure answering: body (422 `validation_failed`), ids (422 `invalid_id`),
+the service of the tenant, read with `FOR UPDATE` so concurrent transfers of one service run one after the other (404
+`not_found`), a target equal to the current owner (200, nothing written, whatever the target's status and role now are),
+the target agent of the tenant (404 `not_found`), its status (422 `agent_not_active`, so a revoked consumer is
+`agent_not_active`), then its role (422 `agent_not_publisher`). A transfer that changes the owner SHALL run one
 `UPDATE services SET owner_agent_id = :owner, updated_at = :now` pinned to the service and the tenant, write
-`service.ownership_transferred` (actor the operator, payload `{service_id, from_agent_id, to_agent_id}`), publish a
-`service.ownership_transferred` change on `mintkey:service`, and answer 200 with the service object. It SHALL run no
+`service.ownership_transferred` (actor the operator, payload `{service_id, from_agent_id, to_agent_id}`, `from_agent_id`
+the owner read under the lock), call `notify_change(session, "mintkey:service", payload)` once with the payload
+`{"event": "service.ownership_transferred", "tenant_id": "<tenant UUID text>", "service_id": "svc_...", "from_agent_id":
+"agent_..." | null, "to_agent_id": "agent_..." | null}` (ids in wire form, as the service object shows them; the UPDATE, the
+audit event and the NOTIFY share the request's transaction, so a failure of any statement answers 500 and commits none), and
+answer 200 with the service object. It SHALL run no
 statement on `credentials`, `vault.credentials` or `permission_grants`. A target that is not a publisher or not active
 SHALL answer 422 `invalid_transfer_target` with `reason` `agent_not_publisher` or `agent_not_active`, and an agent of
 another tenant or an unknown service or agent SHALL answer 404 `not_found`, each with nothing written. A transfer to the
-current owner SHALL answer 200 and run no UPDATE and write no event.
+current owner SHALL answer 200 and run no UPDATE, write no event and publish no NOTIFY.
 
 #### Scenario: to a publisher and back to operators
 - **WHEN** an operator transfers an operator-owned service to an active publisher, then transfers it to `null`
 - **THEN** each answers 200 and runs one UPDATE with the new owner bound (the agent's id, then NULL); the two events
-  hold `from_agent_id` null then the agent, and `to_agent_id` the agent then null; and no executed statement text
-  contains `credentials` or `permission_grants`
+  hold `from_agent_id` null then the agent, and `to_agent_id` the agent then null; the patched `notify_change` is called
+  twice with the channel `mintkey:service` and the payloads `{"event": "service.ownership_transferred", "tenant_id": "<the
+  tenant>", "service_id": "svc_...", "from_agent_id": null, "to_agent_id": "agent_..."}` and the reverse, each payload
+  passing `json.dumps`; the service lookup text contains `FOR UPDATE`; and no executed statement text contains
+  `credentials` or `permission_grants`
 
 #### Scenario: unsuitable targets
-- **WHEN** the target is a consumer, a revoked publisher, an agent whose row the tenant-pinned lookup does not return,
-  and the service id is unknown
-- **THEN** the answers are 422 `agent_not_publisher`, 422 `agent_not_active`, 404 `not_found` and 404 `not_found`, and no
-  UPDATE and no audit event ran
+- **WHEN** the target is an active consumer, a revoked publisher, a revoked consumer, an agent whose row the tenant-pinned
+  lookup does not return, and the service id is unknown
+- **THEN** the answers are 422 `agent_not_publisher`, 422 `agent_not_active`, 422 `agent_not_active`, 404 `not_found` and 404
+  `not_found`, and no UPDATE, no audit event and no NOTIFY ran
 
 #### Scenario: the same owner is nothing to do
-- **WHEN** a service owned by agent A is transferred to A, and an operator-owned one to `null`
-- **THEN** both answer 200 with no UPDATE and no audit event
+- **WHEN** a service owned by agent A is transferred to A while A is now a revoked consumer, and an operator-owned one to
+  `null`
+- **THEN** both answer 200 with no UPDATE, no audit event and no NOTIFY, and the agent lookup did not run for the first
 
 #### Scenario: a missing key is refused
-- **WHEN** the body is `{}` or `{"to_agent_id": 7}`, and when the request has no session cookie
-- **THEN** the bodies answer 422 and the cookie-less request answers 401, with no statement run
+- **WHEN** the body is `{}` or `{"to_agent_id": 7}`; and the request has no session cookie, with the real
+  `require_tenant_session` in the app and only `get_db_session` overridden by a recording fake session
+- **THEN** the bodies answer 422 `validation_failed`, and the cookie-less request answers 401 with `detail["mintkey:code"]`
+  equal to `unauthenticated`, with no statement recorded by the fake session
 
 ### Requirement: Operators keep full control of every service
 No operator service route SHALL read `owner_agent_id` for a decision, and `PATCH /v1/tenants/{tenant_id}/services/{service_id}`

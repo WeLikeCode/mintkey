@@ -19,7 +19,10 @@ handler. Run `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `
   401 asserts the body contains `token revoked`); `TestTokenWithoutUsableIatIsRefused` covers "a token without a usable iat is
   refused while an entry exists"; `TestOldRevocationAddsNothingAndFutureCountsAsNow` covers "an old revocation adds nothing
   and a future one counts as received now"; `TestRevocationWithoutRevokedAtCountsFromReceipt` covers "an event without
-  revoked_at counts from its receipt"; `TestUnusableEventsAreNotApplied` covers "an event that names no agent or no service is
+  revoked_at counts from its receipt"; `TestGrantSetKeepsLaterAndDropsExpired` covers "the set keeps the later revocation,
+  counts its entries and drops expired ones" (it reaches the set with `reflect.ValueOf(h).Elem().FieldByName("revokedGrants")`
+  and its methods `Add`, `Refuses` and `Len` with `MethodByName`, and `t.Fatal`s naming what is missing; the 1.5 s wait is
+  the only sleep); the first test also reads `h.metrics.WriteMetricsTo` for the denial line; `TestUnusableEventsAreNotApplied` covers "an event that names no agent or no service is
   not applied". New file `apps/proxy-plugin/internal/changes/subscriber_grant_revoked_test.go` (package `changes_test`):
   `TestSubscriberWithoutGrantSetIgnoresPermissionRevoked` covers "a subscriber built without the set ignores the event" (it
   passes before the change and guards the nil case). The five handler tests stay red until the subscriber and the handler know the event.

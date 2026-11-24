@@ -55,13 +55,28 @@ the single-use state token: `/v1/tenants/{tenant_id}/email-services/{service_id}
 
 **D3. HTTP behaviour is tested per router.** The shadowed budget reset route cannot be reached through the full
 application, so the 401/403/200-path tests build small FastAPI apps from one group of routers each (the pattern of
-`tests/unit/admin_api/test_cross_tenant_403.py`): group `grants` = `permissions_router`, `tenant_permissions_router` and
-`budget_consumers_router`; group `budgets` = `budgets_router` alone. `get_db_session` is overridden with a recording
+`tests/unit/admin_api/test_cross_tenant_403.py`): group `grants` = `admin_api.api.permissions.router`,
+`admin_api.api.permissions.tenant_permissions_router` and `admin_api.api.budget_consumers.router`; group `budgets` =
+`admin_api.api.budgets.router` alone. (`main.py` imports the three `router` objects as `permissions_router`,
+`budget_consumers_router` and `budgets_router`; the names in this document and the module paths in tasks.md are the same
+objects.) `get_db_session` is overridden with a recording
 fake session that fails the test if a statement runs before the dependency has answered.
 
 **D4. The background document is neutral and requirement-free.** `docs/architecture/agent-governance.md` describes terms
 and where things live; the requirements stay in the changes. A test pins its shape (headings, no normative keywords,
 size) so a later edit cannot turn it into a second source of requirements.
+
+**D5. The "reaches the handler" check relies on `set_tenant_context`.** Each of the seven handlers calls
+`set_tenant_context(session, tenant_id)` right after it decodes its ids and before any lookup that could answer early; that
+call executes `SELECT set_config('app.current_tenant', ...)`, so the recording session sees at least one statement for every
+request whose ids decode (the test ids do), whatever the fake's empty `fetchone()` and `fetchall()` lead the handler to
+answer. The count of 50 tenant-scoped routes is a floor: the router decorators of the tenant-prefixed modules number about 65
+at the base.
+
+**D6. The background document stays in this unit.** It is the first unit of the plan, the later changes refer to the document,
+and it holds no requirement (a test pins that). Where it speaks of behaviour that later changes build (agent routes, access
+requests, revocation reaching the proxy), it describes the model of the plan; each statement is made true by the change that
+`## Where it lives` names, and none of them is a requirement of this change.
 
 ## Risks and edge cases
 
