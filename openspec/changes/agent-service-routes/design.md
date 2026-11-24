@@ -57,14 +57,14 @@ owner or none gives 403 `mintkey:not_owner`; another tenant's service is not fou
 **D6. Added: validation.** Name pattern `^[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}$`; update fields are set-only (no rename, no
 clearing, no `status`); `extra="forbid"` on every body.
 
-**D10. Added: one error body, and no echoed input.** Every error this change raises is `{"mintkey:code": <code>, "title": <fixed
-text>, ...detail}` (the table is in the requirement "Every error of the service routes has one body"). The key is the one
-of the operator routes and the shared handler; the route codes keep the `mintkey:` prefix the sibling changes already cite,
-and 422 is `validation_failed`, the handler's value, so there is one 422 code. POST, PATCH and PUT credential read the body
+**D10. Added: one error body, and no echoed input.** Every error this change raises is `{"code": "mintkey:<name>", "title": <fixed
+text>, ...detail}` (the table is in the requirement "Every error of the service routes has one body"), the convention of the
+MCP server and of the principal dependencies, and 422 is `mintkey:validation_failed`, so there is one 422 code on the agent
+surface. POST, PATCH and PUT credential read the body
 themselves (`parse_agent_body`, hand validation for the PUT) and declare no request model: the shared handler puts
 `str(exc)`, input included, in its title. Fixed titles mean no answer repeats a caller's value, whether secret (the
-credential) or not (a name or URL). The 401, 403 `role_forbidden` and 503 bodies belong to `agent-principal-and-egress` and
-are not restated here.
+credential) or not (a name or URL). The 401, 403 `role_forbidden` and 503 bodies and the rejected-key bodies belong to
+`agent-principal-and-egress`, in the same convention, and are not restated here.
 
 **D11. Added: answers come from the write.** Create and PATCH use `RETURNING` and the PUT reuses the `now` it bound, so no
 route re-reads the row; after a clearing PATCH `credential_set` is false. A PATCH that changes something sends the
@@ -87,6 +87,12 @@ reviewed task text says exactly which entry: `"agent": "/v1/agent"`, inserted in
 state of that task is `tests/acceptance/test_openapi_parity.py` passing. If L4 holds the file as a data fixture and raises a
 question, the expected answer is: allow exactly this entry.
 
+**Error body convention.** Agent-facing error bodies (every answer of a `/v1/agent/` route and every MCP tool result an
+agent receives) use the MCP server's existing convention `{"code": "mintkey:<name>", "title": "<text>", ...extra fields}`;
+the MCP server writes `"code": "mintkey:..."` in 98 places, for example `mintkey:auth_required`. Operator routes under
+`/v1/tenants/...` keep admin-api's flat `{"mintkey:code": "<name>", "title": "<text>", ...}`. Codes keep their names; only
+the key and the `mintkey:` prefix placement follow the audience.
+
 ## Interfaces
 
 Given to `agent-service-tools`, `agent-granted-access` and `agent-access-requests`:
@@ -97,9 +103,9 @@ Given to `agent-service-tools`, `agent-granted-access` and `agent-access-request
 - `parse_agent_body` (same module): the 422 reader of D10.
 - Routes: `POST` and `GET /v1/agent/services`, `PATCH /v1/agent/services/{service_ref}`, `PUT
   /v1/agent/services/{service_ref}/credential`; bodies and answers are in the requirements.
-- Error bodies (D10), key `mintkey:code`: 400 `mintkey:target_not_allowed` `{field, reason}`; 403 `mintkey:not_owner`; 404
-  `mintkey:not_found`; 409 `mintkey:slug_conflict`; 422 `validation_failed` `{field}`; 502 `mintkey:vault_unavailable`; 401 and
-  503 and the 403 `role_forbidden` are the principal's.
+- Error bodies (D10), key `code`: 400 `mintkey:target_not_allowed` `{field, reason}`; 403 `mintkey:not_owner`; 404
+  `mintkey:not_found`; 409 `mintkey:slug_conflict`; 422 `mintkey:validation_failed` `{field}`; 502 `mintkey:vault_unavailable`;
+  the rejected-key 401s, 401, 503 and the 403 `role_forbidden` are the principal's.
 
 ## Failure cases
 

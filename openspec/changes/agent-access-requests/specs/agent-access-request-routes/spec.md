@@ -22,17 +22,16 @@ other key, `ttl_seconds` only with `approve` and checked by `check_decision_ttl`
 status filter before it calls `list_access_requests`, which takes a status or None.
 
 The `service_id` rule (agent routes and tools): the create body field and the incoming-list query parameter match
-`^[A-Za-z0-9_.-]{1,128}$` and are not only dots (else 422 `validation_failed`; the MCP tools check only the pattern). A value
+`^[A-Za-z0-9_.-]{1,128}$` and are not only dots (else 422 `mintkey:validation_failed`; the MCP tools check only the pattern). A value
 starting with `svc_` must decode with `decode_wire_id` (prefix `svc`), else 422 `mintkey:invalid_id` with `field` `service_id`;
 any other value is a slug. Both resolve among the caller's tenant's services only. An unknown slug or an id of no such service
-gives 404 `mintkey:not_found` on create and a 200 `{"access_requests": []}` on the incoming list (it hides whether the service
-exists).
+gives 404 `mintkey:not_found` on create and a 200 `{"access_requests": []}` on the incoming list.
 
-Handlers SHALL call `set_tenant_context` first, decode ids with `decode_wire_id` (`areq`, `agent`; 422 `mintkey:invalid_id`
-with `field`), and map `AccessRequestError` to `AgentApiError` with the flat body `{"mintkey:code": "mintkey:<code>", "title",
-...detail}` (the key of the error bodies of `agent-service-routes`), except `invalid_expires_at` and `invalid_ttl`, whose code
-value is bare on both surfaces, `{"mintkey:code": <code>, "title": <title>, "reason": <reason>}` as in `grant-expiry` (titles
-"Invalid expires_at" and "Invalid ttl_seconds").
+Handlers SHALL call `set_tenant_context` first, read each body with `parse_agent_body`, check query parameters themselves (a bad
+one: 422 `{"code": "mintkey:validation_failed", "title": "Invalid request body", "field": <name or null>}`, no input repeated),
+decode ids with `decode_wire_id` (`areq`, `agent`; 422 `mintkey:invalid_id`, title "Invalid id", with `field`), and map
+`AccessRequestError` to `AgentApiError` with `{"code": "mintkey:<code>", "title", ...detail}`, `invalid_expires_at` and
+`invalid_ttl` included.
 
 #### Scenario: the route table obeys the family rules
 - **WHEN** the routes of `create_app()` are walked, and `admin_api/main.py` is read as text
@@ -45,12 +44,13 @@ value is bare on both surfaces, `{"mintkey:code": <code>, "title": <title>, "rea
 - **THEN** the answers are 201, 200, 200 and 200 (the list calls bind the caller as requester and `pending`, then no status;
   both bodies are `{"access_requests": [...]}`), the cancel call passes the decoded request id and the caller and answers
   the view, `set_tenant_context` was called with the principal's tenant before each service function, and `?status=weird`
-  answers 422 `validation_failed`
+  answers 422 `mintkey:validation_failed` without the text `weird`
 
 #### Scenario: refused bodies and ids
 - **WHEN** the body has `ttl_seconds` 59, `"3600"` or 7776001, a `reason` of 501 characters or `7`, an extra key `agent_id`, no
   `service_id`; and the cancel id is `areq_xyz`
-- **THEN** the bodies answer 422 `validation_failed` and the id 422 `mintkey:invalid_id`; no service function ran
+- **THEN** the bodies answer 422 `mintkey:validation_failed` (title `Invalid request body`, no answer text containing `agent_id`)
+  and the id 422 `mintkey:invalid_id` (title `Invalid id`); no service function ran
 
 #### Scenario: the service filter and the create reference
 - **WHEN** a publisher lists incoming requests with `?service_id=payments`, `?service_id=svc_` plus a valid body,
@@ -58,29 +58,29 @@ value is bare on both surfaces, `{"mintkey:code": <code>, "title": <title>, "rea
   `service_id`), `?service_id=a/b` and `?service_id=..`; and a consumer posts a body with `service_id` `payments` and one with
   `a/b`
 - **THEN** the first two list calls receive `service_ref` as sent with the caller as owner and answer 200; the third answers
-  422 `mintkey:invalid_id` with `field` `service_id`; the fourth and fifth answer 422 `validation_failed` with no service call;
+  422 `mintkey:invalid_id` with `field` `service_id`; the fourth and fifth answer 422 `mintkey:validation_failed` with no service call;
   the first post passes `service_ref` `payments` to `create_access_request` and answers 201, the second answers 422
-  `validation_failed` with no call
+  `mintkey:validation_failed` with no call
 
 #### Scenario: publishers decide, consumers do not
 - **WHEN** a publisher lists incoming requests (no status, then `all`), approves with `ttl_seconds` 600, denies with a note,
   and sends `{"decision": "deny", "ttl_seconds": 60}`, `{"decision": "maybe"}`; and a consumer calls both incoming routes
 - **THEN** the list binds the caller as owner and status `pending`, then all statuses; the decision calls pass
-  `Grantor("agent", <caller>)`, the decision and the ttl (600); the two bad bodies answer 422 `validation_failed`; the consumer gets
+  `Grantor("agent", <caller>)`, the decision and the ttl (600); the two bad bodies answer 422 `mintkey:validation_failed`; the consumer gets
   403 `mintkey:role_forbidden` with one `agent.operation.denied` event per call (operations `GET
   /v1/agent/incoming-access-requests` and `POST /v1/agent/incoming-access-requests/<id>/decision` as sent)
 
 #### Scenario: the decision ttl is checked
 - **WHEN** a publisher approves with `ttl_seconds` 59, 7776001, `"600"` (a string), `true`, 60 and 7776000
-- **THEN** the first four answer 422 with exactly `{"mintkey:code": "invalid_ttl", "title": "Invalid ttl_seconds",
+- **THEN** the first four answer 422 with exactly `{"code": "mintkey:invalid_ttl", "title": "Invalid ttl_seconds",
   "reason": <reason>}`, the reason being `ttl_out_of_range` for 59 and 7776001 and `ttl_not_integer` for `"600"` and `true`,
   with `decide_access_request` not called; 60 and 7776000 reach `decide_access_request` as given
 
 #### Scenario: errors keep their code
 - **WHEN** the service function raises `AccessRequestError` 409 `request_not_pending` with `status` `approved`, and 422
   `invalid_expires_at` with `reason` `expires_at_in_past`, on the decision route
-- **THEN** the answers are 409 with `{"mintkey:code": "mintkey:request_not_pending", "status": "approved", "title": ...}` and 422 with
-  exactly `{"mintkey:code": "invalid_expires_at", "title": "Invalid expires_at", "reason": "expires_at_in_past"}`
+- **THEN** the answers are 409 with `{"code": "mintkey:request_not_pending", "title": ..., "status": "approved"}` and 422 with
+  exactly `{"code": "mintkey:invalid_expires_at", "title": "Invalid expires_at", "reason": "expires_at_in_past"}`
 
 ### Requirement: The operator request routes
 `admin_api/api/access_requests.py` SHALL give `router = APIRouter(prefix="/v1/tenants/{tenant_id}/access-requests")`,

@@ -27,9 +27,9 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
   yields a principal": `admin_api.auth.agent_principal.AsyncSessionLocal` is patched with a factory of recording fake
   async-context-manager sessions, `internal.check_agent_key` with an `AsyncMock` (the last scenario uses the real function); the handler runs inside a `FastAPI()`
   with a probe route. Red stubs `apps/admin-api/src/admin_api/auth/agent_principal.py` with every name of the spec
-  (`AgentPrincipal`, `AgentApiError`, `agent_api_error_handler`, `require_agent_principal`, `require_publisher_principal`,
-  `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler and `require_agent_principal` (dedicated session, commit,
-  close, 503 on a database failure).
+  (`AgentPrincipal`, `AgentApiError`, `agent_api_error_handler`, `agent_error_body`, `require_agent_principal`,
+  `require_publisher_principal`, `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler, `agent_error_body` and `require_agent_principal` (dedicated session,
+  commit, close, 503 on a database failure).
 
 - [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
   /v1/agent/probe` that depends on `require_publisher_principal`, `require_agent_principal` overridden to return an

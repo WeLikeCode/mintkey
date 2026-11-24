@@ -29,7 +29,7 @@ return the entries of `TOOLS` for which `tool_allowed` is true for the caller's 
 in `TOOLS` is not listed. A later change adds its tool to `TOOLS`, a router and a REST path without editing the sets.
 `enforce_tool_role` SHALL return None for an allowed tool, and otherwise write the audit event `agent.operation.denied`
 (`actor_type` `agent`, payload `{agent_id, role, operation}` with `operation` equal to `tool_name`) and return 403
-`{"code": "mintkey:role_forbidden", "tool", "role", "required_role": "publisher", "hint"}`; when the event write raises it
+`{"code": "mintkey:role_forbidden", "title": "Role not allowed", "tool", "role", "required_role": "publisher", "hint"}`; when the event write raises it
 SHALL log the failure and still return the 403.
 
 #### Scenario: the sets
@@ -42,7 +42,7 @@ SHALL log the failure and still return the 403.
 - **WHEN** `enforce_tool_role` runs for a publisher on `mintkey_service_create`, a consumer on it, a consumer on
   `mintkey_request_token` and a publisher on `mintkey_made_up`; and `agent_role` runs on a context with no role, one with
   `"admin"` and `None`
-- **THEN** the results are None, a 403, None, and a 403; the two refusals each wrote one `agent.operation.denied` event whose
+- **THEN** the results are None, a 403, None, and a 403, each 403 body having `title` `Role not allowed`; the two refusals each wrote one `agent.operation.denied` event whose
   `operation` is `mintkey_service_create` and `mintkey_made_up`; the three roles read `consumer`
 
 #### Scenario: the record fails

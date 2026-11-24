@@ -16,7 +16,7 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
 
 - `agent-service-routes`: `POST /v1/agent/services`, `GET /v1/agent/services`, `PATCH /v1/agent/services/{service_ref}` and
   `PUT /v1/agent/services/{service_ref}/credential`, with the bodies and answers of its requirements; a `service_ref` that is
-  an id or a slug; error bodies carrying `code`.
+  an id or a slug; error bodies in the agent convention, `code` and `title`.
 - `agent-principal-and-egress`: the audit event type `agent.operation.denied` with payload `{agent_id, role, operation}`
   (`ev_agent_operation_denied`); this change writes it from the MCP server with the tool name as `operation`.
 - `agent-roles-and-ownership`: `mintkey_models.roles.normalize_role(value: object) -> str`, and the `role` that the MCP agent
@@ -47,6 +47,12 @@ tool argument can never change the path it is forwarded to.
 **D6. Added: tests assert membership.** The tests of this change check that a list contains the expected tool names and none
 of the names of a role that may not see them, not that a list equals a fixed set, so the tools of later changes can be added
 without editing them.
+
+**Error body convention.** Agent-facing error bodies (every answer of a `/v1/agent/` route and every MCP tool result an
+agent receives) use the MCP server's existing convention `{"code": "mintkey:<name>", "title": "<text>", ...extra fields}`;
+the MCP server writes `"code": "mintkey:..."` in 98 places, for example `mintkey:auth_required`. Operator routes under
+`/v1/tenants/...` keep admin-api's flat `{"mintkey:code": "<name>", "title": "<text>", ...}`. Codes keep their names; only
+the key and the `mintkey:` prefix placement follow the audience.
 
 ## Interfaces
 

@@ -10,7 +10,7 @@ are shared by the changes that follow, so they come first and carry no route of 
 
 ## What Changes
 
-- `admin_api.auth.agent_principal` gives `AgentPrincipal`, `AgentApiError` with its handler, `require_agent_principal`
+- `admin_api.auth.agent_principal` gives `AgentPrincipal`, `AgentApiError` with its handler and `agent_error_body` (agent error bodies are `{"code", "title", ...}`), `require_agent_principal`
   (reads only `Authorization: Bearer mk_agent_...`, validates the key in a session of its own, yields the principal with
   tenant, agent and role), `require_publisher_principal` and `record_denied_operation`.
 - `admin_api.api.internal.check_agent_key(session, api_key)` is the key check that `POST /v1/internal/validate-agent-key`

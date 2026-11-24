@@ -13,7 +13,9 @@ write path with the agent as grantor. The MCP tools are `agent-grant-tools`.
 (`router.include_router(agent_grants.router)`), with `POST /v1/agent/grants`, `GET /v1/agent/grants` and `POST
 /v1/agent/grants/{grant_id}/revoke`. Each handler SHALL depend on `require_publisher_principal`, call
 `set_tenant_context(session, principal.tenant_id)` before its first statement, and pin every statement to the principal's
-tenant. `main.py` SHALL NOT import the module.
+tenant. Every error body of these routes SHALL be `{"code": "mintkey:<name>", "title": <fixed text>, ...detail}`; the POST
+reads its body with `parse_agent_body` of `agent-service-routes` and the list reads its query itself, so the shared validation
+handler is never reached and no answer repeats an input. `main.py` SHALL NOT import the module.
 
 #### Scenario: the route table obeys the family rules
 - **WHEN** the routes of `create_app()` are walked
@@ -42,9 +44,9 @@ def grant_view(source: Any, now: datetime) -> dict[str, Any]
 `decode_wire_id` SHALL return the dashed UUID text for a string `<prefix>_` plus 26 Crockford characters or 32 hex
 characters, and None for anything else (a plain UUID, a wrong prefix, a wrong length, a non-string). `require_grant_target`
 SHALL decode `agent_ref` with prefix `agent`, select `id, status` of that agent pinned to the principal's tenant, and
-return the row; it SHALL raise `AgentApiError` 422 `mintkey:invalid_target` with `reason` `invalid_id` for an
-undecodable value, 422 with `reason` `self` for the caller's own id, 404 `mintkey:not_found` when no row is found, and
-422 with `reason` `agent_not_active` when the status is not `active`. `grant_view` SHALL return `{id, service_id,
+return the row; it SHALL raise `AgentApiError` 422 `{"code": "mintkey:invalid_target", "title": "Invalid grantee", "reason":
+...}` with `reason` `invalid_id` for an undecodable value, `self` for the caller's own id and `agent_not_active` when the status
+is not `active`, and 404 `{"code": "mintkey:not_found", "title": "Agent not found"}` when no row is found. `grant_view` SHALL return `{id, service_id,
 agent_id, action, constraints, expires_at, expired, grantor_type, grantor_id, created_at}`: `id` is `source.wire_id` when
 present, else `db_uuid_to_wire(source.id, "perm")`; `service_id` and `agent_id` are in `svc_` and `agent_` form;
 `constraints` is the dict (a JSON text is parsed, None reads `{}`); the four fields of `grant_wire_fields(source, now)`
@@ -58,8 +60,9 @@ are merged in; `created_at` is ISO text or null.
 #### Scenario: grantee checks
 - **WHEN** `require_grant_target` runs for an active agent of the tenant, the caller's own id, `agent_xyz`, an id whose
   tenant-pinned lookup returns no row, and a revoked agent
-- **THEN** it returns the row, then raises 422 `self`, 422 `invalid_id`, 404 `mintkey:not_found` and 422
-  `agent_not_active`, and the SELECT's parameters hold the principal's tenant
+- **THEN** it returns the row, then raises 422 `self`, 422 `invalid_id`, 404 `mintkey:not_found` (title `Agent not found`) and 422
+  `agent_not_active`, the 422 bodies having `code` `mintkey:invalid_target` and `title` `Invalid grantee`, and the SELECT's
+  parameters hold the principal's tenant
 
 #### Scenario: the view
 - **WHEN** `grant_view` runs on a `GrantRecord` with an agent grantor and a past expiry, and on a list row with
@@ -68,7 +71,8 @@ are merged in; `created_at` is ISO text or null.
   its id, `constraints` as a dict, `expires_at` null and `expired` false; both show `svc_` and `agent_` ids
 
 ### Requirement: An owner gives time-boxed access
-`POST /v1/agent/grants` SHALL accept `{service_id, agent_id, ttl_seconds, action?, constraints?}` with no other key,
+`POST /v1/agent/grants` SHALL read its body with `parse_agent_body` and accept `{service_id, agent_id, ttl_seconds, action?,
+constraints?}` with no other key,
 `service_id` a `svc_` id or slug, `ttl_seconds` an integer from `MIN_GRANT_TTL_SECONDS` to `MAX_GRANT_TTL_SECONDS`,
 `action` matching `GRANT_ACTION_PATTERN` (default `call`) and `constraints` the closed `Constraints` model of
 `admin_api/api/permissions.py`. It SHALL resolve the service with `require_owned_service`, then the grantee with
@@ -76,10 +80,10 @@ are merged in; `created_at` is ISO text or null.
 <principal agent id>)` and the same `now`. For a created grant it SHALL write `agent.permission.granted` (payload from
 `grant_granted_audit_payload`, `actor_type` `agent`, `actor_id` the caller, `target_type` `permission`) and answer 201
 with `grant_view`; for an identical live grant (`created` false) it SHALL answer 200 with the view and write nothing. A
-`GrantExpiryError` SHALL answer 422 with the flat body `{"mintkey:code": "invalid_expires_at", "title": "Invalid
-expires_at", "reason": <the error's reason>}` that `grant-expiry` answers on the operator route, plus `max_ttl_seconds`
-(`agent_grant_max_ttl_seconds()`) when the reason is `expires_at_too_far`; a `GrantConflict` SHALL answer 409
-`{"code": "mintkey:grant_conflict", "hint": ...}` with a hint to revoke first. The grantor and the tenant SHALL come from the
+`GrantExpiryError` SHALL answer 422 `{"code": "mintkey:invalid_expires_at", "title": "Invalid expires_at", "reason": <the
+error's reason>}` (the body `grant-expiry` answers on the operator route, with the agent key and prefix), plus
+`max_ttl_seconds` (`agent_grant_max_ttl_seconds()`) when the reason is `expires_at_too_far`; a `GrantConflict` SHALL answer 409
+`{"code": "mintkey:grant_conflict", "title": "Grant conflict", "hint": ...}` with a hint to revoke first. The grantor and the tenant SHALL come from the
 principal only. Concurrent requests for the same agent, service and action are serialised by `write_grant` (it takes a
 transaction-scoped advisory lock on that key first, as `grant-expiry` specifies), so the second sees the row of the first
 and answers 200 or 409, never a duplicate row or a server error.
@@ -95,14 +99,14 @@ and answers 200 or 409, never a duplicate row or a server error.
 #### Scenario: the cap
 - **WHEN** `MINTKEY_AGENT_GRANT_MAX_TTL` is `3600` and the route runs with the real `write_grant` over a fake session, for
   `ttl_seconds` 3600 and 3601
-- **THEN** the first answers 201; the second answers 422 with `{"mintkey:code": "invalid_expires_at", "title": "Invalid
+- **THEN** the first answers 201; the second answers 422 with `{"code": "mintkey:invalid_expires_at", "title": "Invalid
   expires_at", "reason": "expires_at_too_far", "max_ttl_seconds": 3600}`, and the fake session saw no INSERT and no audit
   event
 
 #### Scenario: an identical grant and a conflict
 - **WHEN** `write_grant` (replaced) returns a record with `created` false, and then raises `GrantConflict`
-- **THEN** the first answers 200 with the view and writes no event; the second answers 409 `mintkey:grant_conflict`
-  and writes no event
+- **THEN** the first answers 200 with the view and writes no event; the second answers 409 with `code`
+  `mintkey:grant_conflict` and `title` `Grant conflict`, and writes no event
 
 #### Scenario: a live grant with another expiry, through the real write path
 - **WHEN** the route runs with the real `write_grant` over a fake session whose SELECT of the (tenant, agent, service,
@@ -121,19 +125,20 @@ and answers 200 or 409, never a duplicate row or a server error.
 - **WHEN** the body has `ttl_seconds` 59, 7776001, `"3600"` or `true`, an `action` of `a b`, a `constraints` key
   `unknown`, an extra key `granted_by` or `tenant_id`, no `agent_id`; or the grantee is the caller, a revoked agent, an
   agent of another tenant, or `agent_xyz`
-- **THEN** the bodies answer 422 `validation_failed` with no statement for grants; the grantees answer 422
+- **THEN** the bodies answer 422 `{"code": "mintkey:validation_failed", "title": "Invalid request body", "field": <name or
+  null>}` with no statement for grants and no answer text containing `granted_by` or `a b`; the grantees answer 422
   `mintkey:invalid_target` (`self`, `agent_not_active`), 404 `mintkey:not_found` and 422 `mintkey:invalid_target`
   (`invalid_id`); `write_grant` was not called
 
 ### Requirement: An owner revokes any grant of its service
 `POST /v1/agent/grants/{grant_id}/revoke` SHALL decode `grant_id` with `decode_wire_id` (prefix `perm`; 422
-`mintkey:invalid_id` with `field` `grant_id` otherwise), select the grant's service pinned to the tenant (404
-`mintkey:not_found` when there is no row), resolve that service with `require_owned_service` using its `svc_` id, then
+`{"code": "mintkey:invalid_id", "title": "Invalid id", "field": "grant_id"}` otherwise), select the grant's service pinned to
+the tenant (404 `{"code": "mintkey:not_found", "title": "Grant not found"}` when there is no row), resolve that service with `require_owned_service` using its `svc_` id, then
 call `delete_grant(session, tenant_id=..., grant_id=<DB id>)`. For the deleted record it SHALL write
 `agent.permission.revoked` (payload from `grant_revoked_audit_payload` with `Grantor("agent", <caller>)`, `actor_type`
 `agent`), publish `grant_revoked_notify_payload(tenant_id, record, <now>)` on `mintkey:agent` with `notify_change`, and
-answer 200 `{"id": <perm wire id>, "revoked": true}`. When `delete_grant` returns None it SHALL answer 404
-`mintkey:not_found` and write nothing.
+answer 200 `{"id": <perm wire id>, "revoked": true}`. When `delete_grant` returns None it SHALL answer that 404
+and write nothing.
 
 #### Scenario: an owner revokes a grant
 - **WHEN** the owner revokes a grant that an operator gave on its service, and then one it gave itself
@@ -146,7 +151,8 @@ answer 200 `{"id": <perm wire id>, "revoked": true}`. When `delete_grant` return
 - **WHEN** a publisher revokes a grant on another agent's service, on an operator-owned service, a grant id with no row,
   a grant whose `delete_grant` returns None, and `perm_xyz`
 - **THEN** the answers are 403 `mintkey:not_owner`, 403 `mintkey:not_owner`, 404 `mintkey:not_found`, 404
-  `mintkey:not_found` and 422 `mintkey:invalid_id`; `delete_grant` was called only in the fourth case, and no event and no
+  `mintkey:not_found` and 422 `mintkey:invalid_id`, the two unknown grants with `title` `Grant not found` and the 422 with `title`
+  `Invalid id` and `field` `grant_id`; `delete_grant` was called only in the fourth case, and no event and no
   NOTIFY were written in any of them
 
 ### Requirement: An owner lists the live grants of its service
@@ -154,7 +160,7 @@ answer 200 `{"id": <perm wire id>, "revoked": true}`. When `delete_grant` return
 `{"service_id": <svc wire id>, "grants": [...]}` with one `grant_view` (plus `agent_name`) per grant of that service whose
 `expires_at` is null or in the future, ordered by `created_at`. The SELECT SHALL contain `expires_at IS NULL OR
 expires_at > now()` and be pinned to the tenant and the service. A missing `service_id` SHALL answer 422
-`validation_failed`.
+`{"code": "mintkey:validation_failed", "title": "Invalid request body", "field": "service_id"}`.
 
 #### Scenario: the owner's list
 - **WHEN** the owner lists a service whose fake SELECT returns two rows
@@ -163,5 +169,5 @@ expires_at > now()` and be pinned to the tenant and the service. A missing `serv
 
 #### Scenario: not the owner, and no service
 - **WHEN** a publisher lists another agent's service, an operator-owned service, an unknown slug, and no `service_id`
-- **THEN** the answers are 403 `mintkey:not_owner` twice, 404 `mintkey:not_found` and 422 `validation_failed`, and no
+- **THEN** the answers are 403 `mintkey:not_owner` twice, 404 `mintkey:not_found` and 422 `mintkey:validation_failed` (`field` `service_id`), and no
   grant SELECT ran

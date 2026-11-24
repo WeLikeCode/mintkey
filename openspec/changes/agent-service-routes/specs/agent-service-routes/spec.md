@@ -24,7 +24,8 @@ DELETE, have `transfer` or `role` in its path, or answer GET on a path containin
 
 #### Scenario: a cookie-less POST reaches authentication
 - **WHEN** `POST /v1/agent/services` is sent to `create_app()` without cookies and without an `Authorization` header
-- **THEN** the answer is 401 with the body `{"code": "mintkey:auth_required"}`, not `mintkey:csrf_missing`
+- **THEN** the answer is 401 with the body `{"code": "mintkey:auth_required", "title": "Agent key required"}`, not
+  `mintkey:csrf_missing`
 
 #### Scenario: a consumer key is refused
 - **WHEN** a consumer principal calls each of the four routes (`require_agent_principal` overridden to return it)
@@ -33,15 +34,15 @@ DELETE, have `transfer` or `role` in its path, or answer GET on a path containin
   for the requests sent, and no statement ran
 
 ### Requirement: Every error of the service routes has one body
-Every refusal of `agent_publishing` and of the four routes SHALL be an `AgentApiError` whose body is the flat object
-`{"mintkey:code": <code>, "title": <fixed text>, ...detail}`: the key the operator routes and the shared
-`validation_error_handler` use, never `code`. Each cause has one status, one code value, one fixed title and these detail keys:
+Every refusal of `agent_publishing` and of the four routes SHALL be an `AgentApiError` whose body is the object
+`{"code": "mintkey:<name>", "title": <fixed text>, ...detail}`: the convention of the MCP server, never the key `mintkey:code`
+of the operator routes. Each cause has one status, one code value, one fixed title and these detail keys:
 400 `mintkey:target_not_allowed`, "Target not allowed", `field` and `reason`; 403 `mintkey:not_owner`, "Not the owner of this
 service"; 404 `mintkey:not_found`, "Service not found"; 409 `mintkey:slug_conflict`, "Service name already in use"; 422
-`validation_failed` (the value the shared handler emits, so an agent route and an operator route give the same code),
-"Invalid request body", `field` (the declared body field that failed, else null); 502 `mintkey:vault_unavailable`, "Credential
-store unavailable". The 401 `{"code": "mintkey:auth_required"}`, the 403 `{"code": "mintkey:role_forbidden", ...}` and the 503
-`{"mintkey:code": "mintkey:verify_unavailable"}` come from the principal dependencies and are passed through exactly as
+`mintkey:validation_failed`, "Invalid request body", `field` (the declared body field that failed, else null); 502 `mintkey:vault_unavailable`, "Credential
+store unavailable". The 401 `{"code": "mintkey:auth_required", "title": "Agent key required"}`, the 403 `{"code": "mintkey:role_forbidden",
+"title": "Role not allowed", ...}`, the 503 `{"code": "mintkey:verify_unavailable", "title": "Key check unavailable"}` and the
+rejected-key bodies come from the principal dependencies, in the same convention, and are passed through exactly as
 `agent-principal-and-egress` defines them. The three routes with a body (POST, PATCH and PUT credential) SHALL read it
 themselves and no route SHALL declare a request model or a query parameter, so the shared handler, whose title is `str(exc)`
 and carries the rejected input, is never reached: no answer holds a value the caller sent (a secret, a URL, a name). The
@@ -54,7 +55,7 @@ anything unreadable, not an object or invalid; the PUT credential route validate
   `[1]`, the text `{`, a create with `base_url` `http://example.com`, a taken slug, and a patch of another agent's service, of
   an unknown slug and of an owned service with an extra key `owner_agent_id`
 - **THEN** each answer is exactly the object of its cause above (the `field` of the first two `auth_scheme` and `name`, null for
-  the others of 422; `field` `base_url` and `reason` `not_https` for the URL), no answer has a key `code`, and no answer text
+  the others of 422; `field` `base_url` and `reason` `not_https` for the URL), no answer has a key `mintkey:code`, and no answer text
   contains `ssh_private_key`, `../x`, `http://example.com` or `owner_agent_id`
 
 ### Requirement: The owned service lookup is one function
@@ -115,7 +116,7 @@ context from the principal; answer 409 `mintkey:slug_conflict` when the slug exi
 #### Scenario: refused bodies
 - **WHEN** the body has `auth_scheme` `ssh_private_key` or `oauth2_client_credentials`, `name` `../x` or `svc_0 x`, an extra key
   `owner_agent_id` or `status`, or `base_url` `http://example.com` or a name that resolves to `10.0.0.1`
-- **THEN** the first six answer 422 `validation_failed` with the one body above, the `http` URL 400 `target_not_allowed` reason `not_https`, the
+- **THEN** the first six answer 422 `mintkey:validation_failed` with the one body above, the `http` URL 400 `target_not_allowed` reason `not_https`, the
   private name 400 reason `non_public_address` with `field` `base_url`; none ran an INSERT
 
 #### Scenario: a taken slug
@@ -134,7 +135,7 @@ tenant whose `owner_agent_id` is the caller, ordered by `created_at`.
 ### Requirement: A publisher updates only its own services
 `PATCH /v1/agent/services/{service_ref}` SHALL read its body with `parse_agent_body`, set the tenant context first and accept any of `base_url`, `auth_scheme`, `display_name`, `description`,
 `openapi_url` (at least one, no other key), `auth_scheme` one of `bearer_token`, `api_key_header`, `api_key_query`,
-`basic_auth` (any other value, `ssh_private_key` included, answers 422 `validation_failed`). It SHALL resolve the service
+`basic_auth` (any other value, `ssh_private_key` included, answers 422 `mintkey:validation_failed`). It SHALL resolve the service
 through `require_owned_service(..., for_update=True)`; check a changed `base_url` or `openapi_url` with
 `check_agent_target_url`; and, for a changed value, update the row (`UPDATE ... RETURNING` the view columns, no re-read), write `service.updated` with
 `fields_changed` and send the `mintkey:service` NOTIFY `service.updated` once, as `update_service` does. When
@@ -167,7 +168,7 @@ stored one is no change: no UPDATE, no event, no NOTIFY, no resolution.
 #### Scenario: refused bodies
 - **WHEN** the body is `{}`, `{"name": "x"}`, `{"status": "disabled"}`, `{"auth_scheme": "ssh_private_key"}`, `{"auth_scheme":
   "oauth2_client_credentials"}` or `{"auth_scheme": "none"}`
-- **THEN** each answers 422 `validation_failed` and runs no statement for the service
+- **THEN** each answers 422 `mintkey:validation_failed` and runs no statement for the service
 
 #### Scenario: the row is locked first
 - **WHEN** a patch runs on an owned service

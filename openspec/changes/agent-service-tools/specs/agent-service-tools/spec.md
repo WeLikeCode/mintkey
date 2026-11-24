@@ -18,11 +18,13 @@ list these tools, each with `additionalProperties: false` (REST path `/v1/tools/
 `service_set_credential`; required `service_id`, `value`; optional `header_name`, `query_param`) and `mintkey_list_my_services`
 (GET `list_my_services`; no arguments); their results are the route bodies. `tools/call` of a tool the role refuses SHALL
 answer a JSON-RPC error `-32003` with the REST body as `data`. Each REST handler in `mcp_server/tools/service_publishing.py`
-SHALL answer 401 `{"code": "mintkey:auth_required"}` without a context, call `enforce_tool_role`, check the arguments (a
-missing required one, an unknown key, or a `service_id` that does not match `^[A-Za-z0-9_.-]{1,128}$` or is only dots,
-answers 422 `{"code": "mintkey:invalid_params", "detail": <text>}` without calling admin-api), and forward with the caller's
+SHALL answer 401 `{"code": "mintkey:auth_required", "title": "Agent key required"}` without a context, call
+`enforce_tool_role`, check the arguments (a missing required one, an unknown key, or a `service_id` that does not match
+`^[A-Za-z0-9_.-]{1,128}$` or is only dots, answers 422 `{"code": "mintkey:invalid_params", "title": "Invalid parameters",
+"detail": <text>}` without calling admin-api), and forward with the caller's
 key, the `service_id` percent-encoded in the path, relaying a status below 500 with its JSON body (`{}` when it is not
-JSON) and answering 502 `{"code": "mintkey:admin_api_unavailable"}` for a status of 500 or more or any exception. The
+JSON) and answering 502 `{"code": "mintkey:admin_api_unavailable", "title": "Admin API unavailable"}` for a status of 500 or more or any
+exception. The
 forwards are `POST /v1/agent/services`, `PATCH /v1/agent/services/<service_id>`, `PUT
 /v1/agent/services/<service_id>/credential` (body `value`, `header_name`, `query_param`) and `GET /v1/agent/services`; for
 the update and the credential tool the body holds every argument except `service_id`.
@@ -44,13 +46,13 @@ the update and the credential tool the body holds every argument except `service
 - **WHEN** `mintkey_service_update` gets `service_id` `../internal/x`, `a/b`, `a?b`, `.`, `..` or no `service_id`, and
   `my-svc.v2`; `mintkey_service_create` gets an extra key `owner_agent_id`; and `agent_request` answers 400 `target_not_allowed`,
   500, or raises `httpx.ConnectError`
-- **THEN** the first seven answer 422 `mintkey:invalid_params` without an `agent_request` call, `my-svc.v2` is forwarded to
-  `PATCH /v1/agent/services/my-svc.v2`, and the REST answers are 400 with that body, then 502
-  `mintkey:admin_api_unavailable` twice
+- **THEN** the first seven answer 422 with `{"code": "mintkey:invalid_params", "title": "Invalid parameters", "detail": ...}`
+  without an `agent_request` call, `my-svc.v2` is forwarded to `PATCH /v1/agent/services/my-svc.v2`, and the REST answers are
+  400 with that body, then 502 `{"code": "mintkey:admin_api_unavailable", "title": "Admin API unavailable"}` twice
 
 #### Scenario: a request without an agent key
 - **WHEN** a REST tool path is called with no agent context, and with a context whose request has no `Authorization` header
-- **THEN** both answer 401 `mintkey:auth_required` and no `agent_request` call was made
+- **THEN** both answer 401 `{"code": "mintkey:auth_required", "title": "Agent key required"}` and no `agent_request` call was made
 
 ### Requirement: The contract lists the four tools
 `docs/architecture/contracts/mcp/tools.yaml` SHALL list `mintkey_service_create`, `mintkey_service_update`,

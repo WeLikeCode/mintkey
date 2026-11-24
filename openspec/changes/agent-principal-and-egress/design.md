@@ -48,15 +48,27 @@ suffix; an unparsable address is not public.
 **D6. Added: the egress rule is stricter than the proxy's.** `address_is_public` accepts global unicast addresses only; the
 proxy's connect-time rule (`proxy-public-egress`) may accept a wider set. The difference is in the safe direction.
 
+**D7. Added: the key check's bodies are re-keyed for agents.** `check_agent_key` returns the flat bodies `validate-agent-key`
+answers (the endpoint's other callers rely on them), so it stays unchanged; `require_agent_principal`
+passes them through `agent_error_body`, which gives agents `code` with the `mintkey:` prefix (`mintkey:invalid_agent_key`,
+`mintkey:agent_api_key_expired`, `mintkey:verify_unavailable`).
+
+**Error body convention.** Agent-facing error bodies (every answer of a `/v1/agent/` route and every MCP tool result an
+agent receives) use the MCP server's existing convention `{"code": "mintkey:<name>", "title": "<text>", ...extra fields}`;
+the MCP server writes `"code": "mintkey:..."` in 98 places, for example `mintkey:auth_required`. Operator routes under
+`/v1/tenants/...` keep admin-api's flat `{"mintkey:code": "<name>", "title": "<text>", ...}`. Codes keep their names; only
+the key and the `mintkey:` prefix placement follow the audience.
+
 ## Interfaces
 
 Module signatures are in the requirements of the two specs, not repeated here. Given to `agent-service-routes`,
 `agent-service-tools` and the later agent changes: `admin_api.auth.agent_principal` (`AgentPrincipal`, `AgentApiError`,
-`agent_api_error_handler`, `require_agent_principal`, `require_publisher_principal`, `record_denied_operation`),
+`agent_api_error_handler`, `agent_error_body`, `require_agent_principal`, `require_publisher_principal`, `record_denied_operation`),
 `admin_api.api.internal.check_agent_key`, `mintkey_models.egress` (`TargetNotAllowed`, `egress_deny_names`,
 `address_is_public`, `resolve_host`, `check_agent_target_url`) and the audit type `agent.operation.denied`. Error bodies:
-401 `{"code": "mintkey:auth_required"}`, the invalid-key and expired-key bodies of `validate-agent-key`, 503
-`mintkey:verify_unavailable`, 403 `mintkey:role_forbidden` `{role, required_role, hint}`.
+all `{"code": "mintkey:<name>", "title", ...}`: 401 `mintkey:auth_required`, the invalid-key and expired-key bodies of
+`validate-agent-key` re-keyed by `agent_error_body`, 503 `mintkey:verify_unavailable`, 403 `mintkey:role_forbidden`
+`{role, required_role, hint}`.
 
 ## Failure cases
 

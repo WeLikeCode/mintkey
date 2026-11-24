@@ -19,7 +19,7 @@ Facts at the base (staging `2c4c814`); the requirements name symbols, the anchor
   `require_agent_principal`, `require_publisher_principal` (403 `mintkey:role_forbidden`; the operation it records on a
   REST route is `"<METHOD> <path>"`).
 - `agent-service-routes`: `admin_api.services.agent_publishing.require_owned_service(session, principal, service_ref)` (the
-  owned service row, whose `id` is used here, or 404 `mintkey:not_found` / 403 `mintkey:not_owner`), `admin_api/api/agent.py`
+  owned service row, whose `id` is used here, or 404 `mintkey:not_found` / 403 `mintkey:not_owner`), `parse_agent_body`, `admin_api/api/agent.py`
   (`router`, prefix `/v1/agent`) and the route-family rules (no DELETE, no `transfer` or `role` in a path).
 - `agent-service-tools`: `mcp_server.policy.roles` (`PUBLISHER_TOOLS` already names the three tools, `enforce_tool_role`,
   which records the tool name), `AdminApiClient.agent_request`, `agent_key_from_request`, the `-32003` mapping of a 403
@@ -54,9 +54,9 @@ the operator route does.
 free string operators use, since a service has no action list.
 
 **D6. Added: `ttl_seconds` instead of `expires_at`.** An integer from 60 to 7776000 (the ceiling of the cap). The route
-answers the computed `expires_at`. A value above the configured cap answers the flat 422 body of `grant-expiry`
-(`mintkey:code` `invalid_expires_at`, `reason` `expires_at_too_far`) with `max_ttl_seconds` (the current cap) added, so a
-client reads one error shape on the operator and the agent surface.
+answers the computed `expires_at`. A value above the configured cap answers the body of `grant-expiry` in the
+agent convention (`code` `mintkey:invalid_expires_at`, `reason` `expires_at_too_far`) with `max_ttl_seconds` (the current cap)
+added, so a client reads the same fields on the operator and the agent surface.
 
 **D7. Added: the grantee.** `agent_id` is an `agent_...` wire id of an active agent of the caller's tenant other than the
 caller (`require_grant_target`); any role may be a grantee. There is no tool that lists agents: a publisher learns ids
@@ -88,6 +88,12 @@ object; the inner shapes stay with the route, so a change of the model never nee
 **D12. Audit actors.** Every event of these routes has `actor_type` `agent` and `actor_id` the caller (`agent.permission.granted`
 and `.revoked` with the grantor and the revoker in the payload), never the request body.
 
+**Error body convention.** Agent-facing error bodies (every answer of a `/v1/agent/` route and every MCP tool result an
+agent receives) use the MCP server's existing convention `{"code": "mintkey:<name>", "title": "<text>", ...extra fields}`;
+the MCP server writes `"code": "mintkey:..."` in 98 places, for example `mintkey:auth_required`. Operator routes under
+`/v1/tenants/...` keep admin-api's flat `{"mintkey:code": "<name>", "title": "<text>", ...}`. Codes keep their names; only
+the key and the `mintkey:` prefix placement follow the audience.
+
 ## Interfaces
 
 Given to `agent-access-requests` and `admin-ui-agent-governance`:
@@ -96,10 +102,10 @@ Given to `agent-access-requests` and `admin-ui-agent-governance`:
   (signatures in the spec).
 - `mcp_server.tools.agent_forward`: `guard_agent_tool`, `forward_agent_call`, `invalid_params`, `matches_pattern`
   (signatures in the spec).
-- Error bodies of the new routes carry `code`: 401 `mintkey:auth_required`; 403 `mintkey:role_forbidden`,
-  `mintkey:not_owner`; 404 `mintkey:not_found`; 409 `mintkey:grant_conflict`; 422 `validation_failed`,
-  `mintkey:invalid_id` (`field`), `mintkey:invalid_target` (`reason`: `invalid_id`, `self`, `agent_not_active`), and the
-  flat body `mintkey:code` `invalid_expires_at` (`reason`, plus `max_ttl_seconds` for `expires_at_too_far`).
+- Error bodies of the new routes are `{code, title, ...}`: 401 `mintkey:auth_required`; 403 `mintkey:role_forbidden`,
+  `mintkey:not_owner`; 404 `mintkey:not_found`; 409 `mintkey:grant_conflict`; 422 `mintkey:validation_failed` (`field`),
+  `mintkey:invalid_id` (`field`), `mintkey:invalid_target` (`reason`: `invalid_id`, `self`, `agent_not_active`), and
+  `mintkey:invalid_expires_at` (`reason`, plus `max_ttl_seconds` for `expires_at_too_far`).
 
 ## Failure cases
 

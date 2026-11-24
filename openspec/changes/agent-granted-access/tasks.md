@@ -6,8 +6,7 @@ suites, `ruff check`, `mypy --strict` (`apps/admin-api` `src/admin_api/`) and `r
 test needs a database, a network or a clock: the routes take `now` from a value the test can read back (the `now` argument
 `write_grant` received), and every expiry is relative to it.
 
-Route tests build a `FastAPI()` with `agent_grants.router` under `APIRouter(prefix="/v1/agent")`, `agent_api_error_handler`
-and `validation_error_handler`, `get_db_session` overridden with a fake session (records `(str(statement), params)`,
+Route tests build a `FastAPI()` with `agent_grants.router` under `APIRouter(prefix="/v1/agent")` and `agent_api_error_handler`, `get_db_session` overridden with a fake session (records `(str(statement), params)`,
 answers by substrings of the statement), `require_agent_principal` overridden to return `AgentPrincipal(<tenant UUID>,
 <agent UUID>, "publisher")`, and `audit_emit`, `notify_change`, `set_tenant_context`, `write_grant`, `delete_grant`, `require_owned_service`
 and `require_grant_target` patched at `admin_api.api.agent_grants` unless a scenario says it runs the real one. MCP tests
@@ -28,15 +27,15 @@ does, and `AdminApiClient.agent_request`.
   the real `admin_api.services.grants.write_grant` over the fake session, which answers the SELECT of the existing row with
   no row, or with a live row, as the scenario says). Red creates `apps/admin-api/src/admin_api/api/agent_grants.py` with a `router` and no routes. Then add
   `POST ""` (`Body` model with `extra="forbid"`, `Constraints` imported from `admin_api.api.permissions`, `ttl_seconds`
-  as `StrictInt`) and map `GrantExpiryError` (the flat 422 body, with `max_ttl_seconds` for `expires_at_too_far`) and
-  `GrantConflict` as the requirement says.
+  as `StrictInt`, read with `parse_agent_body`) and map `GrantExpiryError` (the 422 body in the agent convention, with
+  `max_ttl_seconds` for `expires_at_too_far`) and `GrantConflict` as the requirement says.
 
 - [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_agent_grants_revoke_list.py`, covering the scenarios of "An
   owner revokes any grant of its service" and "An owner lists the live grants of its service". Then add the two routes
   to `apps/admin-api/src/admin_api/api/agent_grants.py`: the revoke selects `service_id` from `permission_grants` by
   `id` and tenant, resolves the service with `require_owned_service(session, principal, db_uuid_to_wire(service_id,
-  "svc"))`, calls `delete_grant`, writes the event and publishes the NOTIFY; the list selects the grants of the service
-  with the live-grant condition and joins `agents` for `name`.
+  "svc"))`, calls `delete_grant`, writes the event and publishes the NOTIFY; the list reads `service_id` from `request.query_params` (a missing one raises the 422 of the requirement), selects the grants
+  of the service with the live-grant condition and joins `agents` for `name`.
 
 ## 3. Wiring and isolation
 

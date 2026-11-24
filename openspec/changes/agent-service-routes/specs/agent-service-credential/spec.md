@@ -11,7 +11,7 @@ routes write.
 ### Requirement: A credential is written, never read, and bound to its target
 `PUT /v1/agent/services/{service_ref}/credential` SHALL read its JSON body itself, not through request-model validation, so
 that no refusal echoes the input (the value is a secret): it SHALL answer the 422 of "Every error of the service routes has one
-body" (`{"mintkey:code": "validation_failed", "title": "Invalid request body", "field": <name or null>}`) for a body that is
+body" (`{"code": "mintkey:validation_failed", "title": "Invalid request body", "field": <name or null>}`) for a body that is
 not a JSON object, has a key other than `value`, `header_name` and `query_param` (`field` null), or has a bad field. It accepts `{value, header_name?, query_param?}`, `value` 1 to 8192 characters without CR, LF or NUL, for an owned
 service only, resolved through `require_owned_service(..., for_update=True)`. A service whose `auth_scheme` is not one of
 `bearer_token`, `api_key_header`, `api_key_query`, `basic_auth` SHALL answer that 422 with `field`
@@ -35,14 +35,14 @@ contain the value, a hash, a prefix, a length or a fingerprint of it. A vault fa
 #### Scenario: header and query names
 - **WHEN** an `api_key_header` service gets no `header_name`, `Host`, `X-Mintkey-Test`, then `X-Api-Key`; a `bearer_token`
   service gets a `header_name`; an `api_key_query` service gets no `query_param`
-- **THEN** all but the fourth answer 422 `validation_failed`; the fourth answers 200 with `X-Api-Key` passed to
+- **THEN** all but the fourth answer 422 `mintkey:validation_failed`; the fourth answers 200 with `X-Api-Key` passed to
   `put_credential`
 
 #### Scenario: bad values, other owners, a failing vault, an unsupported scheme
 - **WHEN** the value is empty, 8193 characters long or `s3cret-value-123` plus a line feed; the service belongs to another
   agent; `put_credential` raises; or the service's scheme is `ssh_private_key`
-- **THEN** the answers have the bodies of that requirement and "Every error of the service routes has one body": 422 `validation_failed` three times (no body contains `s3cret-value-123`), 403
-  `mintkey:not_owner`, 502 `mintkey:vault_unavailable` and 422 `validation_failed` with `field` `auth_scheme`; no
+- **THEN** the answers have the bodies of that requirement and "Every error of the service routes has one body": 422 `mintkey:validation_failed` three times (no body contains `s3cret-value-123`), 403
+  `mintkey:not_owner`, 502 `mintkey:vault_unavailable` and 422 `mintkey:validation_failed` with `field` `auth_scheme`; no
   metadata statement and no event ran, and `put_credential` was not called for the last
 
 #### Scenario: the row is locked before the vault write

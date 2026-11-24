@@ -17,22 +17,25 @@ async def forward_agent_call(request: Request, method: str, path: str,
 def invalid_params(detail: str) -> JSONResponse
 def matches_pattern(value: object, pattern: str) -> bool
 ```
-`guard_agent_tool` SHALL return 401 `{"code": "mintkey:auth_required"}` for no context, else the result of
+`guard_agent_tool` SHALL return 401 `{"code": "mintkey:auth_required", "title": "Agent key required"}` for no
+context, else the result of
 `enforce_tool_role(session, agent_ctx, tool_name)` of `agent-service-tools` (a refusal records the tool name as the
 operation). `forward_agent_call` SHALL take the key from
 `agent_key_from_request` (401 `mintkey:auth_required` when None), call `AdminApiClient().agent_request(method, path, key,
 json_body)`, relay a status below 500 with its JSON body (`{}` when it is not JSON), and answer 502
-`{"code": "mintkey:admin_api_unavailable"}` for a status of 500 or more or any exception. `invalid_params(detail)` SHALL
-answer 422 `{"code": "mintkey:invalid_params", "detail": detail}`. `matches_pattern` SHALL be true for a `str` that
+`{"code": "mintkey:admin_api_unavailable", "title": "Admin API unavailable"}` for a status of 500 or more or any exception.
+`invalid_params(detail)` SHALL answer 422
+`{"code": "mintkey:invalid_params", "title": "Invalid parameters", "detail": detail}`. `matches_pattern` SHALL be true for a `str` that
 `re.fullmatch` accepts and that is not made only of dots.
 
 #### Scenario: guard and forward
 - **WHEN** `guard_agent_tool` runs with no context, with a consumer context for `mintkey_grant_access`, and with a
   publisher context; and `forward_agent_call` runs with `agent_request` answering 201 JSON, 404 JSON, 200 with a non-JSON
   body, 500, and raising `httpx.ConnectError`, and with a request that has no agent key
-- **THEN** the guard returns 401, a 403 `mintkey:role_forbidden` (one `agent.operation.denied` event whose operation is
-  `mintkey_grant_access`) and None; the
-  forward answers 201 with the body, 404 with the body, 200 with `{}`, 502, 502, and 401 with no `agent_request` call
+- **THEN** the guard returns 401 with exactly `{"code": "mintkey:auth_required", "title": "Agent key required"}`, a 403
+  `mintkey:role_forbidden` (one `agent.operation.denied` event whose operation is `mintkey_grant_access`) and None; the
+  forward answers 201 with the body, 404 with the body, 200 with `{}`, 502 twice with exactly `{"code":
+  "mintkey:admin_api_unavailable", "title": "Admin API unavailable"}`, and 401 with no `agent_request` call
 
 #### Scenario: argument checks
 - **WHEN** `matches_pattern` runs with `my-svc.v2` and `^[A-Za-z0-9_.-]{1,128}$`, then `..`, `.`, `a/b`, an empty string and
@@ -78,7 +81,8 @@ tool's `inputSchema.properties`.
   `tenant_id`, no `service_id`, a `constraints` of `[]` and an `action` of `a b`; `mintkey_revoke_access` gets `grant_id`
   `../x`; `mintkey_list_service_grants` gets `service_id` `a/b`; and `agent_request` answers 409 with a body, 500, and
   raises `httpx.ConnectError`
-- **THEN** the first ten answer 422 `mintkey:invalid_params` without an `agent_request` call; the REST answers are 409
+- **THEN** the first ten answer 422 with `code` `mintkey:invalid_params`, `title` `Invalid parameters` and a `detail`, without an
+  `agent_request` call; the REST answers are 409
   with that body, then 502 `mintkey:admin_api_unavailable` twice
 
 #### Scenario: the contract lists the tools

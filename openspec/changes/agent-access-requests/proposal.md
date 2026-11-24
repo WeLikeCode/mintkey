@@ -4,7 +4,7 @@
 
 An agent that needs a service another agent owns cannot ask, and the owner cannot say yes. A request names the service, the
 time and a reason; the owner agent (an operator, for an operator-owned service) approves with a lifetime or denies; approval
-creates the time-boxed grant of `agent-granted-access`, and an unanswered request ends by itself. Operators decide every request.
+creates the time-boxed grant of `agent-granted-access`, and an unanswered request ends by itself.
 
 ## What Changes
 
@@ -17,8 +17,7 @@ creates the time-boxed grant of `agent-granted-access`, and an unanswered reques
 - Operator routes under `/v1/tenants/{tenant_id}/access-requests` (list, get, approve, deny), authenticated by the tenant
   session. Approval creates a grant with `expires_at = now + min(requested, approved, cap)` through `write_grant`.
 - Five MCP tools: `mintkey_request_access`, `mintkey_list_my_access_requests`, `mintkey_cancel_access_request` (every
-  agent), `mintkey_list_incoming_access_requests` and `mintkey_decide_access_request` (publishers); with them `tools/list`
-  equals the role registry of `agent-service-tools`.
+  agent), `mintkey_list_incoming_access_requests` and `mintkey_decide_access_request` (publishers).
 - The audit contract gains the five events and the target type `access_request`.
 
 ## Capabilities
@@ -34,8 +33,7 @@ creates the time-boxed grant of `agent-granted-access`, and an unanswered reques
   (two tests expect thirteen tools instead of ten).
 - New: the migration `032-service-access-requests.yaml`, `services/access_requests.py`, the two route modules and the MCP
   tools module (paths in tasks.md).
-- Data fixture: `tests/acceptance/openapi_snapshot.json` gains the one entry `"access_requests":
-  "/v1/tenants/{tenant_id}/access-requests"`, authorised in task 4.3 (design D7).
+- Data fixture: `tests/acceptance/openapi_snapshot.json` gains one entry, authorised in task 4.3 (design D7).
 - Operators: run the migration with the release. Requests expire after 72 hours; deleting a service or agent deletes its requests.
 - Out of scope: more than one action per request, constraints at approval, owner notification, the admin UI, a scheduler.
 - Depends on: `agent-granted-access`, `agent-service-tools`, `agent-service-routes`, `agent-principal-and-egress`,

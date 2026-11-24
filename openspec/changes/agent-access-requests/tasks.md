@@ -11,9 +11,9 @@ by substrings of the statement (`FROM services`, `FROM agents`, `FROM permission
 `UPDATE service_access_requests`, `FOR UPDATE`; an UPDATE may answer no row), counts `commit` and `rollback` calls and can
 raise `IntegrityError`; `audit_emit` and `write_grant` are patched at `admin_api.services.access_requests`, and
 `set_tenant_context` at the route module under test. Agent route tests build a `FastAPI()` with the router under
-`APIRouter(prefix="/v1/agent")`, `agent_api_error_handler` and `validation_error_handler`, `require_agent_principal`
+`APIRouter(prefix="/v1/agent")` and `agent_api_error_handler`, `require_agent_principal`
 overridden to return an `AgentPrincipal`, and the service functions patched at `admin_api.api.agent_access_requests`. Operator
-route tests override `get_db_session`, `require_tenant_session` (a no-op) and `get_session_context` (returning
+route tests register `validation_error_handler`, override `get_db_session`, `require_tenant_session` (a no-op) and `get_session_context` (returning
 `types.SimpleNamespace(operator_id=<UUID>, tenant_id=<UUID>)`) and patch the service functions at `admin_api.api.access_requests`.
 MCP tests patch `validate_agent_key` in `mcp_server.main` and `mcp_server.tools.jsonrpc` as
 `apps/mcp-server/tests/test_tools_list_trim.py` does, and `AdminApiClient.agent_request`.
@@ -59,8 +59,8 @@ MCP tests patch `validate_agent_key` in `mcp_server.main` and `mcp_server.tools.
   "The agent request routes" other than the route table (a consumer principal for the first, a publisher for the others; the
   consumer scenario patches `admin_api.auth.agent_principal.AsyncSessionLocal` and `audit_emit` as
   `test_agent_role_refusal.py` in that directory does). Red creates `apps/admin-api/src/admin_api/api/agent_access_requests.py`
-  with a `router` and no routes. Then add the five routes (bodies with `extra="forbid"` and `StrictInt` for the create `ttl_seconds`; the
-  `ttl_seconds` of a decision typed `object` and passed to `check_decision_ttl`) and in `apps/admin-api/src/admin_api/api/agent.py`
+  with a `router` and no routes. Then add the five routes (bodies read with `parse_agent_body`, `extra="forbid"` and `StrictInt` for the create `ttl_seconds`; the
+  `ttl_seconds` of a decision typed `object` and passed to `check_decision_ttl`; query parameters checked by hand) and in `apps/admin-api/src/admin_api/api/agent.py`
   `router.include_router(agent_access_requests.router)`.
 
 - [ ] 4.2 Tests first, new file `tests/unit/admin_api/test_access_requests_operator_routes.py`, covering the three scenarios of
