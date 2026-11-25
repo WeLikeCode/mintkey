@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Unfreeze the four live-stack acceptance files for task 1.1 so the skipped tests can be moved out of the changed files
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Both options need something a delegate cannot give. Option 1 unfreezes four test files for a fix task: the harness note says a fix step's change to a test file is put back and a person must commit it on the unit branch, and the rules say a fix-task question is escalated unless the answer is about production code; this one is entirely about test files. Option 2 waives finding F-b0296656, a verdict decision not before me as a verdict question, and I was not shown the finding's criterion or report. The repository facts I could check hold: .l4/gates/test.sh runs tests/acceptance without MINTKEY_INTEGRATION_TEST and ignores test_e2e_smoke.py but not the three changed files, whose tests carry the INTEGRATION skipif, so the skips are structural and no production-code change removes them. Whether to relocate the tests, waive the finding, or change the gate's ignore list is a person's call.
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-25T09:03Z by glm, run r-20261125T0745Z-3966, task 1.1
