@@ -79,6 +79,7 @@ Answered by the repository owner's delegate (a Claude Code session the owner aut
 ## Q-003: tests/acceptance/test_live_stack_redaction_assertions.py:83: test-at-red cannot fail for a test-only fix
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The question comes from a fix task and every option is a process decision, not something the repository settles. Option 1 (the clarifier suggestion) reopens tests/acceptance/test_live_stack_redaction_assertions.py, which the human answer to Q-002 explicitly kept frozen, and adds an exported constant to apps/proxy-plugin/internal/scrubber/response.go whose only purpose is to make the at-red run differ; that is a test-file change plus a contrived production change, and overriding a person's earlier frozen-file decision is not mine to make. Options 2 and 3 waive the test-at-red proof or withdraw criterion C-969b7732, which only a person can decide. I confirmed from the red test (lines 22-27, 83-113) that it reads only the four live-stack test files, so the premise that a test-only fix cannot discriminate is plausible, but the harness code cited (l4/implementer/discrimination.py) is not in this repository, so I could not check the reverting behaviour itself.
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-25T07:27Z by deepseek-free, run r-20261125T0625Z-c049, task 1.1
