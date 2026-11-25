@@ -13,6 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1 | technical | Unfreeze tests/acceptance/test_e2e_smoke.py:414, tests/acceptance/test_golden_path.py:545, tests/acceptance/test_data_plane_smoke.py:494 and tests/acceptance/test_classical_key.py:208: red test C-969b |
 | Q-002 | open | 1.1 | technical | Unfreeze tests/acceptance/test_golden_path.py:545, the fourth file Q-001 named, so C-969b7732 can pass |
+| Q-003 | open | 1.1 | technical | tests/acceptance/test_live_stack_redaction_assertions.py:83: test-at-red cannot fail for a test-only fix |
 <!-- l4:index:end -->
 
 ---
@@ -72,3 +73,31 @@ Edit `tests/acceptance/test_golden_path.py`: at line 545 insert the comment `# T
 ### Answer
 <!-- write below this line -->
 Answered by the repository owner's delegate (a Claude Code session the owner authorised to answer person-only unfreeze questions on this plan). Take option 1 and unfreeze `tests/acceptance/test_golden_path.py` for task 1.1, and only that file: the red test `tests/acceptance/test_live_stack_redaction_assertions.py` stays frozen. In test_golden_path.py change only the received_key check at line 545: put directly above it the comment `# The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].`, compare with the string constant "[REDACTED]", and in its message at line 547 write '[REDACTED]' where it printed the expected secret. This is the fourth file Q-001 named; it stayed frozen only because one answer unfreezes at most three paths.
+
+---
+
+## Q-003: tests/acceptance/test_live_stack_redaction_assertions.py:83: test-at-red cannot fail for a test-only fix
+
+- **Status:** open
+- **Blocking tasks:** 1.1
+- **Kind:** technical
+- **Asked:** 2026-11-25T07:27Z by deepseek-free, run r-20261125T0625Z-c049, task 1.1
+
+### Context
+The red test (lines 83-113) parses the four live-stack files and requires every received_key comparison to be == the literal "[REDACTED]" plus a comment, exactly as C-969b7732 and parent task 4.1 demand; the four files are ready to satisfy it. But the green step's test-at-red run calls red_code_in_place with paths=None, which reverts only non-test files changed since HEAD (l4/implementer/discrimination.py: _canonical returns None for paths matching the test globs **/tests/**). This fix changes only the four test files: the proxy production code already redacts (apps/proxy-plugin/cmd/proxy-plugin/upstream.go:92 calls scrubber.ScrubWith with the injected credential), so there is no production file to revert and the at-red run is identical to the green run. Therefore the four parametrizations always pass there and _undiscriminating always reports 'the corrected test no longer discriminates' (recorded as attempts 2-6 in ledger r-20261125T0625Z-c049). No edit to the four test files can change this. Q-002 also says the red test itself stays frozen, so I have not changed it. A person must choose how to make the proof possible.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `tests/acceptance/test_live_stack_redaction_assertions.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit proxy-stored-target-fix-1`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `tests/acceptance/test_live_stack_redaction_assertions.py`: in `test_C_969b7732_live_stack_test_asserts_the_redaction_marker`, also read `apps/proxy-plugin/internal/scrubber/response.go` and assert it contains `const RedactedMarker = "[REDACTED]"`; green adds that exported constant to `response.go` and sets `redactedMarker = RedactedMarker`. The at-red run puts `response.go` back to its red content (no `RedactedMarker`), so the test fails there and discriminates; green passes. This is the only mechanical way to make the at-red run differ, because it requires a non-test file green changes.
+2. Accept the four corrected live-stack tests on the green run's evidence and treat the test-at-red proof as inapplicable for this unit: it changes no production code, so that run cannot differ from green and can never fail.
+3. Keep the red test frozen and withdraw criterion C-969b7732 / task 1.1, since the gate cannot prove a test-only fix with the current at-red check.
+
+### Harness notes
+Harness note: the previous attempt of this task was rejected: the corrected test no longer discriminates: tests.acceptance.test_live_stack_redaction_assertions::test_C_969b7732_live_stack_test_asserts_the_redaction_marker[test_classical_key.py], tests.acceptance.test_live_stack_redaction_assertions::test_C_969b7732_live_stack_test_asserts_the_redaction_marker[
+
+### Clarifier suggestion
+Edit `tests/acceptance/test_live_stack_redaction_assertions.py`: in `test_C_969b7732_live_stack_test_asserts_the_redaction_marker`, also read `apps/proxy-plugin/internal/scrubber/response.go` and assert it contains `const RedactedMarker = "[REDACTED]"`; green adds that exported constant to `response.go` and sets `redactedMarker = RedactedMarker`. The at-red run puts `response.go` back to its red content (no `RedactedMarker`), so the test fails there and discriminates; green passes. This is the only mechanical way to make the at-red run differ, because it requires a non-test file green changes.
+
+### Answer
+<!-- write below this line -->
