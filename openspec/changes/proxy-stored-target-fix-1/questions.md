@@ -52,6 +52,7 @@ Answered by the repository owner's delegate (a Claude Code session the owner aut
 ## Q-002: Unfreeze tests/acceptance/test_golden_path.py:545, the fourth file Q-001 named, so C-969b7732 can pass
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/acceptance/test_golden_path.py of task 1.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-25T01:47Z by deepseek, run r-20261125T0138Z-75d9, task 1.1
