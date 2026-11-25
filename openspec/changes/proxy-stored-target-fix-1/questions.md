@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: Unfreeze tests/acceptance/test_e2e_smoke.py:414, tests/acceptance/test_golden_path.py:545, tests/acceptance/test_data_plane_smoke.py:494 and tests/acceptance/test_classical_key.py:208: red test C-969b
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The question comes from a fix task: the unit is proxy-stored-target-fix-1 and its tasks.md has a single task "1.1 task 4.1: live-stack acceptance tests not updated" under "## 1. Fix". The fix unit's spec (specs/proxy-stored-target/spec.md lines 11-13) and the parent tasks.md task 4.1 (lines 119-124) both require edits to tests/acceptance/test_e2e_smoke.py, test_golden_path.py, test_data_plane_smoke.py and test_classical_key.py, and I verified those files still compare received_key with the registered secret (test_classical_key.py:208 REAL_CRED, test_data_plane_smoke.py:494 and test_golden_path.py:545 secret_value, test_e2e_smoke.py:414 the demo literal). The red test test_live_stack_redaction_assertions.py:85-113 reads those four files from disk, so no production-code change can make it pass. The only answer is a change to test files, which for a fix task the rules say a person must commit; I cannot accept option 1 nor answer otherwise.
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-25T01:21Z by deepseek, run r-20261125T0056Z-9676, task 1.1
