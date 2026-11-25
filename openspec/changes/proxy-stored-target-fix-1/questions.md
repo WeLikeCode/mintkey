@@ -12,6 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1 | technical | Unfreeze tests/acceptance/test_e2e_smoke.py:414, tests/acceptance/test_golden_path.py:545, tests/acceptance/test_data_plane_smoke.py:494 and tests/acceptance/test_classical_key.py:208: red test C-969b |
+| Q-002 | open | 1.1 | technical | Unfreeze tests/acceptance/test_golden_path.py:545, the fourth file Q-001 named, so C-969b7732 can pass |
 <!-- l4:index:end -->
 
 ---
@@ -45,3 +46,27 @@ E           AssertionError: test_data_plane_smoke.py compares received_key with 
 ### Answer
 <!-- write below this line -->
 Answered by the repository owner's delegate (a Claude Code session the owner authorised to answer person-only unfreeze questions on this plan). Unfreeze these four files for task 1.1: `tests/acceptance/test_e2e_smoke.py`, `tests/acceptance/test_golden_path.py`, `tests/acceptance/test_data_plane_smoke.py` and `tests/acceptance/test_classical_key.py`. This is what the parent's task 4.1 and C-969b7732 require: the proxy now redacts exactly the credential value it injected, so the mock backend's echo reads back as "[REDACTED]". In each file change only the received_key comparison: compare with the string constant "[REDACTED]" (test_e2e_smoke.py line 414 compares with the demo key literal, test_golden_path.py line 545 and test_data_plane_smoke.py line 494 with secret_value, test_classical_key.py line 208 with REAL_CRED), put directly above it the comment `# The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].`, and in that assert's message write the marker where it printed the expected secret. Keep every other statement, including `received = proxy_r.json().get("received_key")` and the `plaintext_key not in proxy_r.text` check. Note: option 1 shows the line of test_e2e_smoke.py with a redaction placeholder where the file holds the demo key literal; the literal in the file is what is replaced.
+
+---
+
+## Q-002: Unfreeze tests/acceptance/test_golden_path.py:545, the fourth file Q-001 named, so C-969b7732 can pass
+
+- **Status:** open
+- **Blocking tasks:** 1.1
+- **Kind:** technical
+- **Asked:** 2026-11-25T01:47Z by deepseek, run r-20261125T0138Z-75d9, task 1.1
+
+### Context
+The red test tests/acceptance/test_live_stack_redaction_assertions.py parametrizes over four live-stack files, including test_golden_path.py, and asserts that each compares the mock backend's received_key with [REDACTED] and has a comment saying the proxy redacts the value it injected. C-969b7732 and the spec's task 4.1 require exactly that for all four files. The human answer Q-001 unfroze all four, but the ledger records that the harness kept test_golden_path.py frozen with reason "more than 3 paths named by Q-001" (a question may unfreeze at most three paths). Line 545 still reads `assert proxy_body.get("received_key") == secret_value, (`, so the red test fails for test_golden_path.py while it stays frozen. The other three files are already changed and their parametrizations pass.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `tests/acceptance/test_golden_path.py`, `tests/acceptance/test_live_stack_redaction_assertions.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit proxy-stored-target-fix-1`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `tests/acceptance/test_golden_path.py`: at line 545 insert the comment `# The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].` directly above and change the comparison to `assert proxy_body.get("received_key") == "[REDACTED]", (`, and at line 547 change `f"expected {secret_value!r}, got {proxy_body.get('received_key')!r}\n"` to `f"expected '[REDACTED]', got {proxy_body.get('received_key')!r}\n"`.
+2. Keep `tests/acceptance/test_golden_path.py` frozen and remove it from criterion C-969b7732 and from the task 4.1 requirement.
+
+### Clarifier suggestion
+Edit `tests/acceptance/test_golden_path.py`: at line 545 insert the comment `# The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].` directly above and change the comparison to `assert proxy_body.get("received_key") == "[REDACTED]", (`, and at line 547 change `f"expected {secret_value!r}, got {proxy_body.get('received_key')!r}\n"` to `f"expected '[REDACTED]', got {proxy_body.get('received_key')!r}\n"`.
+
+### Answer
+<!-- write below this line -->
