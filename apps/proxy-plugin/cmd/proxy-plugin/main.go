@@ -26,7 +26,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
@@ -630,7 +629,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
@@ -666,7 +665,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	jtiClaim, _ := claims["jti"].(string)
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error (#22).
 	// Emission is O(1) non-blocking; never carries credentials (S-SEC-1).
@@ -798,7 +797,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		Value:      []byte(oauthResult.Token),
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -824,7 +823,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -886,10 +885,11 @@ func (h *proxyHandler) handleHTTPDigest(
 		return
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	// The digest transport performs the RFC 2617 handshake on dial; it MUST NOT
 	// be reused across requests (no plaintext credential cached — ADR-0014.4).
-	proxy.Transport = digestTransport
+	// It is the base transport of the upstream proxy and nothing is injected:
+	// the digest flow sends a hash, so only the pattern rules apply.
+	proxy := h.newUpstreamProxy(targetURL, digestTransport)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -913,7 +913,7 @@ func (h *proxyHandler) handleHTTPDigest(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -1009,7 +1009,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	}
 
 	// Build the reverse proxy.
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -1037,7 +1037,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -1137,7 +1137,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
@@ -1160,7 +1160,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		ensureRequestID(req, targetURL)
 	}
 
-	proxy.ServeHTTP(w, r)
+	proxy.ServeHTTP(w, r.WithContext(withServiceID(r.Context(), serviceID)))
 }
 
 // urlServiceID extracts the service UUID from a Kong-routed path of the form

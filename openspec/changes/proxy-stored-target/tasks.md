@@ -86,7 +86,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 4. Every proxied response is scrubbed
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/response_scrubbing_test.go` (package `main`, using the
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/response_scrubbing_test.go` (package `main`, using the
   helpers of `stored_target_test.go`). `TestUpstreamEchoDoesNotReachTheCaller` covers "a credential echoed by the upstream
   does not reach the caller" (generic and classical flows, the upstream builds the body from the request's `Authorization`
   header and sets `X-Echo` and `Set-Cookie`; each runs with `h.cfg` as `testHandler` builds it and again with `h.cfg =
