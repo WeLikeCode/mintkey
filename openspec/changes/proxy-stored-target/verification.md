@@ -1,4 +1,4 @@
-# Verification: openspec:proxy-stored-target: NEEDS_HUMAN (round 1)
+# Verification: openspec:proxy-stored-target: FAIL (round 2)
 
 traceability: 17/17 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 17/17 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.3 | base staging@829f570474 contained |
-| 1 | integrity | ok | 368.4 | 11 sub-checks; scope: 15 changed file(s) |
-| 2 | build | ok | 105.5 |  |
-| 3 | tests | ok | 128.0 |  |
-| 4 | traceability | ok | 0.2 | 17/17 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | not measured: diff coverage measures python only; changed code outside it: apps/proxy-plugin/cmd/proxy-plugin/main.go, apps/proxy-plugin/cmd/proxy-plugin/target.go, apps/proxy-plugin/cmd/proxy-plugin/upstream.go, apps/proxy-plugin/internal/config/config.go, apps/proxy-plugin/internal/scrubber/respon... |
-| 8 | s1 judge | ok | 1.4 | 16/17 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 23.9 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -140,6 +140,10 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-7d21b6f6 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e1d174b7 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Answers to verdict questions
+
+- Q-001 reject F-3e53e4bd by the delegate (claude-fable-5-1 via claude-code): The finding is correct. Task 4.1 of tasks.md requires that in test_e2e_smoke.py, test_golden_path.py, test_data_plane_smoke.py and test_classical_key.py every assertion that received_key equals the registered secret becomes an assertion that it equals the redaction marker, with a comment saying why....
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -164,8 +168,13 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 
 ## Findings
 
-- [major, judge] task 4.1: live-stack acceptance tests not updated: Task 4.1 requires test_e2e_smoke.py, test_golden_path.py, test_data_plane_smoke.py and test_classical_key.py to assert received_key == "[REDACTED]". The diff shows no change to any tests/acceptance file, though the implementer's note claims they were updated.
+- [major, human] task 4.1: live-stack acceptance tests not updated: Task 4.1 requires test_e2e_smoke.py, test_golden_path.py, test_data_plane_smoke.py and test_classical_key.py to assert received_key == "[REDACTED]". The diff shows no change to any tests/acceptance file, though the implementer's note claims they were updated. [rejected by the delegate (claude-fable-5-1 via claude-code) (The finding is correct. Task 4.1 of tasks.md requires that in test_e2e_smoke.py, test_golden_path.py, test_data_plane_smoke.py and test_classical_key.py every assertion that received_key equals the registered secret becomes an assertion that it equals the redaction marker, with...
 - [minor, judge] Event stream bypasses encoded-body check ordering / body redaction (spec gap) (criterion C-e1d174b7): For an event stream whose response has a non-identity Content-Encoding, the encoded refusal runs first; behaviour is unspecified by the scenarios.
+
+## Fix unit
+
+Fix unit 1 is created for these tasks:
+- F-3e53e4bd task 4.1: live-stack acceptance tests not updated
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
