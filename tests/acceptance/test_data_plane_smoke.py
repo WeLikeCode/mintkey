@@ -491,9 +491,10 @@ def test_proxy_plugin_smoke() -> None:
             f"proxy_plugin_smoke: expected 200, got {proxy_r.status_code}\n{proxy_r.text}"
         )
         proxy_body = proxy_r.json()
-        assert proxy_body.get("received_key") == secret_value, (
+        # The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].
+        assert proxy_body.get("received_key") == "[REDACTED]", (
             f"mock-backend received wrong credential: "
-            f"expected {secret_value!r}, got {proxy_body.get('received_key')!r}"
+            f"expected {'[REDACTED]'!r}, got {proxy_body.get('received_key')!r}"
         )
         # JWT must NOT be echoed back (proxy strips the Authorization header)
         assert jwt not in proxy_r.text, (

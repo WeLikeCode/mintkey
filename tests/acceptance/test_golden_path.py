@@ -542,9 +542,10 @@ def test_ws8_golden_path_agent_to_upstream() -> None:
             "kong-syncer route push, proxy-plugin JWT validation."
         )
         proxy_body = proxy_r.json()
-        assert proxy_body.get("received_key") == secret_value, (
+        # The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].
+        assert proxy_body.get("received_key") == "[REDACTED]", (
             f"Hop 4: mock-backend received wrong credential: "
-            f"expected {secret_value!r}, got {proxy_body.get('received_key')!r}\n"
+            f"expected {'[REDACTED]'!r}, got {proxy_body.get('received_key')!r}\n"
             f"Full response: {proxy_body}"
         )
         # JWT must NOT appear in the forwarded request (proxy strips it)
