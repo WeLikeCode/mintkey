@@ -9,7 +9,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 1. The backfill of stored targets
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_target_backfill.py` (the `sys.path` header and
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_target_backfill.py` (the `sys.path` header and
   `REPO_ROOT` of `tests/unit/admin_api/test_notify_event_type.py`; PyYAML is a dependency of the project):
   `test_backfill_changelog_fills_empty_targets_only` covers the scenario "the changelog fills empty targets only": it
   loads `apps/admin-api/db/changelog/033-credential-target-backfill.yaml` with `yaml.safe_load`, finds the one SQL change
@@ -28,7 +28,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 2. The scrubber keeps the whole body and a consistent length
 
-- [ ] 2.1 Tests first, new file `apps/proxy-plugin/internal/scrubber/response_tail_test.go` (package `scrubber_test`):
+- [x] 2.1 Tests first, new file `apps/proxy-plugin/internal/scrubber/response_tail_test.go` (package `scrubber_test`):
   `TestScrubKeepsBodyPastScanBound` and `TestScrubUnchangedBodyKeepsLength` cover the scenario "Scrub keeps the tail of a
   large body and the length stays consistent" with the bodies as written there, where `<apikey>` and `<skey>` are the test
   values of the spec built in the test (`"api_key=" + <16 lowercase letters and digits>`, `"sk_live_" + <12 lowercase letters>`; no secret-shaped literal
@@ -53,7 +53,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 3. The proxy uses the stored target only
 
-- [ ] 3.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/stored_target_test.go` (package `main`). Helpers:
+- [x] 3.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/stored_target_test.go` (package `main`). Helpers:
   `startFakeVault(t, resp *vaultv1.GetCredentialResponse) *vault.Client` serves `GetCredential` on `127.0.0.1:0` from a
   struct that embeds `vaultv1.UnimplementedVaultAdapterServer` and returns `proto.Clone(resp)`, and returns
   `vault.NewClient(addr, "", "")`; `countingUpstream(t)` returns an `httptest.Server` and a function that gives its request
@@ -86,7 +86,7 @@ and `t.Fatal`s with a message that names what is missing. Run `go test ./... -sh
 
 ## 4. Every proxied response is scrubbed
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/response_scrubbing_test.go` (package `main`, using the
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/response_scrubbing_test.go` (package `main`, using the
   helpers of `stored_target_test.go`). `TestUpstreamEchoDoesNotReachTheCaller` covers "a credential echoed by the upstream
   does not reach the caller" (generic and classical flows, the upstream builds the body from the request's `Authorization`
   header and sets `X-Echo` and `Set-Cookie`; each runs with `h.cfg` as `testHandler` builds it and again with `h.cfg =

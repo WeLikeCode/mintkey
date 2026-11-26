@@ -35,10 +35,14 @@ type Config struct {
 	JWKSEndpoint      string         // URL of the broker's /.well-known/jwks.json
 	PluginSocket      string         // Unix socket path for the go-pdk server (future)
 	PluginPort        int            // HTTP listen port for the reverse proxy
-	DefaultTarget     string         // fallback upstream URL when X-Mintkey-Target header absent
+	DefaultTarget     string         // kept for deployments that still set DEFAULT_TARGET; the proxy does not read it
 	BrokerBaseURL     string         // base URL for broker's /v1/api-keys/resolve (ADR-0018)
 	ProxyServiceToken string         // X-Mintkey-Service-Token for broker auth (ADR-0018)
 	AudEnforcement    AudEnforcement // strict | permissive (ADR-0004 addendum)
+	// ScrubPatterns turns the scrubber's pattern rules (header removals and
+	// JWT/api_key/sk_ replacements) on for proxied responses. They are off by
+	// default; the exact value of the injected credential is always redacted.
+	ScrubPatterns bool
 	// Vault Adapter gRPC authentication (Requirement 22.5 / BUG-1 fix).
 	// The proxy plugin must present a registered service identity + token so the
 	// vault-adapter's scopeInterceptor grants the vault.read scope.
@@ -78,6 +82,7 @@ func Load() *Config {
 		BrokerBaseURL:      brokerBaseURL,
 		ProxyServiceToken:  proxyServiceToken,
 		AudEnforcement:     loadAudEnforcement(env),
+		ScrubPatterns:      loadScrubPatterns(),
 		VaultIdentityID:    getEnv("MINTKEY_VAULT_PROXY_IDENTITY_ID", "svcid_proxy"),
 		VaultIdentityToken: vaultIdentityToken,
 		// Audit async emission (#22)
@@ -108,6 +113,18 @@ func loadAudEnforcement(env string) AudEnforcement {
 		}
 		return AudEnforcementPermissive
 	}
+}
+
+// loadScrubPatterns resolves MINTKEY_PROXY_SCRUB_PATTERNS with
+// strconv.ParseBool. An unset, empty or unparsable value is false (the pattern
+// rules are off by default; D8).
+func loadScrubPatterns() bool {
+	raw := os.Getenv("MINTKEY_PROXY_SCRUB_PATTERNS")
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false
+	}
+	return enabled
 }
 
 func getEnv(key, fallback string) string {

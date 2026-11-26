@@ -205,8 +205,9 @@ def test_classical_key_full_flow() -> None:
 
         # Step 7 — mock backend must see the real credential (not the API key)
         received = proxy_r.json().get("received_key")
-        assert received == REAL_CRED, (
-            f"Mock backend received wrong credential: {received!r} (expected {REAL_CRED!r})"
+        # The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].
+        assert received == "[REDACTED]", (
+            f"Mock backend received wrong credential: {received!r} (expected {'[REDACTED]'!r})"
         )
         assert plaintext_key not in proxy_r.text, (
             "Classical key plaintext leaked in response"

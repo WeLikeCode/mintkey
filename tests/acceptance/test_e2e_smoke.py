@@ -411,7 +411,8 @@ def test_full_e2e_smoke_13_steps() -> None:
                 f"Step 10 brokered call unexpected status: {proxy_r.status_code} {proxy_r.text}"
             )
             if proxy_r.status_code == 200:
-                assert proxy_r.json().get("received_key") == "sk-demo-secret-key-12345", (
+                # The proxy redacts exactly the credential value it injected, so the echoed received_key reads back as [REDACTED].
+                assert proxy_r.json().get("received_key") == "[REDACTED]", (
                     f"Step 10 brokered call wrong key: {proxy_r.text}"
                 )
 

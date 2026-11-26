@@ -26,7 +26,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
@@ -613,25 +612,12 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prefer target URL from vault (registered base_url); fall back to X-Mintkey-Target header
-	// for backward compatibility with credentials registered before this change.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only; the
+	// X-Mintkey-Target header and cfg.DefaultTarget take no part (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -643,7 +629,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
@@ -679,7 +665,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	jtiClaim, _ := claims["jti"].(string)
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error (#22).
 	// Emission is O(1) non-blocking; never carries credentials (S-SEC-1).
@@ -797,24 +783,11 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -824,7 +797,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		Value:      []byte(oauthResult.Token),
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -850,7 +823,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -904,31 +877,19 @@ func (h *proxyHandler) handleHTTPDigest(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
-		return
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	// The digest transport performs the RFC 2617 handshake on dial; it MUST NOT
 	// be reused across requests (no plaintext credential cached — ADR-0014.4).
-	proxy.Transport = digestTransport
+	// It is the base transport of the upstream proxy and nothing is injected:
+	// the digest flow sends a hash, so only the pattern rules apply.
+	proxy := h.newUpstreamProxy(targetURL, digestTransport)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -952,7 +913,7 @@ func (h *proxyHandler) handleHTTPDigest(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -1033,24 +994,11 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 		return
 	}
 
-	// Determine target URL.
-	target := credResp.TargetURL
-	if target == "" {
-		target = r.Header.Get("X-Mintkey-Target")
-	}
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		h.metrics.IncProxyDenied(serviceID, "backend_error")
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -1061,7 +1009,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	}
 
 	// Build the reverse proxy.
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -1089,7 +1037,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	// Wrap ResponseWriter to capture status for audit.
 	startTime := time.Now()
 	rw := &statusCapture{ResponseWriter: w}
-	proxy.ServeHTTP(rw, r)
+	proxy.ServeHTTP(rw, r.WithContext(withServiceID(r.Context(), serviceID)))
 
 	// Async audit: proxy.hit / proxy.error.
 	if h.audit != nil {
@@ -1175,18 +1123,10 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 	}
 	defer clear(credResp.Plaintext)
 
-	target := credResp.TargetURL
-	if target == "" {
-		target = h.cfg.DefaultTarget
-	}
-	if target == "" {
-		http.Error(w, "bad gateway: no target URL", http.StatusBadGateway)
-		return
-	}
-
-	targetURL, err := url.Parse(target)
-	if err != nil {
-		http.Error(w, "bad gateway: invalid target URL", http.StatusBadGateway)
+	// The upstream is the target stored with the credential only (D1).
+	targetURL, targetErrText := resolveTarget(credResp)
+	if targetURL == nil {
+		http.Error(w, targetErrText, http.StatusBadGateway)
 		return
 	}
 
@@ -1197,7 +1137,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
@@ -1220,7 +1160,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		ensureRequestID(req, targetURL)
 	}
 
-	proxy.ServeHTTP(w, r)
+	proxy.ServeHTTP(w, r.WithContext(withServiceID(r.Context(), serviceID)))
 }
 
 // urlServiceID extracts the service UUID from a Kong-routed path of the form
