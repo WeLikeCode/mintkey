@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | grant_revocation_test.go:227 names the first pair again as the third pair |
+| Q-001 | answered | 1.1 | technical | grant_revocation_test.go:227 names the first pair again as the third pair |
 <!-- l4:index:end -->
 
 ---
