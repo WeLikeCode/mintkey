@@ -1,0 +1,17 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:grant-expiry",
+  "round": 2,
+  "findings": [
+    "F-3324c8f4"
+  ],
+  "chores": [
+    "F-3324c8f4"
+  ],
+  "test_chores": [],
+  "refactors": [
+    "F-3324c8f4"
+  ],
+  "retakes": [],
+  "repairs": []
+}

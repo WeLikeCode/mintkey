@@ -10,14 +10,14 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | refactor | apps/mcp-server/src/mcp_server/tools/discovery.py:420 | Restore the email grant queries of list_services and discover |
+| FB-001 | taken | refactor | apps/mcp-server/src/mcp_server/tools/discovery.py:420 | Restore the email grant queries of list_services and discover |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Restore the email grant queries of list_services and discover
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** refactor
 - **Where:** `apps/mcp-server/src/mcp_server/tools/discovery.py:420-440`
 - **Where:** `apps/mcp-server/src/mcp_server/tools/discovery.py:516-536`
@@ -79,3 +79,4 @@ Restore both email_permission_grants queries (list_services and discover) to the
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into grant-expiry-fix-2
