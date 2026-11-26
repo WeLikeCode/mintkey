@@ -1,4 +1,4 @@
-# Verification: openspec:proxy-stored-target: NEEDS_HUMAN (round 4)
+# Verification: openspec:proxy-stored-target: PASS (round 5)
 
 traceability: 18/18 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 18/18 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 1.0 | base merged: staging@e754d0b962 as b086f61899 (1 commit) |
-| 1 | integrity | ok | 375.4 | 11 sub-checks; scope: 48 changed file(s) |
-| 2 | build | ok | 121.4 |  |
-| 3 | tests | ok | 127.2 |  |
-| 4 | traceability | ok | 0.2 | 18/18 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 4) |
+| 1 | integrity | reused | 0.0 | reused (round 4) |
+| 2 | build | reused | 0.0 | reused (round 4) |
+| 3 | tests | reused | 0.0 | reused (round 4) |
+| 4 | traceability | reused | 0.0 | reused (round 4) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | not measured: diff coverage measures python only; changed code outside it: apps/proxy-plugin/cmd/proxy-plugin/main.go, apps/proxy-plugin/cmd/proxy-plugin/target.go, apps/proxy-plugin/cmd/proxy-plugin/upstream.go, apps/proxy-plugin/internal/config/config.go, apps/proxy-plugin/internal/scrubber/respon... |
-| 8 | s1 judge | ok | 1.3 | 17/18 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 18.3 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 4) |
+| 8 | s1 judge | reused | 0.0 | reused (round 4) |
+| 9 | judge | reused | 0.0 | reused (round 4) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -207,6 +207,12 @@ Skipped in a changed file before this unit (hold): also skipped in a base report
 | C-e1d174b7 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-969b7732 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Answers to verdict questions
+
+- Q-002 accept H-5ce5dda0 by human: The skipped test test_classical_key_full_flow was run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true. It fails at its first step: its login call GET /v1/auth/csrf returns 404, and the admin API has no such route on the base branch or at this unit'...
+- Q-003 accept H-430ee622 by human: The four skipped tests (test_broker_smoke, test_vault_adapter_smoke, test_proxy_plugin_smoke, test_kong_smoke) were run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true: all four passed, test_proxy_plugin_smoke with the received_key assertion this u...
+- Q-004 accept H-46baa229 by human: The three skipped tests (test_ws8_golden_path_agent_to_upstream, test_ws9_vault_grpc_end_to_end, test_ws10_list_versions_end_to_end) were run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true: all three passed, test_ws8_golden_path_agent_to_upstream ...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -233,12 +239,6 @@ Skipped in a changed file before this unit (hold): also skipped in a base report
 ## Findings
 
 - [minor, judge] Encoded event stream is refused (spec gap) (criterion C-e1d174b7): The Content-Encoding check runs before the event-stream branch, so a text/event-stream response with a non-identity encoding gets 502 rather than being streamed; no scenario pins this.
-
-## Needs a human
-
-- skipped: existing tests in `tests/acceptance/test_classical_key.py` were also skipped in a base report, and the file adds or changes no skip the harness reads (1 tests)
-- skipped: existing tests in `tests/acceptance/test_data_plane_smoke.py` were also skipped in a base report, and the file adds or changes no skip the harness reads (4 tests)
-- skipped: existing tests in `tests/acceptance/test_golden_path.py` were also skipped in a base report, and the file adds or changes no skip the harness reads (3 tests)
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
