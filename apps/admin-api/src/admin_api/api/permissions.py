@@ -20,10 +20,9 @@ Source: T-1.4.2; T-BUD-2.2; ADR-0008; ADR-0014.7; ADR-0016.4; ADR-0017.11.
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -33,13 +32,29 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
-from admin_api.auth.sessions import require_tenant_session
+from admin_api.auth.sessions import get_session_context, require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.db.tables import (
     agents as agents_table,
     permission_grants as pg_table,
     services as services_table,
+)
+from admin_api.services.grant_expiry import (
+    GRANTOR_AGENT,
+    GRANTOR_OPERATOR,
+    GrantExpiryError,
+)
+from admin_api.services.grants import (
+    GrantConflict,
+    Grantor,
+    _budget_period_bounds as _budget_period_bounds,
+    delete_grant,
+    grant_granted_audit_payload,
+    grant_revoked_audit_payload,
+    grant_revoked_notify_payload,
+    grant_wire_fields,
+    write_grant,
 )
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
@@ -51,36 +66,6 @@ router = APIRouter(prefix="/v1/tenants/{tenant_id}/agents/{agent_id}/permissions
 # Flat list router — no agent_id scoping; used by admin-ui dashboard + ApiKeyCreate
 # Source: A2 R9 fix; AdminJS RestResource listPath="/v1/tenants/{tenantId}/permissions"
 tenant_permissions_router = APIRouter(prefix="/v1/tenants/{tenant_id}/permissions")
-
-# Crockford base32 alphabet (uppercase, no I/L/O/U) — ADR-0017.11
-_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-
-
-# ---------------------------------------------------------------------------
-# ID generation — ADR-0017.11
-# ---------------------------------------------------------------------------
-
-
-def _new_perm_id() -> str:
-    """Generate a ULID-format ID with the 'perm_' prefix — ADR-0017.11."""
-    ts_ms = int(time.time() * 1000)
-    rand = int.from_bytes(uuid.uuid4().bytes[:10], "big")
-
-    t_enc = []
-    v = ts_ms
-    for _ in range(10):
-        t_enc.append(_CROCKFORD[v & 0x1F])
-        v >>= 5
-    t_enc.reverse()
-
-    r_enc = []
-    v = rand
-    for _ in range(16):
-        r_enc.append(_CROCKFORD[v & 0x1F])
-        v >>= 5
-    r_enc.reverse()
-
-    return "perm_" + "".join(t_enc) + "".join(r_enc)
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +116,7 @@ class PermissionGrantRequest(BaseModel):
     action: str
     constraints: Optional[Constraints] = None
     granted_by: Optional[str] = None
+    expires_at: Optional[datetime] = None
 
 
 class PermissionPatchRequest(BaseModel):
@@ -271,7 +257,8 @@ async def list_permissions(
     if svc_uuid_val is not None:
         result = await session.execute(
             text(
-                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by,"
+                " expires_at, grantor_type, grantor_id"
                 " FROM permission_grants"
                 " WHERE agent_id = :aid AND tenant_id = :tid"
                 " AND service_id = :svc_id"
@@ -282,7 +269,8 @@ async def list_permissions(
     else:
         result = await session.execute(
             text(
-                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by"
+                "SELECT id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by,"
+                " expires_at, grantor_type, grantor_id"
                 " FROM permission_grants"
                 " WHERE agent_id = :aid AND tenant_id = :tid"
                 " ORDER BY created_at"
@@ -291,6 +279,7 @@ async def list_permissions(
         )
     rows = result.fetchall()
 
+    now = datetime.now(timezone.utc)
     grants = [
         {
             "id": db_uuid_to_wire(row.id, "perm"),
@@ -303,6 +292,7 @@ async def list_permissions(
             ),
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "created_by": str(row.created_by) if row.created_by else None,
+            **grant_wire_fields(row, now),
         }
         for row in rows
     ]
@@ -321,6 +311,7 @@ async def list_tenant_permissions(
     tenant_id: UUID,
     service_id: Optional[str] = None,
     agent_id: Optional[str] = None,
+    grantor_agent_id: Optional[str] = None,
     q: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
@@ -329,9 +320,10 @@ async def list_tenant_permissions(
     List all permission grants for a tenant.
 
     Optional query parameters:
-      service_id — filter by service (UUID or svc_ wire-ID).
-      agent_id   — filter by agent (UUID or agent_ wire-ID).
-      q          — case-insensitive substring match on action (ILIKE '%q%').
+      service_id       — filter by service (UUID or svc_ wire-ID).
+      agent_id         — filter by agent (UUID or agent_ wire-ID).
+      grantor_agent_id — filter to grants given by an agent (agent_ wire-ID or UUID).
+      q                — case-insensitive substring match on action (ILIKE '%q%').
 
     Returns {"permissions": [...]} to match admin-ui RestResource listKey.
 
@@ -353,6 +345,9 @@ async def list_tenant_permissions(
             pg_table.c.constraints,
             pg_table.c.created_at,
             pg_table.c.created_by,
+            pg_table.c.expires_at,
+            pg_table.c.grantor_type,
+            pg_table.c.grantor_id,
             services_table.c.name.label("service_name"),
             services_table.c.slug.label("service_slug"),
             agents_table.c.name.label("agent_name"),
@@ -390,6 +385,24 @@ async def list_tenant_permissions(
         svc_uuid_val = _decode_wire(service_id, "svc")
         stmt = stmt.where(pg_table.c.service_id == svc_uuid_val)
 
+    if grantor_agent_id is not None:
+        try:
+            grantor_uuid = uuid.UUID(
+                _decode_agent_wire_id(grantor_agent_id, "agent_")
+            )
+        except (ValueError, AttributeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+            )
+        # Both filter values travel as bound parameters: the statement text
+        # never carries them, and every accepted id spelling reaches the
+        # database as one canonical UUID value.
+        stmt = stmt.where(
+            pg_table.c.grantor_type == GRANTOR_AGENT,
+            pg_table.c.grantor_id == grantor_uuid,
+        )
+
     if q is not None and q.strip() != "":
         # ILIKE substring match on action — UX-B inline search.
         # .ilike(f"%{...}%") passes a *value* bound at execution time;
@@ -399,6 +412,7 @@ async def list_tenant_permissions(
     result = await session.execute(stmt)
     rows = result.fetchall()
 
+    now = datetime.now(timezone.utc)
     permissions = [
         {
             "id": db_uuid_to_wire(row.id, "perm"),
@@ -415,6 +429,7 @@ async def list_tenant_permissions(
             "service_name": row.service_name,
             "service_slug": row.service_slug,
             "agent_name": row.agent_name,
+            **grant_wire_fields(row, now),
         }
         for row in rows
     ]
@@ -515,6 +530,9 @@ async def get_permission(
             pg_table.c.service_id,
             pg_table.c.action,
             pg_table.c.constraints,
+            pg_table.c.expires_at,
+            pg_table.c.grantor_type,
+            pg_table.c.grantor_id,
         ).where(
             pg_table.c.id == perm_uuid,
             pg_table.c.tenant_id == tenant_id,
@@ -524,6 +542,7 @@ async def get_permission(
     if row is None:
         return JSONResponse(status_code=404, content={"title": "Permission not found"})
 
+    now = datetime.now(timezone.utc)
     return JSONResponse({
         "id": db_uuid_to_wire(row.id, "perm"),
         "agent_id": db_uuid_to_wire(row.agent_id, "agent"),
@@ -534,6 +553,7 @@ async def get_permission(
             if isinstance(row.constraints, dict)
             else (json.loads(row.constraints) if row.constraints else None)
         ),
+        **grant_wire_fields(row, now),
     })
 
 
@@ -544,6 +564,7 @@ async def grant_permission(
     body: PermissionGrantRequest,
     session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
+    ctx: Any = Depends(get_session_context),
 ) -> JSONResponse:
     """
     Grant a permission from an agent to a service action.
@@ -599,139 +620,73 @@ async def grant_permission(
         body.constraints.model_dump(exclude_none=True) if body.constraints else {}
     )
 
-    # 6. Check for existing grant with same (agent_uuid, svc_uuid, action)
-    existing_result = await session.execute(
-        text(
-            "SELECT id, constraints FROM permission_grants"
-            " WHERE agent_id = :aid AND service_id = :sid AND action = :action"
-            "   AND tenant_id = :tid"
-        ),
-        {
-            "aid": agent_uuid,
-            "sid": svc_uuid,
-            "action": body.action,
-            "tid": str(tenant_id),
-        },
-    )
-    existing = existing_result.fetchone()
-
-    if existing is not None:
-        # Normalize stored constraints for comparison
-        stored_raw = existing.constraints
-        if isinstance(stored_raw, str):
-            stored = json.loads(stored_raw)
-        elif stored_raw is None:
-            stored = None
-        else:
-            stored = stored_raw
-
-        if stored == constraints_dict:
-            # Idempotent — same params, return existing
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "id": str(existing.id),
-                    "agent_id": agent_id,
-                    "service_id": body.service_id,
-                    "action": body.action,
-                    "constraints": constraints_dict,
-                },
-            )
-        else:
-            # Conflict — different constraints
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "mintkey:code": "permission_constraints_conflict",
-                    "title": "A permission grant with different constraints already exists",
-                },
-            )
-
-    # 7. Generate perm_ ULID ID — ADR-0017.11
-    # Derive internal DB UUID from ULID bits — same pattern as agents/services (#13).
-    perm_id = _new_perm_id()
-    _perm_tail = perm_id[len("perm_"):]
-    _perm_val = 0
-    for _ch in _perm_tail.upper():
-        _perm_val = (_perm_val << 5) | _CROCKFORD.index(_ch)
-    _perm_val &= (1 << 128) - 1
-    internal_id = uuid.UUID(int=_perm_val)
-    now = datetime.now(timezone.utc)
-
-    # 8. INSERT permission_grants — bind svc_uuid (decoded UUID), not raw wire-form
-    granted_by = body.granted_by or agent_uuid
-    await session.execute(
-        text(
-            "INSERT INTO permission_grants"
-            " (id, tenant_id, agent_id, service_id, action, constraints, created_at, created_by)"
-            " VALUES"
-            " (:id, :tenant_id, :agent_id, :service_id, :action, CAST(:constraints AS jsonb), :created_at, :created_by)"
-        ),
-        {
-            "id": str(internal_id),
-            "tenant_id": str(tenant_id),
-            "agent_id": agent_uuid,
-            "service_id": svc_uuid,
-            "action": body.action,
-            "constraints": json.dumps(constraints_dict),
-            "created_at": now,
-            "created_by": granted_by,
-        },
+    # 6. The grantor is the authenticated operator, never the request body.
+    operator_id = getattr(ctx, "operator_id", None)
+    grantor = Grantor(
+        type=GRANTOR_OPERATOR,
+        id=str(operator_id) if operator_id is not None else None,
     )
 
-    # 9. Upsert budget counter if budget constraint provided — T-BUD-2.2
-    if constraints_dict.get("budget"):
-        budget_cfg = constraints_dict["budget"]
-        period_start, period_end = _budget_period_bounds(
-            budget_cfg["period"], now
+    # 7. One write path: the expiry rules, the advisory lock, the existing-row
+    #    decision, the insert and the budget counter — D6, D7, D7b.
+    try:
+        record = await write_grant(
+            session,
+            tenant_id=tenant_id,
+            agent_id=agent_uuid,
+            service_id=svc_uuid,
+            action=body.action,
+            constraints=constraints_dict,
+            expires_at=body.expires_at,
+            grantor=grantor,
         )
-        await session.execute(
-            text(
-                "INSERT INTO budget_counters"
-                " (permission_id, period_start, period_end, ceiling, used, tenant_id)"
-                " VALUES (:pid, :ps, :pe, :ceiling, 0, :tid)"
-                " ON CONFLICT (permission_id, period_start) DO UPDATE"
-                " SET ceiling = :ceiling, period_end = :pe"
-            ),
-            {
-                "pid": str(internal_id),
-                "ps": period_start,
-                "pe": period_end,
-                "ceiling": budget_cfg["ceiling"],
-                "tid": str(tenant_id),
+    except GrantExpiryError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "mintkey:code": "invalid_expires_at",
+                "title": "Invalid expires_at",
+                "reason": exc.reason,
+            },
+        )
+    except GrantConflict:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "mintkey:code": "permission_constraints_conflict",
+                "title": "A permission grant with different constraints already exists",
             },
         )
 
-    # 10. Emit audit event — ADR-0014.7
-    await audit_emit(
-        session=session,
-        tenant_id=tenant_id,
-        event_type="agent.permission.granted",
-        actor_id=None,
-        actor_type="operator",
-        target_id=internal_id,
-        target_type="permission",
-        payload={
-            "perm_id": perm_id,
-            "agent_id": agent_id,
-            "service_id": body.service_id,
-            "action": body.action,
-            "constraints": constraints_dict,
-        },
-    )
+    now = datetime.now(timezone.utc)
 
-    # 11. Return 201
+    # 8. Emit the audit event for a new grant — ADR-0014.7
+    if record.created:
+        await audit_emit(
+            session=session,
+            tenant_id=tenant_id,
+            event_type="agent.permission.granted",
+            actor_id=None,
+            actor_type="operator",
+            target_id=uuid.UUID(record.id),
+            target_type="permission",
+            payload=grant_granted_audit_payload(record),
+        )
+
+    # 9. Return 201 for a new grant, 200 for the identical live one.
+    created_at = record.created_at.isoformat() if record.created_at else None
     return JSONResponse(
-        status_code=201,
+        status_code=201 if record.created else 200,
         content={
-            "id": perm_id,
+            "id": record.wire_id,
             "tenant_id": str(tenant_id),
             "agent_id": agent_id,
             "service_id": body.service_id,
             "action": body.action,
-            "constraints": constraints_dict,
-            "created_at": now.isoformat(),
-            "updated_at": now.isoformat(),
+            "constraints": record.constraints,
+            "created_at": created_at,
+            "updated_at": created_at,
+            **grant_wire_fields(record, now),
         },
     )
 
@@ -743,11 +698,13 @@ async def revoke_permission(
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
+    ctx: Any = Depends(get_session_context),
 ) -> Response:
     """
     Revoke a permission grant.
 
-    Emits audit agent.permission.revoked and NOTIFY mintkey:agent.
+    Deletes the grant through the shared write path and, when a row existed,
+    emits audit agent.permission.revoked and NOTIFY mintkey:agent.
 
     Source: T-1.4.2; ADR-0008; ADR-0014.7; ADR-0014.1.
     """
@@ -757,91 +714,48 @@ async def revoke_permission(
     # Decode wire-form IDs → DB UUIDs — ADR-0017.11; #13
     from admin_api.utils.wire_ids import wire_to_db_uuid as _decode_wire  # noqa: PLC0415
     try:
-        perm_db_id = _decode_wire(permission_id, "perm")
+        _decode_wire(permission_id, "perm")
         agent_db_id = _decode_agent_wire_id(agent_id, "agent_") if agent_id.startswith("agent_") else agent_id
     except ValueError:
         return Response(status_code=422)
 
-    # 2. DELETE (RLS ensures tenant isolation)
-    await session.execute(
-        text(
-            "DELETE FROM permission_grants"
-            " WHERE id = :pid AND agent_id = :aid AND tenant_id = :tid"
-        ),
-        {"pid": perm_db_id, "aid": agent_db_id, "tid": str(tenant_id)},
+    # 2. Delete through the one write path; None means there was no row.
+    record = await delete_grant(
+        session,
+        tenant_id=tenant_id,
+        grant_id=permission_id,
+        agent_id=agent_db_id,
     )
+    if record is None:
+        return Response(status_code=204)
+
+    operator_id = getattr(ctx, "operator_id", None)
+    revoked_by = Grantor(
+        type=GRANTOR_OPERATOR,
+        id=str(operator_id) if operator_id is not None else None,
+    )
+    revoked_at = datetime.now(timezone.utc)
 
     # 3. Emit audit event — ADR-0014.7
     await audit_emit(
         session=session,
         tenant_id=tenant_id,
         event_type="agent.permission.revoked",
-        actor_id=None,
+        actor_id=operator_id,
         actor_type="operator",
-        target_id=None,
+        target_id=uuid.UUID(record.id),
         target_type="permission",
-        payload={"permission_id": permission_id, "agent_id": agent_id},
+        payload=grant_revoked_audit_payload(record, revoked_by),
     )
 
     # 4. NOTIFY global channel — ADR-0014.1
     await notify_change(
         session,
         "mintkey:agent",
-        {
-            "event": "agent.permission.revoked",
-            "tenant_id": str(tenant_id),
-            "agent_id": agent_id,
-            "permission_id": permission_id,
-        },
+        grant_revoked_notify_payload(tenant_id, record, revoked_at),
     )
 
     return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
-# Budget period boundary helper — design §3; T-BUD-2.2
-# ---------------------------------------------------------------------------
-
-
-def _budget_period_bounds(
-    period: str, now: datetime
-) -> tuple[datetime, datetime]:
-    """
-    Compute UTC-aligned (start, end) for the given period containing `now`.
-
-    | Period   | Start                   | End                          |
-    |----------|-------------------------|------------------------------|
-    | hourly   | Top of the hour         | +1 hour                      |
-    | daily    | 00:00:00Z               | +24 hours                    |
-    | weekly   | Monday 00:00:00Z        | +7 days                      |
-    | monthly  | 1st of month 00:00:00Z  | 1st of next month 00:00:00Z  |
-
-    Source: design §3; T-BUD-2.5.
-    """
-    from calendar import monthrange
-    from datetime import timedelta
-
-    if period == "hourly":
-        start = now.replace(minute=0, second=0, microsecond=0)
-        end = start + timedelta(hours=1)
-    elif period == "daily":
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-    elif period == "weekly":
-        # Monday 00:00:00Z of the current week
-        days_since_monday = now.weekday()  # Monday=0
-        start = (now - timedelta(days=days_since_monday)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        end = start + timedelta(days=7)
-    elif period == "monthly":
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        _, days_in_month = monthrange(now.year, now.month)
-        end = start + timedelta(days=days_in_month)
-    else:
-        raise ValueError(f"Unknown budget period: {period}")
-
-    return start, end
 
 
 # ---------------------------------------------------------------------------

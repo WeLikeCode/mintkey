@@ -23,6 +23,7 @@ Source: Req 6 AC5, AC10; ADR-0016.4; ADR-0014.7; ADR-0008.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -37,6 +38,7 @@ from mintkey_models.audit import audit_emit
 from mintkey_models.tenant_ctx import set_tenant_context
 from mcp_server.db.session import get_db_session
 from mcp_server.policy.constraints import RateLimiter, evaluate_rate_limit, evaluate_time_window
+from mcp_server.policy.grant_expiry import grant_ttl_seconds
 from mcp_server.tools.discovery import get_agent_context
 from mcp_server.config.public_urls import resolve_ssh_proxy_public_host
 from mcp_server.utils.wire_ids import ServiceNotFound, db_uuid_to_wire, resolve_email_service_id, resolve_service_id
@@ -74,6 +76,11 @@ def _denial_hint(reason: str, agent_id: str, service_id: str, action: str) -> Op
         return (
             "Current time is outside the time_window constraint on this grant. "
             "Check describe_service.your_constraints.time_window for allowed hours/days."
+        )
+    if reason == "grant_expired":
+        return (
+            f"The permission grant for agent '{agent_id}' on service '{service_id}' "
+            f"for action '{action}' has expired. Ask the operator to grant it again."
         )
     return None
 
@@ -182,9 +189,10 @@ async def request_token(
     # 1. Look up permission grant in services / permission_grants.
     result = await session.execute(
         text(
-            "SELECT agent_id, service_id, action, constraints"
+            "SELECT agent_id, service_id, action, constraints, expires_at"
             " FROM permission_grants"
             " WHERE agent_id = :aid AND service_id = :sid AND action = :action"
+            " ORDER BY (expires_at IS NULL) DESC, expires_at DESC, created_at DESC, id"
             " LIMIT 1"
         ),
         {"aid": agent_id, "sid": db_service_id, "action": body.action},
@@ -231,6 +239,30 @@ async def request_token(
         return JSONResponse(status_code=403, content=_body)
 
     constraints: dict = grant.constraints or {}
+
+    # 1b. An expired grant is absent: decide before the rate limit so an
+    # expired grant never counts against a limit.  A grant with less than the
+    # minimum token lifetime left is treated the same way.
+    _expires_at = getattr(grant, "expires_at", None)
+    ttl_seconds = grant_ttl_seconds(_expires_at, datetime.now(timezone.utc))
+    if _expires_at is not None and ttl_seconds is None:
+        _reason = "grant_expired"
+        _hint = _denial_hint(_reason, agent_id, wire_service_id, body.action)
+        await _emit_denial(
+            session, tenant_id, agent_id, wire_service_id, body.action,
+            _reason,
+            remediation_hint=_hint,
+        )
+        _body = {
+            "code": "mintkey:not_authorized",
+            "reason_code": _reason,
+            "agent_id": agent_id,
+            "service_id": wire_service_id,
+            "action": body.action,
+        }
+        if _hint is not None:
+            _body["hint"] = _hint
+        return JSONResponse(status_code=403, content=_body)
 
     # 2. Evaluate rate_limit constraint
     if rate_limit := constraints.get("rate_limit"):
@@ -295,7 +327,7 @@ async def request_token(
         "service_id": db_service_id,
         "tenant_id": tenant_id,
         "scope": body.action,
-        "ttl_seconds": 600,
+        "ttl_seconds": ttl_seconds,
     }
     if body.methods is not None:
         broker_payload["methods"] = body.methods

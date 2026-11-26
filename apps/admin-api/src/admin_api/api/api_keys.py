@@ -316,6 +316,7 @@ async def create_api_key(
         text(
             "SELECT action FROM permission_grants"
             " WHERE agent_id = :aid AND service_id = :sid AND tenant_id = :tid"
+            "   AND (expires_at IS NULL OR expires_at > now())"
         ),
         {"aid": agent_uuid, "sid": svc_uuid, "tid": str(tenant_id)},
     )

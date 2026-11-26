@@ -90,6 +90,9 @@ databaseChangeLog:
       file: 029-oidc-login-state.yaml
       relativeToChangelogFile: true
   - include:
+      file: 030-grant-expiry.yaml
+      relativeToChangelogFile: true
+  - include:
       file: 033-credential-target-backfill.yaml
       relativeToChangelogFile: true
   - include:

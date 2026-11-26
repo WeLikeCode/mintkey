@@ -1,0 +1,875 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "CL/006",
+      "CL/011",
+      "ADM/api/permissions.py",
+      "ADM/auth/sessions.py",
+      "MCP/tools/request_token.py",
+      "tests/unit/admin_api/test_permissions.py",
+      "tests/acceptance/test_sqlalchemy_mirror.py",
+      "mintkey_models/db.py",
+      "ADM/db/tables.py",
+      "specs/grant-expiry/spec.md",
+      "apps/admin-api/src/admin_api/api/permissions.py",
+      "apps/admin-api/src/admin_api/api/agents.py",
+      "apps/admin-api/src/admin_api/api/api_keys.py",
+      "apps/admin-api/src/admin_api/db/tables.py",
+      "apps/mcp-server/src/mcp_server/tools/request_token.py",
+      "apps/mcp-server/src/mcp_server/tools/discovery.py",
+      "docs/architecture/contracts/events/audit-event.schema.json",
+      "apps/admin-api/db/changelog/db.changelog-master.yaml",
+      "apps/admin-api/db/changelog/030-grant-expiry.yaml",
+      "apps/admin-api/src/admin_api/services/grant_expiry.py",
+      "apps/admin-api/src/admin_api/services/grants.py",
+      "apps/mcp-server/src/mcp_server/policy/grant_expiry.py",
+      "tests/unit/admin_api/test_grant_expiry_migration.py",
+      "tests/unit/admin_api/test_grant_expiry_rules.py",
+      "tests/unit/admin_api/test_grants_service.py",
+      "tests/unit/admin_api/test_permissions_expiry.py",
+      "tests/unit/admin_api/test_grant_expiry_readers.py",
+      "tests/unit/admin_api/test_audit_schema_grants.py",
+      "apps/mcp-server/tests/test_grant_expiry_tokens.py",
+      "apps/mcp-server/tests/test_grant_expiry_discovery.py",
+      "apps/admin-api",
+      "src/admin_api",
+      "apps/mcp-server",
+      "apps/mcp-server/tests/test_request_token_scope_claims.py",
+      "packages/python/mintkey-models/mintkey_models/db.py",
+      "tests/unit/admin_api/test_api_keys.py",
+      "**/api_keys.py",
+      "**/agents.py",
+      "**/grants.py",
+      "module ADM",
+      "module CL",
+      "module MCP",
+      "module admin-api",
+      "module admin_api",
+      "module docs",
+      "module mcp-server",
+      "module mintkey_models",
+      "module python",
+      "module specs",
+      "module tests",
+      "module tools"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/admin-api/db/changelog/030-grant-expiry.yaml",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/db/changelog/db.changelog-master.yaml",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agents.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/api_keys.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/db/tables.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/policy/grant_expiry.py",
+        "module": "mcp-server",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/discovery.py",
+        "module": "mcp-server",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/request_token.py",
+        "module": "mcp-server",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/mcp-server/tests/test_grant_expiry_discovery.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/mcp-server/tests/test_grant_expiry_tokens.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "docs/architecture/contracts/events/audit-event.schema.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-1/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-1/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-1/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-1/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-2/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-2/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-2/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry-fix-2/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-1/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-1/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-1/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-2/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-2/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-2/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-3/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/evidence/round-3/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/ledger/r-20261126T1714Z-e646.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/ledger/r-20261126T1716Z-d1d6.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/ledger/r-20261126T1923Z-1f47.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/.l4/ledger/r-20261126T2132Z-c38f.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/feedback.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/grant-expiry/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "tests/unit/admin_api/test_audit_schema_grants.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_grant_expiry_migration.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_grant_expiry_readers.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_grant_expiry_rules.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_grants_service.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_permissions.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "tests/unit/admin_api/test_permissions_expiry.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_run",
+    "reason": "coverage.py is not importable in the project environment",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [],
+    "functions": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/agents.py",
+        "qualname": "list_agents",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agents.py",
+        "qualname": "get_agent",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/api_keys.py",
+        "qualname": "create_api_key",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "PermissionGrantRequest",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "list_permissions",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "list_tenant_permissions",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "get_permission",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "grant_permission",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/permissions.py",
+        "qualname": "revoke_permission",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/db/tables.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "GrantExpiryError",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "GrantExpiryError.__init__",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "agent_grant_max_ttl_seconds",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "is_expired",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grant_expiry.py",
+        "qualname": "check_grant_expiry",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "Grantor",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "GrantRecord",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "GrantConflict",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_new_perm_id",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_perm_id_to_uuid",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_budget_period_bounds",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_as_datetime",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_as_text",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_grantor_type",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_parse_constraints",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_constraints_dict",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_wire",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_grantor_wire_id",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "_record_from_row",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "write_grant",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "delete_grant",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "grant_granted_audit_payload",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "grant_revoked_audit_payload",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "grant_revoked_notify_payload",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/grants.py",
+        "qualname": "grant_wire_fields",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/policy/grant_expiry.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/policy/grant_expiry.py",
+        "qualname": "grant_ttl_seconds",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/discovery.py",
+        "qualname": "list_services",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/discovery.py",
+        "qualname": "discover",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/discovery.py",
+        "qualname": "describe_service",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/request_token.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/request_token.py",
+        "qualname": "_denial_hint",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/mcp-server/src/mcp_server/tools/request_token.py",
+        "qualname": "request_token",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      }
+    ]
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 2968,
+      "passed": 2914,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 54,
+      "new": 41,
+      "new_passed": 41,
+      "skipped_unchanged": [
+        "apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated",
+        "apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401",
+        "apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields",
+        "apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found",
+        "apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape",
+        "github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger",
+        "github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming",
+        "tests.acceptance.test_admin_ui_boot::test_login_page_returns_200",
+        "tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]",
+        "tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end",
+        "tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2",
+        "tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode",
+        "tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call",
+        "tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue",
+        "tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation",
+        "tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429",
+        "tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call",
+        "tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created",
+        "tests.acceptance.test_classical_key::test_classical_key_full_flow",
+        "tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy",
+        "tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt",
+        "tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403",
+        "tests.acceptance.test_data_plane_smoke::test_broker_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_kong_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke",
+        "tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end",
+        "tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream",
+        "tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end",
+        "tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end",
+        "tests.acceptance.test_observability::test_audit_chain_valid",
+        "tests.acceptance.test_observability::test_prometheus_targets_all_up",
+        "tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics",
+        "tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded",
+        "tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12",
+        "tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok"
+      ],
+      "skipped_predating": [],
+      "skipped_source": "",
+      "skipped_note": ""
+    },
+    "findings": []
+  }
+}

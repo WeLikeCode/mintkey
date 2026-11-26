@@ -1,0 +1,82 @@
+databaseChangeLog:
+  # =========================================================================
+  # 030-grant-expiry.yaml
+  #
+  # Adds a grant's expiry and grantor to `public.permission_grants`:
+  #   - expires_at   (TIMESTAMPTZ, NULL = no expiry)
+  #   - grantor_type (TEXT NOT NULL DEFAULT 'operator', operator | agent)
+  #   - grantor_id   (UUID, NULL for existing rows)
+  # plus an index on (tenant_id, grantor_id) for the grantor filter.
+  #
+  # Source: openspec/changes/grant-expiry/design.md §D1.
+  # =========================================================================
+
+  - changeSet:
+      id: "030-grant-expiry-columns"
+      author: mintkey
+      changes:
+        - addColumn:
+            schemaName: public
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: expires_at
+                  type: TIMESTAMPTZ
+                  remarks: "Instant after which the grant is absent; NULL means no expiry."
+              - column:
+                  name: grantor_type
+                  type: TEXT
+                  defaultValue: operator
+                  remarks: "Who gave the grant: operator or agent."
+                  constraints:
+                    nullable: false
+              - column:
+                  name: grantor_id
+                  type: UUID
+                  remarks: "Operator or agent that gave the grant; NULL for existing rows."
+      rollback:
+        - dropColumn:
+            schemaName: public
+            tableName: permission_grants
+            columnName: grantor_id
+        - dropColumn:
+            schemaName: public
+            tableName: permission_grants
+            columnName: grantor_type
+        - dropColumn:
+            schemaName: public
+            tableName: permission_grants
+            columnName: expires_at
+
+  - changeSet:
+      id: "030-grant-expiry-check"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE permission_grants
+                ADD CONSTRAINT ck_permission_grants_grantor_type
+                CHECK (grantor_type IN ('operator', 'agent'));
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE permission_grants
+                DROP CONSTRAINT IF EXISTS ck_permission_grants_grantor_type;
+
+  - changeSet:
+      id: "030-grant-expiry-index"
+      author: mintkey
+      changes:
+        - createIndex:
+            indexName: idx_permission_grants_tenant_grantor
+            tableName: permission_grants
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: grantor_id
+            unique: false
+      rollback:
+        - dropIndex:
+            indexName: idx_permission_grants_tenant_grantor
+            tableName: permission_grants
