@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.db.deps import get_db_session
 from mintkey_models.tenant_ctx import set_tenant_context
 
@@ -30,12 +31,14 @@ router = APIRouter(prefix="/v1/tenants/{tenant_id}/budget-consumers")
 async def list_budget_consumers(
     tenant_id: UUID,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """List all budget-configured permission grants with consumption data.
 
     Performs a server-side join across permission_grants, budget_counters,
     agents, and services. Results are sorted: exhausted first, then by
     consumption percentage descending.
+    The route requires the tenant session.
 
     Source: design §Components; requirements 2.1–2.6.
     """

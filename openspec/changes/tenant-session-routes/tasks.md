@@ -5,7 +5,7 @@ Each task writes its tests first and sees them fail for the reason it names, the
 
 ## 1. The seven handlers require the tenant session
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_tenant_session_routes.py`. It puts `apps/admin-api/src` and
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_tenant_session_routes.py`. It puts `apps/admin-api/src` and
   `packages/python/mintkey-models` on `sys.path` as `tests/unit/admin_api/test_cross_tenant_403.py` does, and sets
   `MINTKEY_AUDIT_HMAC_KEY` (64 `0` characters) and `MINTKEY_VAULT_BACKEND=sqlite` with `os.environ.setdefault` before it
   imports `admin_api.main`. Constants: `TA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"`, `TB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"`,

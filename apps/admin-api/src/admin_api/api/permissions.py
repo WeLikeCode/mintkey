@@ -426,12 +426,14 @@ async def get_permission_budget(
     tenant_id: UUID,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     GET /v1/tenants/{tenant_id}/permissions/{permission_id}/budget
 
     Returns current budget status: ceiling, used, period, period bounds.
     404 if permission not found or no budget configured.
+    The route requires the tenant session.
 
     Source: budget-management-ui spec R6.1; ADR-0030.
     """
@@ -487,12 +489,14 @@ async def get_permission(
     tenant_id: UUID,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     GET /v1/tenants/{tenant_id}/permissions/{permission_id}
 
     Returns a single permission grant. Used by the admin-ui BFF to resolve
     agent_id for write operations (edit/remove/reset budget).
+    The route requires the tenant session.
 
     Source: budget-management-ui spec; ADR-0019 (BFF pattern).
     """
@@ -853,6 +857,7 @@ async def update_permission(
     permission_id: str,
     body: PermissionPatchRequest,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Update permission grant constraints (budget configuration).
@@ -863,6 +868,7 @@ async def update_permission(
     - If period changed: closes current counter row and creates new one.
     - Emits budget.config_updated audit event.
     - Fires change-channel NOTIFY mintkey:agent.
+    The route requires the tenant session.
 
     Source: T-BUD-2.2; FR-6; design §5, §6.
     """
@@ -1103,12 +1109,14 @@ async def reset_budget_counter(
     agent_id: str,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     POST /v1/tenants/{tenant_id}/agents/{agent_id}/permissions/{permission_id}/budget/reset
 
     Resets the current-period budget counter to 0 so the agent can resume
     operations immediately.  Returns the updated used count (always 0).
+    The route requires the tenant session.
 
     Source: budget-management-ui spec R6.4; ADR-0030.
     """
