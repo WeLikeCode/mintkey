@@ -21,3 +21,5 @@
 {"at":"2026-11-25T06:25:23Z","run":"r-20261125T0625Z-c049","type":"unit.dispatched","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-25T07:45:32Z","attempt":1,"cost_usd":5.622172,"runs":5,"type":"plan.charged","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-25T07:45:32Z","run":"r-20261125T0745Z-3966","type":"unit.dispatched","unit":"openspec:proxy-stored-target"}
+{"at":"2026-11-26T09:29:54Z","attempt":1,"cost_usd":7.707661,"runs":6,"type":"plan.charged","unit":"openspec:proxy-stored-target"}
+{"at":"2026-11-26T09:29:54Z","run":"r-20261126T0929Z-3223","type":"unit.dispatched","unit":"openspec:proxy-stored-target"}
