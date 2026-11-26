@@ -11,7 +11,7 @@ verification round, turns them into a fix unit and checks that each one was addr
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
 | FB-001 | addressed | refactor | apps/mcp-server/src/mcp_server/tools/discovery.py:420 | Restore the email grant queries of list_services and discover |
-| FB-002 | taken | refactor | apps/admin-api/src/admin_api/api/permissions.py:388 | Bind the grantor filter values as parameters |
+| FB-002 | addressed | refactor | apps/admin-api/src/admin_api/api/permissions.py:388 | Bind the grantor filter values as parameters |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -86,7 +86,7 @@ Addressed in round 4 at 4b47ca098d: apps/mcp-server/src/mcp_server/tools/discove
 
 ## FB-002: Bind the grantor filter values as parameters
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** refactor
 - **Where:** `apps/admin-api/src/admin_api/api/permissions.py:388-402`
 - **Lesson:** no
@@ -116,4 +116,4 @@ The grantor_agent_id filter of the permission listing compares grantor_type and 
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 5 into grant-expiry-fix-3
+Addressed in round 6 at 3ae84ca15d: apps/admin-api/src/admin_api/api/permissions.py: grantor_uuid = uuid.UUID(...); stmt.where(pg_table.c.grantor_type == GRANTOR_AGENT, pg_table.c.grantor_id == grantor_uuid) — no literal_column.
