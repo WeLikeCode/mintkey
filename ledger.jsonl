@@ -24,3 +24,4 @@
 {"at":"2026-11-26T09:29:54Z","attempt":1,"cost_usd":7.707661,"runs":6,"type":"plan.charged","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-26T09:29:54Z","run":"r-20261126T0929Z-3223","type":"unit.dispatched","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-26T09:42:56Z","detail":"awaiting_human: no new answers (verdicts open: Q-002, Q-003, Q-004) (escalated to a person: Q-002, Q-003, Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:proxy-stored-target"}
+{"at":"2026-11-26T09:55:09Z","by":"harness","reason":"the cause is gone: openspec:proxy-stored-target is awaiting_human","type":"plan.resumed"}
