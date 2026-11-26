@@ -67,3 +67,5 @@
 {"at":"2026-11-26T22:58:18Z","run":"r-20261126T2258Z-5ab7","type":"unit.dispatched","unit":"openspec:proxy-grant-revocation"}
 {"at":"2026-11-26T23:45:50Z","detail":"awaiting_human: no new answers (open: Q-001) (escalated to a person: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:proxy-grant-revocation"}
 {"at":"2026-11-26T23:53:34Z","by":"harness","reason":"the cause is gone: openspec:proxy-grant-revocation is awaiting_human","type":"plan.resumed"}
+{"at":"2026-11-26T23:53:36Z","attempt":1,"cost_usd":1.240082,"runs":2,"type":"plan.charged","unit":"openspec:proxy-grant-revocation"}
+{"at":"2026-11-26T23:53:36Z","run":"r-20261126T2353Z-644b","type":"unit.dispatched","unit":"openspec:proxy-grant-revocation"}
