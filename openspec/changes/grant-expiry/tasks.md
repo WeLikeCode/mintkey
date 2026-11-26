@@ -73,7 +73,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   rate-limit check with a new branch of `_denial_hint` and `_emit_denial`, and send the computed `ttl_seconds` in the
   broker payload (the email path keeps 600).
 
-- [ ] 4.2 Tests first, new file `apps/mcp-server/tests/test_grant_expiry_discovery.py`, covering the scenario "discovery
+- [x] 4.2 Tests first, new file `apps/mcp-server/tests/test_grant_expiry_discovery.py`, covering the scenario "discovery
   hides what the database says is expired" (call `list_services`, `discover` and `describe_service` of
   `mcp_server.tools.discovery` with a recording fake session). It fails before the change. Then add the filter to the
   three statements of `apps/mcp-server/src/mcp_server/tools/discovery.py` that read `permission_grants` (alias `pg`

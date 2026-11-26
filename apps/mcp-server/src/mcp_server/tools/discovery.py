@@ -400,6 +400,9 @@ async def list_services(
             " FROM services s"
             " JOIN permission_grants pg ON pg.service_id = s.id"
             " WHERE pg.agent_id = :agent_id"
+            # grant-expiry (D3): an expired grant is absent — the database
+            # clock decides.
+            "   AND (pg.expires_at IS NULL OR pg.expires_at > now())"
         ),
         {"agent_id": agent_ctx["agent_id"]},
     )
@@ -484,6 +487,9 @@ async def discover(
             " FROM services s"
             " JOIN permission_grants pg ON pg.service_id = s.id"
             " WHERE pg.agent_id = :agent_id"
+            # grant-expiry (D3): an expired grant is absent — the database
+            # clock decides.
+            "   AND (pg.expires_at IS NULL OR pg.expires_at > now())"
         ),
         {"agent_id": agent_ctx["agent_id"]},
     )
@@ -600,10 +606,13 @@ async def describe_service(
     # Fetch this agent's constraints for the service (task 3.2).
     # Bound params use distinct names (agent_id_ds, service_id_ds) to avoid
     # collision with existing fake sessions in tests.
+    # grant-expiry (D3): only a live grant — an expired one is absent, the
+    # database clock decides.
     constraints_result = await session.execute(
         text(
             "SELECT id, constraints FROM permission_grants"
             " WHERE agent_id = :agent_id_ds AND service_id = :service_id_ds"
+            "   AND (expires_at IS NULL OR expires_at > now())"
             " ORDER BY (action = 'call') DESC, created_at DESC"
             " LIMIT 1"
         ),
