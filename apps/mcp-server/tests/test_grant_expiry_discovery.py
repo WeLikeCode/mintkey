@@ -81,10 +81,6 @@ def _service_row() -> types.SimpleNamespace:
     )
 
 
-def _statements_reading(session: _RecordingSession, table: str) -> list[str]:
-    return [statement for statement in session.statements if table in statement]
-
-
 def _statements_reading_whole_word(
     session: _RecordingSession, table: str
 ) -> list[str]:
@@ -115,7 +111,7 @@ def test_C_e07d9989_list_services_filters_expired_grants() -> None:
     )
 
     assert response.status_code == 200
-    statements = _statements_reading(session, "permission_grants")
+    statements = _statements_reading_whole_word(session, "permission_grants")
     assert statements, "list_services must read permission_grants"
     for statement in statements:
         assert "pg.expires_at IS NULL OR pg.expires_at > now()" in statement
@@ -135,7 +131,7 @@ def test_C_e07d9989_discover_filters_expired_grants() -> None:
     )
 
     assert response.status_code == 200
-    statements = _statements_reading(session, "permission_grants")
+    statements = _statements_reading_whole_word(session, "permission_grants")
     assert statements, "discover must read permission_grants"
     for statement in statements:
         assert "pg.expires_at IS NULL OR pg.expires_at > now()" in statement
@@ -156,7 +152,7 @@ def test_C_e07d9989_describe_service_filters_expired_grants() -> None:
     )
 
     assert response.status_code == 200
-    statements = _statements_reading(session, "permission_grants")
+    statements = _statements_reading_whole_word(session, "permission_grants")
     assert statements, "describe_service must read permission_grants"
     for statement in statements:
         assert "expires_at IS NULL OR expires_at > now()" in statement
