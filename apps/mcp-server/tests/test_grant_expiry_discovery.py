@@ -18,6 +18,7 @@ Sources:
 from __future__ import annotations
 
 import asyncio
+import re
 import types
 import uuid
 from unittest.mock import MagicMock
@@ -84,6 +85,22 @@ def _statements_reading(session: _RecordingSession, table: str) -> list[str]:
     return [statement for statement in session.statements if table in statement]
 
 
+def _statements_reading_whole_word(
+    session: _RecordingSession, table: str
+) -> list[str]:
+    """Q-002: match the table name as a whole word.
+
+    `_` is a word character, so the email grants table
+    `email_permission_grants` is not counted, while every statement that
+    reads `permission_grants` (any whitespace or line break around it) is.
+    """
+    return [
+        statement
+        for statement in session.statements
+        if re.search(rf"\b{re.escape(table)}\b", statement)
+    ]
+
+
 @pytest.mark.l4("C-e07d9989")
 def test_C_e07d9989_list_services_filters_expired_grants() -> None:
     """The list_services join only reads grants that have not expired."""
@@ -140,6 +157,67 @@ def test_C_e07d9989_describe_service_filters_expired_grants() -> None:
 
     assert response.status_code == 200
     statements = _statements_reading(session, "permission_grants")
+    assert statements, "describe_service must read permission_grants"
+    for statement in statements:
+        assert "expires_at IS NULL OR expires_at > now()" in statement
+
+
+@pytest.mark.l4("C-e07d9989")
+def test_C_e07d9989_list_services_grant_reads_hide_expired_rows() -> None:
+    """list_services reads permission_grants only where the grant is live (Q-002 whole-word helper)."""
+    session = _RecordingSession()
+
+    response = asyncio.run(
+        discovery.list_services(
+            request=MagicMock(),
+            session=session,
+            agent_ctx=dict(_AGENT_CTX),
+        )
+    )
+
+    assert response.status_code == 200
+    statements = _statements_reading_whole_word(session, "permission_grants")
+    assert statements, "list_services must read permission_grants"
+    for statement in statements:
+        assert "pg.expires_at IS NULL OR pg.expires_at > now()" in statement
+
+
+@pytest.mark.l4("C-e07d9989")
+def test_C_e07d9989_discover_grant_reads_hide_expired_rows() -> None:
+    """discover reads permission_grants only where the grant is live (Q-002 whole-word helper)."""
+    session = _RecordingSession()
+
+    response = asyncio.run(
+        discovery.discover(
+            request=MagicMock(),
+            session=session,
+            agent_ctx=dict(_AGENT_CTX),
+        )
+    )
+
+    assert response.status_code == 200
+    statements = _statements_reading_whole_word(session, "permission_grants")
+    assert statements, "discover must read permission_grants"
+    for statement in statements:
+        assert "pg.expires_at IS NULL OR pg.expires_at > now()" in statement
+
+
+@pytest.mark.l4("C-e07d9989")
+def test_C_e07d9989_describe_service_grant_reads_hide_expired_rows() -> None:
+    """describe_service reads permission_grants only where the grant is live (Q-002 whole-word helper)."""
+    session = _RecordingSession(service_row=_service_row())
+
+    response = asyncio.run(
+        discovery.describe_service(
+            _SERVICE_UUID,
+            request=MagicMock(),
+            session=session,
+            agent_ctx=dict(_AGENT_CTX),
+        )
+    )
+
+    assert response.status_code == 200
+    statements = _statements_reading_whole_word(session, "permission_grants")
     assert statements, "describe_service must read permission_grants"
     for statement in statements:
         assert "expires_at IS NULL OR expires_at > now()" in statement
