@@ -43,3 +43,5 @@
 {"at":"2026-11-26T12:26:54Z","run":"r-20261126T1226Z-9797","type":"unit.dispatched","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T14:52:29Z","attempt":1,"cost_usd":1.009386,"runs":3,"type":"plan.charged","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T14:52:29Z","run":"r-20261126T1452Z-e476","type":"unit.dispatched","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T16:09:39Z","attempt":1,"cost_usd":1.988376,"runs":4,"type":"plan.charged","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T16:09:39Z","run":"r-20261126T1609Z-1ffe","type":"unit.dispatched","unit":"openspec:proxy-public-egress"}
