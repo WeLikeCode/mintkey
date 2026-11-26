@@ -39,6 +39,11 @@ service VaultAdapter {
   // Pass key_version = 0 to fetch the current credential version
   // (atomic relative to a credential.rotated event).
   //
+  // Every successful answer carries the credential's egress scope in the
+  // response header `x-mintkey-egress-scope`, with the value `any` or
+  // `public`. The scope is carried in call metadata, not in a message
+  // field, so no generated stub changes.
+  //
   // Errors:
   //   NOT_FOUND       — no credential exists for the tuple.
   //   PERMISSION_DENIED — caller lacks the read scope for the tenant.
@@ -51,6 +56,12 @@ service VaultAdapter {
   // it. The plaintext sent in the request lives in the adapter's memory
   // for the duration of the call, is sealed with a fresh DEK, and is
   // discarded; the cleartext value is NEVER persisted or logged.
+  //
+  // A request may name the credential's egress scope in call metadata under
+  // the key `x-mintkey-egress-scope`, with the value `any` or `public`. When
+  // it names none, the adapter keeps the scope of the current version, or
+  // `any` when there is none. The scope is carried in call metadata, not in
+  // a message field, so no generated stub changes.
   //
   // Errors:
   //   INVALID_ARGUMENT — auth_scheme/value mismatch, missing required

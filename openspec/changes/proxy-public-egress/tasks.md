@@ -20,7 +20,7 @@ in `apps/admin-api`.
 
 ## 2. The admin-api client sends the scope
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_vault_client_put_egress_scope.py` (header as
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_vault_client_put_egress_scope.py` (header as
   `test_vault_client_get_credential.py`): `test_put_credential_sends_the_scope_metadata` covers "the admin-api client sends
   the scope" with a `MagicMock` stub whose `PutCredential` is an `AsyncMock` returning `MagicMock(key_version=1)`, installed
   with `patch.object(client, "_stub", ...)`; it calls `put_credential` once with `egress_scope="public"` and once without the
