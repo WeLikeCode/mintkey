@@ -49,6 +49,7 @@ reject The finding is correct. Task 4.1 of tasks.md requires that in test_e2e_sm
 ## Q-002: Hold H-5ce5dda0: skipped: existing tests in `tests/acceptance/test_classical_key.py` were also skipped in a base report, and the file ...
 
 - **Status:** open
+- **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 4, verifier
