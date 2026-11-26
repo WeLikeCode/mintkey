@@ -59,6 +59,7 @@ type sqliteRow struct {
 	isRevoked    int64
 	createdAt    int64
 	targetURL    string
+	egressScope  string
 	headerName   string
 	queryParam   string
 }
@@ -115,10 +116,20 @@ func run(ctx context.Context, sqlitePath, pgDSN string) error {
 	}
 
 	// ── Read all rows from sqlite ──────────────────────────────────────────────
+	// A sqlite file written before the egress scope existed has no egress_scope
+	// column; its rows copy "any", the column's default.
+	hasEgressScope, err := sqliteHasColumn(ctx, sqliteDB, "credentials", "egress_scope")
+	if err != nil {
+		return fmt.Errorf("inspect sqlite schema: %w", err)
+	}
+	egressExpr := "'any'"
+	if hasEgressScope {
+		egressExpr = "egress_scope"
+	}
 	rows, err := sqliteDB.QueryContext(ctx, `
 		SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
 		       wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-		       target_url, header_name, query_param
+		       target_url, header_name, query_param, `+egressExpr+` AS egress_scope
 		  FROM credentials
 		 ORDER BY tenant_id, credential_id
 	`)
@@ -139,7 +150,7 @@ func run(ctx context.Context, sqlitePath, pgDSN string) error {
 			&r.keyVersion, &r.authScheme,
 			&r.wrappedDEK, &r.encPayload,
 			&r.isCurrent, &r.isRevoked, &r.createdAt,
-			&r.targetURL, &r.headerName, &r.queryParam,
+			&r.targetURL, &r.headerName, &r.queryParam, &r.egressScope,
 		); err != nil {
 			return fmt.Errorf("scan sqlite row: %w", err)
 		}
@@ -211,6 +222,32 @@ func run(ctx context.Context, sqlitePath, pgDSN string) error {
 	return nil
 }
 
+// sqliteHasColumn reports whether table has the named column.
+func sqliteHasColumn(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false, fmt.Errorf("pragma table_info: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err = rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return false, fmt.Errorf("scan pragma row: %w", err)
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
 // insertRow inserts one row into postgres.
 // Returns (true, nil) on insert, (false, nil) on conflict-skip, (false, err) on error.
 func insertRow(ctx context.Context, pool *pgxpool.Pool, r sqliteRow) (inserted bool, err error) {
@@ -255,13 +292,13 @@ func insertRow(ctx context.Context, pool *pgxpool.Pool, r sqliteRow) (inserted b
 		INSERT INTO vault.credentials (
 			credential_id, tenant_id, service_id, key_version, auth_scheme,
 			wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-			target_url, header_name, query_param
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			target_url, header_name, query_param, egress_scope
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT (credential_id) DO NOTHING
 	`,
 		r.credentialID, r.tenantID, r.serviceID, r.keyVersion, r.authScheme,
 		r.wrappedDEK, r.encPayload, isCurrent, isRevoked, r.createdAt,
-		r.targetURL, r.headerName, r.queryParam,
+		r.targetURL, r.headerName, r.queryParam, r.egressScope,
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert credential_id=%q: %w", r.credentialID, err)

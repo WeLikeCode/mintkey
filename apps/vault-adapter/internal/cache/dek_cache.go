@@ -42,6 +42,7 @@ type cacheEntry struct {
 	authScheme            int32
 	isRevoked             bool
 	targetURL             string
+	egressScope           string // "any" or "public" (proxy-public-egress)
 	headerName            string // injection hint — UX-C6
 	queryParam            string // injection hint — UX-C6
 	targetAddress         string // SSH-only: "host:port" — ADR-0021
@@ -49,11 +50,11 @@ type cacheEntry struct {
 	serviceBaseUrl        string // canonical upstream address from services.base_url — ADR-0023
 	tlsInsecureSkipVerify bool   // email-only: skip TLS cert verification — ADR-0024
 	// Email-only: per-service SMTP/IMAP routing metadata — ADR-0024 (Phase 2).
-	smtpHost string
-	smtpPort int32
-	imapHost string
-	imapPort int32
-	expiresAt             time.Time
+	smtpHost  string
+	smtpPort  int32
+	imapHost  string
+	imapPort  int32
+	expiresAt time.Time
 }
 
 // DEKCache caches encrypted DEKs per (tenant_id, service_id, key_version).
@@ -88,6 +89,7 @@ type Entry struct {
 	AuthScheme            int32
 	IsRevoked             bool
 	TargetURL             string
+	EgressScope           string // "any" or "public" (proxy-public-egress)
 	HeaderName            string // injection hint — UX-C6
 	QueryParam            string // injection hint — UX-C6
 	TargetAddress         string // SSH-only: "host:port" — ADR-0021
@@ -104,7 +106,11 @@ type Entry struct {
 // Put stores a cache entry for the given key with the configured TTL.
 // wrappedDEK and encPayload must be ENCRYPTED blobs — callers must never pass
 // plaintext.
-func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam, targetAddress, sshUser, serviceBaseUrl string, tlsInsecureSkipVerify bool, smtpHost string, smtpPort int32, imapHost string, imapPort int32) {
+func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK, encPayload []byte, authScheme int32, isRevoked bool, targetURL, headerName, queryParam, targetAddress, sshUser, serviceBaseUrl string, tlsInsecureSkipVerify bool, smtpHost string, smtpPort int32, imapHost string, imapPort int32, egressScope ...string) {
+	scope := ""
+	if len(egressScope) > 0 {
+		scope = egressScope[0]
+	}
 	k := cacheKey{tenantID: tenantID, serviceID: serviceID, keyVersion: keyVersion}
 	// Copy slices so the caller's buffer changes don't corrupt the cache.
 	wCopy := make([]byte, len(wrappedDEK))
@@ -119,6 +125,7 @@ func (c *DEKCache) Put(tenantID, serviceID string, keyVersion uint32, wrappedDEK
 		authScheme:            authScheme,
 		isRevoked:             isRevoked,
 		targetURL:             targetURL,
+		egressScope:           scope,
 		headerName:            headerName,
 		queryParam:            queryParam,
 		targetAddress:         targetAddress,
@@ -165,6 +172,7 @@ func (c *DEKCache) Get(tenantID, serviceID string, keyVersion uint32) (Entry, bo
 		AuthScheme:            entry.authScheme,
 		IsRevoked:             entry.isRevoked,
 		TargetURL:             entry.targetURL,
+		EgressScope:           entry.egressScope,
 		HeaderName:            entry.headerName,
 		QueryParam:            entry.queryParam,
 		TargetAddress:         entry.targetAddress,

@@ -117,10 +117,26 @@ func runWithOutcomes(ctx context.Context, pgDSN string, hcpCfg store.HashiCorpCo
 	defer hcpSt.Close()
 
 	// ── Read all rows from Postgres ────────────────────────────────────────────
+	// A database that predates the egress scope has no egress_scope column; its
+	// rows copy "any", the column's default.
+	var hasEgressScope bool
+	if err = pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			 WHERE table_schema = 'vault' AND table_name = 'credentials'
+			   AND column_name = 'egress_scope'
+		)`).Scan(&hasEgressScope); err != nil {
+		return migrationOutcomes{}, fmt.Errorf("inspect postgres schema: %w", err)
+	}
+	egressExpr := "'any'"
+	if hasEgressScope {
+		egressExpr = "egress_scope"
+	}
 	rows, err := pool.Query(ctx, `
 		SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
 		       wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-		       target_url, header_name, query_param, target_address, ssh_user
+		       target_url, header_name, query_param, target_address, ssh_user,
+		       `+egressExpr+` AS egress_scope
 		  FROM vault.credentials
 		 ORDER BY tenant_id, service_id, key_version
 	`)
@@ -130,8 +146,8 @@ func runWithOutcomes(ctx context.Context, pgDSN string, hcpCfg store.HashiCorpCo
 	defer rows.Close()
 
 	var o migrationOutcomes
-	var allCredIDs []string       // for reservoir sampling
-	var allTenantIDs []string     // parallel to allCredIDs
+	var allCredIDs []string   // for reservoir sampling
+	var allTenantIDs []string // parallel to allCredIDs
 	var allServiceIDs []string
 	var allVersions []uint32
 
@@ -153,6 +169,7 @@ func runWithOutcomes(ctx context.Context, pgDSN string, hcpCfg store.HashiCorpCo
 			isRevoked     bool
 			createdAt     int64
 			targetURL     string
+			egressScope   string
 			headerName    string
 			queryParam    string
 			targetAddress string
@@ -164,7 +181,7 @@ func runWithOutcomes(ctx context.Context, pgDSN string, hcpCfg store.HashiCorpCo
 			&wrappedDEK, &encPayload,
 			&isCurrent, &isRevoked, &createdAt,
 			&targetURL, &headerName, &queryParam,
-			&targetAddress, &sshUser,
+			&targetAddress, &sshUser, &egressScope,
 		); err != nil {
 			return migrationOutcomes{}, fmt.Errorf("scan postgres row: %w", err)
 		}
@@ -215,6 +232,7 @@ func runWithOutcomes(ctx context.Context, pgDSN string, hcpCfg store.HashiCorpCo
 			IsRevoked:     isRevoked,
 			CreatedAt:     createdAt,
 			TargetURL:     targetURL,
+			EgressScope:   egressScope,
 			HeaderName:    headerName,
 			QueryParam:    queryParam,
 			TargetAddress: targetAddress,

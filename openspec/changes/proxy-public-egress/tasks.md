@@ -33,7 +33,7 @@ in `apps/admin-api`.
 
 ## 3. The vault adapter stores and returns the scope
 
-- [ ] 3.1 Tests first (all in `apps/vault-adapter`). New file `internal/server/egress_scope_test.go` (package `server`,
+- [x] 3.1 Tests first (all in `apps/vault-adapter`). New file `internal/server/egress_scope_test.go` (package `server`,
   using `newTestGRPCServer` of `grpc_test.go`; the scope goes out with `metadata.AppendToOutgoingContext` and comes back
   with the call option `grpc.Header(&md)`): `TestEgressScopeRoundTrip`, `TestEgressScopeRotationKeepsScope`,
   `TestEgressScopeUnusableValueRefused`, `TestEgressScopeFailingLookupFailsPut` (the server is built as `newTestGRPCServer`

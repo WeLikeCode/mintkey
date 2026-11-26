@@ -124,15 +124,20 @@ func (s *PostgresStore) Put(ctx context.Context, rec CredentialRecord) (uint32, 
 		createdAt = time.Now().UnixNano()
 	}
 
+	egressScope := rec.EgressScope
+	if egressScope == "" {
+		egressScope = "any"
+	}
+
 	if _, err = tx.Exec(ctx,
 		`INSERT INTO vault.credentials
 		        (credential_id, tenant_id, service_id, key_version, auth_scheme,
 		         wrapped_dek, enc_payload, is_current, is_revoked, created_at,
-		         target_url, header_name, query_param, target_address, ssh_user)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8, $9, $10, $11, $12, $13)`,
+		         target_url, header_name, query_param, target_address, ssh_user, egress_scope)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8, $9, $10, $11, $12, $13, $14)`,
 		rec.CredentialID, rec.TenantID, rec.ServiceID, nextVer, rec.AuthScheme,
 		rec.WrappedDEK, rec.EncPayload, createdAt,
-		rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser,
+		rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, egressScope,
 	); err != nil {
 		return 0, fmt.Errorf("vault postgres: Put: insert: %w", err)
 	}
@@ -187,6 +192,7 @@ func (s *PostgresStore) Get(ctx context.Context, tenantID, serviceID string, key
 	const cols = `vc.credential_id, vc.tenant_id, vc.service_id, vc.key_version, vc.auth_scheme,
 	              vc.wrapped_dek, vc.enc_payload, vc.is_current, vc.is_revoked, vc.created_at,
 	              vc.target_url, vc.header_name, vc.query_param, vc.target_address, vc.ssh_user,
+	              vc.egress_scope,
 	              COALESCE(s.base_url, '') AS service_base_url,
 	              COALESCE(es.tls_insecure_skip_verify, false) AS tls_insecure_skip_verify,
 	              COALESCE(es.smtp_host, '') AS smtp_host,
@@ -372,6 +378,7 @@ func scanPgRecord(row pgx.Row) (*CredentialRecord, error) {
 		&r.IsCurrent, &r.IsRevoked, &r.CreatedAt,
 		&r.TargetURL, &r.HeaderName, &r.QueryParam,
 		&r.TargetAddress, &r.SSHUser,
+		&r.EgressScope,
 		&r.ServiceBaseUrl,
 		&r.TlsInsecureSkipVerify,
 		&r.SMTPHost, &r.SMTPPort,
