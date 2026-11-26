@@ -144,6 +144,7 @@ class VaultAdapterClient:
         query_param: str = "",
         target_address: str = "",
         ssh_user: str = "",
+        egress_scope: str = "",
     ) -> dict[str, object]:
         """Seal and store a credential. Returns metadata — no plaintext.
 
@@ -152,6 +153,8 @@ class VaultAdapterClient:
         target_address: SSH-only "host:port" of the backend SSH server — ADR-0021.
         ssh_user: SSH-only username for authentication — ADR-0021.
         """
+        if egress_scope:
+            raise NotImplementedError
         scheme_int = _AUTH_SCHEME_MAP.get(auth_scheme, 0)
         req = vault_pb2.PutCredentialRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
             tenant_id=tenant_id,
