@@ -49,3 +49,5 @@
 {"at":"2026-11-26T17:13:32Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"8916dce92233ab252a32ca977578ccd1892b0436","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T17:13:32Z","revision":"8916dce92233ab252a32ca977578ccd1892b0436","type":"unit.integrated","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T17:13:32Z","attempt":1,"cost_usd":2.983298,"runs":4,"type":"plan.charged","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T17:14:43Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:grant-expiry"}
+{"at":"2026-11-26T17:14:43Z","run":"r-20261126T1714Z-e646","type":"unit.dispatched","unit":"openspec:grant-expiry"}
