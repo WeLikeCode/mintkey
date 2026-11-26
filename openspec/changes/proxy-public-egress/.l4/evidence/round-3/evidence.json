@@ -1,0 +1,484 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "apps/vault-adapter",
+      "internal/server/grpc.go",
+      "internal/server/vault.go",
+      "internal/cache/dek_cache.go",
+      "cmd/vault-migrate-sqlite-to-pg",
+      "cmd/vault-migrate-pg-to-hashicorp",
+      "apps/proxy-plugin",
+      "internal/credential/ssrf.go",
+      "internal/egress",
+      "apps/admin-api/src/admin_api/services/vault_client.py",
+      "github.com/icholy/digest",
+      "deploy/helm/mintkey/templates/stateful/vault-adapter.yaml",
+      "0.0.0.0/8",
+      "240.0.0.0/4",
+      "packages/go/vault/v1",
+      "apps/admin-api/src/admin_api/services/vault_pb2.py",
+      "credential/ssrf.go",
+      "docs/architecture/contracts/vault-adapter/vault.proto",
+      "apps/admin-api/db/changelog/db.changelog-master.yaml",
+      "apps/vault-adapter/internal/{server/vault.go,server/grpc.go,cache/dek_cache.go,store/sqlite.go,store/postgres.go,store/hashicorp_doc.go}",
+      "apps/vault-adapter/cmd/vault-migrate-sqlite-to-pg/main.go",
+      "apps/vault-adapter/cmd/vault-migrate-pg-to-hashicorp/main.go",
+      "apps/proxy-plugin/internal/vault/client.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/upstream.go",
+      "apps/admin-api/db/changelog/034-credential-egress-scope.yaml",
+      "apps/proxy-plugin/internal/egress/public.go",
+      "tests/unit/admin_api/test_credential_egress_scope_changelog.py",
+      "tests/unit/admin_api/test_vault_client_put_egress_scope.py",
+      "apps/vault-adapter/internal/server/egress_scope_test.go",
+      "apps/vault-adapter/internal/store/egress_scope_source_test.go",
+      "apps/vault-adapter/internal/store/hashicorp_egress_scope_test.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go",
+      "apps/admin-api",
+      "tests/unit/admin_api/test_notify_event_type.py",
+      "internal/server/egress_scope_test.go",
+      "internal/store/hashicorp_egress_scope_test.go",
+      "internal/store/egress_scope_source_test.go",
+      "**/grpc.go",
+      "**/hashicorp_doc.go",
+      "**/vault.proto",
+      "**/public_egress_test.go",
+      "**/stored_target_test.go",
+      "**/handle*",
+      "**/test_vault_client_get_credential.py",
+      "**/stub.PutCredential.call_args.kwargs[\"metadata\"]",
+      "**/grpc_test.go",
+      "**/egress_scope_source_test.go",
+      "**/grpc_google_service_account_test.go",
+      "**/_test.go",
+      "cmd/vault-migrate-*",
+      "module 0.0.0.0",
+      "module 240.0.0.0",
+      "module admin-api",
+      "module cmd",
+      "module credential",
+      "module deploy",
+      "module docs",
+      "module github.com",
+      "module go",
+      "module internal",
+      "module proxy-plugin",
+      "module tests",
+      "module vault-adapter"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/admin-api/db/changelog/034-credential-egress-scope.yaml",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/db/changelog/db.changelog-master.yaml",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/vault_client.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/proxy-plugin/cmd/proxy-plugin/public_ipv4_embedding_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/proxy-plugin/cmd/proxy-plugin/upstream.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/internal/egress/public.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/proxy-plugin/internal/egress/public_ipv4_embedding_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/proxy-plugin/internal/vault/client.go",
+        "module": "proxy-plugin",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/cmd/vault-migrate-pg-to-hashicorp/main.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/cmd/vault-migrate-sqlite-to-pg/main.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/cache/dek_cache.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/egress_scope_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/grpc.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/server/vault.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/store/egress_scope_source_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/vault-adapter/internal/store/hashicorp_doc.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/store/hashicorp_egress_scope_test.go",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "apps/vault-adapter/internal/store/postgres.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/vault-adapter/internal/store/sqlite.go",
+        "module": "vault-adapter",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "docs/architecture/contracts/vault-adapter/vault.proto",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress-fix-1/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress-fix-1/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress-fix-1/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress-fix-1/specs/proxy-public-egress/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress-fix-1/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/evidence/round-1/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/evidence/round-1/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/evidence/round-1/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/evidence/round-2/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/evidence/round-2/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/ledger/r-20261126T1224Z-202b.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/ledger/r-20261126T1226Z-9797.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/ledger/r-20261126T1452Z-e476.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/.l4/ledger/r-20261126T1609Z-1ffe.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/feedback.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/proxy-public-egress/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "tests/unit/admin_api/test_credential_egress_scope_changelog.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_vault_client_put_egress_scope.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_run",
+    "reason": "coverage.py is not importable in the project environment",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [
+      "apps/proxy-plugin/cmd/proxy-plugin/main.go",
+      "apps/proxy-plugin/cmd/proxy-plugin/upstream.go",
+      "apps/proxy-plugin/internal/egress/public.go",
+      "apps/proxy-plugin/internal/vault/client.go",
+      "apps/vault-adapter/cmd/vault-migrate-pg-to-hashicorp/main.go",
+      "apps/vault-adapter/cmd/vault-migrate-sqlite-to-pg/main.go",
+      "apps/vault-adapter/internal/cache/dek_cache.go",
+      "apps/vault-adapter/internal/server/grpc.go",
+      "apps/vault-adapter/internal/server/vault.go",
+      "apps/vault-adapter/internal/store/hashicorp_doc.go",
+      "apps/vault-adapter/internal/store/postgres.go",
+      "apps/vault-adapter/internal/store/sqlite.go"
+    ],
+    "functions": [
+      {
+        "path": "apps/admin-api/src/admin_api/services/vault_client.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/vault_client.py",
+        "qualname": "VaultAdapterClient.put_credential",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      }
+    ]
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 2927,
+      "passed": 2873,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 54,
+      "new": 38,
+      "new_passed": 38,
+      "skipped_unchanged": [
+        "apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated",
+        "apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401",
+        "apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields",
+        "apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found",
+        "apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape",
+        "github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger",
+        "github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming",
+        "tests.acceptance.test_admin_ui_boot::test_login_page_returns_200",
+        "tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]",
+        "tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end",
+        "tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2",
+        "tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode",
+        "tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call",
+        "tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue",
+        "tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation",
+        "tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429",
+        "tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call",
+        "tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created",
+        "tests.acceptance.test_classical_key::test_classical_key_full_flow",
+        "tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy",
+        "tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt",
+        "tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403",
+        "tests.acceptance.test_data_plane_smoke::test_broker_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_kong_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke",
+        "tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end",
+        "tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream",
+        "tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end",
+        "tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end",
+        "tests.acceptance.test_observability::test_audit_chain_valid",
+        "tests.acceptance.test_observability::test_prometheus_targets_all_up",
+        "tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics",
+        "tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded",
+        "tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12",
+        "tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok"
+      ],
+      "skipped_predating": [],
+      "skipped_source": "",
+      "skipped_note": ""
+    },
+    "findings": []
+  }
+}
