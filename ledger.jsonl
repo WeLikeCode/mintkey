@@ -55,3 +55,5 @@
 {"at":"2026-11-26T17:16:48Z","run":"r-20261126T1716Z-d1d6","type":"unit.dispatched","unit":"openspec:grant-expiry"}
 {"at":"2026-11-26T19:23:14Z","attempt":1,"cost_usd":2.16599,"runs":3,"type":"plan.charged","unit":"openspec:grant-expiry"}
 {"at":"2026-11-26T19:23:14Z","run":"r-20261126T1923Z-1f47","type":"unit.dispatched","unit":"openspec:grant-expiry"}
+{"at":"2026-11-26T21:32:57Z","attempt":1,"cost_usd":4.035926,"runs":4,"type":"plan.charged","unit":"openspec:grant-expiry"}
+{"at":"2026-11-26T21:32:57Z","run":"r-20261126T2132Z-c38f","type":"unit.dispatched","unit":"openspec:grant-expiry"}
