@@ -24,7 +24,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 2. The rules and the write path
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_grant_expiry_rules.py`, covering the three scenarios of "The
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_grant_expiry_rules.py`, covering the three scenarios of "The
   expiry rules and the cap have one implementation" (`monkeypatch.setenv` and `delenv` for the variable); red stubs the
   module `apps/admin-api/src/admin_api/services/grant_expiry.py` with the names and signatures of the spec (functions
   raising `NotImplementedError`), so the tests fail by assertion. Then fill it in.
