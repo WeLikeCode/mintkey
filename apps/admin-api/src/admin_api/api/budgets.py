@@ -27,6 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.permissions import _budget_period_bounds
+from admin_api.auth.sessions import require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import wire_to_db_uuid
@@ -49,12 +50,14 @@ async def get_budget_status(
     agent_id: str,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Return current-period budget status for a permission grant.
 
     - 404 if grant has no budget constraint.
     - Queries budget_counters for the row where now() BETWEEN period_start AND period_end.
+    The route requires the tenant session.
 
     Source: T-BUD-2.3; FR-9; design §5.
     """
@@ -150,6 +153,7 @@ async def reset_budget(
     agent_id: str,
     permission_id: str,
     session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
     """
     Reset budget for a permission grant mid-period.
@@ -158,6 +162,7 @@ async def reset_budget(
     Emits budget.reset audit event.
     Fires change-channel notification.
     Returns the new BudgetStatus.
+    The route requires the tenant session.
 
     Source: T-BUD-2.4; FR-5; design §5.
     """

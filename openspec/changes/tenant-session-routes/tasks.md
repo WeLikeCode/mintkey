@@ -5,7 +5,7 @@ Each task writes its tests first and sees them fail for the reason it names, the
 
 ## 1. The seven handlers require the tenant session
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_tenant_session_routes.py`. It puts `apps/admin-api/src` and
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_tenant_session_routes.py`. It puts `apps/admin-api/src` and
   `packages/python/mintkey-models` on `sys.path` as `tests/unit/admin_api/test_cross_tenant_403.py` does, and sets
   `MINTKEY_AUDIT_HMAC_KEY` (64 `0` characters) and `MINTKEY_VAULT_BACKEND=sqlite` with `os.environ.setdefault` before it
   imports `admin_api.main`. Constants: `TA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"`, `TB = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"`,
@@ -45,7 +45,7 @@ Each task writes its tests first and sees them fail for the reason it names, the
 
 ## 2. The background document
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_governance_doc.py` (path built from
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_governance_doc.py` (path built from
   `os.path.dirname(__file__)` as `tests/unit/admin_api/test_cross_tenant_403.py` builds `REPO_ROOT`):
   `test_document_has_its_shape` covers the scenario "the document has its shape": it reads
   `docs/architecture/agent-governance.md`, asserts the file exists, `len(text) <= 6000`, that the lines starting with
