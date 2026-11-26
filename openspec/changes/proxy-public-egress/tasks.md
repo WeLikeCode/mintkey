@@ -9,7 +9,7 @@ in `apps/admin-api`.
 
 ## 1. The column
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_egress_scope_changelog.py` (header and `REPO_ROOT` as
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_egress_scope_changelog.py` (header and `REPO_ROOT` as
   `tests/unit/admin_api/test_notify_event_type.py`): `test_changelog_adds_the_egress_scope_column` covers the scenario "the
   changelog adds the column": it loads `apps/admin-api/db/changelog/034-credential-egress-scope.yaml`, normalises the text
   of its SQL change and asserts the three substrings of the scenario (lower-cased, whitespace collapsed), the precondition (`onFail: MARK_RAN`, `not` of
