@@ -11,6 +11,7 @@ verification round, turns them into a fix unit and checks that each one was addr
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
 | FB-001 | addressed | refactor | apps/mcp-server/src/mcp_server/tools/discovery.py:420 | Restore the email grant queries of list_services and discover |
+| FB-002 | submitted | refactor | apps/admin-api/src/admin_api/api/permissions.py:388 | Bind the grantor filter values as parameters |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -80,3 +81,38 @@ Restore both email_permission_grants queries (list_services and discover) to the
 ### Outcome
 <!-- written by the harness -->
 Addressed in round 4 at 4b47ca098d: apps/mcp-server/src/mcp_server/tools/discovery.py diff touches only the permission_grants statements; email_permission_grants queries are in base form, with whole-word test helper in test_grant_expiry_discovery.py.
+
+---
+
+## FB-002: Bind the grantor filter values as parameters
+
+- **Status:** submitted
+- **Kind:** refactor
+- **Where:** `apps/admin-api/src/admin_api/api/permissions.py:388-402`
+- **Lesson:** no
+- **By:** CiprianSpot, 2026-11-26T22:09:08Z
+
+### Code
+```python
+    if grantor_agent_id is not None:
+        try:
+            grantor_uuid = _decode_agent_wire_id(grantor_agent_id, "agent_")
+            uuid.UUID(grantor_uuid)
+        except (ValueError, AttributeError, TypeError):
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+            )
+        # The validated UUID is safe to render: the grantor filter is a
+        # constant comparison, and the grant list keeps one statement shape.
+        stmt = stmt.where(
+            pg_table.c.grantor_type == literal_column(f"'{GRANTOR_AGENT}'"),
+            pg_table.c.grantor_id == literal_column(f"'{grantor_uuid}'"),
+        )
+```
+
+### Feedback
+The grantor_agent_id filter of the permission listing compares grantor_type and grantor_id with literal_column(f"'...'") built from the value. Compare them with bound parameters instead: grantor_type with the constant GRANTOR_AGENT and grantor_id with the normalised uuid (uuid.UUID(grantor_uuid), so every accepted spelling of the id reaches the database as one canonical value). Behaviour is unchanged for every id the route accepts today; the statement no longer carries the value as SQL text.
+
+### Outcome
+<!-- written by the harness -->
