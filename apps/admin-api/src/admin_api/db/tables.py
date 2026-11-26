@@ -25,6 +25,9 @@ permission_grants = Table(
     Column("constraints", JSONB),
     Column("created_at", DateTime(timezone=True)),
     Column("created_by", UUID(as_uuid=True)),
+    Column("expires_at", DateTime(timezone=True)),
+    Column("grantor_type", String, nullable=False),
+    Column("grantor_id", UUID(as_uuid=True)),
 )
 
 services = Table(

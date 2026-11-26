@@ -14,7 +14,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 1. The schema
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_grant_expiry_migration.py` (paths from
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_grant_expiry_migration.py` (paths from
   `Path(__file__).resolve().parents[3]`, `yaml.safe_load`), covering the two scenarios of the requirement "The schema
   stores a grant's expiry and grantor"; it fails before the change (no changelog file, no Core columns). Then create
   `apps/admin-api/db/changelog/030-grant-expiry.yaml` (changesets `030-grant-expiry-columns`, `030-grant-expiry-check`,
