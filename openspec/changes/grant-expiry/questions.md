@@ -44,7 +44,7 @@ Both behaviours are wanted; the two scenarios do not conflict. "The changelog fi
 
 ## Q-002: apps/mcp-server/tests/test_grant_expiry_discovery.py:84 — helper collects email_permission_grants but asserts the pg filter
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze apps/mcp-server/tests/test_grant_expiry_discovery.py of task 4.2 (delegate.unfreeze is false)
 - **Blocking tasks:** 4.2
 - **Kind:** technical
@@ -64,3 +64,4 @@ Edit `apps/mcp-server/tests/test_grant_expiry_discovery.py`: change line 84 from
 
 ### Answer
 <!-- write below this line -->
+Unfreeze apps/mcp-server/tests/test_grant_expiry_discovery.py for task 4.2. The helper `_statements_reading` should match the table name as a whole word, `re.search(rf"\b{re.escape(table)}\b", statement)`, instead of a substring: `_` is a word character, so the email grants table `email_permission_grants` is no longer counted, while every statement that reads `permission_grants` (with any whitespace or line break around it) still is. Keep the assertions as they are, including the check that at least one statement reads the table. The email grants are out of this unit's scope. Answered by the repository owner's delegate.
