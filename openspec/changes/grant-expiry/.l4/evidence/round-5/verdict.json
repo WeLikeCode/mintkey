@@ -1,0 +1,217 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 5,
+  "verdict": "FAIL",
+  "base_sha": "8e8999377566a6450daca896c6e64250dc0f4954",
+  "head_sha": "bbd804273ca0f888571608ad76d554becccc4bb3",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "failed",
+      "seconds": 1.1,
+      "note": "base staging@8e89993775 contained; Feedback FB-002 (refactor): Bind the grantor filter values as parameters"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "major",
+      "title": "Feedback FB-002 (refactor): Bind the grantor filter values as parameters",
+      "detail": "The grantor_agent_id filter of the permission listing compares grantor_type and grantor_id with literal_column(f\"'...'\") built from the value. Compare them with bound parameters instead: grantor_type with the constant GRANTOR_AGENT and grantor_id with the normalised uuid (uuid.UUID(grantor_uuid), so every accepted spelling of the id reaches the database as one canonical value). Behaviour is unchanged for every id the route accepts today; the statement no longer carries the value as SQL text.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-cf97605d",
+      "feedback": {
+        "id": "FB-002",
+        "kind": "refactor",
+        "title": "Bind the grantor filter values as parameters",
+        "text": "The grantor_agent_id filter of the permission listing compares grantor_type and grantor_id with literal_column(f\"'...'\") built from the value. Compare them with bound parameters instead: grantor_type with the constant GRANTOR_AGENT and grantor_id with the normalised uuid (uuid.UUID(grantor_uuid), so every accepted spelling of the id reaches the database as one canonical value). Behaviour is unchanged for every id the route accepts today; the statement no longer carries the value as SQL text.",
+        "by": "CiprianSpot, 2026-11-26T22:09:08Z",
+        "places": [
+          "apps/admin-api/src/admin_api/api/permissions.py:388-402"
+        ],
+        "env": null,
+        "when": null,
+        "then": null,
+        "code": "    if grantor_agent_id is not None:\n        try:\n            grantor_uuid = _decode_agent_wire_id(grantor_agent_id, \"agent_\")\n            uuid.UUID(grantor_uuid)\n        except (ValueError, AttributeError, TypeError):\n            return JSONResponse(\n                status_code=422,\n                content={\"mintkey:code\": \"invalid_id\", \"title\": \"Invalid agent_id\"},\n            )\n        # The validated UUID is safe to render: the grantor filter is a\n        # constant comparison, and the grant list keeps one statement shape.\n        stmt = stmt.where(\n            pg_table.c.grantor_type == literal_column(f\"'{GRANTOR_AGENT}'\"),\n            pg_table.c.grantor_id == literal_column(f\"'{grantor_uuid}'\"),\n        )",
+        "sha256": "32671ab28b9a48fe87b6dfa1917f75af321d49e392043701bac570dc5e35eed6",
+        "retake": false
+      }
+    }
+  ],
+  "holds": [],
+  "subject_sha": "bbd804273ca0f888571608ad76d554becccc4bb3",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": null,
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": null,
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 3,
+    "tasks": [
+      "F-cf97605d Feedback FB-002 (refactor): Bind the grantor filter values as parameters"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "judge_carried": {},
+  "cx_runs": {},
+  "tests": {},
+  "failures": {},
+  "failures_dropped": 0,
+  "e2e_tests": [],
+  "red_green": {
+    "tests.unit.admin_api.test_grant_expiry_migration::test_C_48b97ae8_changelog_adds_expiry_and_grantor_columns": "1.1",
+    "tests.unit.admin_api.test_grant_expiry_migration::test_C_efc458dc_core_table_has_columns_and_model_does_not": "1.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[-5-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[0-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[3600-3600]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[604800-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[99999999-7776000]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[None-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_3dca655e_cap_reader[abc-604800]": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_a3ba81c6_expiry_boundary": "2.1",
+    "tests.unit.admin_api.test_grant_expiry_rules::test_C_c0408375_operator_and_agent_rules": "2.1",
+    "tests.unit.admin_api.test_grants_service::test_C_099f4d96_delete_returns_record_or_nothing": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_1bd65fd0_two_concurrent_writes_of_one_grant": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_20d077ee_notify_payload_pins_the_revoked_at_format": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_22b26d27_operator_and_agent_write_grants": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_7a27cadf_payload_builders": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_a6b59772_identical_returned_other_refused_expired_replaced": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_bdb3718d_rule_violation_writes_nothing[-10-expires_at_in_past]": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_bdb3718d_rule_violation_writes_nothing[604801-expires_at_too_far]": "2.2",
+    "tests.unit.admin_api.test_grants_service::test_C_bdb3718d_rule_violation_writes_nothing[None-expires_at_required]": "2.2",
+    "tests.unit.admin_api.test_permissions_expiry::test_C_31cf8071_revoke_names_what_it_revoked": "3.1",
+    "tests.unit.admin_api.test_permissions_expiry::test_C_52a42138_the_lists_and_the_single_grant_show_the_new_fields": "3.1",
+    "tests.unit.admin_api.test_permissions_expiry::test_C_b2b19611_invalid_and_conflicting_requests": "3.1",
+    "tests.unit.admin_api.test_permissions_expiry::test_C_c4e8685f_grantor_filter_and_unchanged_bodies": "3.1",
+    "tests.unit.admin_api.test_permissions_expiry::test_C_c997909a_a_grant_with_an_expiry": "3.1",
+    "apps.mcp-server.tests.test_grant_expiry_tokens::test_C_1494d103_expired_grant_is_denied": "4.1",
+    "apps.mcp-server.tests.test_grant_expiry_tokens::test_C_18424d96_grant_select_is_ordered": "4.1",
+    "apps.mcp-server.tests.test_grant_expiry_tokens::test_C_9398f128_C_b4dd4c2b_no_expiry_behaves_as_before": "4.1",
+    "apps.mcp-server.tests.test_grant_expiry_tokens::test_C_b4dd4c2b_lifetime_function": "4.1",
+    "apps.mcp-server.tests.test_grant_expiry_tokens::test_C_f1c29313_broker_receives_shortened_lifetime": "4.1",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_describe_service_filters_expired_grants": "4.2",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_discover_filters_expired_grants": "4.2",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_list_services_filters_expired_grants": "4.2",
+    "tests.unit.admin_api.test_grant_expiry_readers::test_C_b5050c3c_other_readers_ignore_expired_grants": "4.3",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_describe_service_grant_reads_hide_expired_rows": "4.2",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_discover_grant_reads_hide_expired_rows": "4.2",
+    "apps.mcp-server.tests.test_grant_expiry_discovery::test_C_e07d9989_list_services_grant_reads_hide_expired_rows": "4.2",
+    "tests.unit.admin_api.test_audit_schema_grants::test_C_29874427_granted_payload_lists_expiry_and_grantor": "5.1",
+    "tests.unit.admin_api.test_audit_schema_grants::test_C_29874427_revoked_payload_lists_grantor_and_revoker": "5.1",
+    "tests.unit.admin_api.test_audit_schema_grants::test_C_29874427_token_denied_lists_grant_expired_reason": "5.1"
+  },
+  "guards": [
+    "guard.test_tamper: apps/mcp-server/tests/test_grant_expiry_discovery.py",
+    "guard.test_tamper: apps/mcp-server/tests/test_grant_expiry_discovery.py",
+    "guard.test_tamper: apps/mcp-server/tests/test_grant_expiry_discovery.py"
+  ],
+  "step_flakes": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "453e73786a121db2a618efe1ed2215cb326476fd",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "judge_parts": [],
+  "judge_files": [],
+  "judge_followups": [],
+  "judge_batches": [],
+  "judge_split": {},
+  "hold_views": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek",
+      "glm"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}
