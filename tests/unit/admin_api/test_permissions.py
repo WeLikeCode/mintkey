@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import sys
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -282,12 +283,24 @@ async def test_audit_emitted_on_grant(app, mock_audit, mock_notify) -> None:
 
 
 @pytest.mark.asyncio
-async def test_revoke_returns_204_and_notifies(app, mock_audit, mock_notify) -> None:
+async def test_revoke_returns_204_and_notifies(mock_audit, mock_notify) -> None:
     """
     DELETE returns 204, emits agent.permission.revoked audit event,
     and fires NOTIFY on 'mintkey:agent' channel — ADR-0014.7, ADR-0014.1.
     Source: T-1.4.2.
     """
+    existing = SimpleNamespace(
+        id="55555555-5555-5555-5555-555555555555",
+        agent_id="11111111-1111-1111-1111-111111111111",
+        service_id="22222222-2222-2222-2222-222222222222",
+        action="read",
+        constraints=json.dumps(VALID_GRANT_BODY["constraints"]),
+        expires_at=None,
+        grantor_type="operator",
+        grantor_id=None,
+        created_at=None,
+    )
+    app = create_test_app(existing_perm=existing)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.delete(f"{BASE_URL}/{PERM_ID}")
 
