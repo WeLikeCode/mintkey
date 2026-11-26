@@ -59,7 +59,7 @@ in `apps/admin-api`.
 
 ## 4. The proxy refuses non-public addresses
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scopes ...string)`, whose
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scopes ...string)`, whose
   `GetCredential` sets the response header with `grpc.SetHeader` and one `x-mintkey-egress-scope` pair per scope, and
   `scopedFlows(t, h, target, scope)`, which copies the setup of `callFlows` in
   `stored_target_test.go` (generic and classical-key flows through the scoped fake vault; for the three direct `handle*`

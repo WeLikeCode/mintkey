@@ -238,6 +238,12 @@ type proxyHandler struct {
 	// budgetResolver resolves budget config for a given (agent, service, tenant).
 	// May be nil when budget enforcement is not active.
 	budgetResolver budget.ConfigResolver
+
+	// publicTransport is the shared transport for credentials whose egress
+	// scope is not "" and not "any" (proxy-public-egress): its dial function
+	// refuses every non-public resolved address and ignores the proxy
+	// environment. Created once in newProxyHandler; it pools connections.
+	publicTransport http.RoundTripper
 }
 
 func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *proxyjwt.JWKSRefreshLimiter, ck *classicalkey.Handler, aq *auditq.Queue, m *metrics.Metrics) *proxyHandler {
@@ -264,6 +270,7 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		sfGroup:          new(singleflight.Group),
 		budgetMetrics:    budget.NewBudgetMetrics(),
 		budgetThresholds: budget.NewThresholdTracker(),
+		publicTransport:  egress.NewPublicTransport(),
 	}
 }
 
@@ -629,7 +636,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
+	proxy := h.newUpstreamProxy(targetURL, h.egressBase(credResp.EgressScope, nil), credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// When routed via the /v1/call/ catch-all, Kong strips /v1/call/ but leaves
@@ -695,6 +702,22 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"outcome":             outcome,
 			},
 		})
+	}
+}
+
+// egressBase returns the transport that carries the flow's upstream request.
+// The empty scope and "any" keep the flow's own base — a nil stays a nil
+// interface, so those credentials connect exactly as before; every other
+// scope gets the handler's shared public transport, whose dial function
+// refuses non-public addresses and ignores the proxy environment (design D2:
+// an unknown value counts as public, fail closed). base is the flow's own
+// transport (the digest transport of the digest flow, nil otherwise).
+func (h *proxyHandler) egressBase(scope string, base http.RoundTripper) http.RoundTripper {
+	switch scope {
+	case "", egress.ScopeAny:
+		return base
+	default:
+		return h.publicTransport
 	}
 }
 
@@ -797,7 +820,7 @@ func (h *proxyHandler) handleOAuth2ClientCredentials(
 		Value:      []byte(oauthResult.Token),
 	}
 
-	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
+	proxy := h.newUpstreamProxy(targetURL, h.egressBase(credResp.EgressScope, nil), []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -869,8 +892,12 @@ func (h *proxyHandler) handleHTTPDigest(
 ) {
 	// Build the per-request Digest transport from the stored key pair. On a
 	// malformed payload, fail closed with 502 (admin-api validates at
-	// registration, so this is defensive).
-	digestTransport, err := credential.NewDigestTransport(credResp.Plaintext, nil)
+	// registration, so this is defensive). The egress scope selects the inner
+	// transport that carries the request and its retry after the 401
+	// challenge: for a public credential it is the handler's guarded public
+	// transport, for "" and "any" it is nil (the digest transport then falls
+	// back to http.DefaultTransport, as before).
+	digestTransport, err := credential.NewDigestTransport(credResp.Plaintext, h.egressBase(credResp.EgressScope, nil))
 	if err != nil {
 		h.metrics.IncProxyDenied(serviceID, "backend_error")
 		http.Error(w, "bad gateway: invalid digest credential", http.StatusBadGateway)
@@ -1009,7 +1036,7 @@ func (h *proxyHandler) handleOAuth2PasswordGrant(
 	}
 
 	// Build the reverse proxy.
-	proxy := h.newUpstreamProxy(targetURL, nil, []byte(oauthResult.Token))
+	proxy := h.newUpstreamProxy(targetURL, h.egressBase(credResp.EgressScope, nil), []byte(oauthResult.Token))
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		// Strip the call prefix or the leading /<svc_id> segment before the
@@ -1137,7 +1164,7 @@ func (h *proxyHandler) handleClassicalKey(w http.ResponseWriter, r *http.Request
 		QueryParam: credResp.QueryParam,
 	}
 
-	proxy := h.newUpstreamProxy(targetURL, nil, credResp.Plaintext)
+	proxy := h.newUpstreamProxy(targetURL, h.egressBase(credResp.EgressScope, nil), credResp.Plaintext)
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)

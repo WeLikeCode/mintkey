@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/mintkey/mintkey/services/proxy-plugin/internal/egress"
 	"github.com/mintkey/mintkey/services/proxy-plugin/internal/scrubber"
 )
 
@@ -100,6 +101,10 @@ func (h *proxyHandler) newUpstreamProxy(target *url.URL, base http.RoundTripper,
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
 		switch {
+		case errors.Is(err, egress.ErrTargetNotPublic):
+			// The connect-time guard refused a non-public address of a public
+			// credential (proxy-public-egress).
+			http.Error(w, "bad gateway: target address not allowed", http.StatusBadGateway)
 		case errors.Is(err, errEncodedResponse):
 			http.Error(w, "bad gateway: encoded response not supported", http.StatusBadGateway)
 		case errors.Is(err, errBodyUnreadable):
