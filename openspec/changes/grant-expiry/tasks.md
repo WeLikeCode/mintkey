@@ -79,7 +79,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   three statements of `apps/mcp-server/src/mcp_server/tools/discovery.py` that read `permission_grants` (alias `pg`
   in the two joins; the `describe_service` lookup uses the bare column names).
 
-- [ ] 4.3 Tests first, new file `tests/unit/admin_api/test_grant_expiry_readers.py`, covering the scenario "the other
+- [x] 4.3 Tests first, new file `tests/unit/admin_api/test_grant_expiry_readers.py`, covering the scenario "the other
   readers ignore an expired grant": it creates a classical key through `admin_api.api.api_keys` as
   `tests/unit/admin_api/test_api_keys.py` does and calls `list_agents` and `get_agent` of `admin_api.api.agents` with the
   recording fake session. It fails before the change. Then add `AND (expires_at IS NULL OR expires_at > now())` (with the
