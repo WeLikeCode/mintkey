@@ -73,6 +73,7 @@ What was compared: these tests were also skipped in a base report (step 1 base r
 ## Q-003: Hold H-430ee622: skipped: existing tests in `tests/acceptance/test_data_plane_smoke.py` were also skipped in a base report, and the fi...
 
 - **Status:** open
+- **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 4, verifier
