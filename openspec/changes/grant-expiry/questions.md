@@ -45,6 +45,7 @@ Both behaviours are wanted; the two scenarios do not conflict. "The changelog fi
 ## Q-002: apps/mcp-server/tests/test_grant_expiry_discovery.py:84 — helper collects email_permission_grants but asserts the pg filter
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze apps/mcp-server/tests/test_grant_expiry_discovery.py of task 4.2 (delegate.unfreeze is false)
 - **Blocking tasks:** 4.2
 - **Kind:** technical
 - **Asked:** 2026-11-26T19:20Z by deepseek, run r-20261126T1716Z-d1d6, task 4.2
