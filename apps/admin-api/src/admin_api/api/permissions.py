@@ -28,7 +28,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import literal_column, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_api.api.agents import _wire_id_to_uuid as _decode_agent_wire_id
@@ -387,18 +387,20 @@ async def list_tenant_permissions(
 
     if grantor_agent_id is not None:
         try:
-            grantor_uuid = _decode_agent_wire_id(grantor_agent_id, "agent_")
-            uuid.UUID(grantor_uuid)
+            grantor_uuid = uuid.UUID(
+                _decode_agent_wire_id(grantor_agent_id, "agent_")
+            )
         except (ValueError, AttributeError, TypeError):
             return JSONResponse(
                 status_code=422,
                 content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
             )
-        # The validated UUID is safe to render: the grantor filter is a
-        # constant comparison, and the grant list keeps one statement shape.
+        # Both filter values travel as bound parameters: the statement text
+        # never carries them, and every accepted id spelling reaches the
+        # database as one canonical UUID value.
         stmt = stmt.where(
-            pg_table.c.grantor_type == literal_column(f"'{GRANTOR_AGENT}'"),
-            pg_table.c.grantor_id == literal_column(f"'{grantor_uuid}'"),
+            pg_table.c.grantor_type == GRANTOR_AGENT,
+            pg_table.c.grantor_id == grantor_uuid,
         )
 
     if q is not None and q.strip() != "":
