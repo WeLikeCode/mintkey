@@ -9,7 +9,7 @@ in `apps/admin-api`.
 
 ## 1. The column
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_egress_scope_changelog.py` (header and `REPO_ROOT` as
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_credential_egress_scope_changelog.py` (header and `REPO_ROOT` as
   `tests/unit/admin_api/test_notify_event_type.py`): `test_changelog_adds_the_egress_scope_column` covers the scenario "the
   changelog adds the column": it loads `apps/admin-api/db/changelog/034-credential-egress-scope.yaml`, normalises the text
   of its SQL change and asserts the three substrings of the scenario (lower-cased, whitespace collapsed), the precondition (`onFail: MARK_RAN`, `not` of
@@ -20,7 +20,7 @@ in `apps/admin-api`.
 
 ## 2. The admin-api client sends the scope
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_vault_client_put_egress_scope.py` (header as
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_vault_client_put_egress_scope.py` (header as
   `test_vault_client_get_credential.py`): `test_put_credential_sends_the_scope_metadata` covers "the admin-api client sends
   the scope" with a `MagicMock` stub whose `PutCredential` is an `AsyncMock` returning `MagicMock(key_version=1)`, installed
   with `patch.object(client, "_stub", ...)`; it calls `put_credential` once with `egress_scope="public"` and once without the
@@ -33,7 +33,7 @@ in `apps/admin-api`.
 
 ## 3. The vault adapter stores and returns the scope
 
-- [ ] 3.1 Tests first (all in `apps/vault-adapter`). New file `internal/server/egress_scope_test.go` (package `server`,
+- [x] 3.1 Tests first (all in `apps/vault-adapter`). New file `internal/server/egress_scope_test.go` (package `server`,
   using `newTestGRPCServer` of `grpc_test.go`; the scope goes out with `metadata.AppendToOutgoingContext` and comes back
   with the call option `grpc.Header(&md)`): `TestEgressScopeRoundTrip`, `TestEgressScopeRotationKeepsScope`,
   `TestEgressScopeUnusableValueRefused`, `TestEgressScopeFailingLookupFailsPut` (the server is built as `newTestGRPCServer`
@@ -59,7 +59,7 @@ in `apps/admin-api`.
 
 ## 4. The proxy refuses non-public addresses
 
-- [ ] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scopes ...string)`, whose
+- [x] 4.1 Tests first, new file `apps/proxy-plugin/cmd/proxy-plugin/public_egress_test.go` (package `main`). It defines its own helpers, as design D9 says: `startScopedFakeVault(t, resp, scopes ...string)`, whose
   `GetCredential` sets the response header with `grpc.SetHeader` and one `x-mintkey-egress-scope` pair per scope, and
   `scopedFlows(t, h, target, scope)`, which copies the setup of `callFlows` in
   `stored_target_test.go` (generic and classical-key flows through the scoped fake vault; for the three direct `handle*`

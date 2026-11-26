@@ -43,6 +43,7 @@ func marshalVersionDoc(rec CredentialRecord) (map[string]any, error) {
 		"is_revoked":     rec.IsRevoked,
 		"created_at":     rec.CreatedAt,
 		"target_url":     rec.TargetURL,
+		"egress_scope":   rec.EgressScope,
 		"header_name":    rec.HeaderName,
 		"query_param":    rec.QueryParam,
 		"target_address": rec.TargetAddress,
@@ -100,6 +101,14 @@ func unmarshalVersionDoc(m map[string]any) (CredentialRecord, error) {
 	rec.TargetURL, err = stringField(m, "target_url")
 	if err != nil {
 		return rec, err
+	}
+	rec.EgressScope, err = stringField(m, "egress_scope")
+	if err != nil {
+		return rec, err
+	}
+	// A version document written before the scope existed reads as "any".
+	if rec.EgressScope == "" {
+		rec.EgressScope = "any"
 	}
 	rec.HeaderName, err = stringField(m, "header_name")
 	if err != nil {

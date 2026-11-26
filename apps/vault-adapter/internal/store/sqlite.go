@@ -35,6 +35,7 @@ type CredentialRecord struct {
 	IsRevoked     bool
 	CreatedAt     int64 // Unix nanoseconds
 	TargetURL     string
+	EgressScope   string // egress scope: "any" or "public" (proxy-public-egress)
 	HeaderName    string // injection hint: HTTP header name (e.g. "X-API-Key") — UX-C6
 	QueryParam    string // injection hint: query parameter name (e.g. "api_key") — UX-C6
 	TargetAddress string // SSH-only: "host:port" of the backend SSH server — ADR-0021
@@ -82,6 +83,7 @@ CREATE TABLE IF NOT EXISTS credentials (
     query_param    TEXT    NOT NULL DEFAULT '',
     target_address TEXT    NOT NULL DEFAULT '',
     ssh_user       TEXT    NOT NULL DEFAULT '',
+    egress_scope   TEXT    NOT NULL DEFAULT 'any',
     UNIQUE(tenant_id, service_id, key_version)
 );
 CREATE INDEX IF NOT EXISTS idx_credentials_tenant_service
@@ -145,6 +147,7 @@ func migrateAddColumns(db *sql.DB) error {
 		{"query_param", `ALTER TABLE credentials ADD COLUMN query_param TEXT NOT NULL DEFAULT ''`},
 		{"target_address", `ALTER TABLE credentials ADD COLUMN target_address TEXT NOT NULL DEFAULT ''`},
 		{"ssh_user", `ALTER TABLE credentials ADD COLUMN ssh_user TEXT NOT NULL DEFAULT ''`},
+		{"egress_scope", `ALTER TABLE credentials ADD COLUMN egress_scope TEXT NOT NULL DEFAULT 'any'`},
 	}
 	for _, m := range migrations {
 		if existing[m.col] {
@@ -202,15 +205,20 @@ func (s *Store) Put(ctx context.Context, rec CredentialRecord) (uint32, error) {
 		createdAt = time.Now().UnixNano()
 	}
 
+	egressScope := rec.EgressScope
+	if egressScope == "" {
+		egressScope = "any"
+	}
+
 	if _, err = tx.ExecContext(ctx,
 		`INSERT INTO credentials
              (credential_id, tenant_id, service_id, key_version, auth_scheme,
               wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-              header_name, query_param, target_address, ssh_user)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?)`,
+              header_name, query_param, target_address, ssh_user, egress_scope)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)`,
 		rec.CredentialID, rec.TenantID, rec.ServiceID, nextVer, rec.AuthScheme,
 		rec.WrappedDEK, rec.EncPayload, createdAt, rec.TargetURL,
-		rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser,
+		rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, egressScope,
 	); err != nil {
 		return 0, fmt.Errorf("store.Put: insert: %w", err)
 	}
@@ -231,7 +239,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
                     wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-                    header_name, query_param, target_address, ssh_user
+                    header_name, query_param, target_address, ssh_user, egress_scope
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND is_current=1`,
 			tenantID, serviceID,
@@ -240,7 +248,7 @@ func (s *Store) Get(ctx context.Context, tenantID, serviceID string, keyVersion 
 		row = s.db.QueryRowContext(ctx,
 			`SELECT credential_id, tenant_id, service_id, key_version, auth_scheme,
                     wrapped_dek, enc_payload, is_current, is_revoked, created_at, target_url,
-                    header_name, query_param, target_address, ssh_user
+                    header_name, query_param, target_address, ssh_user, egress_scope
              FROM credentials
              WHERE tenant_id=? AND service_id=? AND key_version=?`,
 			tenantID, serviceID, keyVersion,
@@ -342,7 +350,7 @@ func scanRecord(row *sql.Row) (*CredentialRecord, error) {
 		&r.KeyVersion, &r.AuthScheme,
 		&r.WrappedDEK, &r.EncPayload,
 		&isCurrent, &isRevoked, &r.CreatedAt, &r.TargetURL,
-		&r.HeaderName, &r.QueryParam, &r.TargetAddress, &r.SSHUser,
+		&r.HeaderName, &r.QueryParam, &r.TargetAddress, &r.SSHUser, &r.EgressScope,
 	); err != nil {
 		return nil, err
 	}

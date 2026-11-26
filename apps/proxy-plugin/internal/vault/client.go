@@ -72,6 +72,33 @@ type GetCredentialResponse struct {
 	// TargetURL is the service's registered base_url stored at credential registration time.
 	// It is the only source of the upstream the proxy sends the request to.
 	TargetURL string
+
+	// EgressScope is the credential's egress scope, read from the
+	// x-mintkey-egress-scope response header of the GetCredential answer:
+	// "" when the header is absent (an older adapter, meaning any), the value
+	// when it holds one value, "public" when it holds more than one (fail
+	// closed — proxy-public-egress, design D2).
+	EgressScope string
+}
+
+// egressScopeMetadataKey is the response-header key that carries the
+// credential's egress scope on every GetCredential answer (vault.proto
+// comments; proxy-public-egress).
+const egressScopeMetadataKey = "x-mintkey-egress-scope"
+
+// egressScopeFromHeader maps the x-mintkey-egress-scope values of a
+// GetCredential answer to the scope: none → "" (meaning any), one → the
+// value, several → "public" (the stricter scope, fail closed).
+func egressScopeFromHeader(md metadata.MD) string {
+	values := md.Get(egressScopeMetadataKey)
+	switch {
+	case len(values) == 1:
+		return values[0]
+	case len(values) > 1:
+		return "public"
+	default:
+		return ""
+	}
 }
 
 // Client is the Vault Adapter gRPC client used by the proxy plugin.
@@ -203,12 +230,15 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 	}
 
 	stub := vaultv1.NewVaultAdapterClient(conn)
+	// respHeader receives the answer's header metadata, which carries the
+	// credential's egress scope (x-mintkey-egress-scope).
+	var respHeader metadata.MD
 	resp, err := stub.GetCredential(dialCtx, &vaultv1.GetCredentialRequest{
 		TenantId:      req.TenantID,
 		ServiceId:     req.ServiceID,
 		KeyVersion:    req.KeyVersion,
 		CallerActorId: req.CallerActorID,
-	}, grpc.WaitForReady(false))
+	}, grpc.WaitForReady(false), grpc.Header(&respHeader))
 	if err != nil {
 		return nil, fmt.Errorf("vault: GetCredential(%s/%s): %w", req.TenantID, req.ServiceID, err)
 	}
@@ -220,5 +250,6 @@ func (c *Client) GetCredential(ctx context.Context, req GetCredentialRequest) (*
 		HeaderName:         resp.GetHeaderName(),
 		QueryParam:         resp.GetQueryParam(),
 		TargetURL:          resp.GetTargetUrl(),
+		EgressScope:        egressScopeFromHeader(respHeader),
 	}, nil
 }

@@ -1,0 +1,233 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 2,
+  "verdict": "FAIL",
+  "base_sha": "bc9151a1d442dd95296ea71d143770670dfc55e9",
+  "head_sha": "053a6f76ec891928749334d58a7650dbc7fce299",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "failed",
+      "seconds": 0.6,
+      "note": "base staging@bc9151a1d4 contained; Feedback FB-001 (refactor): Resolve the resolver and dialer defaults outside the dial closure; Feedback FB-002 (behaviour): Refuse IPv6 forms that carry an IPv4 address"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "major",
+      "title": "Feedback FB-001 (refactor): Resolve the resolver and dialer defaults outside the dial closure",
+      "detail": "PublicDialContext assigns the captured r and d inside the returned closure when they are nil. NewPublicTransport passes r = nil and shares one transport across requests, so concurrent first dials write the captured variable at the same time (a data race the race detector reports). Pick net.DefaultResolver and a zero Dialer once, before the closure is returned, and let the closure only read them. Behaviour is unchanged.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-b58eac76",
+      "feedback": {
+        "id": "FB-001",
+        "kind": "refactor",
+        "title": "Resolve the resolver and dialer defaults outside the dial closure",
+        "text": "PublicDialContext assigns the captured r and d inside the returned closure when they are nil. NewPublicTransport passes r = nil and shares one transport across requests, so concurrent first dials write the captured variable at the same time (a data race the race detector reports). Pick net.DefaultResolver and a zero Dialer once, before the closure is returned, and let the closure only read them. Behaviour is unchanged.",
+        "by": "CiprianSpot, 2026-11-26T16:06:09Z",
+        "places": [
+          "apps/proxy-plugin/internal/egress/public.go:112-123"
+        ],
+        "env": null,
+        "when": null,
+        "then": null,
+        "code": "func PublicDialContext(r Resolver, d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {\n\treturn func(ctx context.Context, network, addr string) (net.Conn, error) {\n\t\thost, port, err := net.SplitHostPort(addr)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"egress: split address %q: %w\", addr, err)\n\t\t}\n\t\tif r == nil {\n\t\t\tr = net.DefaultResolver\n\t\t}\n\t\tif d == nil {\n\t\t\td = &net.Dialer{}\n\t\t}",
+        "sha256": "807a9f9429d8c9420ceee1b0bb8685afd0ef5cc3b25dbba8717a534671f6e9a5",
+        "retake": false
+      }
+    },
+    {
+      "severity": "major",
+      "title": "Feedback FB-002 (behaviour): Refuse IPv6 forms that carry an IPv4 address",
+      "detail": "These IPv6 forms embed an IPv4 address, and the guard classifies them by their IPv6 prefix only, so an embedded private IPv4 address is not refused; the current list does not include them. Add the three ranges to nonPublicRanges in apps/proxy-plugin/internal/egress/public.go; every other address keeps its classification.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-3d836ff5",
+      "feedback": {
+        "id": "FB-002",
+        "kind": "behaviour",
+        "title": "Refuse IPv6 forms that carry an IPv4 address",
+        "text": "These IPv6 forms embed an IPv4 address, and the guard classifies them by their IPv6 prefix only, so an embedded private IPv4 address is not refused; the current list does not include them. Add the three ranges to nonPublicRanges in apps/proxy-plugin/internal/egress/public.go; every other address keeps its classification.",
+        "by": "CiprianSpot, 2026-11-26T16:06:16Z",
+        "places": [],
+        "env": null,
+        "when": "a public-scope credential's target resolves to an address in 64:ff9b::/96 (NAT64), 2002::/16 (6to4) or 2001::/32 (Teredo)",
+        "then": "the proxy refuses the connection as not public and answers the same 502 as for any other non-public address",
+        "code": "",
+        "sha256": "fca5a7cde8a19838a5cb80218df033bd80eb015e0df95e3c25af70f978fc1c30",
+        "retake": false
+      }
+    }
+  ],
+  "holds": [],
+  "subject_sha": "053a6f76ec891928749334d58a7650dbc7fce299",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": null,
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": null,
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 1,
+    "tasks": [
+      "F-b58eac76 Feedback FB-001 (refactor): Resolve the resolver and dialer defaults outside the dial closure",
+      "F-3d836ff5 Feedback FB-002 (behaviour): Refuse IPv6 forms that carry an IPv4 address"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "judge_carried": {},
+  "cx_runs": {},
+  "tests": {},
+  "failures": {},
+  "failures_dropped": 0,
+  "e2e_tests": [],
+  "red_green": {
+    "tests.unit.admin_api.test_credential_egress_scope_changelog::test_C_09049412_changelog_adds_the_egress_scope_column": "1.1",
+    "tests.unit.admin_api.test_vault_client_put_egress_scope::test_C_9f390972_put_credential_sends_the_scope_metadata": "2.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeEverySchemeResponse_C_a4ac0a47": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeEverySchemeResponse_C_a4ac0a47/C-a4ac0a47": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFailingLookupFailsPut_C_eac1baf3": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFailingLookupFailsPut_C_eac1baf3/C-eac1baf3": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFirstPutAndConcurrentPuts_C_43146073": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFirstPutAndConcurrentPuts_C_43146073/C-43146073/concurrent": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFirstPutAndConcurrentPuts_C_43146073/C-43146073/nil_nil": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeFirstPutAndConcurrentPuts_C_43146073/C-43146073/no_rows_error": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeRotationKeepsScope_C_b52d2f54": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeRotationKeepsScope_C_b52d2f54/C-b52d2f54": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeRoundTrip_C_cbe614ee": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeRoundTrip_C_cbe614ee/C-cbe614ee": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeUnusableValueRefused_C_48ff464c": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/server::TestEgressScopeUnusableValueRefused_C_48ff464c/C-48ff464c": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestEveryTargetURLFileHandlesEgressScope_C_1971e22f": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestEveryTargetURLFileHandlesEgressScope_C_1971e22f/C-1971e22f": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestHashicorpDocEgressScope_C_adac8186": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestHashicorpDocEgressScope_C_adac8186/C-adac8186": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestStoreNotFoundIsSqlErrNoRows_C_0704866f": "3.1",
+    "github.com/mintkey/mintkey/services/vault-adapter/internal/store::TestStoreNotFoundIsSqlErrNoRows_C_0704866f/C-0704866f": "3.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestOtherScopesAreUnchanged_C_e16db2b8": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestPublicScopeIgnoresProxyEnvironmentChild": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestPublicScopeIgnoresProxyEnvironment_C_0770d694": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestPublicScopeNameWithoutAddress_C_bd037c93": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestPublicScopeRefusesLoopbackName_C_37681a78": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestPublicScopeRefusesNonPublicTargets_C_bd7857b1": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestScopeArrivesFromVault_C_b5f6f1f1": "4.1",
+    "github.com/mintkey/mintkey/services/proxy-plugin/cmd/proxy-plugin::TestUnknownScopeIsTreatedAsPublic_C_ed224807": "4.1"
+  },
+  "guards": [
+    "guard.violation: apps/admin-api/src/admin_api/services/vault_client.py",
+    "guard.violation: apps/admin-api/src/admin_api/services/vault_client.py",
+    "guard.violation: apps/admin-api/src/admin_api/services/vault_client.py"
+  ],
+  "step_flakes": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "453e73786a121db2a618efe1ed2215cb326476fd",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "judge_parts": [],
+  "judge_files": [],
+  "judge_followups": [],
+  "judge_batches": [],
+  "judge_split": {},
+  "hold_views": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek",
+      "glm",
+      "deepseek-free"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}

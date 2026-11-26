@@ -70,6 +70,10 @@ _VAULT_ADDR = os.getenv("VAULT_GRPC_ADDR", "vault-adapter:8084")
 _VAULT_ADMIN_IDENTITY_ID = os.getenv("MINTKEY_VAULT_ADMIN_IDENTITY_ID", "svcid_admin_api")
 _VAULT_ADMIN_TOKEN = os.getenv("MINTKEY_VAULT_ADMIN_TOKEN", "")
 
+# Call-metadata key that carries a credential's egress scope on PutCredential
+# (request) and on every GetCredential answer (response header).
+EGRESS_SCOPE_METADATA_KEY = "x-mintkey-egress-scope"
+
 # ---------------------------------------------------------------------------
 # Singleton channel — one per process, shared across all requests.
 # grpc.aio reconnects automatically when vault-adapter restarts; no manual
@@ -144,6 +148,7 @@ class VaultAdapterClient:
         query_param: str = "",
         target_address: str = "",
         ssh_user: str = "",
+        egress_scope: str = "",
     ) -> dict[str, object]:
         """Seal and store a credential. Returns metadata — no plaintext.
 
@@ -151,6 +156,10 @@ class VaultAdapterClient:
         query_param: query parameter name for api_key_query scheme (e.g. "api_key") — UX-C6.
         target_address: SSH-only "host:port" of the backend SSH server — ADR-0021.
         ssh_user: SSH-only username for authentication — ADR-0021.
+        egress_scope: "public" restricts the proxy to public network addresses
+            for this credential; "any" allows any address. The empty value
+            (default) sends no scope, so the adapter keeps the scope of the
+            current version (or "any" for a new credential).
         """
         scheme_int = _AUTH_SCHEME_MAP.get(auth_scheme, 0)
         req = vault_pb2.PutCredentialRequest(  # type: ignore[attr-defined]  # vault_pb2 is auto-generated; excluded from mypy by config
@@ -164,12 +173,15 @@ class VaultAdapterClient:
             target_address=target_address,
             ssh_user=ssh_user,
         )
+        metadata: tuple[tuple[str, str], ...] = (
+            ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
+            ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
+        )
+        if egress_scope:
+            metadata += ((EGRESS_SCOPE_METADATA_KEY, egress_scope),)
         resp = await (await self._stub()).PutCredential(
             req,
-            metadata=(
-                ("x-mintkey-service-identity", _VAULT_ADMIN_IDENTITY_ID),
-                ("x-mintkey-service-token", _VAULT_ADMIN_TOKEN),
-            ),
+            metadata=metadata,
         )
         return {
             "credential_id": f"cred_{tenant_id[:8]}_{service_id[:8]}",

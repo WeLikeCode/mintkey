@@ -44,6 +44,7 @@ type PutCredentialArgs struct {
 	Plaintext     []byte
 	CallerActorID string
 	TargetURL     string
+	EgressScope   string // "any" or "public"; empty keeps the current version's scope
 	HeaderName    string // injection hint for api_key_header scheme — UX-C6
 	QueryParam    string // injection hint for api_key_query scheme — UX-C6
 	TargetAddress string // SSH-only: "host:port" of the backend SSH server — ADR-0021
@@ -71,6 +72,7 @@ type GetCredentialResult struct {
 	ReturnedKeyVersion    uint32
 	CurrentKeyVersion     uint32
 	TargetURL             string
+	EgressScope           string // "any" or "public" (proxy-public-egress)
 	HeaderName            string // injection hint for api_key_header scheme — UX-C6
 	QueryParam            string // injection hint for api_key_query scheme — UX-C6
 	TargetAddress         string // SSH-only: "host:port" of the backend SSH server — ADR-0021
@@ -167,6 +169,9 @@ type VaultService struct {
 	identityKey []byte          // 32 random bytes; never logged or returned
 	identityMu  sync.RWMutex
 	identities  map[string]*serviceIdentity // keyed by service_identity_id
+	// egressMu serialises the scope lookup and the write of one (tenant, service)
+	// so a put that names no scope cannot race a concurrent put (design D1).
+	egressMu sync.Map // key "<tenant>/<service>" -> *sync.Mutex
 }
 
 // NewVaultService creates a VaultService with the given KEK and store.
@@ -207,6 +212,14 @@ func (v *VaultService) tokenMAC(token []byte) []byte {
 // Credential operations
 // -----------------------------------------------------------------------
 
+// egressMutex returns the per-(tenant, service) mutex that serialises the
+// egress-scope lookup and the write in PutCredential.
+func (v *VaultService) egressMutex(tenantID, serviceID string) *sync.Mutex {
+	key := tenantID + "/" + serviceID
+	mu, _ := v.egressMu.LoadOrStore(key, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
 // PutCredential seals plaintext with a fresh DEK and stores it.
 // Returns the newly assigned key_version and the server-side creation time.
 func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs) (*PutCredentialResult, error) {
@@ -226,6 +239,32 @@ func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs
 	}
 
 	now := time.Now().UTC()
+
+	// Lookup and write of one (tenant, service) are serialised so that a put
+	// that names no scope keeps the scope of the current version even when a
+	// concurrent put has just changed it (design D1).
+	scopeMu := v.egressMutex(args.TenantID, args.ServiceID)
+	scopeMu.Lock()
+	defer scopeMu.Unlock()
+
+	scope := args.EgressScope
+	if scope == "" {
+		current, getErr := v.store.Get(ctx, args.TenantID, args.ServiceID, 0)
+		switch {
+		case getErr == nil:
+			if current != nil {
+				scope = current.EgressScope
+			}
+		case errors.Is(getErr, sql.ErrNoRows):
+			// No current version: a first put stores "any".
+		default:
+			return nil, fmt.Errorf("PutCredential: lookup current egress scope: %w", getErr)
+		}
+	}
+	if scope == "" {
+		scope = "any"
+	}
+
 	rec := store.CredentialRecord{
 		CredentialID:  newCredentialID(),
 		TenantID:      args.TenantID,
@@ -235,6 +274,7 @@ func (v *VaultService) PutCredential(ctx context.Context, args PutCredentialArgs
 		EncPayload:    encPayload,
 		CreatedAt:     now.UnixNano(),
 		TargetURL:     args.TargetURL,
+		EgressScope:   scope,
 		HeaderName:    args.HeaderName,
 		QueryParam:    args.QueryParam,
 		TargetAddress: args.TargetAddress,
@@ -288,6 +328,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 				ReturnedKeyVersion:    args.KeyVersion,
 				CurrentKeyVersion:     currentKeyVer,
 				TargetURL:             e.TargetURL,
+				EgressScope:           e.EgressScope,
 				HeaderName:            e.HeaderName,
 				QueryParam:            e.QueryParam,
 				TargetAddress:         e.TargetAddress,
@@ -320,7 +361,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 	}
 
 	// Populate the cache for the concrete key version (encrypted blobs only).
-	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl, rec.TlsInsecureSkipVerify, rec.SMTPHost, rec.SMTPPort, rec.IMAPHost, rec.IMAPPort)
+	v.cache.Put(args.TenantID, args.ServiceID, rec.KeyVersion, rec.WrappedDEK, rec.EncPayload, rec.AuthScheme, rec.IsRevoked, rec.TargetURL, rec.HeaderName, rec.QueryParam, rec.TargetAddress, rec.SSHUser, rec.ServiceBaseUrl, rec.TlsInsecureSkipVerify, rec.SMTPHost, rec.SMTPPort, rec.IMAPHost, rec.IMAPPort, rec.EgressScope)
 
 	// Determine current key version if caller asked for a specific version.
 	currentKeyVer := rec.KeyVersion
@@ -337,6 +378,7 @@ func (v *VaultService) GetCredential(ctx context.Context, args GetCredentialArgs
 		ReturnedKeyVersion:    rec.KeyVersion,
 		CurrentKeyVersion:     currentKeyVer,
 		TargetURL:             rec.TargetURL,
+		EgressScope:           rec.EgressScope,
 		HeaderName:            rec.HeaderName,
 		QueryParam:            rec.QueryParam,
 		TargetAddress:         rec.TargetAddress,

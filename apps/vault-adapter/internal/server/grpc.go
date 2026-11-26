@@ -50,6 +50,11 @@ type googleServiceAccountEnvelope struct {
 // anyIdentity as a methodScopes value means: a valid identity, whatever its scopes.
 const anyIdentity = "*"
 
+// egressScopeMetadataKey carries a credential's egress scope in gRPC call
+// metadata: a PutCredential request names it and every successful
+// GetCredential answers it in a response header (design D6).
+const egressScopeMetadataKey = "x-mintkey-egress-scope"
+
 // methodScopes maps every unary vault method to the scope its caller must hold. Never written at run time.
 var methodScopes = map[string]string{
 	vaultv1.VaultAdapter_GetCredential_FullMethodName:           "vault.read",
@@ -218,6 +223,15 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "GetCredential: %v", err)
+	}
+
+	// Answer the scope of the returned version for every authentication scheme.
+	egressScope := result.EgressScope
+	if egressScope == "" {
+		egressScope = "any"
+	}
+	if err := grpc.SetHeader(ctx, metadata.Pairs(egressScopeMetadataKey, egressScope)); err != nil {
+		return nil, status.Errorf(codes.Internal, "GetCredential: set egress scope header: %v", err)
 	}
 
 	// AUTH_SCHEME_APPLE_JWT: decrypt envelope → generate fresh JWT → return as Value.
@@ -422,6 +436,10 @@ func (g *grpcVaultServer) GetCredential(ctx context.Context, req *vaultv1.GetCre
 
 // PutCredential seals and stores a credential, returning the assigned key_version.
 func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCredentialRequest) (*vaultv1.PutCredentialResponse, error) {
+	egressScope, err := egressScopeFromIncomingContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	result, err := g.svc.PutCredential(ctx, PutCredentialArgs{
 		TenantID:      req.GetTenantId(),
 		ServiceID:     req.GetServiceId(),
@@ -429,6 +447,7 @@ func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCre
 		Plaintext:     req.GetValue(),
 		CallerActorID: req.GetCallerActorId(),
 		TargetURL:     req.GetTargetUrl(),
+		EgressScope:   egressScope,
 		HeaderName:    req.GetHeaderName(),
 		QueryParam:    req.GetQueryParam(),
 		TargetAddress: req.GetTargetAddress(),
@@ -440,6 +459,29 @@ func (g *grpcVaultServer) PutCredential(ctx context.Context, req *vaultv1.PutCre
 	return &vaultv1.PutCredentialResponse{
 		KeyVersion: result.KeyVersion,
 	}, nil
+}
+
+// egressScopeFromIncomingContext reads the egress scope from the call metadata.
+// No value means "keep the current version's scope" (the empty string). More
+// than one value, or a value other than any/public (the empty string included),
+// is InvalidArgument.
+func egressScopeFromIncomingContext(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", nil
+	}
+	values := md.Get(egressScopeMetadataKey)
+	switch len(values) {
+	case 0:
+		return "", nil
+	case 1:
+		if values[0] != "any" && values[0] != "public" {
+			return "", status.Errorf(codes.InvalidArgument, "invalid egress scope %q", values[0])
+		}
+		return values[0], nil
+	default:
+		return "", status.Errorf(codes.InvalidArgument, "more than one egress scope value")
+	}
 }
 
 // RevokeCredential is not yet implemented.

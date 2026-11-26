@@ -1,0 +1,18 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:proxy-public-egress",
+  "round": 1,
+  "findings": [
+    "F-b58eac76",
+    "F-3d836ff5"
+  ],
+  "chores": [
+    "F-b58eac76"
+  ],
+  "test_chores": [],
+  "refactors": [
+    "F-b58eac76"
+  ],
+  "retakes": [],
+  "repairs": []
+}
