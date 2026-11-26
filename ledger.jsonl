@@ -45,3 +45,7 @@
 {"at":"2026-11-26T14:52:29Z","run":"r-20261126T1452Z-e476","type":"unit.dispatched","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T16:09:39Z","attempt":1,"cost_usd":1.988376,"runs":4,"type":"plan.charged","unit":"openspec:proxy-public-egress"}
 {"at":"2026-11-26T16:09:39Z","run":"r-20261126T1609Z-1ffe","type":"unit.dispatched","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T17:13:32Z","by":"person","merge_commit":"8916dce92233ab252a32ca977578ccd1892b0436","pr":"<forge>/WeLikeCode/mintkey/pull/457","type":"unit.merged","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T17:13:32Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"8916dce92233ab252a32ca977578ccd1892b0436","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T17:13:32Z","revision":"8916dce92233ab252a32ca977578ccd1892b0436","type":"unit.integrated","unit":"openspec:proxy-public-egress"}
+{"at":"2026-11-26T17:13:32Z","attempt":1,"cost_usd":2.983298,"runs":4,"type":"plan.charged","unit":"openspec:proxy-public-egress"}

@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-26T17:13:32Z",
+  "integrated_revision": "8916dce92233ab252a32ca977578ccd1892b0436",
+  "merge_commit": "8916dce92233ab252a32ca977578ccd1892b0436",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/457",
+  "receipt_id": "agent-governance/openspec:proxy-public-egress/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "dbd450800cf13e9d",
+  "target": "staging",
+  "unit_id": "openspec:proxy-public-egress"
+}
