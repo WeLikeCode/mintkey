@@ -100,6 +100,7 @@ What was compared: these tests were also skipped in a base report (step 1 base r
 ## Q-004: Hold H-46baa229: skipped: existing tests in `tests/acceptance/test_golden_path.py` were also skipped in a base report, and the file ad...
 
 - **Status:** open
+- **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 4, verifier
