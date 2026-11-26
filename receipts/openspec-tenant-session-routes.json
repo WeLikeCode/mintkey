@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-26T12:22:49Z",
+  "integrated_revision": "901ddf2c5df747d8388582f0135458c097f30fde",
+  "merge_commit": "901ddf2c5df747d8388582f0135458c097f30fde",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/455",
+  "receipt_id": "agent-governance/openspec:tenant-session-routes/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "de255e324ee4033e",
+  "target": "staging",
+  "unit_id": "openspec:tenant-session-routes"
+}

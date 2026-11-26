@@ -33,3 +33,7 @@
 {"at":"2026-11-26T11:04:16Z","attempt":1,"cost_usd":8.661327,"runs":7,"type":"plan.charged","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-26T11:05:31Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:tenant-session-routes"}
 {"at":"2026-11-26T11:05:31Z","run":"r-20261126T1105Z-063b","type":"unit.dispatched","unit":"openspec:tenant-session-routes"}
+{"at":"2026-11-26T12:22:49Z","by":"person","merge_commit":"901ddf2c5df747d8388582f0135458c097f30fde","pr":"<forge>/WeLikeCode/mintkey/pull/455","type":"unit.merged","unit":"openspec:tenant-session-routes"}
+{"at":"2026-11-26T12:22:49Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"901ddf2c5df747d8388582f0135458c097f30fde","status":"pass","type":"unit.postcheck","unit":"openspec:tenant-session-routes"}
+{"at":"2026-11-26T12:22:49Z","revision":"901ddf2c5df747d8388582f0135458c097f30fde","type":"unit.integrated","unit":"openspec:tenant-session-routes"}
+{"at":"2026-11-26T12:22:49Z","attempt":1,"cost_usd":0.747966,"runs":1,"type":"plan.charged","unit":"openspec:tenant-session-routes"}
