@@ -48,7 +48,7 @@ reject The finding is correct. Task 4.1 of tasks.md requires that in test_e2e_sm
 
 ## Q-002: Hold H-5ce5dda0: skipped: existing tests in `tests/acceptance/test_classical_key.py` were also skipped in a base report, and the file ...
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
@@ -68,11 +68,12 @@ What was compared: these tests were also skipped in a base report (step 1 base r
 
 ### Answer
 <!-- write below this line -->
+accept The skipped test test_classical_key_full_flow was run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true. It fails at its first step: its login call GET /v1/auth/csrf returns 404, and the admin API has no such route on the base branch or at this unit's head, so the test cannot pass on any stack and never reaches the received_key assertion this unit changed. That break predates the unit and is not caused by it. The same behaviour the unit changed (received_key reads back as [REDACTED]) passed in the four data-plane and the golden-path live tests on the same stack, and the unit's own structural test pins the assertion. Answered by the repository owner's delegate.
 ---
 
 ## Q-003: Hold H-430ee622: skipped: existing tests in `tests/acceptance/test_data_plane_smoke.py` were also skipped in a base report, and the fi...
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
@@ -95,11 +96,12 @@ What was compared: these tests were also skipped in a base report (step 1 base r
 
 ### Answer
 <!-- write below this line -->
+accept The four skipped tests (test_broker_smoke, test_vault_adapter_smoke, test_proxy_plugin_smoke, test_kong_smoke) were run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true: all four passed, test_proxy_plugin_smoke with the received_key assertion this unit changed. Answered by the repository owner's delegate.
 ---
 
 ## Q-004: Hold H-46baa229: skipped: existing tests in `tests/acceptance/test_golden_path.py` were also skipped in a base report, and the file ad...
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate: a skipped-test hold is a person's decision
 - **Blocking tasks:** none
 - **Kind:** verdict
@@ -121,3 +123,4 @@ What was compared: these tests were also skipped in a base report (step 1 base r
 
 ### Answer
 <!-- write below this line -->
+accept The three skipped tests (test_ws8_golden_path_agent_to_upstream, test_ws9_vault_grpc_end_to_end, test_ws10_list_versions_end_to_end) were run against an isolated stack built from this unit's head (0d091b8b) with MINTKEY_INTEGRATION_TEST=true: all three passed, test_ws8_golden_path_agent_to_upstream with the received_key assertion this unit changed. Answered by the repository owner's delegate.
