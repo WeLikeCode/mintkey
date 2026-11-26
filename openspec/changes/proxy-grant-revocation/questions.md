@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: grant_revocation_test.go:227 names the first pair again as the third pair
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go of task 1.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 1.1
 - **Kind:** technical
@@ -38,3 +38,4 @@ Edit `apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go`: change line 
 
 ### Answer
 <!-- write below this line -->
+Take option 1: edit apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go so that line 227 reads `thirdPairAgent := "cccccccc-cccc-cccc-cccc-cccccccccccc"`. The third Add then names a pair distinct from the first, the expected Len of 2 counts the first and the third pair as the scenario intends, and Add keeps removing expired entries as the spec says. Answered by the repository owner's delegate.
