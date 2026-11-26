@@ -31,3 +31,5 @@
 {"at":"2026-11-26T11:04:16Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"74131abd7e2b3996a9b8cb06284390d10e826e63","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-26T11:04:16Z","revision":"74131abd7e2b3996a9b8cb06284390d10e826e63","type":"unit.integrated","unit":"openspec:proxy-stored-target"}
 {"at":"2026-11-26T11:04:16Z","attempt":1,"cost_usd":8.661327,"runs":7,"type":"plan.charged","unit":"openspec:proxy-stored-target"}
+{"at":"2026-11-26T11:05:31Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:tenant-session-routes"}
+{"at":"2026-11-26T11:05:31Z","run":"r-20261126T1105Z-063b","type":"unit.dispatched","unit":"openspec:tenant-session-routes"}
