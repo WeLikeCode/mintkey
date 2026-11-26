@@ -43,7 +43,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 3. The operator API
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_permissions_expiry.py`, covering the five scenarios of "The
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_permissions_expiry.py`, covering the five scenarios of "The
   operator API takes an expiry and records the grantor". Change the existing
   `tests/unit/admin_api/test_permissions.py::test_revoke_returns_204_and_notifies` only in its set-up: build its app
   with `existing_perm` set to a `types.SimpleNamespace` grant row (agent, service, action, constraints, grantor

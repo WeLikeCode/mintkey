@@ -216,7 +216,7 @@ def _record_from_row(row: Any, *, created: bool) -> GrantRecord:
     grantor_type = _grantor_type(getattr(row, "grantor_type", None))
     return GrantRecord(
         id=row_id,
-        wire_id=db_uuid_to_wire(row_id, "perm"),
+        wire_id=_wire(row_id, "perm") or row_id,
         agent_id=str(row.agent_id),
         service_id=str(row.service_id),
         action=str(row.action),
