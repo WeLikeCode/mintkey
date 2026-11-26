@@ -69,6 +69,12 @@ func parseNonPublicRanges() []*net.IPNet {
 		"fe80::/10", // link-local
 		"fc00::/7",  // unique-local
 		"ff00::/8",  // multicast
+		// IPv6 forms that carry an IPv4 address: they are classified by their
+		// IPv6 prefix, so an embedded private IPv4 address would otherwise be
+		// dialled (proxy-public-egress-fix-1, FB-002).
+		"64:ff9b::/96", // NAT64
+		"2002::/16",    // 6to4
+		"2001::/32",    // Teredo
 	}
 	ranges := make([]*net.IPNet, 0, len(cidrs))
 	for _, c := range cidrs {
