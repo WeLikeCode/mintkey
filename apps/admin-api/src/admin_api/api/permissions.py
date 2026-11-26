@@ -20,7 +20,6 @@ Source: T-1.4.2; T-BUD-2.2; ADR-0008; ADR-0014.7; ADR-0016.4; ADR-0017.11.
 from __future__ import annotations
 
 import json
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -41,6 +40,11 @@ from admin_api.db.tables import (
     permission_grants as pg_table,
     services as services_table,
 )
+from admin_api.services.grants import (
+    _budget_period_bounds as _budget_period_bounds,
+    _new_perm_id as _new_perm_id,
+    _perm_id_to_uuid as _perm_id_to_uuid,
+)
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
 from mintkey_models.schemas import BudgetConfig
@@ -51,36 +55,6 @@ router = APIRouter(prefix="/v1/tenants/{tenant_id}/agents/{agent_id}/permissions
 # Flat list router — no agent_id scoping; used by admin-ui dashboard + ApiKeyCreate
 # Source: A2 R9 fix; AdminJS RestResource listPath="/v1/tenants/{tenantId}/permissions"
 tenant_permissions_router = APIRouter(prefix="/v1/tenants/{tenant_id}/permissions")
-
-# Crockford base32 alphabet (uppercase, no I/L/O/U) — ADR-0017.11
-_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-
-
-# ---------------------------------------------------------------------------
-# ID generation — ADR-0017.11
-# ---------------------------------------------------------------------------
-
-
-def _new_perm_id() -> str:
-    """Generate a ULID-format ID with the 'perm_' prefix — ADR-0017.11."""
-    ts_ms = int(time.time() * 1000)
-    rand = int.from_bytes(uuid.uuid4().bytes[:10], "big")
-
-    t_enc = []
-    v = ts_ms
-    for _ in range(10):
-        t_enc.append(_CROCKFORD[v & 0x1F])
-        v >>= 5
-    t_enc.reverse()
-
-    r_enc = []
-    v = rand
-    for _ in range(16):
-        r_enc.append(_CROCKFORD[v & 0x1F])
-        v >>= 5
-    r_enc.reverse()
-
-    return "perm_" + "".join(t_enc) + "".join(r_enc)
 
 
 # ---------------------------------------------------------------------------
@@ -650,12 +624,7 @@ async def grant_permission(
     # 7. Generate perm_ ULID ID — ADR-0017.11
     # Derive internal DB UUID from ULID bits — same pattern as agents/services (#13).
     perm_id = _new_perm_id()
-    _perm_tail = perm_id[len("perm_"):]
-    _perm_val = 0
-    for _ch in _perm_tail.upper():
-        _perm_val = (_perm_val << 5) | _CROCKFORD.index(_ch)
-    _perm_val &= (1 << 128) - 1
-    internal_id = uuid.UUID(int=_perm_val)
+    internal_id = _perm_id_to_uuid(perm_id)
     now = datetime.now(timezone.utc)
 
     # 8. INSERT permission_grants — bind svc_uuid (decoded UUID), not raw wire-form
@@ -796,52 +765,6 @@ async def revoke_permission(
     )
 
     return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
-# Budget period boundary helper — design §3; T-BUD-2.2
-# ---------------------------------------------------------------------------
-
-
-def _budget_period_bounds(
-    period: str, now: datetime
-) -> tuple[datetime, datetime]:
-    """
-    Compute UTC-aligned (start, end) for the given period containing `now`.
-
-    | Period   | Start                   | End                          |
-    |----------|-------------------------|------------------------------|
-    | hourly   | Top of the hour         | +1 hour                      |
-    | daily    | 00:00:00Z               | +24 hours                    |
-    | weekly   | Monday 00:00:00Z        | +7 days                      |
-    | monthly  | 1st of month 00:00:00Z  | 1st of next month 00:00:00Z  |
-
-    Source: design §3; T-BUD-2.5.
-    """
-    from calendar import monthrange
-    from datetime import timedelta
-
-    if period == "hourly":
-        start = now.replace(minute=0, second=0, microsecond=0)
-        end = start + timedelta(hours=1)
-    elif period == "daily":
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-    elif period == "weekly":
-        # Monday 00:00:00Z of the current week
-        days_since_monday = now.weekday()  # Monday=0
-        start = (now - timedelta(days=days_since_monday)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        end = start + timedelta(days=7)
-    elif period == "monthly":
-        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        _, days_in_month = monthrange(now.year, now.month)
-        end = start + timedelta(days=days_in_month)
-    else:
-        raise ValueError(f"Unknown budget period: {period}")
-
-    return start, end
 
 
 # ---------------------------------------------------------------------------

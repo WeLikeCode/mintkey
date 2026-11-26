@@ -29,7 +29,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
   module `apps/admin-api/src/admin_api/services/grant_expiry.py` with the names and signatures of the spec (functions
   raising `NotImplementedError`), so the tests fail by assertion. Then fill it in.
 
-- [ ] 2.2 Tests first, new file `tests/unit/admin_api/test_grants_service.py`, covering the seven scenarios of "One write
+- [x] 2.2 Tests first, new file `tests/unit/admin_api/test_grants_service.py`, covering the seven scenarios of "One write
   path creates and removes grants" (the fake session answers a statement containing `FROM permission_grants` with the
   stored row or None; for "two concurrent writes of one grant" the test defines, in this file, a fake pair of sessions over
   one in-memory table, whose `execute` of a statement containing `pg_advisory_xact_lock` waits on an `asyncio.Lock` per key
