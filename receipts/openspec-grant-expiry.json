@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-26T22:56:59Z",
+  "integrated_revision": "42c188e9e5ea9407700491def8393467859b82f0",
+  "merge_commit": "42c188e9e5ea9407700491def8393467859b82f0",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/459",
+  "receipt_id": "agent-governance/openspec:grant-expiry/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "eaa790f81c1e3e73",
+  "target": "staging",
+  "unit_id": "openspec:grant-expiry"
+}
