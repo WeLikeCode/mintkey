@@ -110,16 +110,19 @@ func IsPublicIP(ip net.IP) bool {
 // of the checked addresses in order and returns the first success — never a
 // second lookup of the name (design D3). d nil means a zero Dialer.
 func PublicDialContext(r Resolver, d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	// Resolve the defaults once, before the closure is returned: the closure
+	// may run concurrently (NewPublicTransport passes nil and shares one
+	// transport across requests), so it must only read these values.
+	if r == nil {
+		r = net.DefaultResolver
+	}
+	if d == nil {
+		d = &net.Dialer{}
+	}
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, fmt.Errorf("egress: split address %q: %w", addr, err)
-		}
-		if r == nil {
-			r = net.DefaultResolver
-		}
-		if d == nil {
-			d = &net.Dialer{}
 		}
 
 		var ips []net.IPAddr
