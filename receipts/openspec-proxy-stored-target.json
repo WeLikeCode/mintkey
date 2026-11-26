@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-26T11:04:16Z",
+  "integrated_revision": "74131abd7e2b3996a9b8cb06284390d10e826e63",
+  "merge_commit": "74131abd7e2b3996a9b8cb06284390d10e826e63",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/452",
+  "receipt_id": "agent-governance/openspec:proxy-stored-target/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "b755ca0a2c0400b9",
+  "target": "staging",
+  "unit_id": "openspec:proxy-stored-target"
+}
