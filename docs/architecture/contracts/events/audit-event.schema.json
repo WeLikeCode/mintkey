@@ -1160,6 +1160,29 @@
                   }
                 }
               }
+            },
+            "expires_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time",
+              "description": "When the grant expires (RFC 3339 UTC); null means no expiry."
+            },
+            "grantor_type": {
+              "type": "string",
+              "enum": [
+                "operator",
+                "agent"
+              ],
+              "description": "Whether an operator or an agent gave the grant."
+            },
+            "grantor_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wire id of the granting operator or agent; null when unknown."
             }
           },
           "required": [
@@ -1205,6 +1228,36 @@
             },
             "action": {
               "type": "string"
+            },
+            "grantor_type": {
+              "type": "string",
+              "enum": [
+                "operator",
+                "agent"
+              ],
+              "description": "Whether an operator or an agent gave the revoked grant."
+            },
+            "grantor_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wire id of the operator or agent that gave the revoked grant; null when unknown."
+            },
+            "revoked_by_type": {
+              "type": "string",
+              "enum": [
+                "operator",
+                "agent"
+              ],
+              "description": "Whether an operator or an agent revoked the grant."
+            },
+            "revoked_by_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wire id of the revoking operator or agent; null when unknown."
             }
           },
           "required": [
@@ -1315,6 +1368,7 @@
                 "agent_revoked",
                 "tenant_suspended",
                 "rate_limited",
+                "grant_expired",
                 "invalid_argument",
                 "vault_unavailable"
               ]

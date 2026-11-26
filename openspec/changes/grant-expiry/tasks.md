@@ -89,7 +89,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 5. The audit contract
 
-- [ ] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_grants.py` (loads
+- [x] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_grants.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json`), covering the scenario "the contract names them"; it
   fails before the change. Then edit the three definitions in the schema file. The admin UI's audit filter list is not
   changed here.
