@@ -62,7 +62,7 @@ route functions with a fake session, as `apps/mcp-server/tests/test_request_toke
 
 ## 4. Expired grants are absent
 
-- [ ] 4.1 Tests first, new file `apps/mcp-server/tests/test_grant_expiry_tokens.py`, covering the scenarios of "An
+- [x] 4.1 Tests first, new file `apps/mcp-server/tests/test_grant_expiry_tokens.py`, covering the scenarios of "An
   expired grant is absent for the agent" about `request_token` (including "the grant select is ordered") and of "A token never outlives its grant" (the
   `request_token` setup of `apps/mcp-server/tests/test_request_token_scope_claims.py`: monkeypatched
   `resolve_service_id`, a fake `httpx` recording the broker payload, `session.execute` answering the grant row, then
