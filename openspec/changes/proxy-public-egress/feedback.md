@@ -10,15 +10,15 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | refactor | apps/proxy-plugin/internal/egress/public.go:112 | Resolve the resolver and dialer defaults outside the dial closure |
-| FB-002 | submitted | behaviour |  | Refuse IPv6 forms that carry an IPv4 address |
+| FB-001 | taken | refactor | apps/proxy-plugin/internal/egress/public.go:112 | Resolve the resolver and dialer defaults outside the dial closure |
+| FB-002 | taken | behaviour |  | Refuse IPv6 forms that carry an IPv4 address |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Resolve the resolver and dialer defaults outside the dial closure
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** refactor
 - **Where:** `apps/proxy-plugin/internal/egress/public.go:112-123`
 - **Lesson:** no
@@ -45,12 +45,13 @@ PublicDialContext assigns the captured r and d inside the returned closure when 
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into proxy-public-egress-fix-1
 
 ---
 
 ## FB-002: Refuse IPv6 forms that carry an IPv4 address
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-26T16:06:16Z
@@ -64,3 +65,4 @@ These IPv6 forms embed an IPv4 address, and the guard classifies them by their I
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into proxy-public-egress-fix-1
