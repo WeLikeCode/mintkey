@@ -12,9 +12,9 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | none | verdict | Finding F-3e53e4bd: task 4.1: live-stack acceptance tests not updated |
-| Q-002 | open | none | verdict | Hold H-5ce5dda0: skipped: existing tests in `tests/acceptance/test_classical_key.py` were also skipped in a base report, and the file ... |
-| Q-003 | open | none | verdict | Hold H-430ee622: skipped: existing tests in `tests/acceptance/test_data_plane_smoke.py` were also skipped in a base report, and the fi... |
-| Q-004 | open | none | verdict | Hold H-46baa229: skipped: existing tests in `tests/acceptance/test_golden_path.py` were also skipped in a base report, and the file ad... |
+| Q-002 | answered | none | verdict | Hold H-5ce5dda0: skipped: existing tests in `tests/acceptance/test_classical_key.py` were also skipped in a base report, and the file ... |
+| Q-003 | answered | none | verdict | Hold H-430ee622: skipped: existing tests in `tests/acceptance/test_data_plane_smoke.py` were also skipped in a base report, and the fi... |
+| Q-004 | answered | none | verdict | Hold H-46baa229: skipped: existing tests in `tests/acceptance/test_golden_path.py` were also skipped in a base report, and the file ad... |
 <!-- l4:index:end -->
 
 ---
