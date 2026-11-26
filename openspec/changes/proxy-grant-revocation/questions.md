@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: grant_revocation_test.go:227 names the first pair again as the third pair
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go of task 1.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-26T23:42Z by deepseek, run r-20261126T2258Z-5ab7, task 1.1
