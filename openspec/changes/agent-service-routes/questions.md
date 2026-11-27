@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 6.1 | technical | tests/unit/admin_api/test_agent_routes_isolation.py:295 needs tests/acceptance/openapi_snapshot.json unfrozen to add "agent": "/v1/agent" |
+| Q-001 | answered | 6.1 | technical | tests/unit/admin_api/test_agent_routes_isolation.py:295 needs tests/acceptance/openapi_snapshot.json unfrozen to add "agent": "/v1/agent" |
 <!-- l4:index:end -->
 
 ---
