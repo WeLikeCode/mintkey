@@ -11,7 +11,7 @@ verification round, turns them into a fix unit and checks that each one was addr
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
 | FB-001 | withdrawn | behaviour |  | The transfer and role answers show the state after the change |
-| FB-002 | taken | behaviour |  | agent.role.changed names the agent in its wire form |
+| FB-002 | addressed | behaviour |  | agent.role.changed names the agent in its wire form |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -38,7 +38,7 @@ Taken in round 4 into agent-roles-and-ownership-fix-3
 
 ## FB-002: agent.role.changed names the agent in its wire form
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T05:05:12Z
@@ -52,4 +52,4 @@ update_agent_role writes the path id as given into the payload; service.ownershi
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 3 into agent-roles-and-ownership-fix-2
+Addressed in round 6 at 602993c7b4: apps/admin-api/src/admin_api/api/agents.py update_agent_role payload uses db_uuid_to_wire(agent_uuid, "agent"); tests in test_role_event_wire_id.py
