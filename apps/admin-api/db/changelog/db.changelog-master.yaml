@@ -93,6 +93,9 @@ databaseChangeLog:
       file: 030-grant-expiry.yaml
       relativeToChangelogFile: true
   - include:
+      file: 031-agent-roles-and-ownership.yaml
+      relativeToChangelogFile: true
+  - include:
       file: 033-credential-target-backfill.yaml
       relativeToChangelogFile: true
   - include:

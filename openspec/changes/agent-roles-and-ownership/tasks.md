@@ -22,7 +22,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
 
 ## 2. The schema
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_roles_migration.py` (paths from
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_roles_migration.py` (paths from
   `Path(__file__).resolve().parents[3]`, `yaml.safe_load`), covering the two scenarios of the requirement "The schema
   stores an agent's role and a service's owner"; it fails before the change because the changelog file does not exist.
   Then create `apps/admin-api/db/changelog/031-agent-roles-and-ownership.yaml` (changesets `031-agents-role`,

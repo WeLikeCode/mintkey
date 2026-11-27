@@ -1,0 +1,120 @@
+databaseChangeLog:
+  # =========================================================================
+  # 031-agent-roles-and-ownership.yaml
+  #
+  # Adds an agent's role and a service's owner:
+  #   - agents.role                     (TEXT NOT NULL DEFAULT 'consumer',
+  #                                      consumer | publisher)
+  #   - services.owner_agent_id         (UUID, NULL = operator-owned)
+  #   - services.created_by_agent_id    (UUID, NULL for operator-created)
+  # plus foreign keys to agents(id) with ON DELETE SET NULL and an index on
+  # services (tenant_id, owner_agent_id).
+  #
+  # Source: openspec/changes/agent-roles-and-ownership/design.md §D1, §D2.
+  # =========================================================================
+
+  - changeSet:
+      id: "031-agents-role"
+      author: mintkey
+      changes:
+        - addColumn:
+            schemaName: public
+            tableName: agents
+            columns:
+              - column:
+                  name: role
+                  type: TEXT
+                  defaultValue: consumer
+                  remarks: "Role an operator gave the agent: consumer or publisher."
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            schemaName: public
+            tableName: agents
+            columnName: role
+
+  - changeSet:
+      id: "031-agents-role-check"
+      author: mintkey
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE agents
+                ADD CONSTRAINT ck_agents_role
+                CHECK (role IN ('consumer', 'publisher'));
+      rollback:
+        - sql:
+            sql: |
+              ALTER TABLE agents
+                DROP CONSTRAINT IF EXISTS ck_agents_role;
+
+  - changeSet:
+      id: "031-services-owner-columns"
+      author: mintkey
+      changes:
+        - addColumn:
+            schemaName: public
+            tableName: services
+            columns:
+              - column:
+                  name: owner_agent_id
+                  type: UUID
+                  remarks: "Agent that owns the service; NULL means operator-owned."
+              - column:
+                  name: created_by_agent_id
+                  type: UUID
+                  remarks: "Agent that created the service; NULL for operator-created services."
+      rollback:
+        - dropColumn:
+            schemaName: public
+            tableName: services
+            columnName: created_by_agent_id
+        - dropColumn:
+            schemaName: public
+            tableName: services
+            columnName: owner_agent_id
+
+  - changeSet:
+      id: "031-services-owner-fks"
+      author: mintkey
+      changes:
+        - addForeignKeyConstraint:
+            constraintName: fk_services_owner_agent
+            baseTableName: services
+            baseColumnNames: owner_agent_id
+            referencedTableName: agents
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            constraintName: fk_services_created_by_agent
+            baseTableName: services
+            baseColumnNames: created_by_agent_id
+            referencedTableName: agents
+            referencedColumnNames: id
+            onDelete: SET NULL
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: services
+            constraintName: fk_services_created_by_agent
+        - dropForeignKeyConstraint:
+            baseTableName: services
+            constraintName: fk_services_owner_agent
+
+  - changeSet:
+      id: "031-services-owner-index"
+      author: mintkey
+      changes:
+        - createIndex:
+            indexName: idx_services_tenant_owner_agent
+            tableName: services
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: owner_agent_id
+            unique: false
+      rollback:
+        - dropIndex:
+            indexName: idx_services_tenant_owner_agent
+            tableName: services
