@@ -34,7 +34,9 @@ from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.agent_publishing import (
     parse_agent_body,
+    require_owned_service,
     service_view,
+    validation_body,
 )
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
 from mintkey_models.audit import audit_emit
@@ -83,6 +85,35 @@ class AgentServiceCreate(BaseModel):
         if value not in _AGENT_AUTH_SCHEMES:
             raise ValueError("auth_scheme is not supported for an agent service")
         return value
+
+
+class AgentServiceUpdate(BaseModel):
+    """The update body: set-only fields, extra keys refused (design D6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str | None = None
+    auth_scheme: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    openapi_url: str | None = None
+
+    @field_validator("auth_scheme")
+    @classmethod
+    def _validate_auth_scheme(cls, value: str | None) -> str | None:
+        if value is not None and value not in _AGENT_AUTH_SCHEMES:
+            raise ValueError("auth_scheme is not supported for an agent service")
+        return value
+
+
+#: The order the update fields are reported in ``fields_changed``.
+_UPDATE_FIELDS = (
+    "base_url",
+    "auth_scheme",
+    "display_name",
+    "description",
+    "openapi_url",
+)
 
 
 async def _check_target(url: str, field: str) -> None:
@@ -244,10 +275,148 @@ async def list_agent_services(
     )
 
 
+@router.patch("/{service_ref}")
 async def _update_agent_service(
     service_ref: str,
     request: Request,
     principal: AgentPrincipal = Depends(require_publisher_principal),
     session: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
-    raise NotImplementedError
+    """Update the caller's own service (200).
+
+    The row is locked first (design D7). A changed ``base_url`` or
+    ``auth_scheme`` clears the stored credential in the same transaction; a
+    value equal to the stored one is no change at all (design D3/D11).
+    """
+    body = await parse_agent_body(request, AgentServiceUpdate)
+    if not body.model_fields_set:
+        raise AgentApiError(422, validation_body(None))
+
+    await set_tenant_context(session, principal.tenant_id)
+    locked = await require_owned_service(
+        session, principal, service_ref, for_update=True
+    )
+
+    changed = [
+        field
+        for field in _UPDATE_FIELDS
+        if field in body.model_fields_set
+        and getattr(body, field) is not None
+        and getattr(body, field) != getattr(locked, field)
+    ]
+    if not changed:
+        return JSONResponse(
+            status_code=200,
+            content={**service_view(locked), "credential_cleared": False},
+        )
+
+    if "base_url" in changed and body.base_url is not None:
+        await _check_target(body.base_url, "base_url")
+    if "openapi_url" in changed and body.openapi_url is not None:
+        await _check_target(body.openapi_url, "openapi_url")
+
+    clears_credential = "base_url" in changed or "auth_scheme" in changed
+    credential_cleared = clears_credential and bool(
+        getattr(locked, "credential_set", False)
+    )
+
+    now = datetime.now(timezone.utc)
+    update_params: dict[str, Any] = {
+        field: getattr(body, field) if field in changed else None
+        for field in _UPDATE_FIELDS
+    }
+    update_params.update(
+        {
+            "updated_at": now,
+            "service_id": str(locked.id),
+            "tenant_id": str(principal.tenant_id),
+        }
+    )
+    result = await session.execute(
+        text(
+            "UPDATE services"
+            " SET base_url = COALESCE(:base_url, base_url),"
+            "     auth_scheme = COALESCE(:auth_scheme, auth_scheme),"
+            "     display_name = COALESCE(:display_name, display_name),"
+            "     description = COALESCE(:description, description),"
+            "     openapi_url = COALESCE(:openapi_url, openapi_url),"
+            "     updated_at = :updated_at"
+            " WHERE id = :service_id AND tenant_id = :tenant_id"
+            " RETURNING id, name, slug, display_name, description, base_url,"
+            " auth_scheme, openapi_url, status, created_at, updated_at"
+        ),
+        update_params,
+    )
+    row = result.fetchone()
+    if row is None:
+        raise RuntimeError("UPDATE ... RETURNING returned no service row")
+
+    service_id = db_uuid_to_wire(row.id, "svc")
+
+    if clears_credential:
+        await session.execute(
+            text(
+                "DELETE FROM vault.credentials"
+                " WHERE service_id = :service_id AND tenant_id = :tenant_id"
+            ),
+            {
+                "service_id": str(locked.id),
+                "tenant_id": str(principal.tenant_id),
+            },
+        )
+        await session.execute(
+            text(
+                "DELETE FROM credentials"
+                " WHERE service_id = :service_id AND tenant_id = :tenant_id"
+            ),
+            {
+                "service_id": str(locked.id),
+                "tenant_id": str(principal.tenant_id),
+            },
+        )
+
+    await audit_emit(
+        session=session,
+        tenant_id=principal.tenant_id,
+        event_type="service.updated",
+        actor_id=principal.agent_id,
+        actor_type="agent",
+        target_id=locked.id,
+        target_type="service",
+        payload={"service_id": service_id, "fields_changed": changed},
+    )
+
+    if credential_cleared:
+        await audit_emit(
+            session=session,
+            tenant_id=principal.tenant_id,
+            event_type="service.credential.cleared",
+            actor_id=principal.agent_id,
+            actor_type="agent",
+            target_id=locked.id,
+            target_type="service",
+            payload={
+                "service_id": service_id,
+                "reason": "target_changed",
+                "fields_changed": changed,
+            },
+        )
+
+    await notify_change(
+        session,
+        "mintkey:service",
+        {
+            "event": "service.updated",
+            "tenant_id": str(principal.tenant_id),
+            "service_id": service_id,
+        },
+    )
+
+    view = service_view(row)
+    view["credential_set"] = (
+        False
+        if clears_credential
+        else bool(getattr(locked, "credential_set", False))
+    )
+    view["credential_cleared"] = credential_cleared
+    return JSONResponse(status_code=200, content=view)

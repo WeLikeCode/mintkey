@@ -28,7 +28,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 3. Update
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_services_update.py`, covering the five scenarios of "A
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_services_update.py`, covering the five scenarios of "A
   publisher updates only its own services"; and new file `tests/unit/admin_api/test_agent_service_error_bodies.py`, covering "one
   body shape" (the create cases hold already, the patch cases are red until the route exists). Then add the PATCH route to `apps/admin-api/src/admin_api/api/agent_services.py`
   (a pydantic model with `extra="forbid"` per body, read with `parse_agent_body`; the same for the POST route).
