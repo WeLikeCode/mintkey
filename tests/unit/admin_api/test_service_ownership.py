@@ -542,7 +542,7 @@ async def test_C_2e9cfe5e_unsuitable_targets() -> None:
             _service_row(owner=None, created_by=None),
             _agent_row(status="active", role="consumer"),
             422,
-            "agent_not_publisher",
+            "invalid_transfer_target",
             "agent_not_publisher",
         ),
         (
@@ -550,7 +550,7 @@ async def test_C_2e9cfe5e_unsuitable_targets() -> None:
             _service_row(owner=None, created_by=None),
             _agent_row(status="revoked", role="publisher"),
             422,
-            "agent_not_active",
+            "invalid_transfer_target",
             "agent_not_active",
         ),
         (
@@ -558,7 +558,7 @@ async def test_C_2e9cfe5e_unsuitable_targets() -> None:
             _service_row(owner=None, created_by=None),
             _agent_row(status="revoked", role="consumer"),
             422,
-            "agent_not_active",
+            "invalid_transfer_target",
             "agent_not_active",
         ),
         (
