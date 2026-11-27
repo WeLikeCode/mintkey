@@ -10,16 +10,16 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour |  | Refuse the IPv6 forms that carry an IPv4 address |
-| FB-002 | submitted | behaviour |  | A malformed agent-supplied URL is refused, never an error |
-| FB-003 | submitted | behaviour |  | The deny list matches names however they are written |
+| FB-001 | taken | behaviour |  | Refuse the IPv6 forms that carry an IPv4 address |
+| FB-002 | taken | behaviour |  | A malformed agent-supplied URL is refused, never an error |
+| FB-003 | taken | behaviour |  | The deny list matches names however they are written |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Refuse the IPv6 forms that carry an IPv4 address
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:45Z
@@ -33,12 +33,13 @@ address_is_public relies on ip.is_global, which treats 64:ff9b::/96 as global (P
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into agent-principal-and-egress-fix-2
 
 ---
 
 ## FB-002: A malformed agent-supplied URL is refused, never an error
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:46Z
@@ -52,12 +53,13 @@ Today a.example..com or a 64-character label raises UnicodeEncodeError from geta
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into agent-principal-and-egress-fix-2
 
 ---
 
 ## FB-003: The deny list matches names however they are written
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:46Z
@@ -71,3 +73,4 @@ Only one trailing dot is removed from the host, entries are not normalised the s
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into agent-principal-and-egress-fix-2
