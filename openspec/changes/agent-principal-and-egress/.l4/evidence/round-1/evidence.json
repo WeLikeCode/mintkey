@@ -1,0 +1,124 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "admin_api/api/internal.py",
+      "admin_api/services/credential_service.py",
+      "apps/admin-api/src/admin_api/api/internal.py",
+      "docs/architecture/contracts/events/audit-event.schema.json",
+      "apps/admin-api/src/admin_api/auth/agent_principal.py",
+      "packages/python/mintkey-models/mintkey_models/egress.py",
+      "tests/acceptance/openapi_snapshot.json",
+      "apps/admin-api",
+      "src/admin_api",
+      "packages/python/mintkey-models",
+      "mintkey_models",
+      "packages/python/mintkey-models/tests/test_egress.py",
+      "tests/unit/admin_api/test_agent_key_check.py",
+      "tests/unit/admin_api/test_validate_agent_key_errors.py",
+      "tests/unit/admin_api/test_agent_principal.py",
+      "tests/unit/admin_api/test_agent_role_refusal.py",
+      "tests/unit/admin_api/test_audit_schema_agent_denied.py",
+      "**/*.suffix",
+      "**/main.py",
+      "module admin-api",
+      "module admin_api",
+      "module docs",
+      "module python",
+      "module tests"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_principal.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "docs/architecture/contracts/events/audit-event.schema.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-principal-and-egress/.l4/ledger/r-20261127T1106Z-019e.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-principal-and-egress/.l4/ledger/r-20261127T1336Z-73e4.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-principal-and-egress/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/python/mintkey-models/mintkey_models/egress.py",
+        "module": "python",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/python/mintkey-models/tests/test_egress.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_key_check.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_principal.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_role_refusal.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_audit_schema_agent_denied.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": null,
+  "tests_ran": null
+}
