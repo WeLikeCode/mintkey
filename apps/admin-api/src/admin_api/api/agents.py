@@ -623,7 +623,7 @@ async def update_agent_role(
         target_id=row.id,
         target_type="agent",
         payload={
-            "agent_id": agent_id,
+            "agent_id": db_uuid_to_wire(agent_uuid, "agent"),
             "from_role": from_role,
             "to_role": body.role,
         },
