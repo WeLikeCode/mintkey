@@ -45,6 +45,7 @@ The two scenarios do not conflict, and neither is to be deleted. They share a WH
 ## Q-002: tests/unit/admin_api/test_service_ownership.py:594 — test_C_2e9cfe5e_unsuitable_targets expects mintkey:code agent_not_publisher/agent_not_active, contradicting the spec and test_C_cdc7f907 in the sam
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/unit/admin_api/test_service_ownership.py of task 4.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 4.1
 - **Kind:** technical
 - **Asked:** 2026-11-27T02:18Z by deepseek, run r-20261127T0033Z-a936, task 4.1
