@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import logging
 import os
 import re
 from urllib.parse import urlsplit
 
 DENY_ENV = "MINTKEY_AGENT_EGRESS_DENY"
+
+_LOGGER = logging.getLogger(__name__)
 
 # A DNS label may be at most 63 characters and may not be empty.
 _MAX_LABEL_LENGTH = 63
@@ -59,9 +62,36 @@ async def resolve_host(host: str) -> list[str]:
 
 
 def egress_deny_names() -> tuple[str, ...]:
-    """Return the lower-cased, non-empty names of ``MINTKEY_AGENT_EGRESS_DENY``."""
+    """Return the lower-cased, non-empty names of ``MINTKEY_AGENT_EGRESS_DENY``.
+
+    Trailing dots are removed from every entry, so ``corp.example.com.`` denies
+    the same name as ``corp.example.com``. An entry that can never match a host
+    name (``*``, ``*.``, a leading dot, or ``*name`` without the dot) protects
+    nothing, so it is dropped and reported once as ignored.
+    """
     raw = os.environ.get(DENY_ENV, "")
-    return tuple(name.strip().lower() for name in raw.split(",") if name.strip())
+    names: list[str] = []
+    for piece in raw.split(","):
+        entry = piece.strip().lower().rstrip(".")
+        if not entry:
+            continue
+        if not _deny_entry_is_usable(entry):
+            _LOGGER.warning(
+                "ignoring agent egress deny entry %r: it can never match a host name",
+                piece.strip(),
+            )
+            continue
+        names.append(entry)
+    return tuple(names)
+
+
+def _deny_entry_is_usable(entry: str) -> bool:
+    """Return True when *entry* can match a host name."""
+    if entry == "*":
+        return False
+    if entry.startswith("*."):
+        return bool(entry[2:])
+    return not entry.startswith(("*", "."))
 
 
 def address_is_public(address: str) -> bool:
@@ -133,8 +163,7 @@ async def check_agent_target_url(url: str) -> None:
         raise TargetNotAllowed("host_missing")
 
     host = host.lower()
-    if host.endswith("."):
-        host = host[:-1]
+    host = host.rstrip(".")
 
     try:
         host.encode("ascii")
@@ -156,6 +185,7 @@ async def check_agent_target_url(url: str) -> None:
 
     if (
         host == "localhost"
+        or host.endswith(".localhost")
         or "." not in host
         or host.endswith(".internal")
         or host.endswith(".local")
