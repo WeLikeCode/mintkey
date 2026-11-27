@@ -75,3 +75,8 @@
 {"ts": "2026-11-27T07:34:11.825449Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 75, "type": "step.timed", "phase": "verify", "round": 6, "seconds": 440.8}
 {"ts": "2026-11-27T07:34:11.825886Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 76, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-11-27T07:34:15.204978Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 77, "type": "pr.labels", "number": 463, "labels": ["l4:verified"]}
+{"ts": "2026-11-27T07:34:23.259435Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 78, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/463", "number": 463, "head": "10f2c50fab26b01abc894dc4dbf9e5d7bda951f0"}
+{"ts": "2026-11-27T07:34:23.260221Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 79, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-11-27T07:34:26.629739Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 80, "type": "pr.labels", "number": 463, "labels": ["l4:in_review"]}
+{"ts": "2026-11-27T07:34:28.482059Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 81, "type": "lock.released"}
+{"ts": "2026-11-27T07:34:28.482498Z", "run_id": "r-20261127T0726Z-7df0", "unit": "openspec:agent-roles-and-ownership", "seq": 82, "type": "run.finished", "exit_code": 0}
