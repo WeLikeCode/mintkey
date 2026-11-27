@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 
 import httpx
+from mintkey_models.roles import normalize_role
 from pydantic import BaseModel
 
 _VALIDATE_PATH = "/v1/internal/validate-agent-key"
@@ -23,6 +24,7 @@ _VALIDATE_PATH = "/v1/internal/validate-agent-key"
 class AgentContext(BaseModel):
     agent_id: str
     tenant_id: str
+    role: str = "consumer"
 
 
 class AdminApiClient:
@@ -43,4 +45,8 @@ class AdminApiClient:
         if resp.status_code != 200:
             return None
         data = resp.json()
-        return AgentContext(agent_id=data["agent_id"], tenant_id=str(data["tenant_id"]))
+        return AgentContext(
+            agent_id=data["agent_id"],
+            tenant_id=str(data["tenant_id"]),
+            role=normalize_role(data.get("role")),
+        )

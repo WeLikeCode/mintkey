@@ -44,7 +44,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
   Literal["consumer", "publisher"]`), the existing-role short-circuit, the UPDATE and the audit event; in
   `apps/admin-api/src/admin_api/api/internal.py` add `role` to the SELECT and to the 200 body.
 
-- [ ] 3.2 Tests first, new file `apps/mcp-server/tests/test_agent_context_role.py`, covering the scenario "the MCP
+- [x] 3.2 Tests first, new file `apps/mcp-server/tests/test_agent_context_role.py`, covering the scenario "the MCP
   client keeps the role": it patches `httpx.AsyncClient` in `mcp_server.admin_api_client` with a fake whose `post`
   returns an object with `status_code` 200 and `json()`; it fails before the change because `AgentContext` has no
   `role`. Then in `apps/mcp-server/src/mcp_server/admin_api_client.py` add `role: str = "consumer"` to `AgentContext` and
