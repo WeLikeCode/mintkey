@@ -3094,6 +3094,26 @@
         }
       },
       "required": ["event_type", "target_type", "payload"]
+    },
+    "ev_agent_operation_denied": {
+      "title": "agent.operation.denied",
+      "description": "An agent's role was too low for the operation it attempted; the refusal is recorded.",
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "properties": {
+        "event_type": {"const": "agent.operation.denied"},
+        "target_type": {"const": "agent"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {"$ref": "#/$defs/agent_id"},
+            "role": {"type": "string", "enum": ["consumer", "publisher"]},
+            "operation": {"type": "string", "maxLength": 256}
+          },
+          "required": ["agent_id", "role", "operation"]
+        }
+      },
+      "required": ["event_type", "target_type", "payload"]
     }
   },
   "oneOf": [
@@ -3306,6 +3326,9 @@
     },
     {
       "$ref": "#/$defs/ev_budget_reset"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_operation_denied"
     }
   ],
   "discriminator": {
@@ -3383,7 +3406,8 @@
       "budget.threshold_reached": "#/$defs/ev_budget_threshold_reached",
       "budget.exceeded": "#/$defs/ev_budget_exceeded",
       "budget.config_updated": "#/$defs/ev_budget_config_updated",
-      "budget.reset": "#/$defs/ev_budget_reset"
+      "budget.reset": "#/$defs/ev_budget_reset",
+      "agent.operation.denied": "#/$defs/ev_agent_operation_denied"
     }
   },
   "examples": [

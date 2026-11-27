@@ -40,6 +40,6 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 4. The audit contract
 
-- [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_denied.py` (loads
+- [x] 4.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_denied.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json`), covering the scenario "the contract lists it"; it fails
   before the change. Then edit the schema file. The admin UI's audit filter list is not changed here.
