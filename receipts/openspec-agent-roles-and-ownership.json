@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-27T11:05:05Z",
+  "integrated_revision": "9e3b357f523343aa093095a931425db7a22e79f4",
+  "merge_commit": "9e3b357f523343aa093095a931425db7a22e79f4",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/463",
+  "receipt_id": "agent-governance/openspec:agent-roles-and-ownership/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "5528e0bc7131a73b",
+  "target": "staging",
+  "unit_id": "openspec:agent-roles-and-ownership"
+}

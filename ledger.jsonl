@@ -89,3 +89,7 @@
 {"at":"2026-11-27T06:54:08Z","run":"r-20261127T0654Z-f5d6","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T07:26:36Z","attempt":1,"cost_usd":12.553667,"runs":8,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T07:26:36Z","run":"r-20261127T0726Z-7df0","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T11:05:05Z","by":"person","merge_commit":"9e3b357f523343aa093095a931425db7a22e79f4","pr":"<forge>/WeLikeCode/mintkey/pull/463","type":"unit.merged","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T11:05:05Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"9e3b357f523343aa093095a931425db7a22e79f4","status":"pass","type":"unit.postcheck","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T11:05:05Z","revision":"9e3b357f523343aa093095a931425db7a22e79f4","type":"unit.integrated","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T11:05:05Z","attempt":1,"cost_usd":14.478409,"runs":8,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
