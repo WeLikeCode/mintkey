@@ -93,3 +93,5 @@
 {"at":"2026-11-27T11:05:05Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"9e3b357f523343aa093095a931425db7a22e79f4","status":"pass","type":"unit.postcheck","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T11:05:05Z","revision":"9e3b357f523343aa093095a931425db7a22e79f4","type":"unit.integrated","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T11:05:05Z","attempt":1,"cost_usd":14.478409,"runs":8,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T11:06:17Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T11:06:17Z","run":"r-20261127T1106Z-019e","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
