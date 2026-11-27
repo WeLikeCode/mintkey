@@ -10,7 +10,7 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | taken | behaviour |  | The transfer and role answers show the state after the change |
+| FB-001 | withdrawn | behaviour |  | The transfer and role answers show the state after the change |
 | FB-002 | taken | behaviour |  | agent.role.changed names the agent in its wire form |
 <!-- l4:feedback-index:end -->
 
@@ -18,7 +18,7 @@ verification round, turns them into a fix unit and checks that each one was addr
 
 ## FB-001: The transfer and role answers show the state after the change
 
-- **Status:** taken
+- **Status:** withdrawn
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T05:05:11Z
