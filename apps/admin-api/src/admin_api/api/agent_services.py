@@ -242,3 +242,12 @@ async def list_agent_services(
         status_code=200,
         content={"services": [service_view(row) for row in rows]},
     )
+
+
+async def _update_agent_service(
+    service_ref: str,
+    request: Request,
+    principal: AgentPrincipal = Depends(require_publisher_principal),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+) -> JSONResponse:
+    raise NotImplementedError
