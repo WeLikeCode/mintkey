@@ -10,17 +10,17 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour |  | Unknown agent keys on the agent routes cannot slow the MCP server's key checks |
-| FB-002 | submitted | behaviour |  | The target check of an agent-supplied URL is bounded in time and holds no database connection |
-| FB-003 | submitted | behaviour |  | service.credential.set matches its schema |
-| FB-004 | submitted | behaviour |  | Invalid field values answer 422, never 500 or a silent 200 |
+| FB-001 | taken | behaviour |  | Unknown agent keys on the agent routes cannot slow the MCP server's key checks |
+| FB-002 | taken | behaviour |  | The target check of an agent-supplied URL is bounded in time and holds no database connection |
+| FB-003 | taken | behaviour |  | service.credential.set matches its schema |
+| FB-004 | taken | behaviour |  | Invalid field values answer 422, never 500 or a silent 200 |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Unknown agent keys on the agent routes cannot slow the MCP server's key checks
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T23:02:12Z
@@ -34,12 +34,13 @@ Today every Bearer mk_agent_* string, of any length, reaches a full Argon2id ver
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into agent-service-routes-fix-1
 
 ---
 
 ## FB-002: The target check of an agent-supplied URL is bounded in time and holds no database connection
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T23:02:12Z
@@ -53,12 +54,13 @@ Today the check runs after set_tenant_context (create) or after the FOR UPDATE (
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into agent-service-routes-fix-1
 
 ---
 
 ## FB-003: service.credential.set matches its schema
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T23:02:13Z
@@ -72,12 +74,13 @@ The event is emitted with target_type credential while the definition this unit 
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into agent-service-routes-fix-1
 
 ---
 
 ## FB-004: Invalid field values answer 422, never 500 or a silent 200
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T23:02:13Z
@@ -91,3 +94,4 @@ Today an over-long display_name reaches the database and raises a DataError (500
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 2 into agent-service-routes-fix-1
