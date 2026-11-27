@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-27T00:30:01Z",
+  "integrated_revision": "e22576ba1ef02b6efdfc5368aacb202853e2ce6d",
+  "merge_commit": "e22576ba1ef02b6efdfc5368aacb202853e2ce6d",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/461",
+  "receipt_id": "agent-governance/openspec:proxy-grant-revocation/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "87395231f240aa43",
+  "target": "staging",
+  "unit_id": "openspec:proxy-grant-revocation"
+}
