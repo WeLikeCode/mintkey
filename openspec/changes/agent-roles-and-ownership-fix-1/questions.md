@@ -1,0 +1,48 @@
+# Questions — agent-roles-and-ownership-fix-1
+
+<!-- l4:questions v1
+How to answer: write under "### Answer" and set **Status** to `answered`.
+To accept the clarifier's suggestion as-is, set **Status** to `accepted`.
+Status values: open · answered · accepted · answered-by-clarifier · dismissed · superseded
+Kind values: technical · product · ambiguous · verdict · harness. For a `verdict` question, start the answer with `accept` or
+`reject`, then give your reason; for a `harness` question, with `accept` or `retry`.
+Do not change question IDs. Commit and push to the l4/… branch to resume the run. -->
+
+<!-- l4:index:start -->
+| ID | Status | Blocking | Kind | Question |
+|----|--------|----------|------|----------|
+| Q-001 | open | 1.1 | technical | A person must commit the Q-002 edit to test_C_2e9cfe5e_unsuitable_targets |
+<!-- l4:index:end -->
+
+---
+
+## Q-001: A person must commit the Q-002 edit to test_C_2e9cfe5e_unsuitable_targets
+
+- **Status:** open
+- **Blocking tasks:** 1.1
+- **Kind:** technical
+- **Asked:** 2026-11-27T04:26Z by deepseek, run r-20261127T0221Z-dae9, task 1.1
+
+### Context
+tests/unit/admin_api/test_service_ownership.py:594 (test_C_2e9cfe5e_unsuitable_targets) still expects the three 422 transfer cases to answer mintkey:code agent_not_publisher, agent_not_active, agent_not_active. Answered Q-002 decided the opposite: an unsuitable target answers 422 invalid_transfer_target keeping that reason, and apps/admin-api/src/admin_api/api/services.py already returns exactly that (test_C_cdc7f907 in the same file passes). This fix task cannot change the test file, so a person must commit the change. Q-002 option 1: in that test's case list, change the fifth tuple element of the three 422 cases (lines 545, 553, 561) from agent_not_publisher, agent_not_active, agent_not_active to invalid_transfer_target for all three, leaving the sixth element (the reason) unchanged.
+
+Harness note: this is a fix task. It cannot unfreeze a test or test-support file (a test, `conftest.py`, a fixture), whatever the answer says: a fix step's change to one is put back. A person must commit the change on the unit branch themselves, then answer this question (`l4 questions answer Q-NNN --unit openspec:agent-roles-and-ownership-fix-1 --text "..."`).
+
+### Options
+1. A person commits the edit to tests/unit/admin_api/test_service_ownership.py described above on the unit branch, then answers this question.
+2. Reclassify the finding as a test chore so a fix step may edit the test file.
+
+### Harness notes
+Harness note: the verifier recorded these failures for the tests of this task's findings:
+tests.unit.admin_api.test_service_ownership::test_C_2e9cfe5e_unsuitable_targets (assertion, test):
+  >           assert body.get("mintkey:code") == code, (name, body)
+  E           AssertionError: ('active consumer', {'mintkey:code': 'invalid_transfer_target', 'title': 'Transfer target not allowed', 'reason': 'agent_not_publisher'})
+  E           assert 'invalid_transfer_target' == 'agent_not_publisher'
+  E             - agent_not_publisher
+  E             + invalid_transfer_target
+  ../../tests/unit/admin_api/test_service_ownership.py:594: AssertionError
+
+Harness note: the previous attempt of this task was rejected: nothing changed: the guard put back every edit (tests/unit/admin_api/test_service_ownership.py)
+
+### Answer
+<!-- write below this line -->
