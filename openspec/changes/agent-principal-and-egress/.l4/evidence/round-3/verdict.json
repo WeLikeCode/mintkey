@@ -1,0 +1,256 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 3,
+  "verdict": "FAIL",
+  "base_sha": "0c676fec3046d36705bfcfb5f6cb6ec193ef2f5d",
+  "head_sha": "ac32349b0cd7ed4f0d570e49d7a4ecf8415ea5c0",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "failed",
+      "seconds": 0.7,
+      "note": "base staging@0c676fec30 contained; Feedback FB-001 (behaviour): Refuse the IPv6 forms that carry an IPv4 address; Feedback FB-002 (behaviour): A malformed agent-supplied URL is refused, never an error; Feedback FB-003 (behaviour): The deny list matches names however they are written"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "major",
+      "title": "Feedback FB-001 (behaviour): Refuse the IPv6 forms that carry an IPv4 address",
+      "detail": "address_is_public relies on ip.is_global, which treats 64:ff9b::/96 as global (Python 3.13), while the proxy's guard refuses it; the two checks should refuse the same ranges.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-479e3869",
+      "feedback": {
+        "id": "FB-001",
+        "kind": "behaviour",
+        "title": "Refuse the IPv6 forms that carry an IPv4 address",
+        "text": "address_is_public relies on ip.is_global, which treats 64:ff9b::/96 as global (Python 3.13), while the proxy's guard refuses it; the two checks should refuse the same ranges.",
+        "by": "CiprianSpot, 2026-11-27T15:52:45Z",
+        "places": [],
+        "env": null,
+        "when": "an agent-supplied base_url or openapi_url names a host that resolves to an address in 64:ff9b::/96 (NAT64), 2002::/16 (6to4) or 2001::/32 (Teredo)",
+        "then": "the check refuses it with mintkey:target_not_allowed, on every supported Python version, so the create-time check refuses every range the proxy's connect-time guard refuses",
+        "code": "",
+        "sha256": "4658458cba7a76293563ec9d57b9fd6c6be223585e6daa439eb01c06b27cbc63",
+        "retake": false
+      }
+    },
+    {
+      "severity": "major",
+      "title": "Feedback FB-002 (behaviour): A malformed agent-supplied URL is refused, never an error",
+      "detail": "Today a.example..com or a 64-character label raises UnicodeEncodeError from getaddrinfo (a 500), tabs and newlines are silently removed by urlsplit so the validated host differs from the stored URL, and 127.1 or 0x7f.1 reach the resolver.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-a34b91c1",
+      "feedback": {
+        "id": "FB-002",
+        "kind": "behaviour",
+        "title": "A malformed agent-supplied URL is refused, never an error",
+        "text": "Today a.example..com or a 64-character label raises UnicodeEncodeError from getaddrinfo (a 500), tabs and newlines are silently removed by urlsplit so the validated host differs from the stored URL, and 127.1 or 0x7f.1 reach the resolver.",
+        "by": "CiprianSpot, 2026-11-27T15:52:46Z",
+        "places": [],
+        "env": null,
+        "when": "an agent-supplied URL's host has an empty label or a label longer than 63 characters, or the URL contains whitespace, a tab, a newline, any other control character, a percent sign or a backslash, or the host's last label is all decimal digits or 0x-hexadecimal",
+        "then": "the check refuses it with mintkey:target_not_allowed and no unhandled exception reaches the caller",
+        "code": "",
+        "sha256": "846e13721a1c54d103c4d75d1124d33a699350482f9fcbaa9b81cb44dfa339f2",
+        "retake": false
+      }
+    },
+    {
+      "severity": "major",
+      "title": "Feedback FB-003 (behaviour): The deny list matches names however they are written",
+      "detail": "Only one trailing dot is removed from the host, entries are not normalised the same way, *.localhost is not in the built-in list, and an unusable entry silently protects nothing.",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-93283de1",
+      "feedback": {
+        "id": "FB-003",
+        "kind": "behaviour",
+        "title": "The deny list matches names however they are written",
+        "text": "Only one trailing dot is removed from the host, entries are not normalised the same way, *.localhost is not in the built-in list, and an unusable entry silently protects nothing.",
+        "by": "CiprianSpot, 2026-11-27T15:52:46Z",
+        "places": [],
+        "env": null,
+        "when": "the host or a MINTKEY_AGENT_EGRESS_DENY entry ends in one or more dots, or the host is localhost or under .localhost, or an entry can never match a name (`*`, `*.`, a leading dot, `*name` without a dot)",
+        "then": "a host matches a deny entry exactly as the same name without its trailing dots, localhost and any name under .localhost are refused, and an entry that can never match is reported once in the log as ignored",
+        "code": "",
+        "sha256": "921ad1d3b6ab024aaca11316d6e163601a033982d8d2391f76a7b0d77ea2c33e",
+        "retake": false
+      }
+    }
+  ],
+  "holds": [],
+  "subject_sha": "ac32349b0cd7ed4f0d570e49d7a4ecf8415ea5c0",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": null,
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": null,
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 2,
+    "tasks": [
+      "F-479e3869 Feedback FB-001 (behaviour): Refuse the IPv6 forms that carry an IPv4 address",
+      "F-a34b91c1 Feedback FB-002 (behaviour): A malformed agent-supplied URL is refused, never an error",
+      "F-93283de1 Feedback FB-003 (behaviour): The deny list matches names however they are written"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "judge_carried": {},
+  "cx_runs": {},
+  "tests": {},
+  "failures": {},
+  "failures_dropped": 0,
+  "e2e_tests": [],
+  "red_green": {
+    "packages.python.mintkey-models.tests.test_egress::test_C_3a64dd27_accepted_urls": "1.1",
+    "packages.python.mintkey-models.tests.test_egress::test_C_3a64dd27_address_is_public": "1.1",
+    "packages.python.mintkey-models.tests.test_egress::test_C_3a64dd27_names_that_resolve_badly": "1.1",
+    "packages.python.mintkey-models.tests.test_egress::test_C_90151371_refused_urls": "1.1",
+    "packages.python.mintkey-models.tests.test_egress::test_C_97e80bfe_deny_names_reader": "1.1",
+    "tests.unit.admin_api.test_agent_key_check::test_C_083b1a5a_C_9a0d1912_validate_agent_key_issues_no_statement_itself": "2.1",
+    "tests.unit.admin_api.test_agent_key_check::test_C_9a0d1912_expired_key_returns_the_expired_401": "2.1",
+    "tests.unit.admin_api.test_agent_key_check::test_C_9a0d1912_unknown_key_returns_the_invalid_key_401": "2.1",
+    "tests.unit.admin_api.test_agent_key_check::test_C_9a0d1912_valid_key_returns_the_row_and_none": "2.1",
+    "tests.unit.admin_api.test_agent_key_check::test_C_9a0d1912_verify_failure_returns_the_503": "2.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_3c508836_publisher_key_yields_the_principal": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_handler_answers_the_same_http_response[expired_key_401]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_handler_answers_the_same_http_response[unknown_key_401]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_handler_answers_the_same_http_response[verify_unavailable_503]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_rejected_key_raises_agent_api_error[expired_key_401]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_rejected_key_raises_agent_api_error[unknown_key_401]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5861b2ec_rejected_key_raises_agent_api_error[verify_unavailable_503]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5b21f986_no_usable_credential_is_401_without_a_session[basic_auth]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5b21f986_no_usable_credential_is_401_without_a_session[bearer_not_an_agent_key]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5b21f986_no_usable_credential_is_401_without_a_session[cookie_only]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5b21f986_no_usable_credential_is_401_without_a_session[no_header]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_5b21f986_no_usable_credential_is_401_without_a_session[x_api_key_only]": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_70750b4d_key_check_failure_is_503_and_closes_the_session": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_70750b4d_session_factory_failure_is_503": "3.1",
+    "tests.unit.admin_api.test_agent_principal::test_C_acbb978c_route_session_never_sees_the_platform_view": "3.1",
+    "tests.unit.admin_api.test_agent_role_refusal::test_C_882edc8c_consumer_is_refused_and_the_denial_is_recorded": "3.2",
+    "tests.unit.admin_api.test_agent_role_refusal::test_C_882edc8c_publisher_passes_and_records_nothing": "3.2",
+    "tests.unit.admin_api.test_agent_role_refusal::test_C_aa34abc8_audit_failure_still_answers_403_and_logs": "3.2",
+    "tests.unit.admin_api.test_agent_role_refusal::test_C_aa34abc8_session_failure_still_answers_403_and_logs": "3.2",
+    "tests.unit.admin_api.test_audit_schema_agent_denied::test_C_c66906b5_definition_states_event_and_payload": "4.1",
+    "tests.unit.admin_api.test_audit_schema_agent_denied::test_C_c66906b5_mapping_one_of_and_envelope_actor": "4.1"
+  },
+  "guards": [
+    "guard.test_tamper: tests/unit/admin_api/test_agent_role_refusal.py"
+  ],
+  "step_flakes": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "453e73786a121db2a618efe1ed2215cb326476fd",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "judge_parts": [],
+  "judge_files": [],
+  "judge_followups": [],
+  "judge_batches": [],
+  "judge_split": {},
+  "hold_views": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek",
+      "glm",
+      "deepseek-free"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}
