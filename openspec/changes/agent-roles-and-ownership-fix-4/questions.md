@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | C-1a3fd676's frozen test requires a credentials subquery that C-4e0f1239 forbids |
+| Q-001 | superseded | 1.1 | ambiguous | C-1a3fd676's frozen test requires a credentials subquery that C-4e0f1239 forbids |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: C-1a3fd676's frozen test requires a credentials subquery that C-4e0f1239 forbids
 
-- **Status:** open
+- **Status:** superseded by retry
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): The frozen test tests/unit/admin_api/test_state_after_change_fix3.py:347-350 requires every services SELECT of the transfer (including the FOR UPDATE lock at services.py:1652-1657) to contain max(c.key_version) and not s.current_key_version, which needs a credentials subquery. The unit spec (spec.md:168-169, scenario 180-181) and test_service_ownership.py:529-532, 1007-1010 forbid any transfer statement naming credentials. The frozen test's premise that services has no current_key_version column is false: 004-services.yaml:62 defines it and credentials.py:703, 1284 keep it in sync. No production-code change satisfies both the frozen test and the spec. Resolving it means editing a frozen test file, changing the spec, or waiving a test gate, and the question comes from a fix task; a database view built only to make SQL text match an assertion is a schema change outside the spec. These are decisions for a person. The gate also shows an unrelated ImportError (AGENT_ROLES) I did not investi … [cut at 1000 of 1005 characters]
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
