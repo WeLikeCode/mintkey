@@ -95,3 +95,5 @@
 {"at":"2026-11-27T11:05:05Z","attempt":1,"cost_usd":14.478409,"runs":8,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T11:06:17Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
 {"at":"2026-11-27T11:06:17Z","run":"r-20261127T1106Z-019e","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T13:36:55Z","attempt":1,"cost_usd":0.0,"runs":2,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T13:36:55Z","run":"r-20261127T1336Z-73e4","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
