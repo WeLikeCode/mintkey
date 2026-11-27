@@ -103,3 +103,5 @@
 {"at":"2026-11-27T17:28:10Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"3e92978f2d94410d78b36ad7b9144ba49605ef61","status":"pass","type":"unit.postcheck","unit":"openspec:agent-principal-and-egress"}
 {"at":"2026-11-27T17:28:10Z","revision":"3e92978f2d94410d78b36ad7b9144ba49605ef61","type":"unit.integrated","unit":"openspec:agent-principal-and-egress"}
 {"at":"2026-11-27T17:28:10Z","attempt":1,"cost_usd":1.877638,"runs":3,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T17:29:36Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-27T17:29:36Z","run":"r-20261127T1729Z-559f","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
