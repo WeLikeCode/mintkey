@@ -539,3 +539,9 @@ async def audit_emit_endpoint(
     )
 
     return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+async def check_agent_key(
+    session: AsyncSession, api_key: str
+) -> tuple[Any | None, JSONResponse | None]:
+    raise NotImplementedError
