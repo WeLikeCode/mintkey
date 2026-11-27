@@ -22,6 +22,7 @@ from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 
 from admin_api.api import internal
+from admin_api.auth import agent_key_guard
 from admin_api.db.session import AsyncSessionLocal
 from admin_api.middleware.tenant import set_tenant_context
 from admin_api.utils.wire_ids import db_uuid_to_wire
@@ -37,6 +38,11 @@ _AUTH_REQUIRED_BODY: dict[str, Any] = {
 
 _VERIFY_UNAVAILABLE_BODY: dict[str, Any] = {
     "code": "mintkey:verify_unavailable",
+    "title": "Key check unavailable",
+}
+
+_AUTH_UNAVAILABLE_BODY: dict[str, Any] = {
+    "code": "mintkey:auth_unavailable",
     "title": "Key check unavailable",
 }
 
@@ -117,6 +123,20 @@ def _agent_key_from_request(request: Request) -> str | None:
     return key
 
 
+async def require_agent_key_shape(request: Request) -> None:
+    """Refuse a bearer that is not the exact shape of a real agent key.
+
+    The check runs before ``require_agent_principal`` on every ``/v1/agent``
+    route, so a wrong-shaped bearer never opens a key-check session or reaches
+    an Argon2id verify. A request with no bearer (or one that does not start
+    with ``mk_agent_``) is left to ``require_agent_principal``, which answers
+    the same ``401 mintkey:auth_required``.
+    """
+    api_key = _agent_key_from_request(request)
+    if api_key is not None and not agent_key_guard.agent_key_shape_is_valid(api_key):
+        raise AgentApiError(401, dict(_AUTH_REQUIRED_BODY))
+
+
 def _json_body(response: JSONResponse) -> dict[str, Any]:
     """Return the JSON object of a response body, or an empty object."""
     parsed: Any = json.loads(bytes(response.body))
@@ -138,16 +158,23 @@ async def require_agent_principal(request: Request) -> AgentPrincipal:
     if api_key is None:
         raise AgentApiError(401, dict(_AUTH_REQUIRED_BODY))
 
+    capacity = agent_key_guard.agent_verify_capacity()
+    if capacity.locked():
+        # The agent routes' own capacity is full: answer at once rather than
+        # queue this check behind it (and never touch the internal one).
+        raise AgentApiError(503, dict(_AUTH_UNAVAILABLE_BODY))
+
     row: Any | None = None
     try:
-        async with AsyncSessionLocal() as session:
-            row, response = await internal.check_agent_key(session, api_key)
-            await session.commit()
-            if response is not None:
-                raise AgentApiError(
-                    response.status_code,
-                    agent_error_body(_json_body(response)),
-                )
+        with internal.verify_capacity_scope(capacity):
+            async with AsyncSessionLocal() as session:
+                row, response = await internal.check_agent_key(session, api_key)
+                await session.commit()
+                if response is not None:
+                    raise AgentApiError(
+                        response.status_code,
+                        agent_error_body(_json_body(response)),
+                    )
     except AgentApiError:
         raise
     except Exception as exc:
