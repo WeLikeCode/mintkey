@@ -785,3 +785,466 @@ async def test_C_cdc7f907_the_transfer_error_bodies_are_flat() -> None:
     assert invalid_body.get("title") == "Invalid service_id", invalid_body
     assert "detail" not in invalid_body, invalid_body
     assert _write_statements(invalid_session) == [], invalid_session.statements
+
+
+# ---------------------------------------------------------------------------
+# This step's red tests (new names). The frozen tests above keep their bodies;
+# these restate the same scenarios, with the unsuitable-target bodies per the
+# answered Q-002: an unsuitable target answers invalid_transfer_target with its
+# reason. They reuse the helpers of this file and add no module-level code.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-653b35d0")
+async def test_C_653b35d0_owner_fields_are_on_the_service_objects() -> None:
+    """A set owner shows as the agent_ wire id; a row without the columns shows null twice."""
+    with_owner = _service_row(owner=AGENT_A_UUID)
+    without_columns = _service_row(row_id=SERVICE_NONE_UUID)
+    session = _RecordingSession(service_rows=[with_owner, without_columns])
+    app = _make_app(session, bypass_auth=True)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            BASE_SERVICES_PATH, cookies={"mintkey_session": SESSION_TOKEN}
+        )
+
+    assert response.status_code == 200, response.text
+    services = response.json()["services"]
+    assert len(services) == 2
+
+    assert "owner_agent_id" in services[0], services[0]
+    assert services[0].get("owner_agent_id") == AGENT_A, services[0]
+    assert "created_by_agent_id" in services[0], services[0]
+    assert services[0].get("created_by_agent_id") is None, services[0]
+
+    assert "owner_agent_id" in services[1], services[1]
+    assert services[1].get("owner_agent_id") is None, services[1]
+    assert "created_by_agent_id" in services[1], services[1]
+    assert services[1].get("created_by_agent_id") is None, services[1]
+
+    selects = [
+        sql for sql, _params in session.statements if "from services" in sql.lower()
+    ]
+    assert selects, "the list must select services"
+    for sql in selects:
+        assert "owner_agent_id" in sql.lower(), sql
+        assert "created_by_agent_id" in sql.lower(), sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-552cb965")
+async def test_C_552cb965_owner_agent_id_filter_answers() -> None:
+    """?owner_agent_id keeps one owner's rows, `operators` the null ones, else 422 invalid_id."""
+    rows = [
+        _service_row(row_id=SERVICE_A_UUID, owner=AGENT_A_UUID, created_by=None),
+        _service_row(row_id=SERVICE_B_UUID, owner=AGENT_B_UUID, created_by=None),
+        _service_row(row_id=SERVICE_NONE_UUID, owner=None, created_by=None),
+    ]
+    session = _RecordingSession(service_rows=rows)
+    app = _make_app(session, bypass_auth=True)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        agent_a = await client.get(
+            BASE_SERVICES_PATH,
+            params={"owner_agent_id": AGENT_A},
+            cookies={"mintkey_session": SESSION_TOKEN},
+        )
+        operators = await client.get(
+            BASE_SERVICES_PATH,
+            params={"owner_agent_id": "operators"},
+            cookies={"mintkey_session": SESSION_TOKEN},
+        )
+        invalid = await client.get(
+            BASE_SERVICES_PATH,
+            params={"owner_agent_id": "not-an-id"},
+            cookies={"mintkey_session": SESSION_TOKEN},
+        )
+
+    assert agent_a.status_code == 200, agent_a.text
+    assert [s["id"] for s in agent_a.json()["services"]] == [
+        db_uuid_to_wire(SERVICE_A_UUID, "svc")
+    ], agent_a.text
+
+    assert operators.status_code == 200, operators.text
+    assert [s["id"] for s in operators.json()["services"]] == [
+        db_uuid_to_wire(SERVICE_NONE_UUID, "svc")
+    ], operators.text
+
+    assert invalid.status_code == 422, invalid.text
+    body = invalid.json()
+    assert body.get("mintkey:code") == "invalid_id", body
+    assert body.get("title") == "Invalid owner_agent_id", body
+    assert "detail" not in body, body
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-7a95ce0a")
+async def test_C_7a95ce0a_create_service_inserts_no_owner_columns() -> None:
+    """The create INSERT names no owner column and the created object carries both as null."""
+    session = _RecordingSession()
+    app = _make_app(session, bypass_auth=True)
+
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.services.notify_change", new=AsyncMock()),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                BASE_SERVICES_PATH,
+                json={
+                    "name": "stripe",
+                    "base_url": "https://api.stripe.com",
+                    "auth_scheme": "bearer_token",
+                },
+                cookies={"mintkey_session": SESSION_TOKEN},
+            )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert "owner_agent_id" in body, body
+    assert body.get("owner_agent_id") is None, body
+    assert "created_by_agent_id" in body, body
+    assert body.get("created_by_agent_id") is None, body
+
+    inserts = [
+        sql
+        for sql, _params in session.statements
+        if sql.lower().startswith("insert into services")
+    ]
+    assert inserts, "creating a service must insert it"
+    for sql in inserts:
+        lowered = sql.lower()
+        assert "owner_agent_id" not in lowered, sql
+        assert "created_by_agent_id" not in lowered, sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-4e0f1239")
+async def test_C_4e0f1239_transfer_moves_ownership_to_publisher_and_back() -> None:
+    """To an active publisher then to operators: two UPDATEs, two events, two NOTIFYs."""
+    service = _service_row(owner=None, created_by=None)
+    session = _RecordingSession(service_row=service, agent_row=_agent_row())
+
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()) as audit_mock,
+        patch("admin_api.api.services.notify_change", new=AsyncMock()) as notify_mock,
+    ):
+        to_publisher = await _transfer(session, {"to_agent_id": AGENT_A})
+        to_operators = await _transfer(session, {"to_agent_id": None})
+
+    assert to_publisher.status_code == 200, to_publisher.text
+    assert to_publisher.json().get("owner_agent_id") == AGENT_A, to_publisher.text
+    assert to_operators.status_code == 200, to_operators.text
+    assert to_operators.json().get("owner_agent_id") is None, to_operators.text
+
+    updates = _service_updates(session)
+    assert len(updates) == 2, updates
+    owner_uuid = wire_to_db_uuid(AGENT_A, "agent")
+    assert owner_uuid in updates[0][1].values(), updates[0]
+    assert wire_to_db_uuid(SERVICE_ID, "svc") in updates[0][1].values(), updates[0]
+    assert "tenant_id" in updates[0][0].lower(), updates[0]
+    assert None in updates[1][1].values(), updates[1]
+    assert owner_uuid not in updates[1][1].values(), updates[1]
+
+    events = audit_mock.call_args_list
+    assert len(events) == 2, events
+    for call, from_agent, to_agent in (
+        (events[0], None, AGENT_A),
+        (events[1], AGENT_A, None),
+    ):
+        kwargs = call.kwargs
+        assert kwargs.get("event_type") == "service.ownership_transferred", kwargs
+        assert kwargs.get("actor_type") == "operator", kwargs
+        assert kwargs.get("target_type") == "service", kwargs
+        payload = kwargs.get("payload", {})
+        assert payload.get("service_id") == SERVICE_ID, payload
+        assert payload.get("from_agent_id") == from_agent, payload
+        assert payload.get("to_agent_id") == to_agent, payload
+
+    expected_notify_payloads = (
+        {
+            "event": "service.ownership_transferred",
+            "tenant_id": TENANT_TEXT,
+            "service_id": SERVICE_ID,
+            "from_agent_id": None,
+            "to_agent_id": AGENT_A,
+        },
+        {
+            "event": "service.ownership_transferred",
+            "tenant_id": TENANT_TEXT,
+            "service_id": SERVICE_ID,
+            "from_agent_id": AGENT_A,
+            "to_agent_id": None,
+        },
+    )
+    notify_calls = notify_mock.call_args_list
+    assert len(notify_calls) == 2, notify_calls
+    for call, expected_payload in zip(
+        notify_calls, expected_notify_payloads, strict=True
+    ):
+        channel, payload = _notify_parts(call)
+        assert channel == "mintkey:service", call
+        assert payload == expected_payload, call
+        json.dumps(payload)
+
+    service_selects = [
+        sql
+        for sql, _params in session.statements
+        if sql.lower().startswith("select") and "from services" in sql.lower()
+    ]
+    assert service_selects, session.statements
+    assert any("for update" in sql.lower() for sql in service_selects), (
+        service_selects
+    )
+
+    for sql, _params in session.statements:
+        lowered = sql.lower()
+        assert "credentials" not in lowered, sql
+        assert "permission_grants" not in lowered, sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-2e9cfe5e")
+async def test_C_2e9cfe5e_transfer_rejects_unsuitable_targets_flat() -> None:
+    """A consumer, a revoked agent, a foreign agent and an unknown service write nothing.
+
+    Per the answered Q-002 the three 422 bodies carry mintkey:code
+    invalid_transfer_target with the reason kept.
+    """
+    cases: list[tuple[str, Any, Any, int, str | None, str | None]] = [
+        (
+            "active consumer",
+            _service_row(owner=None, created_by=None),
+            _agent_row(status="active", role="consumer"),
+            422,
+            "invalid_transfer_target",
+            "agent_not_publisher",
+        ),
+        (
+            "revoked publisher",
+            _service_row(owner=None, created_by=None),
+            _agent_row(status="revoked", role="publisher"),
+            422,
+            "invalid_transfer_target",
+            "agent_not_active",
+        ),
+        (
+            "revoked consumer",
+            _service_row(owner=None, created_by=None),
+            _agent_row(status="revoked", role="consumer"),
+            422,
+            "invalid_transfer_target",
+            "agent_not_active",
+        ),
+        (
+            "agent of another tenant",
+            _service_row(owner=None, created_by=None),
+            None,
+            404,
+            "not_found",
+            None,
+        ),
+        (
+            "unknown service",
+            None,
+            _agent_row(),
+            404,
+            "not_found",
+            None,
+        ),
+    ]
+
+    for name, service, agent, status_code, code, reason in cases:
+        session = _RecordingSession(service_row=service, agent_row=agent)
+        with (
+            patch("admin_api.api.services.audit_emit", new=AsyncMock()) as audit_mock,
+            patch(
+                "admin_api.api.services.notify_change", new=AsyncMock()
+            ) as notify_mock,
+        ):
+            response = await _transfer(session, {"to_agent_id": AGENT_A})
+
+        assert response.status_code == status_code, (name, response.text)
+        body = response.json()
+        assert body.get("mintkey:code") == code, (name, body)
+        assert "detail" not in body, (name, body)
+        if reason is not None:
+            assert body.get("title") == "Transfer target not allowed", (name, body)
+            assert body.get("reason") == reason, (name, body)
+
+        assert _update_statements(session) == [], (name, session.statements)
+        audit_mock.assert_not_called()
+        notify_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-8c6159c9")
+async def test_C_8c6159c9_transfer_to_the_same_owner_writes_nothing() -> None:
+    """The current owner (even a revoked consumer) and `null` both answer 200 and write nothing."""
+    owned = _service_row(owner=AGENT_A_UUID, created_by=None)
+    owned_session = _RecordingSession(
+        service_row=owned, agent_row=_agent_row(status="revoked", role="consumer")
+    )
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()) as audit_mock,
+        patch("admin_api.api.services.notify_change", new=AsyncMock()) as notify_mock,
+    ):
+        same_owner = await _transfer(owned_session, {"to_agent_id": AGENT_A})
+
+    assert same_owner.status_code == 200, same_owner.text
+    assert same_owner.json().get("owner_agent_id") == AGENT_A, same_owner.text
+    assert _write_statements(owned_session) == [], owned_session.statements
+    assert not any(
+        "from agents" in sql.lower() for sql, _params in owned_session.statements
+    ), owned_session.statements
+    audit_mock.assert_not_called()
+    notify_mock.assert_not_called()
+
+    unowned = _service_row(owner=None, created_by=None)
+    unowned_session = _RecordingSession(service_row=unowned, agent_row=_agent_row())
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()) as audit_mock,
+        patch("admin_api.api.services.notify_change", new=AsyncMock()) as notify_mock,
+    ):
+        to_operators = await _transfer(unowned_session, {"to_agent_id": None})
+
+    assert to_operators.status_code == 200, to_operators.text
+    assert to_operators.json().get("owner_agent_id") is None, to_operators.text
+    assert _write_statements(unowned_session) == [], unowned_session.statements
+    assert not any(
+        "from agents" in sql.lower() for sql, _params in unowned_session.statements
+    ), unowned_session.statements
+    audit_mock.assert_not_called()
+    notify_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-2d4dae42")
+async def test_C_2d4dae42_transfer_without_to_agent_id_is_refused() -> None:
+    """A body without the key, a non-string id and a missing session all stop before a statement."""
+    for body in ({}, {"to_agent_id": 7}):
+        session = _RecordingSession(
+            service_row=_service_row(owner=None, created_by=None),
+            agent_row=_agent_row(),
+        )
+        with (
+            patch("admin_api.api.services.audit_emit", new=AsyncMock()) as audit_mock,
+            patch(
+                "admin_api.api.services.notify_change", new=AsyncMock()
+            ) as notify_mock,
+        ):
+            response = await _transfer(session, body)
+
+        assert response.status_code == 422, (body, response.text)
+        answer = response.json()
+        assert answer.get("mintkey:code") == "validation_failed", (body, answer)
+        assert isinstance(answer.get("title"), str) and answer["title"], (body, answer)
+        assert "detail" not in answer, (body, answer)
+        assert _write_statements(session) == [], (body, session.statements)
+        audit_mock.assert_not_called()
+        notify_mock.assert_not_called()
+
+    session = _RecordingSession(
+        service_row=_service_row(owner=None, created_by=None),
+        agent_row=_agent_row(),
+    )
+    anonymous = await _transfer(session, {"to_agent_id": AGENT_A}, bypass_auth=False)
+
+    assert anonymous.status_code == 401, anonymous.text
+    body = anonymous.json()
+    assert body.get("detail", {}).get("mintkey:code") == "unauthenticated", body
+    assert session.statements == [], session.statements
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-717163aa")
+async def test_C_717163aa_operator_service_update_never_writes_the_owner() -> None:
+    """Patching the description of an agent-owned service answers 200 without writing the owner."""
+    service = _service_row(owner=AGENT_A_UUID, created_by=AGENT_B_UUID)
+    session = _RecordingSession(service_row=service)
+    app = _make_app(session, bypass_auth=True)
+
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.services.notify_change", new=AsyncMock()),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.patch(
+                f"{BASE_SERVICES_PATH}/{SERVICE_ID}",
+                json={"description": "owned but still editable"},
+                cookies={"mintkey_session": SESSION_TOKEN},
+            )
+
+    assert response.status_code == 200, response.text
+    assert response.json().get("owner_agent_id") == AGENT_A, response.text
+
+    updates = _service_updates(session)
+    assert len(updates) == 1, updates
+    assert "owner_agent_id" not in updates[0][0].lower(), updates[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.l4("C-cdc7f907")
+async def test_C_cdc7f907_transfer_errors_answer_flat_at_top_level() -> None:
+    """A consumer target, an unknown service and an undecodable id answer flat JSON objects."""
+    consumer_session = _RecordingSession(
+        service_row=_service_row(owner=None, created_by=None),
+        agent_row=_agent_row(status="active", role="consumer"),
+    )
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.services.notify_change", new=AsyncMock()),
+    ):
+        consumer_target = await _transfer(consumer_session, {"to_agent_id": AGENT_A})
+
+    assert consumer_target.status_code == 422, consumer_target.text
+    consumer_body = consumer_target.json()
+    assert consumer_body.get("mintkey:code") == "invalid_transfer_target", (
+        consumer_body
+    )
+    assert consumer_body.get("title") == "Transfer target not allowed", consumer_body
+    assert consumer_body.get("reason") == "agent_not_publisher", consumer_body
+    assert "detail" not in consumer_body, consumer_body
+
+    unknown_session = _RecordingSession(service_row=None, agent_row=_agent_row())
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.services.notify_change", new=AsyncMock()),
+    ):
+        unknown_service = await _transfer(unknown_session, {"to_agent_id": AGENT_A})
+
+    assert unknown_service.status_code == 404, unknown_service.text
+    unknown_body = unknown_service.json()
+    assert unknown_body.get("mintkey:code") == "not_found", unknown_body
+    assert unknown_body.get("title") == "Service not found", unknown_body
+    assert "detail" not in unknown_body, unknown_body
+
+    invalid_session = _RecordingSession(
+        service_row=_service_row(owner=None, created_by=None),
+        agent_row=_agent_row(),
+    )
+    with (
+        patch("admin_api.api.services.audit_emit", new=AsyncMock()),
+        patch("admin_api.api.services.notify_change", new=AsyncMock()),
+    ):
+        invalid_service = await _transfer(
+            invalid_session,
+            {"to_agent_id": AGENT_A},
+            service_id=UNDECODABLE_SERVICE_ID,
+        )
+
+    assert invalid_service.status_code == 422, invalid_service.text
+    invalid_body = invalid_service.json()
+    assert invalid_body.get("mintkey:code") == "invalid_id", invalid_body
+    assert invalid_body.get("title") == "Invalid service_id", invalid_body
+    assert "detail" not in invalid_body, invalid_body
+    assert _write_statements(invalid_session) == [], invalid_session.statements
