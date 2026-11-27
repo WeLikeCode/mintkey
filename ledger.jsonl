@@ -111,3 +111,5 @@
 {"at":"2026-11-27T22:26:30Z","by":"harness","reason":"the cause is gone: openspec:agent-service-routes is awaiting_human","type":"plan.resumed"}
 {"at":"2026-11-27T22:26:32Z","attempt":1,"cost_usd":1.048969,"runs":3,"type":"plan.charged","unit":"openspec:agent-service-routes"}
 {"at":"2026-11-27T22:26:32Z","run":"r-20261127T2226Z-441e","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-27T23:04:23Z","attempt":1,"cost_usd":2.946115,"runs":4,"type":"plan.charged","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-27T23:04:23Z","run":"r-20261127T2304Z-99a7","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
