@@ -13,7 +13,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 2. The key check
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_key_check.py` (a fake session answering the key lookup by
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_key_check.py` (a fake session answering the key lookup by
   substring; `internal._verify_argon2` patched as `tests/unit/admin_api/test_validate_agent_key_errors.py` does), covering
   the two scenarios of "The key check is one function" (recording fake sessions); the second scenario also runs
   `tests/unit/admin_api/test_validate_agent_key_errors.py` unchanged. Then in `apps/admin-api/src/admin_api/api/internal.py`
