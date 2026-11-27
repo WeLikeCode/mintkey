@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: tests/unit/admin_api/test_state_after_change_fix3.py:341 contradicts C-4e0f1239 and the real services schema
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/unit/admin_api/test_state_after_change_fix3.py of task 1.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-27T06:07Z by deepseek, run r-20261127T0507Z-3d58, task 1.1
