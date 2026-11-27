@@ -44,7 +44,7 @@ The two scenarios do not conflict, and neither is to be deleted. They share a WH
 
 ## Q-002: tests/unit/admin_api/test_service_ownership.py:594 — test_C_2e9cfe5e_unsuitable_targets expects mintkey:code agent_not_publisher/agent_not_active, contradicting the spec and test_C_cdc7f907 in the sam
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/unit/admin_api/test_service_ownership.py of task 4.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 4.1
 - **Kind:** technical
@@ -64,3 +64,4 @@ Edit `tests/unit/admin_api/test_service_ownership.py`: in `test_C_2e9cfe5e_unsui
 
 ### Answer
 <!-- write below this line -->
+Take option 1: edit tests/unit/admin_api/test_service_ownership.py so that, in test_C_2e9cfe5e_unsuitable_targets, the three 422 cases expect mintkey:code invalid_transfer_target, each keeping its reason (agent_not_publisher, agent_not_active, agent_not_active). The requirement says an unsuitable target answers 422 invalid_transfer_target with that reason, and the flat-error test of the same file asserts the same body; the scenario's short form names the reason. Answered by the repository owner's delegate.
