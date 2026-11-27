@@ -329,3 +329,8 @@
 {"ts": "2026-11-27T17:11:58.953789Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 329, "type": "step.timed", "phase": "verify", "round": 4, "seconds": 556.2}
 {"ts": "2026-11-27T17:11:58.954218Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 330, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-11-27T17:12:01.873514Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 331, "type": "pr.labels", "number": 465, "labels": ["l4:verified"]}
+{"ts": "2026-11-27T17:12:08.399669Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 332, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/465", "number": 465, "head": "37e89be445a657a221c94e0f9184babe47f0de6f"}
+{"ts": "2026-11-27T17:12:08.400537Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 333, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-11-27T17:12:10.930330Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 334, "type": "pr.labels", "number": 465, "labels": ["l4:in_review"]}
+{"ts": "2026-11-27T17:12:12.086212Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 335, "type": "lock.released"}
+{"ts": "2026-11-27T17:12:12.086642Z", "run_id": "r-20261127T1554Z-53c9", "unit": "openspec:agent-principal-and-egress", "seq": 336, "type": "run.finished", "exit_code": 0}
