@@ -67,7 +67,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
 
 ## 5. The audit contract
 
-- [ ] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_roles.py` (loads
+- [x] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_roles.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json` with `json.loads`), covering the scenario "the contract
   lists both events"; it fails before the change because neither definition exists. Then add `ev_agent_role_changed`
   and `ev_service_ownership_transferred` to `$defs` (modelled on `ev_agent_revoked`), their `$ref`s to `oneOf` and their
