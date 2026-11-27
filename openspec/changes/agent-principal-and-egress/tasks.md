@@ -23,7 +23,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 3. The principal
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the five scenarios of "An agent key
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the five scenarios of "An agent key
   yields a principal": `admin_api.auth.agent_principal.AsyncSessionLocal` is patched with a factory of recording fake
   async-context-manager sessions, `internal.check_agent_key` with an `AsyncMock` (the last scenario uses the real function); the handler runs inside a `FastAPI()`
   with a probe route. Red stubs `apps/admin-api/src/admin_api/auth/agent_principal.py` with every name of the spec
