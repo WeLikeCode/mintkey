@@ -40,12 +40,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from admin_api.auth.sessions import require_tenant_session
+from admin_api.api.agents import _wire_id_to_uuid
+from admin_api.auth.sessions import get_session_context, require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.db.deps import get_db_session
 from admin_api.services.credential_service import resolve_hostname_is_private
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid as _wire_to_db
 from mintkey_models.audit import audit_emit
+from mintkey_models.roles import ROLE_PUBLISHER, normalize_role
 from mintkey_models.tenant_ctx import set_tenant_context
 
 logger = logging.getLogger(__name__)
@@ -162,6 +164,16 @@ class FromTemplateRequest(BaseModel):
 
     template_id: str
     overrides: Optional[ServiceOverrides] = None
+
+
+class ServiceTransferRequest(BaseModel):
+    """Body for POST /{service_id}/transfer — agent-roles-and-ownership.
+
+    ``to_agent_id`` is the new owner (an ``agent_...`` wire id) or null to make
+    the service operator-owned. The key has no default, so the body must name it.
+    """
+
+    to_agent_id: Optional[str]
 
 
 class TestRunRequest(BaseModel):
@@ -355,6 +367,20 @@ def _wire_id_to_db_uuid(wire_id: str) -> str:
     return _wire_to_db(wire_id, "svc")
 
 
+def _owner_wire_id(value: Any) -> str | None:
+    """Encode an owner/creator DB value as the ``agent_...`` wire id, else null.
+
+    A real row carries a UUID (or UUID text); anything else — a missing
+    attribute, a NULL column, a stub value — is shown as null.
+    """
+    if value is None or not isinstance(value, (UUID, str)):
+        return None
+    try:
+        return db_uuid_to_wire(value, "agent")
+    except ValueError:
+        return None
+
+
 def _service_row_to_dict(row: Any) -> dict[str, Any]:
     """Map a DB row (namedtuple-like) to the wire representation.
 
@@ -373,10 +399,16 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
         "auth_scheme": row.auth_scheme,
         "openapi_url": row.openapi_url,
         "status": row.status,
-        "current_key_version": int(row.current_key_version or 0),
+        "current_key_version": int(getattr(row, "current_key_version", 0) or 0),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+    # Owner fields — agent-roles-and-ownership. Read with getattr so a row that
+    # predates the new columns (or a test row without them) shows null twice.
+    result["owner_agent_id"] = _owner_wire_id(getattr(row, "owner_agent_id", None))
+    result["created_by_agent_id"] = _owner_wire_id(
+        getattr(row, "created_by_agent_id", None)
+    )
     # Include template_id if present (nullable column)
     if hasattr(row, "template_id") and row.template_id is not None:
         result["template_id"] = row.template_id
@@ -566,6 +598,8 @@ async def create_service(
             "auth_scheme": body.auth_scheme,
             "openapi_url": body.openapi_url,
             "status": "active",
+            "owner_agent_id": None,
+            "created_by_agent_id": None,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
         },
@@ -767,6 +801,8 @@ async def create_service_from_template(
             "openapi_url": template.openapi_spec_url,
             "status": "active",
             "template_id": template.template_id,
+            "owner_agent_id": None,
+            "created_by_agent_id": None,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
             "credential_hint": credential_hint_payload,
@@ -778,6 +814,7 @@ async def create_service_from_template(
 async def list_services(
     tenant_id: UUID,
     q: Optional[str] = None,
+    owner_agent_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -785,10 +822,29 @@ async def list_services(
     List all services for a tenant.
 
     Optional query parameters:
-      q — case-insensitive substring search across name, slug, description, base_url.
+      q              — case-insensitive substring search across name, slug, description, base_url.
+      owner_agent_id — an agent_... wire id (only that agent's services), or the
+                       literal "operators" (only the operator-owned ones); any
+                       other value answers 422 invalid_id.
 
-    Source: Req 3; ADR-0008.
+    Source: Req 3; ADR-0008; agent-roles-and-ownership (D5).
     """
+    owner_filter: str | None = None  # "operators", or the decoded agent UUID text
+    if owner_agent_id is not None:
+        if owner_agent_id == "operators":
+            owner_filter = "operators"
+        else:
+            try:
+                owner_filter = str(UUID(_wire_id_to_uuid(owner_agent_id, "agent_")))
+            except ValueError:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "mintkey:code": "invalid_id",
+                        "title": "Invalid owner_agent_id",
+                    },
+                )
+
     await set_tenant_context(session, tenant_id)
 
     if q is not None:
@@ -798,7 +854,7 @@ async def list_services(
             text(
                 "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
                 " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
-                " s.template_id,"
+                " s.template_id, s.owner_agent_id, s.created_by_agent_id,"
                 " COALESCE(("
                 "   SELECT MAX(c.key_version)"
                 "   FROM credentials c"
@@ -818,7 +874,7 @@ async def list_services(
             text(
                 "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
                 " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
-                " s.template_id,"
+                " s.template_id, s.owner_agent_id, s.created_by_agent_id,"
                 " COALESCE(("
                 "   SELECT MAX(c.key_version)"
                 "   FROM credentials c"
@@ -829,6 +885,19 @@ async def list_services(
             {"tenant_id": str(tenant_id)},
         )
     rows = result.fetchall()
+    if owner_filter is not None:
+        # The base list has no LIMIT, offset or page, so filtering the fetched
+        # rows is exact; a later change that adds paging must move this into
+        # SQL (agent-roles-and-ownership, D5).
+        if owner_filter == "operators":
+            rows = [r for r in rows if getattr(r, "owner_agent_id", None) is None]
+        else:
+            rows = [
+                r
+                for r in rows
+                if getattr(r, "owner_agent_id", None) is not None
+                and str(r.owner_agent_id) == owner_filter
+            ]
     services = [_service_row_to_dict(r) for r in rows]
     return JSONResponse({"services": services})
 
@@ -852,7 +921,7 @@ async def get_service(
         text(
             "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
             " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
-            " s.template_id,"
+            " s.template_id, s.owner_agent_id, s.created_by_agent_id,"
             " COALESCE(("
             "   SELECT MAX(c.key_version)"
             "   FROM credentials c"
@@ -1514,7 +1583,7 @@ async def update_service(
         text(
             "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
             " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
-            " s.template_id,"
+            " s.template_id, s.owner_agent_id, s.created_by_agent_id,"
             " COALESCE(("
             "   SELECT MAX(c.key_version)"
             "   FROM credentials c"
@@ -1530,6 +1599,161 @@ async def update_service(
             status_code=404,
             content={"mintkey:code": "not_found", "title": "Service not found"},
         )
+    return JSONResponse(_service_row_to_dict(row))
+
+
+@router.post("/{service_id}/transfer")
+async def transfer_service_ownership(
+    tenant_id: UUID,
+    service_id: str,
+    body: ServiceTransferRequest,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
+    context: Any = Depends(get_session_context),
+) -> JSONResponse:
+    """
+    Transfer a service's ownership — operator-only, agent-roles-and-ownership.
+
+    The new owner is an active publisher of the tenant, or null (operator-owned).
+    The checks run in this order, the first failure answering: body (422
+    validation_failed), ids (422 invalid_id), the service of the tenant read FOR
+    UPDATE (404 not_found), a target equal to the current owner (200, nothing
+    written), the target agent of the tenant (404 not_found), its status (422
+    agent_not_active), then its role (422 agent_not_publisher). A transfer that
+    changes the owner runs one UPDATE services, one service.ownership_transferred
+    audit event and one NOTIFY on mintkey:service, all in the request's
+    transaction; it touches no credentials or permission_grants table.
+
+    Source: agent-roles-and-ownership (D2, D6, D9); ADR-0008; ADR-0014.7.
+    """
+    # 1. Ids — an id that does not decode answers 422 invalid_id.
+    try:
+        svc_uuid = _wire_id_to_db_uuid(service_id)
+        svc_uuid = str(UUID(svc_uuid))
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid service_id"},
+        )
+    to_uuid: str | None = None
+    if body.to_agent_id is not None:
+        try:
+            to_uuid = str(UUID(_wire_id_to_uuid(body.to_agent_id, "agent_")))
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+            )
+
+    await set_tenant_context(session, tenant_id)
+
+    # 2. The service of the tenant, read FOR UPDATE so concurrent transfers of
+    # one service run one after the other and from_agent_id is the owner they found.
+    result = await session.execute(
+        text(
+            "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+            " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " s.template_id, s.owner_agent_id, s.created_by_agent_id"
+            " FROM services s WHERE s.id = :sid AND s.tenant_id = :tid FOR UPDATE"
+        ),
+        {"sid": svc_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+
+    current_owner = getattr(row, "owner_agent_id", None)
+    current_owner_text = str(current_owner) if current_owner is not None else None
+
+    # 3. A target equal to the current owner: 200, nothing written, whatever the
+    # target's status and role now are.
+    if to_uuid == current_owner_text:
+        return JSONResponse(_service_row_to_dict(row))
+
+    from_wire = None if current_owner is None else db_uuid_to_wire(current_owner, "agent")
+    to_wire = None if to_uuid is None else db_uuid_to_wire(to_uuid, "agent")
+
+    # 4. The target agent of the tenant — skipped when the service goes to operators.
+    if to_uuid is not None:
+        agent_result = await session.execute(
+            text(
+                "SELECT id, tenant_id, status, role FROM agents"
+                " WHERE id = :aid AND tenant_id = :tid"
+            ),
+            {"aid": to_uuid, "tid": str(tenant_id)},
+        )
+        agent_row = agent_result.fetchone()
+        if agent_row is None:
+            return JSONResponse(
+                status_code=404,
+                content={"mintkey:code": "not_found", "title": "Agent not found"},
+            )
+        if agent_row.status != "active":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_transfer_target",
+                    "title": "Transfer target not allowed",
+                    "reason": "agent_not_active",
+                },
+            )
+        if normalize_role(getattr(agent_row, "role", None)) != ROLE_PUBLISHER:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "mintkey:code": "invalid_transfer_target",
+                    "title": "Transfer target not allowed",
+                    "reason": "agent_not_publisher",
+                },
+            )
+
+    # 5. The UPDATE, the audit event and the NOTIFY share the request's
+    # transaction — a failure of any statement answers 500 and commits none.
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text(
+            "UPDATE services SET owner_agent_id = :owner_agent_id, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "owner_agent_id": to_uuid,
+            "now": now,
+            "sid": svc_uuid,
+            "tid": str(tenant_id),
+        },
+    )
+
+    actor_id = getattr(context, "operator_id", None) if context is not None else None
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="service.ownership_transferred",
+        actor_id=actor_id,
+        actor_type="operator",
+        target_id=row.id,
+        target_type="service",
+        payload={
+            "service_id": db_uuid_to_wire(row.id, "svc"),
+            "from_agent_id": from_wire,
+            "to_agent_id": to_wire,
+        },
+    )
+
+    await notify_change(
+        session,
+        "mintkey:service",
+        {
+            "event": "service.ownership_transferred",
+            "tenant_id": str(tenant_id),
+            "service_id": db_uuid_to_wire(row.id, "svc"),
+            "from_agent_id": from_wire,
+            "to_agent_id": to_wire,
+        },
+    )
+
     return JSONResponse(_service_row_to_dict(row))
 
 

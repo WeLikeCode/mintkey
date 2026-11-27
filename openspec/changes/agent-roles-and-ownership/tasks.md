@@ -53,7 +53,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
 
 ## 4. Service owner in the operator API, and the transfer
 
-- [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_service_ownership.py`, covering the scenarios of "Service
+- [x] 4.1 Tests first, new file `tests/unit/admin_api/test_service_ownership.py`, covering the scenarios of "Service
   responses carry the owner", "An operator transfers a service's ownership" (with `admin_api.api.services.notify_change`
   patched and its calls compared with the payloads of the spec), "Operators keep full control of every service" and the
   transfer half of "the error bodies". The fake session answers the agent lookup of the transfer (a statement containing `FROM agents`) with a
