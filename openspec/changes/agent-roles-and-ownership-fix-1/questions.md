@@ -19,6 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 ## Q-001: A person must commit the Q-002 edit to test_C_2e9cfe5e_unsuitable_targets
 
 - **Status:** open
+- **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Confirmed in the repository: tests/unit/admin_api/test_service_ownership.py lines 545, 553 and 561 expect mintkey:code agent_not_publisher / agent_not_active, while apps/admin-api/src/admin_api/api/services.py (lines 1698-1709) answers mintkey:code invalid_transfer_target with the reason, as the spec's error requirement and its "the error bodies" scenario pin. The "unsuitable targets" scenario in the spec names the reasons as the 422 codes, so the spec itself is inconsistent and the resolution lies in the test file, not in production code: aligning production with the test would break the error requirement and test_C_cdc7f907. This is a fix task whose only remedy is an edit to a frozen test file, which a person must commit on the unit branch; I cannot answer with a test-file change or reclassify the finding. The referenced Q-002 is not among this unit's earlier answers, so I could not verify it either.
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-11-27T04:26Z by deepseek, run r-20261127T0221Z-dae9, task 1.1
