@@ -7,7 +7,7 @@ handler. Run `go test ./... -short`, `go vet ./...` and `golangci-lint run` in `
 
 ## 1. The proxy refuses the tokens of a revoked grant
 
-- [ ] 1.1 Tests first. New file `apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go` (package `main`, using
+- [x] 1.1 Tests first. New file `apps/proxy-plugin/cmd/proxy-plugin/grant_revocation_test.go` (package `main`, using
   `testHandler`, `buildScopeClaimsJWT` (the `extra` map overrides `sub` and adds `iat`), `buildTestJWTWithClaims`,
   `scopeRequest` and `assertScopeReachesVault`; a token's public key goes to `h.pubKeys["testkey"]` before its request). A
   helper `applyRevocation(t, h, agentWire, svcWire string, revokedAt any)` builds the JSON of the scenario's payload

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -215,6 +216,9 @@ type proxyHandler struct {
 	// revokedJTIs holds the revoked token ids. Never nil after newProxyHandler;
 	// a background loop evicts aged entries.
 	revokedJTIs *revocation.JTIRevocationSet
+	// revokedGrants holds the revoked (agent, service) grant pairs. Never nil
+	// after newProxyHandler; the change subscriber fills it.
+	revokedGrants *revocation.GrantRevocationSet
 	// pubKeys is the in-memory JWKS cache: kid → public key.
 	pubKeys map[string]ed25519.PublicKey
 	// tokenCache is the in-memory cache for OAuth2 password grant exchanged tokens.
@@ -264,6 +268,7 @@ func newProxyHandler(cfg *config.Config, vaultClient *vault.Client, limiter *pro
 		metrics:          m,
 		revokedAgents:    revocation.NewAgentRevocationSet(),
 		revokedJTIs:      revocation.NewJTIRevocationSet(10_000),
+		revokedGrants:    revocation.NewGrantRevocationSet(),
 		pubKeys:          make(map[string]ed25519.PublicKey),
 		tokenCache:       cache.NewTokenCache(),
 		tokenExchanger:   credential.NewTokenExchanger(),
@@ -281,6 +286,7 @@ func (h *proxyHandler) changesSubscriber(dsn string, opts ...changes.SubscriberO
 	if bc, ok := h.budgetResolver.(changes.BudgetCacheInvalidator); ok {
 		opts = append(opts, changes.WithBudgetCache(bc))
 	}
+	opts = append(opts, changes.WithGrantRevocations(h.revokedGrants))
 	return changes.NewSubscriber(dsn, h.revokedAgents, h.revokedJTIs, h.ckHandler, opts...)
 }
 
@@ -361,11 +367,18 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Revocation gate: a revoked token id or an agent in the revoked set is
-	// refused before any other gate and before the vault credential fetch.
-	// The body does not reveal which of the two matched (D1).
+	// Revocation gate: a revoked token id, an agent in the revoked set, or a
+	// token of a revoked (agent, service) grant pair issued at or before the
+	// revocation is refused before any other gate and before the vault
+	// credential fetch. The body does not reveal which of them matched (D1).
 	jti, _ := claims["jti"].(string)
 	if (jti != "" && h.revokedJTIs.Contains(jti)) || (agentID != "" && h.revokedAgents.Contains(agentID)) {
+		h.metrics.IncProxyDenied(serviceID, "revoked")
+		http.Error(w, "unauthorized: token revoked", http.StatusUnauthorized)
+		return
+	}
+	iat, hasIAT := iatClaim(claims["iat"])
+	if agentID != "" && h.revokedGrants.Refuses(agentID, serviceID, iat, hasIAT) {
 		h.metrics.IncProxyDenied(serviceID, "revoked")
 		http.Error(w, "unauthorized: token revoked", http.StatusUnauthorized)
 		return
@@ -1267,6 +1280,17 @@ func audCheckResult(mode config.AudEnforcement) string {
 		return "reject"
 	}
 	return "warn"
+}
+
+// iatClaim returns the token's iat as whole seconds and true when it is a
+// usable claim: a finite JSON number greater than zero. A missing, non-numeric,
+// non-finite or non-positive value is unusable (hasIAT false).
+func iatClaim(v any) (int64, bool) {
+	f, ok := v.(float64)
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) || f <= 0 {
+		return 0, false
+	}
+	return int64(math.Floor(f)), true
 }
 
 // audFirst returns the first element of the aud claim (string or []any).

@@ -44,8 +44,9 @@ type Subscriber struct {
 	dsn         string
 	agents      *revocation.AgentRevocationSet
 	jtis        *revocation.JTIRevocationSet
-	cache       ClassicalKeyCache      // nil when classical-key branch is not wired
-	budgetCache BudgetCacheInvalidator // nil when budget tracking is not wired
+	grants      *revocation.GrantRevocationSet // nil when grant revocation is not wired
+	cache       ClassicalKeyCache              // nil when classical-key branch is not wired
+	budgetCache BudgetCacheInvalidator         // nil when budget tracking is not wired
 }
 
 // NewSubscriber constructs a Subscriber with the provided revocation sets.
@@ -72,6 +73,14 @@ type SubscriberOption func(*Subscriber)
 func WithBudgetCache(bc BudgetCacheInvalidator) SubscriberOption {
 	return func(s *Subscriber) {
 		s.budgetCache = bc
+	}
+}
+
+// WithGrantRevocations wires the grant-revocation set that
+// agent.permission.revoked events populate.
+func WithGrantRevocations(grants *revocation.GrantRevocationSet) SubscriberOption {
+	return func(s *Subscriber) {
+		s.grants = grants
 	}
 }
 
@@ -128,6 +137,8 @@ func (s *Subscriber) HandleNotification(payload string) error {
 		JTI            string `json:"jti"`
 		KeyFingerprint string `json:"key_fingerprint"`
 		TargetID       string `json:"target_id"`
+		ServiceID      string `json:"service_id"`
+		RevokedAt      string `json:"revoked_at"`
 	}
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
 		return fmt.Errorf("parse notification payload: %w", err)
@@ -144,6 +155,34 @@ func (s *Subscriber) HandleNotification(payload string) error {
 		if s.cache != nil {
 			s.cache.EvictByAgentID(evt.AgentID)
 		}
+	case "agent.permission.revoked":
+		// Both ids are required: an event that names no agent or no service
+		// cannot be applied, and fails visibly whatever the subscriber holds.
+		if evt.AgentID == "" || evt.ServiceID == "" {
+			missing := "agent_id"
+			if evt.AgentID != "" {
+				missing = "service_id"
+			}
+			return fmt.Errorf("agent.permission.revoked: missing %s", missing)
+		}
+		if s.grants == nil {
+			return nil
+		}
+		// revoked_at is an ISO-8601 UTC timestamp with an offset; a missing or
+		// unparsable value counts from the receipt. A value more than 30 s ahead
+		// of the receipt counts as the receipt, so a clock that runs ahead
+		// cannot refuse tokens issued after the event arrived.
+		now := time.Now()
+		revokedAt := now
+		if evt.RevokedAt != "" {
+			if parsed, err := time.Parse(time.RFC3339Nano, evt.RevokedAt); err == nil {
+				revokedAt = parsed
+			}
+		}
+		if revokedAt.After(now.Add(30 * time.Second)) {
+			revokedAt = now
+		}
+		s.grants.Add(evt.AgentID, evt.ServiceID, revokedAt)
 	case "token.revoked":
 		s.jtis.Add(evt.JTI)
 	case "api_key.revoked":
@@ -154,7 +193,7 @@ func (s *Subscriber) HandleNotification(payload string) error {
 		if s.budgetCache != nil && evt.TargetID != "" {
 			s.budgetCache.InvalidateBudget(evt.TargetID)
 		}
-	// Unknown event types are silently ignored — forward compatibility.
+		// Unknown event types are silently ignored — forward compatibility.
 	}
 	return nil
 }
