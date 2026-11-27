@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-11-27T17:28:10Z",
+  "integrated_revision": "3e92978f2d94410d78b36ad7b9144ba49605ef61",
+  "merge_commit": "3e92978f2d94410d78b36ad7b9144ba49605ef61",
+  "plan_digest": "04a35d5f4509a2d9",
+  "plan_id": "agent-governance",
+  "postcheck": "pass",
+  "pr": "<forge>/WeLikeCode/mintkey/pull/465",
+  "receipt_id": "agent-governance/openspec:agent-principal-and-egress/1",
+  "repository": "https://github.com/WeLikeCode/mintkey",
+  "reviewed_head": null,
+  "spec_digest": "76d1e1dc4c3ca155",
+  "target": "staging",
+  "unit_id": "openspec:agent-principal-and-egress"
+}
