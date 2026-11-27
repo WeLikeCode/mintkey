@@ -50,7 +50,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 6. Wiring, isolation and the snapshot
 
-- [ ] 6.1 Tests first, new file `tests/unit/admin_api/test_agent_routes_isolation.py` (builds `create_app()` with
+- [x] 6.1 Tests first, new file `tests/unit/admin_api/test_agent_routes_isolation.py` (builds `create_app()` with
   `MINTKEY_AUDIT_HMAC_KEY` and `MINTKEY_VAULT_BACKEND=sqlite` set as `tests/architecture/test_authz_coverage.py` does,
   walks the routes and their dependency trees, sends the cookie-less POST with `httpx.ASGITransport`, and reads
   `tests/acceptance/openapi_snapshot.json`), covering the three scenarios of "The agent routes are separate from the

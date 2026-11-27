@@ -222,7 +222,6 @@ async def _slug_exists(
     return result.fetchone() is not None
 
 
-@router.post("", status_code=201)
 async def create_agent_service(
     request: Request,
     principal: AgentPrincipal = Depends(require_publisher_principal),
@@ -315,7 +314,6 @@ async def create_agent_service(
     return JSONResponse(status_code=201, content=service_view(row))
 
 
-@router.get("")
 async def list_agent_services(
     principal: AgentPrincipal = Depends(require_publisher_principal),
     session: AsyncSession = Depends(get_db_session, scope="function"),
@@ -347,6 +345,24 @@ async def list_agent_services(
         status_code=200,
         content={"services": [service_view(row) for row in rows]},
     )
+
+
+async def _services_collection(
+    request: Request,
+    principal: AgentPrincipal = Depends(require_publisher_principal),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+) -> JSONResponse:
+    """Serve the collection as one route: POST creates, GET lists.
+
+    The two handlers stay separate for the per-route tests; this dispatcher
+    registers them as one ``APIRoute`` whose methods are exactly GET and POST.
+    """
+    if request.method == "POST":
+        return await create_agent_service(request, principal, session)
+    return await list_agent_services(principal, session)
+
+
+router.add_api_route("", _services_collection, methods=["GET", "POST"])
 
 
 @router.patch("/{service_ref}")
