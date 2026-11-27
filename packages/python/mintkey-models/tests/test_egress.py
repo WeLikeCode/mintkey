@@ -149,6 +149,47 @@ def test_C_3a64dd27_address_is_public() -> None:
 
 
 # ---------------------------------------------------------------------------
+# C-0ed78ab3 — IPv6 forms that carry an IPv4 address
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-0ed78ab3")
+def test_C_0ed78ab3_ipv4_embedding_ipv6_ranges_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(DENY_VAR, raising=False)
+
+    # Addresses from each range the proxy's connect-time guard refuses as a
+    # whole: NAT64 (64:ff9b::/96), 6to4 (2002::/16) and Teredo (2001::/32).
+    # Each range is exercised with an embedded private IPv4 address (10.0.0.1)
+    # and an embedded public one (93.184.216.34), so the refusal has to come
+    # from the range itself, not from the embedded address.
+    embedding = [
+        "64:ff9b::a00:1",
+        "64:ff9b::5db8:d822",
+        "2002:a00:1::1",
+        "2002:5db8:d822::1",
+        "2001:0:a00:1::1",
+        "2001:0:5db8:d822::1",
+    ]
+    for address in embedding:
+        assert egress.address_is_public(address) is False, address
+        monkeypatch.setattr(egress, "resolve_host", _resolver_for([address]))
+        for url in (
+            "https://api.example.com/",
+            "https://api.example.com/openapi.json",
+        ):
+            assert _refusal_reason(url) == "non_public_address", (address, url)
+
+    # The same function still accepts genuinely public addresses, so an
+    # implementation that refused every address would not pass this test.
+    assert egress.address_is_public("93.184.216.34") is True
+    assert egress.address_is_public("2606:2800:220:1:248:1893:25c8:1946") is True
+    monkeypatch.setattr(egress, "resolve_host", _resolver_for(["93.184.216.34"]))
+    assert asyncio.run(egress.check_agent_target_url("https://api.example.com/")) is None
+
+
+# ---------------------------------------------------------------------------
 # C-97e80bfe — the deny list reader
 # ---------------------------------------------------------------------------
 
