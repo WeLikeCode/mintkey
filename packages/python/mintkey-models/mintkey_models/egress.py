@@ -11,9 +11,18 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import os
+import re
 from urllib.parse import urlsplit
 
 DENY_ENV = "MINTKEY_AGENT_EGRESS_DENY"
+
+# A DNS label may be at most 63 characters and may not be empty.
+_MAX_LABEL_LENGTH = 63
+
+# A host whose last label is all decimal digits or 0x-hexadecimal is a numeric
+# shorthand (``127.1``, ``0x7f.1``) that the resolver would interpret as an IP
+# address, so it is refused rather than resolved.
+_NUMERIC_LAST_LABEL = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)\Z")
 
 # IPv6 forms that carry an IPv4 address: NAT64, 6to4 and Teredo. They are
 # classified by their IPv6 prefix, so an embedded private IPv4 address could
@@ -69,6 +78,28 @@ def address_is_public(address: str) -> bool:
     return ip.is_global and not ip.is_multicast
 
 
+def _has_forbidden_character(url: str) -> bool:
+    """Return True when *url* carries whitespace, a control, ``%`` or ``\\``.
+
+    Checked on the raw string before ``urlsplit``, which silently removes tabs
+    and newlines (so the validated host would otherwise differ from the stored
+    URL).
+    """
+    for character in url:
+        if character in "%\\" or character.isspace():
+            return True
+        if ord(character) < 0x20 or ord(character) == 0x7F:
+            return True
+    return False
+
+
+def _labels_are_valid(host: str) -> bool:
+    """Return True when every dot-separated label is non-empty and short enough."""
+    return all(
+        label and len(label) <= _MAX_LABEL_LENGTH for label in host.split(".")
+    )
+
+
 def _is_denied_name(host: str) -> bool:
     for entry in egress_deny_names():
         if entry.startswith("*."):
@@ -81,6 +112,9 @@ def _is_denied_name(host: str) -> bool:
 
 async def check_agent_target_url(url: str) -> None:
     """Raise ``TargetNotAllowed`` unless *url* is a public https target."""
+    if _has_forbidden_character(url):
+        raise TargetNotAllowed("host_invalid")
+
     try:
         parts = urlsplit(url)
     except ValueError as exc:
@@ -91,7 +125,10 @@ async def check_agent_target_url(url: str) -> None:
     if parts.username is not None or parts.password is not None:
         raise TargetNotAllowed("userinfo_present")
 
-    host = parts.hostname
+    try:
+        host = parts.hostname
+    except ValueError as exc:
+        raise TargetNotAllowed("host_invalid") from exc
     if not host:
         raise TargetNotAllowed("host_missing")
 
@@ -104,12 +141,18 @@ async def check_agent_target_url(url: str) -> None:
     except UnicodeEncodeError as exc:
         raise TargetNotAllowed("host_invalid") from exc
 
+    if not _labels_are_valid(host):
+        raise TargetNotAllowed("host_invalid")
+
     try:
         ipaddress.ip_address(host)
     except ValueError:
         pass
     else:
         raise TargetNotAllowed("ip_literal")
+
+    if _NUMERIC_LAST_LABEL.fullmatch(host.rsplit(".", 1)[-1]):
+        raise TargetNotAllowed("host_invalid")
 
     if (
         host == "localhost"
@@ -122,7 +165,7 @@ async def check_agent_target_url(url: str) -> None:
 
     try:
         addresses = await resolve_host(host)
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise TargetNotAllowed("unresolvable") from exc
 
     if not addresses:
