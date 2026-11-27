@@ -87,3 +87,5 @@
 {"at":"2026-11-27T06:21:18Z","run":"r-20261127T0621Z-c082","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T06:54:08Z","attempt":1,"cost_usd":11.421075,"runs":7,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T06:54:08Z","run":"r-20261127T0654Z-f5d6","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T07:26:36Z","attempt":1,"cost_usd":12.553667,"runs":8,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T07:26:36Z","run":"r-20261127T0726Z-7df0","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
