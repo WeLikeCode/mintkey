@@ -97,3 +97,5 @@
 {"at":"2026-11-27T11:06:17Z","run":"r-20261127T1106Z-019e","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
 {"at":"2026-11-27T13:36:55Z","attempt":1,"cost_usd":0.0,"runs":2,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
 {"at":"2026-11-27T13:36:55Z","run":"r-20261127T1336Z-73e4","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T15:54:48Z","attempt":1,"cost_usd":0.897584,"runs":3,"type":"plan.charged","unit":"openspec:agent-principal-and-egress"}
+{"at":"2026-11-27T15:54:48Z","run":"r-20261127T1554Z-53c9","type":"unit.dispatched","unit":"openspec:agent-principal-and-egress"}
