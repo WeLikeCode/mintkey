@@ -11,14 +11,15 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1, 2.1, 3.1, 3.2, 4.1, 5.1 | ambiguous | Scenarios "the contract lists both events" and "the contract names them" conflict |
+| Q-001 | answered | 1.1, 2.1, 3.1, 3.2, 4.1, 5.1 | ambiguous | Scenarios "the contract lists both events" and "the contract names them" conflict |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Scenarios "the contract lists both events" and "the contract names them" conflict
 
-- **Status:** open
+- **Status:** answered
+- **Answered by:** the delegate (claude-fable-5-1 via claude-code)
 - **Blocking tasks:** 1.1, 2.1, 3.1, 3.2, 4.1, 5.1
 - **Kind:** ambiguous
 - **Asked:** intake lint (L4-ODD-004)
@@ -36,3 +37,4 @@ Which behaviour is wanted? Answer below and set Status to answered. If one scena
 
 ### Answer
 <!-- write below this line -->
+The two scenarios do not conflict, and neither is to be deleted. They share a WHEN only because both load the same file, docs/architecture/contracts/events/audit-event.schema.json, but their THENs assert disjoint parts of it. The grant-expiry scenario belongs to the grant-expiry capability and is already satisfied at this unit's base: ev_agent_permission_granted and ev_agent_permission_revoked already carry grantor_id, and the reason_code enum of ev_token_denied already holds grant_expired. This unit's scenario adds two new definitions, ev_agent_role_changed and ev_service_ownership_transferred, under $defs, each with one $ref in the top-level oneOf and one entry in discriminator.mapping, as design decision D6 describes. Implement the agent-roles-and-ownership scenario as written, leave the three grant-expiry definitions and their required lists untouched, and both scenarios hold on the same file at once.
