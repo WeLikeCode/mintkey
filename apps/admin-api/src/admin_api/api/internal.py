@@ -145,92 +145,19 @@ async def validate_agent_key(
     against DUMMY_HASH for unknown ones — so timing is equalized across all
     failure modes (ADR-0017.5).
 
-    Returns {agent_id, tenant_id, status} on success, 401 on any failure.
+    Returns {agent_id, tenant_id, status, role} on success, 401 on any failure.
+
+    The lookup, the Argon2id verify and the status/expiry branches live in
+    ``check_agent_key`` so the agent principal dependency can share them; this
+    endpoint issues no statement of its own.
 
     Source: ADR-0009; Req 6 AC1, AC2; ADR-0017.5.
     """
-    api_key = body.api_key
+    row, response = await check_agent_key(session, body.api_key)
+    if response is not None:
+        return response
 
-    # Compute fingerprint — same algorithm as agents.py _generate_agent_api_key
-    fingerprint = hashlib.sha256(api_key.encode()).digest()[:8].hex()
-
-    # Enable cross-tenant lookup. PostgreSQL does not short-circuit OR in RLS
-    # USING clauses, so ''::uuid throws even when platform_admin_view='on'.
-    # Set a sentinel UUID so the cast is valid, then enable platform_admin_view.
-    # Pattern mirrors proxy.py._proxy_call and auth/internal.py.
-    # ADR-0016.3 — platform_admin_view is the correct escape hatch here.
-    await session.execute(
-        text(
-            "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
-            "       set_config('app.platform_admin_view', 'on', true)"
-        )
-    )
-
-    result = await session.execute(
-        text(
-            "SELECT id, tenant_id, api_key_hash, status, role, api_key_expires_at, api_key_fingerprint"
-            " FROM agents WHERE api_key_fingerprint = :fp"
-        ),
-        {"fp": fingerprint},
-    )
-    row = result.fetchone()
-
-    if row is None:
-        # Equalize timing against DUMMY_HASH — ADR-0017.5.
-        # Verify off the event loop (see _verify_argon2): the hash is CPU-bound
-        # (~0.6-0.9s at time_cost=3/64MB) and argon2-cffi releases the GIL while
-        # hashing, so running it inline serialises all concurrent validations
-        # and blows the callers' timeouts under a startup burst. Offloading keeps
-        # the loop free; the semaphore keeps peak memory bounded.
-        try:
-            await _verify_argon2(DUMMY_HASH, api_key)
-        except Exception:
-            pass
-        return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
-
-    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5.
-    # Offloaded off the event loop (see _verify_argon2 / the DUMMY_HASH branch)
-    # so the loop stays free and concurrent validations do not serialise.
-    try:
-        await _verify_argon2(row.api_key_hash, api_key)
-    except (VerificationError, InvalidHashError):
-        return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
-    except Exception as exc:
-        logger.warning("validate-agent-key: verify failed (%s)", type(exc).__name__)
-        return JSONResponse(status_code=503, content=VERIFY_UNAVAILABLE_RESPONSE)
-
-    if row.status != "active":
-        # Revoked/suspended — same body as any other failure (Req 6 AC2)
-        return JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
-
-    # Expiry check AFTER argon2 verify — preserves timing equalisation (ADR-0017.5)
-    if row.api_key_expires_at is not None and now_utc() > row.api_key_expires_at:
-        if _expired_throttle.should_emit(str(row.id)):
-            await audit_emit(
-                session=session,
-                tenant_id=UUID(str(row.tenant_id)),
-                event_type="agent.api_key_expired",
-                actor_id=None,
-                actor_type="system",
-                target_id=row.id,
-                target_type="agent",
-                payload={
-                    "agent_id": str(row.id),
-                    "api_key_fingerprint": row.api_key_fingerprint,
-                    "expired_at": row.api_key_expires_at.isoformat(),
-                },
-            )
-        return JSONResponse(status_code=401, content={
-            "type": "https://mintkey.internal/errors/agent-key-expired",
-            "title": "API key expired",
-            "status": 401,
-            "mintkey:code": "agent_api_key_expired",
-            "hint": (
-                f"This agent's API key expired on {row.api_key_expires_at.isoformat()}. "
-                "Operator must rotate the key via the admin UI Rotate Key action."
-            ),
-        })
-
+    assert row is not None
     return JSONResponse(
         status_code=200,
         content={
@@ -539,3 +466,96 @@ async def audit_emit_endpoint(
     )
 
     return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+async def check_agent_key(
+    session: AsyncSession, api_key: str
+) -> tuple[Any | None, JSONResponse | None]:
+    """
+    Check an agent API key in the session given and return ``(row, None)`` on
+    success or ``(None, response)`` with the answer ``validate-agent-key`` gives.
+
+    The caller owns the session and closes it. It is the only function that
+    turns the platform view on for a key check, and only in this session.
+    """
+    # Compute fingerprint — same algorithm as agents.py _generate_agent_api_key
+    fingerprint = hashlib.sha256(api_key.encode()).digest()[:8].hex()
+
+    # Enable cross-tenant lookup. PostgreSQL does not short-circuit OR in RLS
+    # USING clauses, so ''::uuid throws even when platform_admin_view='on'.
+    # Set a sentinel UUID so the cast is valid, then enable platform_admin_view.
+    # Pattern mirrors proxy.py._proxy_call and auth/internal.py.
+    # ADR-0016.3 — platform_admin_view is the correct escape hatch here.
+    await session.execute(
+        text(
+            "SELECT set_config('app.current_tenant', '00000000-0000-0000-0000-000000000000', true),"
+            "       set_config('app.platform_admin_view', 'on', true)"
+        )
+    )
+
+    result = await session.execute(
+        text(
+            "SELECT id, tenant_id, api_key_hash, status, role, api_key_expires_at, api_key_fingerprint"
+            " FROM agents WHERE api_key_fingerprint = :fp"
+        ),
+        {"fp": fingerprint},
+    )
+    row = result.fetchone()
+
+    if row is None:
+        # Equalize timing against DUMMY_HASH — ADR-0017.5.
+        # Verify off the event loop (see _verify_argon2): the hash is CPU-bound
+        # (~0.6-0.9s at time_cost=3/64MB) and argon2-cffi releases the GIL while
+        # hashing, so running it inline serialises all concurrent validations
+        # and blows the callers' timeouts under a startup burst. Offloading keeps
+        # the loop free; the semaphore keeps peak memory bounded.
+        try:
+            await _verify_argon2(DUMMY_HASH, api_key)
+        except Exception:
+            pass
+        return None, JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
+
+    # Argon2 verify MUST run BEFORE expiry check — timing equalisation ADR-0017.5.
+    # Offloaded off the event loop (see _verify_argon2 / the DUMMY_HASH branch)
+    # so the loop stays free and concurrent validations do not serialise.
+    try:
+        await _verify_argon2(row.api_key_hash, api_key)
+    except (VerificationError, InvalidHashError):
+        return None, JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
+    except Exception as exc:
+        logger.warning("validate-agent-key: verify failed (%s)", type(exc).__name__)
+        return None, JSONResponse(status_code=503, content=VERIFY_UNAVAILABLE_RESPONSE)
+
+    if row.status != "active":
+        # Revoked/suspended — same body as any other failure (Req 6 AC2)
+        return None, JSONResponse(status_code=401, content=INVALID_KEY_RESPONSE)
+
+    # Expiry check AFTER argon2 verify — preserves timing equalisation (ADR-0017.5)
+    if row.api_key_expires_at is not None and now_utc() > row.api_key_expires_at:
+        if _expired_throttle.should_emit(str(row.id)):
+            await audit_emit(
+                session=session,
+                tenant_id=UUID(str(row.tenant_id)),
+                event_type="agent.api_key_expired",
+                actor_id=None,
+                actor_type="system",
+                target_id=row.id,
+                target_type="agent",
+                payload={
+                    "agent_id": str(row.id),
+                    "api_key_fingerprint": row.api_key_fingerprint,
+                    "expired_at": row.api_key_expires_at.isoformat(),
+                },
+            )
+        return None, JSONResponse(status_code=401, content={
+            "type": "https://mintkey.internal/errors/agent-key-expired",
+            "title": "API key expired",
+            "status": 401,
+            "mintkey:code": "agent_api_key_expired",
+            "hint": (
+                f"This agent's API key expired on {row.api_key_expires_at.isoformat()}. "
+                "Operator must rotate the key via the admin UI Rotate Key action."
+            ),
+        })
+
+    return row, None

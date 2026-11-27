@@ -7,13 +7,13 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 1. The egress policy
 
-- [ ] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_egress.py` (`monkeypatch.setattr(egress,
+- [x] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_egress.py` (`monkeypatch.setattr(egress,
   "resolve_host", ...)` and `setenv`), covering the three scenarios of "Agent-supplied URLs must be public https targets";
   red stubs `packages/python/mintkey-models/mintkey_models/egress.py`. Then fill it in.
 
 ## 2. The key check
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_key_check.py` (a fake session answering the key lookup by
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_key_check.py` (a fake session answering the key lookup by
   substring; `internal._verify_argon2` patched as `tests/unit/admin_api/test_validate_agent_key_errors.py` does), covering
   the two scenarios of "The key check is one function" (recording fake sessions); the second scenario also runs
   `tests/unit/admin_api/test_validate_agent_key_errors.py` unchanged. Then in `apps/admin-api/src/admin_api/api/internal.py`
@@ -23,7 +23,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 3. The principal
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the five scenarios of "An agent key
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_principal.py`, covering the five scenarios of "An agent key
   yields a principal": `admin_api.auth.agent_principal.AsyncSessionLocal` is patched with a factory of recording fake
   async-context-manager sessions, `internal.check_agent_key` with an `AsyncMock` (the last scenario uses the real function); the handler runs inside a `FastAPI()`
   with a probe route. Red stubs `apps/admin-api/src/admin_api/auth/agent_principal.py` with every name of the spec
@@ -31,7 +31,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
   `require_publisher_principal`, `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler, `agent_error_body` and `require_agent_principal` (dedicated session,
   commit, close, 503 on a database failure).
 
-- [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
+- [x] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
   /v1/agent/probe` that depends on `require_publisher_principal`, `require_agent_principal` overridden to return an
   `AgentPrincipal`, `AsyncSessionLocal` patched with a fake session factory and `audit_emit` patched at
   `admin_api.auth.agent_principal`), covering the two scenarios of "A role that is too low is refused and recorded". Then
@@ -40,6 +40,6 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 4. The audit contract
 
-- [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_denied.py` (loads
+- [x] 4.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_denied.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json`), covering the scenario "the contract lists it"; it fails
   before the change. Then edit the schema file. The admin UI's audit filter list is not changed here.
