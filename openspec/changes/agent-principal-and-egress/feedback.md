@@ -10,16 +10,16 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | taken | behaviour |  | Refuse the IPv6 forms that carry an IPv4 address |
-| FB-002 | taken | behaviour |  | A malformed agent-supplied URL is refused, never an error |
-| FB-003 | taken | behaviour |  | The deny list matches names however they are written |
+| FB-001 | addressed | behaviour |  | Refuse the IPv6 forms that carry an IPv4 address |
+| FB-002 | addressed | behaviour |  | A malformed agent-supplied URL is refused, never an error |
+| FB-003 | addressed | behaviour |  | The deny list matches names however they are written |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Refuse the IPv6 forms that carry an IPv4 address
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:45Z
@@ -33,13 +33,13 @@ address_is_public relies on ip.is_global, which treats 64:ff9b::/96 as global (P
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 3 into agent-principal-and-egress-fix-2
+Addressed in round 4 at 9040cfcf04: egress.py _IPV4_EMBEDDING_V6 and address_is_public refuse 64:ff9b::/96, 2002::/16, 2001::/32; test_C_0ed78ab3
 
 ---
 
 ## FB-002: A malformed agent-supplied URL is refused, never an error
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:46Z
@@ -53,13 +53,13 @@ Today a.example..com or a 64-character label raises UnicodeEncodeError from geta
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 3 into agent-principal-and-egress-fix-2
+Addressed in round 4 at 9040cfcf04: egress.py _has_forbidden_character, _labels_are_valid, _NUMERIC_LAST_LABEL, and except (OSError, UnicodeError) around resolve_host
 
 ---
 
 ## FB-003: The deny list matches names however they are written
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T15:52:46Z
@@ -73,4 +73,4 @@ Only one trailing dot is removed from the host, entries are not normalised the s
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 3 into agent-principal-and-egress-fix-2
+Addressed in round 4 at 9040cfcf04: egress.py egress_deny_names rstrip('.') and _deny_entry_is_usable warning; host.endswith('.localhost') check in check_agent_target_url
