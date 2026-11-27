@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: tests/unit/admin_api/test_state_after_change_fix3.py:341 contradicts C-4e0f1239 and the real services schema
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/unit/admin_api/test_state_after_change_fix3.py of task 1.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 1.1
 - **Kind:** technical
@@ -38,3 +38,4 @@ Edit `tests/unit/admin_api/test_state_after_change_fix3.py`: delete lines 117-12
 
 ### Answer
 <!-- write below this line -->
+Take option 1: edit tests/unit/admin_api/test_state_after_change_fix3.py, delete lines 117-120 so _service_snapshot always keeps current_key_version, and delete the service_selects loop at lines 341-350 (the max(c.key_version) / s.current_key_version assertions). services.current_key_version is a real column of the services table (changelog 004), which the credential routes keep in step with the active credential, so the transfer's re-read of that column is the service's current key version that FB-001 asks for, and it keeps every transfer statement off the credentials table as C-4e0f1239 requires. FB-001's mention of a subquery described the old gap; it is not a requirement. FB-001's other point is already met: _service_row_to_dict reads row.current_key_version directly. Answered by the repository owner's delegate.
