@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | open | 1.1 | technical | tests/unit/admin_api/test_state_after_change_fix3.py:341 contradicts C-4e0f1239 and the real services schema |
-| Q-002 | open | 1.1 | technical | tests/unit/admin_api/test_state_after_change_fix3.py:341 — the Q-001 edit leaves nothing for the red code to fail, so the test cannot discriminate |
+| Q-002 | superseded | 1.1 | technical | tests/unit/admin_api/test_state_after_change_fix3.py:341 — the Q-001 edit leaves nothing for the red code to fail, so the test cannot discriminate |
 <!-- l4:index:end -->
 
 ---
@@ -45,7 +45,7 @@ Take option 1: edit tests/unit/admin_api/test_state_after_change_fix3.py, delete
 
 ## Q-002: tests/unit/admin_api/test_state_after_change_fix3.py:341 — the Q-001 edit leaves nothing for the red code to fail, so the test cannot discriminate
 
-- **Status:** open
+- **Status:** superseded by retry
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): Neither option is mine to take. Option 1 (the clarifier suggestion) contradicts the unit's own spec: specs/agent-roles-and-ownership/spec.md lines 168-169 say the transfer "SHALL run no statement on `credentials`" and the scenario at lines 180-181 requires that "no executed statement text contains `credentials`"; the transfer docstring (services.py:1625) and test_service_ownership.py:531/1009 pin the same rule, so a MAX(c.key_version) subquery on credentials is a spec violation, not a fix. Option 2 is a waiver of the harness's red-test discrimination check. I verified the red test's premise is false (services.current_key_version is a real column, 004-services.yaml:62, kept in step by credentials.py:703 and :1284) and that the code already re-selects after the UPDATE (services.py:1760-1775), so no production-code change can make the frozen red test fail without breaking the spec. What remains is a test-only correction inside a fix task plus a process waiver, which only a person can comm … [cut at 1000 of 1012 characters]
 - **Blocking tasks:** 1.1
 - **Kind:** technical
