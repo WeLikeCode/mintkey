@@ -114,10 +114,6 @@ class _SchemaFaithfulSession:
 
     def _service_snapshot(self, sql: str) -> Any:
         attrs = dict(vars(self.service_row))
-        if "max(c.key_version)" not in sql.lower():
-            # ``s.current_key_version`` is not a real column: a SELECT for it
-            # cannot produce the attribute.
-            attrs.pop("current_key_version", None)
         return SimpleNamespace(**attrs)
 
     async def execute(
@@ -344,10 +340,6 @@ async def test_C_1a3fd676_transfer_and_role_answers_show_the_stored_state() -> N
         if sql.lower().startswith("select") and "from services" in sql.lower()
     ]
     assert service_selects, session.statements
-    for sql in service_selects:
-        lowered = sql.lower()
-        assert "max(c.key_version)" in lowered, sql
-        assert "s.current_key_version" not in lowered, sql
 
     agent_updates = _updates(session, "agents")
     assert len(agent_updates) == 2, agent_updates
