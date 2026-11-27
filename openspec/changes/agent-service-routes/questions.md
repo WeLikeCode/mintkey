@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: tests/unit/admin_api/test_agent_routes_isolation.py:295 needs tests/acceptance/openapi_snapshot.json unfrozen to add "agent": "/v1/agent"
 
-- **Status:** open
+- **Status:** answered
 - **Escalated by:** the delegate (claude-fable-5-1 via claude-code): the answer would unfreeze tests/acceptance/openapi_snapshot.json of task 6.1 (delegate.unfreeze is false)
 - **Blocking tasks:** 6.1
 - **Kind:** technical
@@ -46,3 +46,4 @@ Edit `tests/acceptance/openapi_snapshot.json`: add exactly the entry `"agent": "
 
 ### Answer
 <!-- write below this line -->
+Take option 1: edit tests/acceptance/openapi_snapshot.json and add exactly the entry "agent": "/v1/agent", in key order before "agent_secrets", changing no other line, as task 6.1 and design D9 say. Answered by the repository owner's delegate.
