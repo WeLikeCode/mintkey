@@ -10,7 +10,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -111,5 +111,42 @@ def service_view(row: Any) -> dict[str, Any]:
     }
 
 
+def validation_body(field: str | None) -> dict[str, Any]:
+    """The one 422 body of the agent service routes."""
+    return {
+        "code": "mintkey:validation_failed",
+        "title": "Invalid request body",
+        "field": field,
+    }
+
+
+def _failed_field(exc: ValidationError) -> str | None:
+    """The declared body field that failed, or None (extra keys and the like)."""
+    for error in exc.errors(include_url=False, include_input=False):
+        if error["type"] == "extra_forbidden":
+            return None
+        location = error["loc"]
+        if location and isinstance(location[0], str):
+            return location[0]
+        return None
+    return None
+
+
 async def parse_agent_body[M: BaseModel](request: Request, model: type[M]) -> M:
-    raise NotImplementedError
+    """Read, parse and validate a request body, answering the one 422 body.
+
+    The body is read here, never by FastAPI's request-model validation, so no
+    refusal repeats a value the caller sent (design D10). Anything unreadable,
+    not a JSON object, or invalid answers 422 ``mintkey:validation_failed``
+    with the declared field that failed, else a null field.
+    """
+    try:
+        raw: Any = await request.json()
+    except ValueError:
+        raise AgentApiError(422, validation_body(None)) from None
+    if not isinstance(raw, dict):
+        raise AgentApiError(422, validation_body(None))
+    try:
+        return model.model_validate(raw)
+    except ValidationError as exc:
+        raise AgentApiError(422, validation_body(_failed_field(exc))) from None

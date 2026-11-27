@@ -20,7 +20,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 2. Create and list
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_services_create.py`, covering the three scenarios of "A
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_services_create.py`, covering the three scenarios of "A
   publisher creates a service" and the scenario of "A publisher lists its own services". Red creates
   `apps/admin-api/src/admin_api/api/agent_services.py` (a `router` with no routes) and `apps/admin-api/src/admin_api/api/agent.py`
   (`router = APIRouter(prefix="/v1/agent")` including it). Then fill in `parse_agent_body` and add the POST and the GET routes; the service id is derived
