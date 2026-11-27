@@ -73,3 +73,5 @@
 {"at":"2026-11-27T00:30:01Z","detail":"13 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"e22576ba1ef02b6efdfc5368aacb202853e2ce6d","status":"pass","type":"unit.postcheck","unit":"openspec:proxy-grant-revocation"}
 {"at":"2026-11-27T00:30:01Z","revision":"e22576ba1ef02b6efdfc5368aacb202853e2ce6d","type":"unit.integrated","unit":"openspec:proxy-grant-revocation"}
 {"at":"2026-11-27T00:30:01Z","attempt":1,"cost_usd":2.020446,"runs":2,"type":"plan.charged","unit":"openspec:proxy-grant-revocation"}
+{"at":"2026-11-27T00:31:18Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T00:31:18Z","run":"r-20261127T0031Z-32a3","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
