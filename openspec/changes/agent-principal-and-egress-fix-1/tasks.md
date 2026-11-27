@@ -2,4 +2,4 @@
 
 ## 1. Fix
 
-- [ ] 1.1 an inline suppression was not declared (F-6eb0cc43)
+- [x] 1.1 an inline suppression was not declared (F-6eb0cc43)
