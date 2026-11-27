@@ -109,3 +109,5 @@
 {"at":"2026-11-27T20:04:48Z","run":"r-20261127T2004Z-3d36","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
 {"at":"2026-11-27T22:14:08Z","detail":"awaiting_human: no new answers (open: Q-001) (escalated to a person: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:agent-service-routes"}
 {"at":"2026-11-27T22:26:30Z","by":"harness","reason":"the cause is gone: openspec:agent-service-routes is awaiting_human","type":"plan.resumed"}
+{"at":"2026-11-27T22:26:32Z","attempt":1,"cost_usd":1.048969,"runs":3,"type":"plan.charged","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-27T22:26:32Z","run":"r-20261127T2226Z-441e","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
