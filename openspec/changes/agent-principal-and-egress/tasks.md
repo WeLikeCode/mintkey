@@ -7,7 +7,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
 
 ## 1. The egress policy
 
-- [ ] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_egress.py` (`monkeypatch.setattr(egress,
+- [x] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_egress.py` (`monkeypatch.setattr(egress,
   "resolve_host", ...)` and `setenv`), covering the three scenarios of "Agent-supplied URLs must be public https targets";
   red stubs `packages/python/mintkey-models/mintkey_models/egress.py`. Then fill it in.
 

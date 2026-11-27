@@ -1,9 +1,6 @@
 """
 Agent egress policy: the rule for URLs an agent supplies as service targets.
 
-Signature-only stubs for the red step; the behaviour is added in the green
-step.
-
 Source: openspec/changes/agent-principal-and-egress (task 1.1; spec
 agent-egress-policy, requirement "Agent-supplied URLs must be public https
 targets").
@@ -11,22 +8,111 @@ targets").
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
+import os
+from urllib.parse import urlsplit
+
+DENY_ENV = "MINTKEY_AGENT_EGRESS_DENY"
+
 
 class TargetNotAllowed(Exception):
-    pass
+    """An agent-supplied target URL was refused; ``reason`` names the rule."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 async def resolve_host(host: str) -> list[str]:
-    raise NotImplementedError
+    """Resolve *host* to its addresses.
+
+    The seam tests replace; a resolver failure surfaces as ``OSError``.
+    """
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(host, None)
+    addresses: list[str] = []
+    for info in infos:
+        address = info[4][0]
+        if isinstance(address, str):
+            addresses.append(address)
+    return addresses
 
 
 def egress_deny_names() -> tuple[str, ...]:
-    raise NotImplementedError
+    """Return the lower-cased, non-empty names of ``MINTKEY_AGENT_EGRESS_DENY``."""
+    raw = os.environ.get(DENY_ENV, "")
+    return tuple(name.strip().lower() for name in raw.split(",") if name.strip())
 
 
 def address_is_public(address: str) -> bool:
-    raise NotImplementedError
+    """Return True when *address* is a global unicast address."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+
+def _is_denied_name(host: str) -> bool:
+    for entry in egress_deny_names():
+        if entry.startswith("*."):
+            if host.endswith(entry[1:]):
+                return True
+        elif host == entry:
+            return True
+    return False
 
 
 async def check_agent_target_url(url: str) -> None:
-    raise NotImplementedError
+    """Raise ``TargetNotAllowed`` unless *url* is a public https target."""
+    try:
+        parts = urlsplit(url)
+    except ValueError as exc:
+        raise TargetNotAllowed("host_invalid") from exc
+
+    if parts.scheme != "https":
+        raise TargetNotAllowed("not_https")
+    if parts.username is not None or parts.password is not None:
+        raise TargetNotAllowed("userinfo_present")
+
+    host = parts.hostname
+    if not host:
+        raise TargetNotAllowed("host_missing")
+
+    host = host.lower()
+    if host.endswith("."):
+        host = host[:-1]
+
+    try:
+        host.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise TargetNotAllowed("host_invalid") from exc
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise TargetNotAllowed("ip_literal")
+
+    if (
+        host == "localhost"
+        or "." not in host
+        or host.endswith(".internal")
+        or host.endswith(".local")
+        or _is_denied_name(host)
+    ):
+        raise TargetNotAllowed("denied_name")
+
+    try:
+        addresses = await resolve_host(host)
+    except OSError as exc:
+        raise TargetNotAllowed("unresolvable") from exc
+
+    if not addresses:
+        raise TargetNotAllowed("unresolvable")
+    if not all(address_is_public(address) for address in addresses):
+        raise TargetNotAllowed("non_public_address")
