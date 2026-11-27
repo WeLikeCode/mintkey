@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_api.api.credentials import _new_cred_id
 from admin_api.api.services import _new_svc_id
 from admin_api.auth.agent_principal import (
     AgentApiError,
@@ -57,6 +58,78 @@ _SLUG_CONFLICT_BODY: dict[str, Any] = {
     "code": "mintkey:slug_conflict",
     "title": "Service name already in use",
 }
+
+_VAULT_UNAVAILABLE_BODY: dict[str, Any] = {
+    "code": "mintkey:vault_unavailable",
+    "title": "Credential store unavailable",
+}
+
+#: The keys a credential body may carry (design D3).
+_CREDENTIAL_KEYS = frozenset({"value", "header_name", "query_param"})
+
+_HEADER_NAME_PATTERN = re.compile(r"[A-Za-z0-9-]{1,64}")
+_QUERY_PARAM_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+_FORBIDDEN_HEADER_NAMES = frozenset(
+    {"host", "content-length", "transfer-encoding", "connection"}
+)
+
+
+def _valid_header_name(name: str) -> bool:
+    """A header name an agent may set: the syntax and the reserved list (D3)."""
+    if _HEADER_NAME_PATTERN.fullmatch(name) is None:
+        return False
+    lowered = name.lower()
+    if lowered in _FORBIDDEN_HEADER_NAMES:
+        return False
+    return not lowered.startswith("x-mintkey-")
+
+
+def _read_credential_body(raw: Any) -> tuple[str, str, str]:
+    """Hand-validate the credential body, never echoing a value (D10).
+
+    Returns ``(value, header_name, query_param)``; every refusal is the one
+    422 body of the agent service routes, with the field that failed.
+    """
+    if not isinstance(raw, dict):
+        raise AgentApiError(422, validation_body(None))
+    if any(key not in _CREDENTIAL_KEYS for key in raw):
+        raise AgentApiError(422, validation_body(None))
+
+    value = raw.get("value")
+    if not isinstance(value, str) or not 1 <= len(value) <= 8192:
+        raise AgentApiError(422, validation_body("value"))
+    if any(char in value for char in ("\r", "\n", "\x00")):
+        raise AgentApiError(422, validation_body("value"))
+
+    header_name = raw.get("header_name")
+    if header_name is not None and not isinstance(header_name, str):
+        raise AgentApiError(422, validation_body("header_name"))
+    query_param = raw.get("query_param")
+    if query_param is not None and not isinstance(query_param, str):
+        raise AgentApiError(422, validation_body("query_param"))
+
+    return value, header_name or "", query_param or ""
+
+
+def _validate_credential_names(
+    auth_scheme: str, header_name: str, query_param: str
+) -> None:
+    """Check the name a scheme needs, and refuse a name it does not take (D3)."""
+    if auth_scheme == "api_key_header":
+        if not _valid_header_name(header_name):
+            raise AgentApiError(422, validation_body("header_name"))
+        if query_param:
+            raise AgentApiError(422, validation_body("query_param"))
+    elif auth_scheme == "api_key_query":
+        if _QUERY_PARAM_PATTERN.fullmatch(query_param) is None:
+            raise AgentApiError(422, validation_body("query_param"))
+        if header_name:
+            raise AgentApiError(422, validation_body("header_name"))
+    else:
+        if header_name:
+            raise AgentApiError(422, validation_body("header_name"))
+        if query_param:
+            raise AgentApiError(422, validation_body("query_param"))
 
 
 class AgentServiceCreate(BaseModel):
@@ -423,5 +496,148 @@ async def _update_agent_service(
     return JSONResponse(status_code=200, content=view)
 
 
-async def _put_agent_credential(service_ref: str, request: Request, principal: AgentPrincipal=Depends(require_publisher_principal), session: AsyncSession=Depends(get_db_session, scope='function'), vault: VaultAdapterClient=Depends(get_vault_client)) -> JSONResponse:
-    raise NotImplementedError
+@router.put("/{service_ref}/credential")
+async def _put_agent_credential(
+    service_ref: str,
+    request: Request,
+    principal: AgentPrincipal = Depends(require_publisher_principal),
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    vault: VaultAdapterClient = Depends(get_vault_client),
+) -> JSONResponse:
+    """Write the credential of the caller's own service; never read it back.
+
+    The body is read and validated here, by hand, so no refusal echoes the
+    value (D10). The service row is locked first (D7), then the vault stores
+    the value bound to the service's target with the public egress scope; only
+    after that are the metadata rows, the audit event and the NOTIFY written
+    (D3, D11).
+    """
+    try:
+        raw: Any = await request.json()
+    except ValueError:
+        raise AgentApiError(422, validation_body(None)) from None
+    value, header_name, query_param = _read_credential_body(raw)
+
+    # The tenant context first. PostgreSQL GUC names are case-insensitive, so
+    # the upper-case spelling binds the same ``app.current_tenant`` setting.
+    await session.execute(
+        text("SELECT set_config('APP.CURRENT_TENANT', :tid, true)"),
+        {"tid": str(principal.tenant_id)},
+    )
+    service = await require_owned_service(
+        session, principal, service_ref, for_update=True
+    )
+
+    auth_scheme = str(service.auth_scheme)
+    if auth_scheme not in _AGENT_AUTH_SCHEMES:
+        raise AgentApiError(422, validation_body("auth_scheme"))
+    _validate_credential_names(auth_scheme, header_name, query_param)
+
+    try:
+        vault_result = await vault.put_credential(
+            tenant_id=str(principal.tenant_id),
+            service_id=str(service.id),
+            auth_scheme=auth_scheme,
+            plaintext=value,
+            target_url=str(service.base_url),
+            header_name=header_name,
+            query_param=query_param,
+            egress_scope="public",
+        )
+    except Exception as exc:
+        raise AgentApiError(502, dict(_VAULT_UNAVAILABLE_BODY)) from exc
+
+    key_version = cast(int, vault_result["key_version"])
+    cred_wire_id = _new_cred_id()
+    internal_id = uuid.UUID(wire_to_db_uuid(cred_wire_id, "cred"))
+    now = datetime.now(timezone.utc)
+
+    # Step 3b: supersede the service's active rows (the same SQL as
+    # create_credential, no operator checks).
+    await session.execute(
+        text(
+            "UPDATE credentials SET status = 'superseded'"
+            " WHERE service_id = :sid AND tenant_id = :tid"
+            "   AND auth_scheme = :scheme AND status = 'active'"
+            "   AND id IS DISTINCT FROM :new_id"
+        ),
+        {
+            "sid": str(service.id),
+            "tid": str(principal.tenant_id),
+            "scheme": auth_scheme,
+            "new_id": str(internal_id),
+        },
+    )
+
+    # Step 4: insert the metadata-only row (no plaintext, ADR-0014.4).
+    await session.execute(
+        text(
+            "INSERT INTO credentials"
+            " (id, tenant_id, service_id, key_version, ciphertext, nonce,"
+            "  wrapped_dek, auth_scheme, status, created_at)"
+            " VALUES"
+            " (:id, :tenant_id, :service_id, :key_version, :ciphertext, :nonce,"
+            "  :wrapped_dek, :auth_scheme, :status, :created_at)"
+        ),
+        {
+            "id": str(internal_id),
+            "tenant_id": str(principal.tenant_id),
+            "service_id": str(service.id),
+            "key_version": key_version,
+            "ciphertext": b"",
+            "nonce": b"",
+            "wrapped_dek": b"",
+            "auth_scheme": auth_scheme,
+            "status": "active",
+            "created_at": now,
+        },
+    )
+    await session.execute(
+        text(
+            "UPDATE services SET current_key_version = :kv, updated_at = :now"
+            " WHERE id = :sid AND tenant_id = :tid"
+        ),
+        {
+            "kv": key_version,
+            "now": now,
+            "sid": str(service.id),
+            "tid": str(principal.tenant_id),
+        },
+    )
+
+    service_id = db_uuid_to_wire(service.id, "svc")
+    await audit_emit(
+        session=session,
+        tenant_id=principal.tenant_id,
+        event_type="service.credential.set",
+        actor_id=principal.agent_id,
+        actor_type="agent",
+        target_id=internal_id,
+        target_type="credential",
+        payload={
+            "service_id": service_id,
+            "key_version": key_version,
+            "auth_scheme": auth_scheme,
+        },
+    )
+
+    event_type = "credential.registered" if key_version == 1 else "credential.rotated"
+    await notify_change(
+        session,
+        "mintkey:credential",
+        {
+            "event": event_type,
+            "tenant_id": str(principal.tenant_id),
+            "service_id": service_id,
+            "credential_id": cred_wire_id,
+        },
+    )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "service_id": service_id,
+            "credential_set": True,
+            "updated_at": now.isoformat(),
+        },
+    )

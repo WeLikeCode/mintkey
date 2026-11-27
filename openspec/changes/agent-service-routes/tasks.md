@@ -35,7 +35,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 4. The credential
 
-- [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_agent_credential.py`, covering the four scenarios of "A credential
+- [x] 4.1 Tests first, new file `tests/unit/admin_api/test_agent_credential.py`, covering the four scenarios of "A credential
   is written, never read, and bound to its target" (the fake vault records its `put_credential` call and keywords and can
   raise). Then add the PUT route to `apps/admin-api/src/admin_api/api/agent_services.py` (it takes the `Request`, reads
   `await request.json()` and validates by hand, raising the 422 of design D10; no request model), with the statements of steps 3b
