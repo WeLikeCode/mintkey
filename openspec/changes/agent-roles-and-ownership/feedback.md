@@ -10,15 +10,15 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour |  | The transfer and role answers show the state after the change |
-| FB-002 | submitted | behaviour |  | agent.role.changed names the agent in its wire form |
+| FB-001 | taken | behaviour |  | The transfer and role answers show the state after the change |
+| FB-002 | taken | behaviour |  | agent.role.changed names the agent in its wire form |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: The transfer and role answers show the state after the change
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T05:05:11Z
@@ -32,12 +32,13 @@ transfer_service_ownership answers with the row it selected before its UPDATE, s
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into agent-roles-and-ownership-fix-2
 
 ---
 
 ## FB-002: agent.role.changed names the agent in its wire form
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-11-27T05:05:12Z
@@ -51,3 +52,4 @@ update_agent_role writes the path id as given into the payload; service.ownershi
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into agent-roles-and-ownership-fix-2
