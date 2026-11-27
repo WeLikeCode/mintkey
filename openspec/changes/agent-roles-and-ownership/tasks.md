@@ -15,7 +15,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
 
 ## 1. One role vocabulary
 
-- [ ] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_roles.py`, covering the scenario "names and
+- [x] 1.1 Tests first, new file `packages/python/mintkey-models/tests/test_roles.py`, covering the scenario "names and
   fallback"; it fails before the change because `mintkey_models.roles` does not exist (red stubs the module with the
   names and signatures of design.md, `normalize_role` raising `NotImplementedError`). Then fill in
   `packages/python/mintkey-models/mintkey_models/roles.py` as design.md gives it.
