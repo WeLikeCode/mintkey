@@ -75,3 +75,5 @@
 {"at":"2026-11-27T00:30:01Z","attempt":1,"cost_usd":2.020446,"runs":2,"type":"plan.charged","unit":"openspec:proxy-grant-revocation"}
 {"at":"2026-11-27T00:31:18Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
 {"at":"2026-11-27T00:31:18Z","run":"r-20261127T0031Z-32a3","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T00:33:41Z","attempt":1,"cost_usd":0.825526,"runs":2,"type":"plan.charged","unit":"openspec:agent-roles-and-ownership"}
+{"at":"2026-11-27T00:33:41Z","run":"r-20261127T0033Z-a936","type":"unit.dispatched","unit":"openspec:agent-roles-and-ownership"}
