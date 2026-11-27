@@ -195,18 +195,21 @@ async def require_tenant_session(request: Request, tenant_id: UUID) -> None:
             detail={"mintkey:code": "unauthenticated", "title": "Session not found or expired"},
         )
 
+    # A session of the path's tenant is already authorised: no lookup needed.
+    if UUID(str(ctx.tenant_id)) == tenant_id:
+        return
+
     # Platform admins may operate across any tenant.
     if await _is_operator_platform_admin(ctx.operator_id):
         return
 
-    if UUID(str(ctx.tenant_id)) != tenant_id:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "mintkey:code": "permission_denied",
-                "title": "Session tenant does not match the requested tenant",
-            },
-        )
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "mintkey:code": "permission_denied",
+            "title": "Session tenant does not match the requested tenant",
+        },
+    )
 
 
 async def delete_session(token: str) -> bool:

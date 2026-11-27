@@ -1,0 +1,17 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:agent-roles-and-ownership",
+  "round": 4,
+  "findings": [
+    "F-b5f87b40",
+    "F-7e9a81fb"
+  ],
+  "chores": [
+    "F-b5f87b40",
+    "F-7e9a81fb"
+  ],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": [],
+  "repairs": []
+}

@@ -49,6 +49,7 @@ from admin_api.services.audit_emit_rate_limiter import (
     token_log_id,
 )
 from mintkey_models.audit import audit_emit
+from mintkey_models.roles import normalize_role
 from mintkey_models.tenant_ctx import set_tenant_context
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ async def validate_agent_key(
 
     result = await session.execute(
         text(
-            "SELECT id, tenant_id, api_key_hash, status, api_key_expires_at, api_key_fingerprint"
+            "SELECT id, tenant_id, api_key_hash, status, role, api_key_expires_at, api_key_fingerprint"
             " FROM agents WHERE api_key_fingerprint = :fp"
         ),
         {"fp": fingerprint},
@@ -236,6 +237,7 @@ async def validate_agent_key(
             "agent_id": str(row.id),
             "tenant_id": str(row.tenant_id),
             "status": row.status,
+            "role": normalize_role(getattr(row, "role", None)),
         },
     )
 

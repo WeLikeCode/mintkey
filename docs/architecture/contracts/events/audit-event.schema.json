@@ -721,6 +721,56 @@
         "payload"
       ]
     },
+    "ev_service_ownership_transferred": {
+      "type": "object",
+      "description": "An operator transferred a service's ownership.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "service.ownership_transferred"
+        },
+        "target_type": {
+          "const": "service"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service_id": {
+              "$ref": "#/$defs/service_id"
+            },
+            "from_agent_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wire id of the previous owner; null when operator-owned."
+            },
+            "to_agent_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Wire id of the new owner; null when operator-owned."
+            }
+          },
+          "required": [
+            "service_id",
+            "from_agent_id",
+            "to_agent_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
     "ev_service_api_keys_cascade_deleted": {
       "type": "object",
       "description": "All service_api_keys rows for a service were deleted as part of a transactional cascade delete.",
@@ -1052,6 +1102,50 @@
           },
           "required": [
             "agent_id"
+          ]
+        }
+      },
+      "required": [
+        "event_type",
+        "target_type",
+        "payload"
+      ]
+    },
+    "ev_agent_role_changed": {
+      "type": "object",
+      "description": "An operator changed an agent's role.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        }
+      ],
+      "properties": {
+        "event_type": {
+          "const": "agent.role.changed"
+        },
+        "target_type": {
+          "const": "agent"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "$ref": "#/$defs/agent_id"
+            },
+            "from_role": {
+              "type": "string",
+              "description": "The agent's role before the change."
+            },
+            "to_role": {
+              "type": "string",
+              "description": "The agent's role after the change."
+            }
+          },
+          "required": [
+            "agent_id",
+            "from_role",
+            "to_role"
           ]
         }
       },
@@ -3037,6 +3131,9 @@
       "$ref": "#/$defs/ev_service_removed"
     },
     {
+      "$ref": "#/$defs/ev_service_ownership_transferred"
+    },
+    {
       "$ref": "#/$defs/ev_credential_registered"
     },
     {
@@ -3050,6 +3147,9 @@
     },
     {
       "$ref": "#/$defs/ev_agent_revoked"
+    },
+    {
+      "$ref": "#/$defs/ev_agent_role_changed"
     },
     {
       "$ref": "#/$defs/ev_agent_permission_granted"
@@ -3222,6 +3322,7 @@
       "service.registered": "#/$defs/ev_service_registered",
       "service.updated": "#/$defs/ev_service_updated",
       "service.removed": "#/$defs/ev_service_removed",
+      "service.ownership_transferred": "#/$defs/ev_service_ownership_transferred",
       "service.api_keys.cascade_deleted": "#/$defs/ev_service_api_keys_cascade_deleted",
       "service.permission_grants.cascade_deleted": "#/$defs/ev_service_permission_grants_cascade_deleted",
       "service.credentials.cascade_deleted": "#/$defs/ev_service_credentials_cascade_deleted",
@@ -3230,6 +3331,7 @@
       "credential.revoked": "#/$defs/ev_credential_revoked",
       "agent.created": "#/$defs/ev_agent_created",
       "agent.revoked": "#/$defs/ev_agent_revoked",
+      "agent.role.changed": "#/$defs/ev_agent_role_changed",
       "agent.permission.granted": "#/$defs/ev_agent_permission_granted",
       "agent.permission.revoked": "#/$defs/ev_agent_permission_revoked",
       "token.issued": "#/$defs/ev_token_issued",
