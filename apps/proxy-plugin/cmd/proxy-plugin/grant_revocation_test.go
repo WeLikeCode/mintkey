@@ -224,7 +224,7 @@ func TestGrantSetKeepsLaterAndDropsExpired_C_e8ef472b(t *testing.T) {
 	now := time.Now()
 	secondPairAgent := grantOtherAgent
 	secondPairSvc := grantOtherSvc
-	thirdPairAgent := grantAgentUUID
+	thirdPairAgent := "cccccccc-cccc-cccc-cccc-cccccccccccc"
 	thirdPairSvc := grantServiceUUID
 
 	addAt(grantAgentWire, grantServiceWire, now.Add(-120*time.Second))
