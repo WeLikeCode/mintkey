@@ -32,7 +32,7 @@ session" keep the real `require_tenant_session`, send no cookie, and override on
 
 ## 3. Agent role in the operator API and in the key check
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_roles.py`, covering the scenarios of "Agent responses
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_roles.py`, covering the scenarios of "Agent responses
   carry the role", "An operator sets an agent's role", "A demotion changes nothing else", the role-PATCH half of "the error
   bodies" and the first scenario of "The agent-key check reports the role"
   (the last one calls `admin_api.api.internal.validate_agent_key` with a fake session of two results as

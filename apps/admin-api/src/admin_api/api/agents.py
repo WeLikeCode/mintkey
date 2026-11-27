@@ -29,22 +29,23 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from argon2 import PasswordHasher
 from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from admin_api.auth.sessions import require_tenant_session
+from admin_api.auth.sessions import get_session_context, require_tenant_session
 from admin_api.changes.publisher import notify_change
 from admin_api.config.public_urls import resolve_mcp_public_url
 from admin_api.db.deps import get_db_session
 from admin_api.utils.wire_ids import db_uuid_to_wire
 from mintkey_models.audit import audit_emit
+from mintkey_models.roles import normalize_role
 from mintkey_models.tenant_ctx import set_tenant_context
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,14 @@ class AgentCreate(BaseModel):
     expires_in: Optional[str] = None
 
 
+class AgentRolePatch(BaseModel):
+    """Body for PATCH /v1/tenants/{tenant_id}/agents/{agent_id} — role only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["consumer", "publisher"]
+
+
 class AgentRotateKeyRequest(BaseModel):
     # None = preserve existing expiry policy (re-anchor from now using the
     # same nominal duration if the current key has an expiry; else NULL).
@@ -176,6 +185,7 @@ def _agent_row_to_dict(row: Any) -> dict[str, Any]:
         "api_key_fingerprint": row.api_key_fingerprint,
         "mcp_endpoint": row.mcp_endpoint,
         "status": row.status,
+        "role": normalize_role(getattr(row, "role", None)),
         "rate_limit_rps": row.rate_limit_rps,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -309,6 +319,7 @@ async def create_agent(
             "api_key_fingerprint": fingerprint,
             "mcp_endpoint": mcp_endpoint,
             "status": "active",
+            "role": "consumer",
             "rate_limit_rps": body.rate_limit_rps,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
@@ -356,6 +367,7 @@ async def list_agents(
     tenant_id: UUID,
     q: Optional[str] = None,
     has_access_to_service_id: Optional[str] = None,
+    role: Optional[Literal["consumer", "publisher"]] = None,
     session: AsyncSession = Depends(get_db_session, scope="function"),
     _authz: None = Depends(require_tenant_session),
 ) -> JSONResponse:
@@ -366,8 +378,9 @@ async def list_agents(
       q                     — case-insensitive substring search on name or description.
       has_access_to_service_id — filter to agents with at least one active permission_grant
                                   on the given service (UUID or svc_ wire-ID).
+      role                  — ``consumer`` or ``publisher``; only agents of that role.
 
-    Source: T-1.4.1; ADR-0008.
+    Source: T-1.4.1; ADR-0008; agent-roles-and-ownership (D5).
     """
     await set_tenant_context(session, tenant_id)
 
@@ -394,7 +407,7 @@ async def list_agents(
             text(
                 "SELECT"
                 " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
                 " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
                 " COALESCE(("
                 "   SELECT COUNT(*) FROM permission_grants pg"
@@ -420,7 +433,7 @@ async def list_agents(
             text(
                 "SELECT"
                 " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
                 " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
                 " COALESCE(("
                 "   SELECT COUNT(*) FROM permission_grants pg"
@@ -439,7 +452,7 @@ async def list_agents(
             text(
                 "SELECT"
                 " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
                 " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
                 " COALESCE(("
                 "   SELECT COUNT(*) FROM permission_grants pg"
@@ -464,7 +477,7 @@ async def list_agents(
             text(
                 "SELECT"
                 " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-                " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+                " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
                 " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
                 " COALESCE(("
                 "   SELECT COUNT(*) FROM permission_grants pg"
@@ -479,6 +492,10 @@ async def list_agents(
         )
     rows = result.fetchall()
     agents = [_agent_row_to_dict(r) for r in rows]
+    if role is not None:
+        # The base list has no LIMIT or page, so filtering the fetched rows is
+        # exact; a later change that adds paging must move this into SQL (D5).
+        agents = [agent for agent in agents if agent.get("role") == role]
     return JSONResponse({"agents": agents})
 
 
@@ -508,7 +525,7 @@ async def get_agent(
         text(
             "SELECT"
             " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
-            " a.mcp_endpoint, a.status, a.rate_limit_rps, a.created_at, a.updated_at,"
+            " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
             " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
             " COALESCE(("
             "   SELECT COUNT(*) FROM permission_grants pg"
@@ -526,6 +543,95 @@ async def get_agent(
             content={"mintkey:code": "not_found", "title": "Agent not found"},
         )
     return JSONResponse(_agent_row_to_dict(row))
+
+
+@router.patch("/{agent_id}")
+async def update_agent_role(
+    tenant_id: UUID,
+    agent_id: str,
+    body: AgentRolePatch,
+    session: AsyncSession = Depends(get_db_session, scope="function"),
+    _authz: None = Depends(require_tenant_session),
+    context: Any = Depends(get_session_context),
+) -> JSONResponse:
+    """
+    Set an agent's role to ``consumer`` or ``publisher``.
+
+    Only an operator changes a role. Setting the role the agent already has is
+    nothing to do: no UPDATE and no audit event. A change writes the agent row
+    and one ``agent.role.changed`` audit event; nothing else (no service, grant
+    or credential statement) runs — D8.
+
+    Source: agent-roles-and-ownership (D1, D6, D8).
+    """
+    try:
+        agent_uuid = _wire_id_to_uuid(agent_id, "agent_")
+    except ValueError:
+        return JSONResponse(
+            status_code=422,
+            content={"mintkey:code": "invalid_id", "title": "Invalid agent_id"},
+        )
+    await set_tenant_context(session, tenant_id)
+
+    result = await session.execute(
+        text(
+            "SELECT"
+            " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+            " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
+            " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+            " COALESCE(("
+            "   SELECT COUNT(*) FROM permission_grants pg"
+            "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+            "     AND (pg.expires_at IS NULL OR pg.expires_at > now())"
+            " ), 0) AS grants_count"
+            " FROM agents a WHERE a.id = :aid AND a.tenant_id = :tid"
+        ),
+        {"aid": agent_uuid, "tid": str(tenant_id)},
+    )
+    row = result.fetchone()
+    if row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Agent not found"},
+        )
+
+    from_role = normalize_role(getattr(row, "role", None))
+    if from_role == body.role:
+        return JSONResponse(_agent_row_to_dict(row))
+
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text(
+            "UPDATE agents SET role = :role, updated_at = :now"
+            " WHERE id = :aid AND tenant_id = :tid"
+        ),
+        {
+            "role": body.role,
+            "now": now,
+            "aid": agent_uuid,
+            "tid": str(tenant_id),
+        },
+    )
+
+    actor_id = getattr(context, "operator_id", None) if context is not None else None
+    await audit_emit(
+        session=session,
+        tenant_id=tenant_id,
+        event_type="agent.role.changed",
+        actor_id=actor_id,
+        actor_type="operator",
+        target_id=row.id,
+        target_type="agent",
+        payload={
+            "agent_id": agent_id,
+            "from_role": from_role,
+            "to_role": body.role,
+        },
+    )
+
+    agent = _agent_row_to_dict(row)
+    agent["role"] = body.role
+    return JSONResponse(agent)
 
 
 @router.post("/{agent_id}/revoke")
