@@ -15,6 +15,16 @@ from urllib.parse import urlsplit
 
 DENY_ENV = "MINTKEY_AGENT_EGRESS_DENY"
 
+# IPv6 forms that carry an IPv4 address: NAT64, 6to4 and Teredo. They are
+# classified by their IPv6 prefix, so an embedded private IPv4 address could
+# otherwise slip through ``ip.is_global`` (which treats 64:ff9b::/96 as global
+# on some Python versions). The proxy's connect-time guard refuses the same
+# ranges, and this set keeps the create-time check in step with it.
+_IPV4_EMBEDDING_V6: tuple[ipaddress.IPv6Network, ...] = tuple(
+    ipaddress.IPv6Network(cidr)
+    for cidr in ("64:ff9b::/96", "2002::/16", "2001::/32")
+)
+
 
 class TargetNotAllowed(Exception):
     """An agent-supplied target URL was refused; ``reason`` names the rule."""
@@ -51,8 +61,11 @@ def address_is_public(address: str) -> bool:
         ip = ipaddress.ip_address(address)
     except ValueError:
         return False
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped
+        elif any(ip in network for network in _IPV4_EMBEDDING_V6):
+            return False
     return ip.is_global and not ip.is_multicast
 
 
