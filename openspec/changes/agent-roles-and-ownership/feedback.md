@@ -32,7 +32,7 @@ transfer_service_ownership answers with the row it selected before its UPDATE, s
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 3 into agent-roles-and-ownership-fix-2
+Taken in round 4 into agent-roles-and-ownership-fix-3
 
 ---
 
