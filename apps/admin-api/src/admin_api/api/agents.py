@@ -629,9 +629,28 @@ async def update_agent_role(
         },
     )
 
-    agent = _agent_row_to_dict(row)
-    agent["role"] = body.role
-    return JSONResponse(agent)
+    agent = await session.execute(
+        text(
+            "SELECT"
+            " a.id, a.tenant_id, a.name, a.description, a.api_key_fingerprint,"
+            " a.mcp_endpoint, a.status, a.role, a.rate_limit_rps, a.created_at, a.updated_at,"
+            " a.api_key_expires_at, a.api_key_version, a.api_key_last_rotated_at,"
+            " COALESCE(("
+            "   SELECT COUNT(*) FROM permission_grants pg"
+            "   WHERE pg.agent_id = a.id AND pg.tenant_id = a.tenant_id"
+            "     AND (pg.expires_at IS NULL OR pg.expires_at > now())"
+            " ), 0) AS grants_count"
+            " FROM agents a WHERE a.id = :aid AND a.tenant_id = :tid"
+        ),
+        {"aid": agent_uuid, "tid": str(tenant_id)},
+    )
+    updated_row = agent.fetchone()
+    if updated_row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Agent not found"},
+        )
+    return JSONResponse(_agent_row_to_dict(updated_row))
 
 
 @router.post("/{agent_id}/revoke")

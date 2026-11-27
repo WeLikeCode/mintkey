@@ -399,7 +399,7 @@ def _service_row_to_dict(row: Any) -> dict[str, Any]:
         "auth_scheme": row.auth_scheme,
         "openapi_url": row.openapi_url,
         "status": row.status,
-        "current_key_version": int(getattr(row, "current_key_version", 0) or 0),
+        "current_key_version": int(row.current_key_version or 0),
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -1653,7 +1653,7 @@ async def transfer_service_ownership(
         text(
             "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
             " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
-            " s.template_id, s.owner_agent_id, s.created_by_agent_id"
+            " s.template_id, s.owner_agent_id, s.created_by_agent_id, s.current_key_version"
             " FROM services s WHERE s.id = :sid AND s.tenant_id = :tid FOR UPDATE"
         ),
         {"sid": svc_uuid, "tid": str(tenant_id)},
@@ -1754,7 +1754,25 @@ async def transfer_service_ownership(
         },
     )
 
-    return JSONResponse(_service_row_to_dict(row))
+    # Answer with the stored state after the change: the same transaction reads
+    # the row it just updated, so the body carries the new owner, the row's
+    # current key version and the updated_at of the change (FB-001).
+    updated = await session.execute(
+        text(
+            "SELECT s.id, s.tenant_id, s.name, s.slug, s.display_name, s.description,"
+            " s.base_url, s.auth_scheme, s.openapi_url, s.status, s.created_at, s.updated_at,"
+            " s.template_id, s.owner_agent_id, s.created_by_agent_id, s.current_key_version"
+            " FROM services s WHERE s.id = :sid AND s.tenant_id = :tid"
+        ),
+        {"sid": svc_uuid, "tid": str(tenant_id)},
+    )
+    updated_row = updated.fetchone()
+    if updated_row is None:
+        return JSONResponse(
+            status_code=404,
+            content={"mintkey:code": "not_found", "title": "Service not found"},
+        )
+    return JSONResponse(_service_row_to_dict(updated_row))
 
 
 @router.delete("/{service_id}", status_code=204)
