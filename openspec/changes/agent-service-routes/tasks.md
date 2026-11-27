@@ -12,7 +12,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 1. The owned-service lookup
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_agent_publishing_service.py`, covering the three scenarios of "The
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_agent_publishing_service.py`, covering the three scenarios of "The
   owned service lookup is one function" (the fake session answers a statement containing `FROM services` with the service
   row: `owner_agent_id`, `base_url`, `auth_scheme` and a `credential_set` flag). Red stubs
   `apps/admin-api/src/admin_api/services/agent_publishing.py` with the four names of the spec (`parse_agent_body` too). Then fill
