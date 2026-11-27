@@ -23,6 +23,9 @@ from fastapi.responses import JSONResponse
 
 from admin_api.api import internal
 from admin_api.db.session import AsyncSessionLocal
+from admin_api.middleware.tenant import set_tenant_context
+from admin_api.utils.wire_ids import db_uuid_to_wire
+from mintkey_models.audit import audit_emit
 from mintkey_models.roles import normalize_role
 
 logger = logging.getLogger(__name__)
@@ -166,10 +169,62 @@ async def require_publisher_principal(
     request: Request,
     principal: AgentPrincipal = Depends(require_agent_principal),
 ) -> AgentPrincipal:
-    raise NotImplementedError
+    """Return the principal only when it may publish; refuse and record otherwise.
+
+    A role other than ``publisher`` is refused with a 403 ``role_forbidden``
+    answer after the refusal is recorded. Recording uses its own session and
+    never depends on the route's transaction (design D3).
+    """
+    if principal.role == "publisher":
+        return principal
+
+    operation = f"{request.method} {request.url.path}"[:256]
+    await record_denied_operation(principal, operation)
+    role = normalize_role(principal.role)
+    raise AgentApiError(
+        403,
+        {
+            "code": "mintkey:role_forbidden",
+            "title": "Role not allowed",
+            "role": role,
+            "required_role": "publisher",
+            "hint": "This operation requires the publisher role.",
+        },
+    )
 
 
 async def record_denied_operation(
     principal: AgentPrincipal, operation: str
 ) -> None:
-    raise NotImplementedError
+    """Write one ``agent.operation.denied`` event, or log and return.
+
+    The event is written in a session of its own, bound to the principal's
+    tenant context (never the platform view), so it survives the 403 raised by
+    the caller. A failure is logged and swallowed: a refusal never depends on
+    its record (design D3).
+    """
+    role = normalize_role(principal.role)
+    payload = {
+        "agent_id": db_uuid_to_wire(principal.agent_id, "agent"),
+        "role": role,
+        "operation": operation[:256],
+    }
+    try:
+        async with AsyncSessionLocal() as session:
+            await set_tenant_context(session, principal.tenant_id)
+            await audit_emit(
+                session=session,
+                tenant_id=principal.tenant_id,
+                event_type="agent.operation.denied",
+                actor_id=principal.agent_id,
+                actor_type="agent",
+                target_id=principal.agent_id,
+                target_type="agent",
+                payload=payload,
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning(
+            "could not record denied agent operation (%s)",
+            type(exc).__name__,
+        )

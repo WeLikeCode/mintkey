@@ -31,7 +31,7 @@ suites, `ruff check`, and `mypy --strict` (`apps/admin-api` `src/admin_api/`, `p
   `require_publisher_principal`, `record_denied_operation`). Then fill in `AgentPrincipal`, `AgentApiError`, the handler, `agent_error_body` and `require_agent_principal` (dedicated session,
   commit, close, 503 on a database failure).
 
-- [ ] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
+- [x] 3.2 Tests first, new file `tests/unit/admin_api/test_agent_role_refusal.py` (a `FastAPI()` with the probe route `POST
   /v1/agent/probe` that depends on `require_publisher_principal`, `require_agent_principal` overridden to return an
   `AgentPrincipal`, `AsyncSessionLocal` patched with a fake session factory and `audit_emit` patched at
   `admin_api.auth.agent_principal`), covering the two scenarios of "A role that is too low is refused and recorded". Then
