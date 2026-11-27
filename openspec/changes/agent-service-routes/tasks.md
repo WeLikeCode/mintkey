@@ -44,7 +44,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 5. The audit contract
 
-- [ ] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_services.py` (loads
+- [x] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_services.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json`), covering the scenario "the contract lists them"; it fails
   before the change. Then edit the schema file. The admin UI's audit filter list is not changed here.
 
