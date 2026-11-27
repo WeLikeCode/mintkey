@@ -93,3 +93,8 @@
 {"ts": "2026-11-27T00:12:30.906966Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 93, "type": "step.timed", "phase": "verify", "round": 1, "seconds": 308.6}
 {"ts": "2026-11-27T00:12:30.907410Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 94, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-11-27T00:12:33.293484Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 95, "type": "pr.labels", "number": 461, "labels": ["l4:verified"]}
+{"ts": "2026-11-27T00:12:39.423205Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 96, "type": "pr.ready", "url": "<forge>/WeLikeCode/mintkey/pull/461", "number": 461, "head": "df6dd4c7ab87ff1d8b8061cbbadd2d0b735dcd01"}
+{"ts": "2026-11-27T00:12:39.424108Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 97, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-11-27T00:12:41.957745Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 98, "type": "pr.labels", "number": 461, "labels": ["l4:in_review"]}
+{"ts": "2026-11-27T00:12:42.855900Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 99, "type": "lock.released"}
+{"ts": "2026-11-27T00:12:42.856419Z", "run_id": "r-20261126T2353Z-644b", "unit": "openspec:proxy-grant-revocation", "seq": 100, "type": "run.finished", "exit_code": 0}
