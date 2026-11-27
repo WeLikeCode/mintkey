@@ -42,6 +42,7 @@ from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
 from mintkey_models.audit import audit_emit
 from mintkey_models.egress import TargetNotAllowed, check_agent_target_url
 from mintkey_models.tenant_ctx import set_tenant_context
+from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 
 router = APIRouter(prefix="/services")
 
@@ -420,3 +421,7 @@ async def _update_agent_service(
     )
     view["credential_cleared"] = credential_cleared
     return JSONResponse(status_code=200, content=view)
+
+
+async def _put_agent_credential(service_ref: str, request: Request, principal: AgentPrincipal=Depends(require_publisher_principal), session: AsyncSession=Depends(get_db_session, scope='function'), vault: VaultAdapterClient=Depends(get_vault_client)) -> JSONResponse:
+    raise NotImplementedError
