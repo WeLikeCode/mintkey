@@ -12,7 +12,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 1. The owned-service lookup
 
-- [ ] 1.1 Tests first, new file `tests/unit/admin_api/test_agent_publishing_service.py`, covering the three scenarios of "The
+- [x] 1.1 Tests first, new file `tests/unit/admin_api/test_agent_publishing_service.py`, covering the three scenarios of "The
   owned service lookup is one function" (the fake session answers a statement containing `FROM services` with the service
   row: `owner_agent_id`, `base_url`, `auth_scheme` and a `credential_set` flag). Red stubs
   `apps/admin-api/src/admin_api/services/agent_publishing.py` with the four names of the spec (`parse_agent_body` too). Then fill
@@ -20,7 +20,7 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 2. Create and list
 
-- [ ] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_services_create.py`, covering the three scenarios of "A
+- [x] 2.1 Tests first, new file `tests/unit/admin_api/test_agent_services_create.py`, covering the three scenarios of "A
   publisher creates a service" and the scenario of "A publisher lists its own services". Red creates
   `apps/admin-api/src/admin_api/api/agent_services.py` (a `router` with no routes) and `apps/admin-api/src/admin_api/api/agent.py`
   (`router = APIRouter(prefix="/v1/agent")` including it). Then fill in `parse_agent_body` and add the POST and the GET routes; the service id is derived
@@ -28,14 +28,14 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 3. Update
 
-- [ ] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_services_update.py`, covering the five scenarios of "A
+- [x] 3.1 Tests first, new file `tests/unit/admin_api/test_agent_services_update.py`, covering the five scenarios of "A
   publisher updates only its own services"; and new file `tests/unit/admin_api/test_agent_service_error_bodies.py`, covering "one
   body shape" (the create cases hold already, the patch cases are red until the route exists). Then add the PATCH route to `apps/admin-api/src/admin_api/api/agent_services.py`
   (a pydantic model with `extra="forbid"` per body, read with `parse_agent_body`; the same for the POST route).
 
 ## 4. The credential
 
-- [ ] 4.1 Tests first, new file `tests/unit/admin_api/test_agent_credential.py`, covering the four scenarios of "A credential
+- [x] 4.1 Tests first, new file `tests/unit/admin_api/test_agent_credential.py`, covering the four scenarios of "A credential
   is written, never read, and bound to its target" (the fake vault records its `put_credential` call and keywords and can
   raise). Then add the PUT route to `apps/admin-api/src/admin_api/api/agent_services.py` (it takes the `Request`, reads
   `await request.json()` and validates by hand, raising the 422 of design D10; no request model), with the statements of steps 3b
@@ -44,13 +44,13 @@ substrings of the statement, raises `IntegrityError` on request), `require_agent
 
 ## 5. The audit contract
 
-- [ ] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_services.py` (loads
+- [x] 5.1 Tests first, new file `tests/unit/admin_api/test_audit_schema_agent_services.py` (loads
   `docs/architecture/contracts/events/audit-event.schema.json`), covering the scenario "the contract lists them"; it fails
   before the change. Then edit the schema file. The admin UI's audit filter list is not changed here.
 
 ## 6. Wiring, isolation and the snapshot
 
-- [ ] 6.1 Tests first, new file `tests/unit/admin_api/test_agent_routes_isolation.py` (builds `create_app()` with
+- [x] 6.1 Tests first, new file `tests/unit/admin_api/test_agent_routes_isolation.py` (builds `create_app()` with
   `MINTKEY_AUDIT_HMAC_KEY` and `MINTKEY_VAULT_BACKEND=sqlite` set as `tests/architecture/test_authz_coverage.py` does,
   walks the routes and their dependency trees, sends the cookie-less POST with `httpx.ASGITransport`, and reads
   `tests/acceptance/openapi_snapshot.json`), covering the three scenarios of "The agent routes are separate from the

@@ -29,6 +29,7 @@ logging.basicConfig(
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
+from admin_api.api.agent import router as agent_router
 from admin_api.api.agent_secrets import router as agent_secrets_router
 from admin_api.api.budget_consumers import router as budget_consumers_router
 from admin_api.api.budgets import router as budgets_router
@@ -54,6 +55,7 @@ from admin_api.api.service_templates import router as service_templates_router
 from admin_api.api.services import router as services_router
 from admin_api.api.settings import router as settings_router
 from admin_api.api.tenants import router as tenants_router
+from admin_api.auth.agent_principal import AgentApiError, agent_api_error_handler
 from admin_api.db.session import AsyncSessionLocal
 from admin_api.middleware.csrf import CsrfMiddleware, csrf_exempt
 from admin_api.middleware.metrics import MetricsMiddleware
@@ -83,6 +85,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Mintkey Admin API", version="0.1.0-preview.1", lifespan=_lifespan)
 
     app.include_router(health_router)
+    app.include_router(agent_router)
     app.include_router(auth_router)
     app.include_router(email_permission_grants_router)
     app.include_router(email_services_router)
@@ -110,6 +113,11 @@ def create_app() -> FastAPI:
     app.include_router(service_templates_router)
 
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(AgentApiError, agent_api_error_handler)
+
+    # Agent routes carry a Bearer agent key, never a browser cookie; CSRF is
+    # not applicable to any route of the ``/v1/agent`` family.
+    csrf_exempt("/v1/agent")
 
     # Login endpoints are CSRF-exempt — they are the bootstrap surface.
     # @no_csrf decorator on the handler sets the attribute; we also register paths

@@ -1,0 +1,808 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [
+    {
+      "id": "H-0567faca",
+      "text": "scope: `packages/python/mintkey-models/mintkey_models/egress.py` changes module `python`, which the spec does not name",
+      "kind": "scope",
+      "subjects": [
+        "packages/python/mintkey-models/mintkey_models/egress.py"
+      ]
+    }
+  ],
+  "items": {},
+  "scope": {
+    "declared": [
+      "ADM/api/services.py",
+      "ADM/api/credentials.py:629-690",
+      "ADM/main.py",
+      "tests/acceptance/test_openapi_parity.py",
+      "admin_api/api/agent.py",
+      "tests/acceptance/openapi_snapshot.json",
+      "apps/admin-api/src/admin_api/main.py",
+      "docs/architecture/contracts/events/audit-event.schema.json",
+      "apps/admin-api/src/admin_api/api/agent.py",
+      "apps/admin-api/src/admin_api/api/agent_services.py",
+      "apps/admin-api/src/admin_api/services/agent_publishing.py",
+      "apps/admin-api",
+      "src/admin_api",
+      "tests/unit/admin_api/test_agent_publishing_service.py",
+      "tests/unit/admin_api/test_agent_services_create.py",
+      "apps/admin-api/src/admin_api/api/services.py",
+      "tests/unit/admin_api/test_agent_services_update.py",
+      "tests/unit/admin_api/test_agent_service_error_bodies.py",
+      "tests/unit/admin_api/test_agent_credential.py",
+      "apps/admin-api/src/admin_api/api/credentials.py",
+      "tests/unit/admin_api/test_audit_schema_agent_services.py",
+      "tests/unit/admin_api/test_agent_routes_isolation.py",
+      "tests/architecture/test_authz_coverage.py",
+      "tests/unit/admin_api/test_agent_role_refusal.py",
+      "**/main.py",
+      "module ADM",
+      "module admin-api",
+      "module admin_api",
+      "module docs",
+      "module tests"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [
+      "scope: `packages/python/mintkey-models/mintkey_models/egress.py` changes module `python`, which the spec does not name"
+    ],
+    "files": [
+      {
+        "path": ".serena/memories/harness/lessons.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_key_guard.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_principal.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/main.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "module": "admin-api",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "docs/architecture/contracts/events/audit-event.schema.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/specs/agent-service-credential/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes-fix-1/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/evidence/round-1/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/evidence/round-1/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/evidence/round-1/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/evidence/round-2/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/evidence/round-2/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/ledger/r-20261127T1729Z-559f.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/ledger/r-20261127T2004Z-3d36.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/ledger/r-20261127T2226Z-441e.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/ledger/r-20261127T2304Z-99a7.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/.l4/ledger/r-20261128T0035Z-135b.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/feedback.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/agent-service-routes/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/python/mintkey-models/mintkey_models/egress.py",
+        "module": "python",
+        "kind": "code",
+        "label": "out_of_scope",
+        "reason": "module `python` is not named in the spec"
+      },
+      {
+        "path": "tests/acceptance/openapi_snapshot.json",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_credential.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_credential_audit_event.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_key_guard.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_publishing_service.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_routes_isolation.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_service_error_bodies.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_service_field_validation.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_services_create.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_services_update.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_agent_target_check_bounded.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/unit/admin_api/test_audit_schema_agent_services.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_run",
+    "reason": "coverage.py is not importable in the project environment",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [],
+    "functions": [
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_check_display_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_valid_header_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_read_credential_body",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_validate_credential_names",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceCreate",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceCreate._validate_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceCreate._validate_auth_scheme",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceCreate._validate_display_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceUpdate",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceUpdate._refuse_null",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceUpdate._validate_auth_scheme",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "AgentServiceUpdate._validate_display_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_check_target",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_slug_exists",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "create_agent_service",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "list_agent_services",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_services_collection",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_update_agent_service",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_update_agent_service._changed_fields",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/agent_services.py",
+        "qualname": "_put_agent_credential",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "qualname": "_verify_argon2",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/api/internal.py",
+        "qualname": "verify_capacity_scope",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_key_guard.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_key_guard.py",
+        "qualname": "agent_key_shape_is_valid",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_key_guard.py",
+        "qualname": "agent_verify_capacity",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_principal.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_principal.py",
+        "qualname": "require_agent_key_shape",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/auth/agent_principal.py",
+        "qualname": "require_agent_principal",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/main.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/main.py",
+        "qualname": "create_app",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "parse_service_ref",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "require_owned_service",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "service_view",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "validation_body",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "_failed_field",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "apps/admin-api/src/admin_api/services/agent_publishing.py",
+        "qualname": "parse_agent_body",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/python/mintkey-models/mintkey_models/egress.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/python/mintkey-models/mintkey_models/egress.py",
+        "qualname": "check_agent_target_url",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      }
+    ]
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 3155,
+      "passed": 3101,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 54,
+      "new": 91,
+      "new_passed": 91,
+      "skipped_unchanged": [
+        "apps.mcp-server.tests.test_bootstrap::test_integration_bootstrap_unauthenticated",
+        "apps.mcp-server.tests.test_bootstrap::test_integration_discover_without_auth_is_401",
+        "apps.mcp-server.tests.test_describe_service::test_integration_describe_service_returns_new_fields",
+        "apps.mcp-server.tests.test_request_token::test_integration_slug_resolves_to_permission_not_found",
+        "apps.mcp-server.tests.test_request_token::test_integration_unknown_slug_returns_404_error_shape",
+        "github.com/mintkey/mintkey/packages/go/auditq::TestCompactionTimerTrigger",
+        "github.com/mintkey/mintkey/services/broker/internal/api/resolve::TestConstantTimeTiming",
+        "tests.acceptance.test_admin_ui_boot::test_login_page_returns_200",
+        "tests.acceptance.test_admin_ui_boot::test_login_with_bootstrap_credentials",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/agents/actions/list]",
+        "tests.acceptance.test_admin_ui_boot::test_resource_list_returns_200_with_data[/admin/api/resources/services/actions/list]",
+        "tests.acceptance.test_agent_wire_id_handling::test_get_agent_and_permissions_wire_id_end_to_end",
+        "tests.acceptance.test_agent_wire_id_handling::test_post_returned_id_round_trips",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_get_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_grant_permission_wire_svc_no_constraints",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_list_api_keys_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_revoke_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_carry_forward::test_rotate_api_key_wire_agent_id",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_create_api_key_with_wire_form_agent_id_a1",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_end_to_end_chain",
+        "tests.acceptance.test_api_keys_and_permissions_chain::test_tenant_permissions_list_returns_grants_a2",
+        "tests.acceptance.test_async_audit_emission::test_aud_mismatch_rejected_event_emitted_in_strict_mode",
+        "tests.acceptance.test_async_audit_emission::test_hash_chain_validates_after_async_appends",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_actor_id_non_null",
+        "tests.acceptance.test_async_audit_emission::test_proxy_hit_event_appears_after_proxy_call",
+        "tests.acceptance.test_async_audit_emission::test_token_issued_event_appears_after_jwt_issue",
+        "tests.acceptance.test_budget_config_propagation::test_e2e_config_update_propagation",
+        "tests.acceptance.test_budget_enforcement::test_e2e_budget_ceiling_5_calls_then_429",
+        "tests.acceptance.test_budget_manual_reset::test_e2e_manual_reset_allows_next_call",
+        "tests.acceptance.test_budget_period_rollover::test_e2e_period_rollover_new_counter_created",
+        "tests.acceptance.test_classical_key::test_classical_key_full_flow",
+        "tests.acceptance.test_data_plane_resilience::test_expired_jwt_rejected_by_proxy",
+        "tests.acceptance.test_data_plane_resilience::test_revoked_agent_cannot_issue_jwt",
+        "tests.acceptance.test_data_plane_resilience::test_vault_down_returns_502_no_cred_leak",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_jwt_rejected",
+        "tests.acceptance.test_data_plane_resilience::test_wrong_scope_strict_mode_rejects_with_403",
+        "tests.acceptance.test_data_plane_smoke::test_broker_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_kong_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_proxy_plugin_smoke",
+        "tests.acceptance.test_data_plane_smoke::test_vault_adapter_smoke",
+        "tests.acceptance.test_golden_path::test_ws10_list_versions_end_to_end",
+        "tests.acceptance.test_golden_path::test_ws8_golden_path_agent_to_upstream",
+        "tests.acceptance.test_golden_path::test_ws9_vault_grpc_end_to_end",
+        "tests.acceptance.test_mcp_auth_chain::test_mcp_auth_chain_end_to_end",
+        "tests.acceptance.test_observability::test_audit_chain_valid",
+        "tests.acceptance.test_observability::test_prometheus_targets_all_up",
+        "tests.acceptance.test_ops_hardening::test_cadvisor_returns_metrics",
+        "tests.acceptance.test_ops_hardening::test_prometheus_alert_rules_loaded",
+        "tests.acceptance.test_services_uuid_derivation::test_create_api_key_with_svc_wire_form_post_r12",
+        "tests.acceptance.test_services_uuid_derivation::test_create_service_uuid_derivation_probe",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_default_body_no_5xx",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_path_with_leading_slash",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_unsupported_method_returns_422",
+        "tests.acceptance.test_test_service_body_parsing::test_test_service_with_health_path_returns_ok"
+      ],
+      "skipped_predating": [],
+      "skipped_source": "",
+      "skipped_note": ""
+    },
+    "findings": []
+  }
+}

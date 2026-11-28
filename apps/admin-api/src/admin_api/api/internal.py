@@ -27,6 +27,9 @@ import hashlib
 import logging
 import os
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from threading import Lock
 from time import monotonic
@@ -73,6 +76,14 @@ _ph = argon2.PasswordHasher()
 _VERIFY_CONCURRENCY = max(1, int(os.getenv("MINTKEY_AGENT_KEY_VERIFY_CONCURRENCY", "4")))
 _verify_semaphore = asyncio.Semaphore(_VERIFY_CONCURRENCY)
 
+# The capacity a verify uses for the current request. The internal endpoint
+# leaves it unset and uses the shared semaphore above; the agent routes set it
+# to their own capacity so a burst on /v1/agent/ cannot occupy the internal
+# endpoint's slots (feedback FB-001).
+_verify_capacity: ContextVar[asyncio.Semaphore | None] = ContextVar(
+    "mintkey_agent_key_verify_capacity", default=None
+)
+
 
 async def _verify_argon2(stored_hash: str, secret: str) -> None:
     """Run an Argon2id verify off the event loop, memory-bounded by a semaphore.
@@ -80,8 +91,26 @@ async def _verify_argon2(stored_hash: str, secret: str) -> None:
     Raises the same exceptions as argon2.PasswordHasher.verify
     (e.g. VerifyMismatchError) so callers keep their existing error handling.
     """
-    async with _verify_semaphore:
+    capacity = _verify_capacity.get()
+    if capacity is None:
+        capacity = _verify_semaphore
+    async with capacity:
         await asyncio.to_thread(_ph.verify, stored_hash, secret)
+
+
+@contextmanager
+def verify_capacity_scope(capacity: asyncio.Semaphore) -> Iterator[None]:
+    """Make ``capacity`` the verify capacity for the current request.
+
+    The agent principal uses this to run the shared key check under the agent
+    routes' own bounded semaphore, never the internal endpoint's
+    (feedback FB-001).
+    """
+    token = _verify_capacity.set(capacity)
+    try:
+        yield
+    finally:
+        _verify_capacity.reset(token)
 
 INVALID_KEY_RESPONSE: dict[str, object] = {
     "type": "https://mintkey.internal/errors/invalid-agent-key",

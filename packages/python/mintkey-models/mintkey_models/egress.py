@@ -17,6 +17,11 @@ from urllib.parse import urlsplit
 
 DENY_ENV = "MINTKEY_AGENT_EGRESS_DENY"
 
+#: The most a single target check may wait for the resolver. A name that is
+#: still unresolved when this runs out is refused as ``unresolvable``, so a
+#: slow resolver bounds the request instead of holding it (feedback FB-002).
+RESOLVE_TIMEOUT_SECONDS = 5.0
+
 _LOGGER = logging.getLogger(__name__)
 
 # A DNS label may be at most 63 characters and may not be empty.
@@ -194,8 +199,10 @@ async def check_agent_target_url(url: str) -> None:
         raise TargetNotAllowed("denied_name")
 
     try:
-        addresses = await resolve_host(host)
-    except (OSError, UnicodeError) as exc:
+        addresses = await asyncio.wait_for(
+            resolve_host(host), timeout=RESOLVE_TIMEOUT_SECONDS
+        )
+    except (OSError, UnicodeError, asyncio.TimeoutError) as exc:
         raise TargetNotAllowed("unresolvable") from exc
 
     if not addresses:
