@@ -1,0 +1,13 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:agent-service-routes",
+  "round": 2,
+  "findings": [
+    "F-2a2ace30"
+  ],
+  "chores": [],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": [],
+  "repairs": []
+}
