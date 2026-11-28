@@ -1,56 +1,57 @@
-# Verification: openspec:agent-service-routes: FAIL (round 4)
+# Verification: openspec:agent-service-routes: FAIL (round 5)
 
 traceability: 25/25 criteria covered by a discriminating test
 
 - Base: `128a5a77e2907c2a6a03faffcb462d2c4528e5ae`
-- Head: `efa4a315b4f661b21d6cf8f1591c166b07891dae`
+- Head: `5ded7653d7b3138664915de2b7ec25189816a377`
 - Implementer profiles: deepseek, glm, deepseek-free
-- Judge: claude-judge (claude-sonnet-5-5), 4 call(s), judged in 2 parts and 1 follow-up, prompt sha256 `24d4ffac8da7c8a955ec898e61808689e62cda8e480763b56f01e79246bf24f3`
-  - part 1: 12 file(s), 113001 characters, profile claude-judge, reply retried
-  - part 2: 18 file(s), 106127 characters, profile claude-judge, reply valid
-  - follow-up 1: C-48021709, C-96185b5c, C-00b5d763, C-3f78eec5; files of parts 1 and 2: 10 file(s), 94584 characters, profile claude-judge, reply valid
-- Judge replies of claude-judge (this unit, all rounds): valid 7, repaired 0, retried 1, discarded 0; this round: retried
+- Judge: claude-judge (claude-sonnet-5-5), 3 call(s), judged in 2 parts and 1 follow-up, prompt sha256 `cca92cda1fa32940f1fbf31cfdd46345a203ed5d65a1e3d1224895144340de80`
+  - part 1: 13 file(s), 113317 characters, profile claude-judge, reply valid
+  - part 2: 21 file(s), 108790 characters, profile claude-judge, reply valid
+  - follow-up 1: C-48021709, C-96185b5c, C-3f78eec5; files of parts 1 and 2: 8 file(s), 60150 characters, profile claude-judge, reply valid
+- Judge replies of claude-judge (this unit, all rounds): valid 10, repaired 0, retried 1, discarded 0; this round: valid
 - independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared), glm zhipu (declared), deepseek-free deepseek (declared)
-- Cost: $4.0775
+- Cost: $3.1507
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.8 | base staging@128a5a77e2 contained |
-| 1 | integrity | ok | 170.6 | 11 sub-checks; scope: 50 changed file(s), 1 held |
-| 2 | build | ok | 77.2 |  |
-| 3 | tests | ok | 132.4 |  |
+| 0 | preconditions | ok | 1.1 | base staging@128a5a77e2 contained |
+| 1 | integrity | ok | 168.4 | 11 sub-checks; scope: 58 changed file(s), 1 held |
+| 2 | build | ok | 77.8 |  |
+| 3 | tests | ok | 134.4 |  |
 | 4 | traceability | ok | 0.2 | 25/25 criteria covered |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
 | 6 | quality | ok | 0.0 | diff coverage not measured: coverage.py is not importable in the project environment |
-| 8 | s1 judge | ok | 1.0 | 20/25 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 71.2 | 4 call(s) |
+| 8 | s1 judge | ok | 1.3 | 20/25 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
+| 9 | judge | ok | 103.0 | 3 call(s) |
 | 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
 | Gate | Status | Command | Log |
 |---|---|---|---|
-| setup | pass | `uv sync --frozen --directory apps/admin-api` | .l4-out/gates/r-20261128T0035Z-135b/097-setup.log |
-| setup | pass | `uv sync --frozen --directory packages/python/mintkey-models` | .l4-out/gates/r-20261128T0035Z-135b/098-setup.log |
-| setup | pass | `uv sync --frozen --directory apps/mcp-server` | .l4-out/gates/r-20261128T0035Z-135b/099-setup.log |
-| setup | pass | `sh .l4/gates/setup-go.sh` | .l4-out/gates/r-20261128T0035Z-135b/100-setup.log |
-| setup | pass | `pnpm --dir apps/admin-ui install --frozen-lockfile` | .l4-out/gates/r-20261128T0035Z-135b/101-setup.log |
-| lint | pass | `uv run --frozen --directory apps/admin-api ruff check src/` | .l4-out/gates/r-20261128T0035Z-135b/102-lint.log |
-| lint | pass | `uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/` | .l4-out/gates/r-20261128T0035Z-135b/103-lint.log |
-| lint | pass | `uv run --frozen --directory apps/mcp-server ruff check src/` | .l4-out/gates/r-20261128T0035Z-135b/104-lint.log |
-| lint | pass | `sh .l4/gates/lint-go.sh` | .l4-out/gates/r-20261128T0035Z-135b/105-lint.log |
-| typecheck | pass | `uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/` | .l4-out/gates/r-20261128T0035Z-135b/106-typecheck.log |
-| typecheck | pass | `uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/` | .l4-out/gates/r-20261128T0035Z-135b/107-typecheck.log |
-| typecheck | pass | `pnpm --dir apps/admin-ui exec tsc --noEmit` | .l4-out/gates/r-20261128T0035Z-135b/108-typecheck.log |
-| test | pass | `sh .l4/gates/test.sh` | .l4-out/gates/r-20261128T0035Z-135b/109-test.log |
+| setup | pass | `uv sync --frozen --directory apps/admin-api` | .l4-out/gates/r-20261128T0035Z-135b/136-setup.log |
+| setup | pass | `uv sync --frozen --directory packages/python/mintkey-models` | .l4-out/gates/r-20261128T0035Z-135b/137-setup.log |
+| setup | pass | `uv sync --frozen --directory apps/mcp-server` | .l4-out/gates/r-20261128T0035Z-135b/138-setup.log |
+| setup | pass | `sh .l4/gates/setup-go.sh` | .l4-out/gates/r-20261128T0035Z-135b/139-setup.log |
+| setup | pass | `pnpm --dir apps/admin-ui install --frozen-lockfile` | .l4-out/gates/r-20261128T0035Z-135b/140-setup.log |
+| lint | pass | `uv run --frozen --directory apps/admin-api ruff check src/` | .l4-out/gates/r-20261128T0035Z-135b/141-lint.log |
+| lint | pass | `uv run --frozen --directory packages/python/mintkey-models ruff check mintkey_models/` | .l4-out/gates/r-20261128T0035Z-135b/142-lint.log |
+| lint | pass | `uv run --frozen --directory apps/mcp-server ruff check src/` | .l4-out/gates/r-20261128T0035Z-135b/143-lint.log |
+| lint | pass | `sh .l4/gates/lint-go.sh` | .l4-out/gates/r-20261128T0035Z-135b/144-lint.log |
+| typecheck | pass | `uv run --frozen --directory apps/admin-api mypy --strict src/admin_api/` | .l4-out/gates/r-20261128T0035Z-135b/145-typecheck.log |
+| typecheck | pass | `uv run --frozen --directory packages/python/mintkey-models mypy --strict mintkey_models/` | .l4-out/gates/r-20261128T0035Z-135b/146-typecheck.log |
+| typecheck | pass | `pnpm --dir apps/admin-ui exec tsc --noEmit` | .l4-out/gates/r-20261128T0035Z-135b/147-typecheck.log |
+| test | pass | `sh .l4/gates/test.sh` | .l4-out/gates/r-20261128T0035Z-135b/148-test.log |
 
 ## Files by part
 
 - part 1: openspec/changes/agent-service-routes-fix-1/.openspec.yaml (316 characters)
 - part 1: openspec/changes/agent-service-routes-fix-2/.openspec.yaml (316 characters)
+- part 1: openspec/changes/agent-service-routes-fix-3/.openspec.yaml (316 characters)
 - part 1: apps/admin-api/src/admin_api/api/agent.py (908 characters)
 - part 1: apps/admin-api/src/admin_api/auth/agent_key_guard.py (2600 characters)
 - part 1: tests/unit/admin_api/test_agent_key_guard.py (11823 characters)
@@ -74,10 +75,13 @@ traceability: 25/25 criteria covered by a discriminating test
 - part 2: tests/acceptance/openapi_snapshot.json (436 characters)
 - part 2: openspec/changes/agent-service-routes-fix-1/proposal.md (1980 characters)
 - part 2: openspec/changes/agent-service-routes-fix-2/proposal.md (945 characters)
+- part 2: openspec/changes/agent-service-routes-fix-3/proposal.md (945 characters)
 - part 2: openspec/changes/agent-service-routes-fix-1/specs/agent-service-credential/spec.md (3129 characters)
 - part 2: openspec/changes/agent-service-routes-fix-2/specs/agent-service-credential/spec.md (1301 characters)
+- part 2: openspec/changes/agent-service-routes-fix-3/specs/agent-service-credential/spec.md (1301 characters)
 - part 2: openspec/changes/agent-service-routes-fix-1/tasks.md (784 characters)
 - part 2: openspec/changes/agent-service-routes-fix-2/tasks.md (417 characters)
+- part 2: openspec/changes/agent-service-routes-fix-3/tasks.md (417 characters)
 - part 2: openspec/changes/agent-service-routes/tasks.md (4361 characters)
 
 ## Integrity
@@ -92,7 +96,7 @@ traceability: 25/25 criteria covered by a discriminating test
 | gate configuration | skipped | no gate or runner configuration file changed |
 | test awareness | ok | no production line reacts to the test run |
 | suppressions | ok | 6 new suppression(s), 6 declared |
-| tdd history | ok | 11 task(s); red tests passing at head: step 3 |
+| tdd history | ok | 12 task(s); red tests passing at head: step 3 |
 | python encoding | ok | 19 Python file(s) added or changed, each read, none declares another encoding |
 | pre-existing tests still pass | ok | 3009 of 3009 base tests pass on the unit's code with its 11 test and support files at the base (base: evidence) |
 
@@ -112,18 +116,18 @@ Declared suppressions:
 
 | Id | Criterion | State | Tests (status, proof) | Not evidence | S1 p |
 |---|---|---|---|---|---|
-| C-4b7e8c8f | agent-service-credential › A credential is written, never read, and bound to its target › a bearer credential | covered | tests.unit.admin_api.test_agent_credential::test_C_4b7e8c8f_bearer_credential_is_written_and_never_echoed (passed, zero_value) | - | 0.92 |
+| C-4b7e8c8f | agent-service-credential › A credential is written, never read, and bound to its target › a bearer credential | covered | tests.unit.admin_api.test_agent_credential::test_C_4b7e8c8f_bearer_credential_is_written_and_never_echoed (passed, zero_value) | - | 0.93 |
 | C-3be566fb | agent-service-credential › A credential is written, never read, and bound to its target › header and query names | covered | tests.unit.admin_api.test_agent_credential::test_C_3be566fb_header_and_query_names_follow_the_scheme[bearer_with_header] (passed, zero_value); tests.unit.admin_api.test_agent_credential::test_C_3be566fb_header_and_query_names_follow_the_scheme[bearer_with_query] (passed, zero_value); tests.unit.admi... | - | - |
 | C-08831467 | agent-service-credential › A credential is written, never read, and bound to its target › bad values, other owners, a failing vault, an unsupported scheme | covered | tests.unit.admin_api.test_agent_credential::test_C_08831467_bad_body_shape_answers_422_without_a_write[array] (passed, zero_value); tests.unit.admin_api.test_agent_credential::test_C_08831467_bad_body_shape_answers_422_without_a_write[extra_key] (passed, zero_value); tests.unit.admin_api.test_agent_... | - | - |
-| C-6d26cd39 | agent-service-credential › A credential is written, never read, and bound to its target › the row is locked before the vault write | covered | tests.unit.admin_api.test_agent_credential::test_C_6d26cd39_row_is_locked_before_the_vault_write (passed, zero_value) | - | 0.82 |
+| C-6d26cd39 | agent-service-credential › A credential is written, never read, and bound to its target › the row is locked before the vault write | covered | tests.unit.admin_api.test_agent_credential::test_C_6d26cd39_row_is_locked_before_the_vault_write (passed, zero_value) | - | 0.81 |
 | C-e79dc506 | agent-service-credential › The new events are in the audit contract › the contract lists them | covered | tests.unit.admin_api.test_audit_schema_agent_services::test_C_e79dc506_credential_cleared_definition (passed, red_assertion); tests.unit.admin_api.test_audit_schema_agent_services::test_C_e79dc506_credential_events_mapped_and_in_one_of (passed, red_assertion); tests.unit.admin_api.test_audit_schema_... | - | 0.92 |
-| C-48021709 | agent-service-routes › The agent routes are separate from the operator routes › the route table | covered | tests.unit.admin_api.test_agent_routes_isolation::test_C_48021709_agent_route_table_and_snapshot (passed, red_assertion) | - | 0.89 |
+| C-48021709 | agent-service-routes › The agent routes are separate from the operator routes › the route table | covered | tests.unit.admin_api.test_agent_routes_isolation::test_C_48021709_agent_route_table_and_snapshot (passed, red_assertion) | - | 0.88 |
 | C-96185b5c | agent-service-routes › The agent routes are separate from the operator routes › a cookie-less POST reaches authentication | covered | tests.unit.admin_api.test_agent_routes_isolation::test_C_96185b5c_cookieless_post_reaches_agent_authentication (passed, red_assertion) | - | 0.95 |
 | C-25c5b05b | agent-service-routes › The agent routes are separate from the operator routes › a consumer key is refused | covered | tests.unit.admin_api.test_agent_routes_isolation::test_C_25c5b05b_consumer_is_refused_on_each_route (passed, red_assertion) | - | 0.94 |
 | C-00b5d763 | agent-service-routes › Every error of the service routes has one body › one body shape | covered | tests.unit.admin_api.test_agent_service_error_bodies::test_C_00b5d763_every_refusal_has_one_exact_body (passed, zero_value) | - | 0.95 |
 | C-b64100a4 | agent-service-routes › The owned service lookup is one function › references | covered | tests.unit.admin_api.test_agent_publishing_service::test_C_b64100a4_parse_service_ref_decodes_ids_and_passes_slugs (passed, zero_value) | - | 0.93 |
 | C-404b5f68 | agent-service-routes › The owned service lookup is one function › ownership | covered | tests.unit.admin_api.test_agent_publishing_service::test_C_404b5f68_require_owned_service_returns_owned_and_refuses_others (passed, zero_value) | - | 0.94 |
-| C-7d79dfe4 | agent-service-routes › The owned service lookup is one function › the view | covered | tests.unit.admin_api.test_agent_publishing_service::test_C_7d79dfe4_service_view_has_twelve_keys_and_nullable_timestamps (passed, zero_value) | - | 0.90 |
+| C-7d79dfe4 | agent-service-routes › The owned service lookup is one function › the view | covered | tests.unit.admin_api.test_agent_publishing_service::test_C_7d79dfe4_service_view_has_twelve_keys_and_nullable_timestamps (passed, zero_value) | - | 0.91 |
 | C-a7c250ac | agent-service-routes › A publisher creates a service › a service is created | covered | tests.unit.admin_api.test_agent_services_create::test_C_a7c250ac_create_returns_returning_row_and_writes_event (passed, zero_value); tests.unit.admin_api.test_agent_services_create::test_C_a7c250ac_create_uses_the_name_as_display_name (passed, zero_value) | - | 0.84 |
 | C-b190eac4 | agent-service-routes › A publisher creates a service › refused bodies | covered | tests.unit.admin_api.test_agent_services_create::test_C_b190eac4_refused_body_has_one_error_body_and_no_insert[bad_name] (passed, zero_value); tests.unit.admin_api.test_agent_services_create::test_C_b190eac4_refused_body_has_one_error_body_and_no_insert[extra_owner] (passed, zero_value); tests.unit.... | - | - |
 | C-c7dc1fce | agent-service-routes › A publisher creates a service › a taken slug | covered | tests.unit.admin_api.test_agent_services_create::test_C_c7dc1fce_existing_slug_conflicts_without_an_insert (passed, zero_value); tests.unit.admin_api.test_agent_services_create::test_C_c7dc1fce_integrity_error_conflicts (passed, zero_value) | - | 0.94 |
@@ -131,8 +135,8 @@ Declared suppressions:
 | C-d225b1e7 | agent-service-routes › A publisher updates only its own services › a metadata edit keeps the credential, a changed target clears it | covered | tests.unit.admin_api.test_agent_services_update::test_C_d225b1e7_auth_scheme_change_clears_the_credential (passed, zero_value); tests.unit.admin_api.test_agent_services_update::test_C_d225b1e7_base_url_change_clears_the_credential (passed, zero_value); tests.unit.admin_api.test_agent_services_update... | - | 0.94 |
 | C-ce4c7660 | agent-service-routes › A publisher updates only its own services › a changed target without a credential, nothing changed, refused | covered | tests.unit.admin_api.test_agent_services_update::test_C_ce4c7660_changed_target_without_credential_deletes_without_event (passed, zero_value); tests.unit.admin_api.test_agent_services_update::test_C_ce4c7660_refused_target_writes_nothing (passed, zero_value); tests.unit.admin_api.test_agent_services... | - | 0.94 |
 | C-f996158c | agent-service-routes › A publisher updates only its own services › not the owner | covered | tests.unit.admin_api.test_agent_services_update::test_C_f996158c_not_owned_patch_is_refused_without_update[no_owner] (passed, zero_value); tests.unit.admin_api.test_agent_services_update::test_C_f996158c_not_owned_patch_is_refused_without_update[other_agent] (passed, zero_value); tests.unit.admin_ap... | - | 0.95 |
-| C-9092a793 | agent-service-routes › A publisher updates only its own services › refused bodies | covered | tests.unit.admin_api.test_agent_services_update::test_C_9092a793_refused_body_answers_422_and_runs_no_service_statement[empty] (passed, zero_value); tests.unit.admin_api.test_agent_services_update::test_C_9092a793_refused_body_answers_422_and_runs_no_service_statement[name_key] (passed, zero_value);... | - | 0.92 |
-| C-ec735b1d | agent-service-routes › A publisher updates only its own services › the row is locked first | covered | tests.unit.admin_api.test_agent_services_update::test_C_ec735b1d_row_is_locked_before_every_update_and_delete (passed, zero_value) | - | 0.84 |
+| C-9092a793 | agent-service-routes › A publisher updates only its own services › refused bodies | covered | tests.unit.admin_api.test_agent_services_update::test_C_9092a793_refused_body_answers_422_and_runs_no_service_statement[empty] (passed, zero_value); tests.unit.admin_api.test_agent_services_update::test_C_9092a793_refused_body_answers_422_and_runs_no_service_statement[name_key] (passed, zero_value);... | - | 0.93 |
+| C-ec735b1d | agent-service-routes › A publisher updates only its own services › the row is locked first | covered | tests.unit.admin_api.test_agent_services_update::test_C_ec735b1d_row_is_locked_before_every_update_and_delete (passed, zero_value) | - | 0.85 |
 | C-c2386573 | agent-service-credential › Unknown agent keys on the agent routes cannot slow the MCP server's key checks — feedback FB-001 › Unknown agent keys on the agent routes cannot slow the MCP server's key checks | covered | tests.unit.admin_api.test_agent_key_guard::test_C_c2386573_agent_keys_do_not_wait_on_internal_capacity (passed, zero_value); tests.unit.admin_api.test_agent_key_guard::test_C_c2386573_full_agent_capacity_answers_503_at_once (passed, zero_value); tests.unit.admin_api.test_agent_key_guard::test_C_c238... | - | - |
 | C-3f78eec5 | agent-service-credential › The target check of an agent-supplied URL is bounded in time and holds no database connection — feedback FB-002 › The target check of an agent-supplied URL is bounded in time and holds no database connection | covered | tests.unit.admin_api.test_agent_target_check_bounded::test_C_3f78eec5_create_slow_target_is_bounded_without_a_connection[base_url] (passed, red_assertion); tests.unit.admin_api.test_agent_target_check_bounded::test_C_3f78eec5_create_slow_target_is_bounded_without_a_connection[openapi_url] (passed, r... | - | 0.92 |
 | C-50c7880c | agent-service-credential › service.credential.set matches its schema — feedback FB-003 › service.credential.set matches its schema | covered | tests.unit.admin_api.test_agent_credential_audit_event::test_C_50c7880c_credential_set_event_targets_the_service_and_validates (passed, red_assertion) | - | 0.93 |
@@ -169,6 +173,11 @@ Declared suppressions:
 | `openspec/changes/agent-service-routes-fix-2/proposal.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes-fix-2/specs/agent-service-credential/spec.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes-fix-2/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes-fix-3/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes-fix-3/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes-fix-3/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes-fix-3/specs/agent-service-credential/spec.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes-fix-3/tasks.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
@@ -177,6 +186,9 @@ Declared suppressions:
 | `openspec/changes/agent-service-routes/.l4/evidence/round-3/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/evidence/round-3/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/evidence/round-3/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes/.l4/evidence/round-4/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes/.l4/evidence/round-4/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/agent-service-routes/.l4/evidence/round-4/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/ledger/r-20261127T1729Z-559f.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/ledger/r-20261127T2004Z-3d36.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/agent-service-routes/.l4/ledger/r-20261127T2226Z-441e.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -214,18 +226,18 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 
 | Criterion | Status | p | Model | Engine | Note |
 |---|---|---|---|---|---|
-| C-4b7e8c8f | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-4b7e8c8f | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-3be566fb | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
 | C-08831467 | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
-| C-6d26cd39 | ok | 0.820 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-6d26cd39 | ok | 0.810 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e79dc506 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-48021709 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-48021709 | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-96185b5c | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-25c5b05b | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-00b5d763 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-b64100a4 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-404b5f68 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-7d79dfe4 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-7d79dfe4 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-a7c250ac | ok | 0.840 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-b190eac4 | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
 | C-c7dc1fce | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
@@ -233,8 +245,8 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-d225b1e7 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-ce4c7660 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-f996158c | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-9092a793 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-ec735b1d | ok | 0.840 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-9092a793 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-ec735b1d | ok | 0.850 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-c2386573 | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
 | C-3f78eec5 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-50c7880c | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
@@ -252,7 +264,7 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 | C-48021709 | agent-service-routes › The agent routes are separate from the operator routes › the route table | pass | pass | the judge passed it and a discriminating test passes; its evidence was split over parts 1 and 2 of the diff: follow-up call 1 judged its 6 files of those parts together and answered pass |
 | C-96185b5c | agent-service-routes › The agent routes are separate from the operator routes › a cookie-less POST reaches authentication | pass | pass | the judge passed it and a discriminating test passes; its evidence was split over parts 1 and 2 of the diff: follow-up call 1 judged its 5 files of those parts together and answered pass |
 | C-25c5b05b | agent-service-routes › The agent routes are separate from the operator routes › a consumer key is refused | pass | pass | the judge passed it and a discriminating test passes |
-| C-00b5d763 | agent-service-routes › Every error of the service routes has one body › one body shape | pass | pass | the judge passed it and a discriminating test passes; its evidence was split over parts 1 and 2 of the diff: follow-up call 1 judged its 5 files of those parts together and answered pass |
+| C-00b5d763 | agent-service-routes › Every error of the service routes has one body › one body shape | pass | pass | the judge passed it and a discriminating test passes |
 | C-b64100a4 | agent-service-routes › The owned service lookup is one function › references | pass | pass | the judge passed it and a discriminating test passes |
 | C-404b5f68 | agent-service-routes › The owned service lookup is one function › ownership | pass | pass | the judge passed it and a discriminating test passes |
 | C-7d79dfe4 | agent-service-routes › The owned service lookup is one function › the view | pass | pass | the judge passed it and a discriminating test passes |
@@ -272,21 +284,20 @@ Skipped in files the unit did not touch: `apps.mcp-server.tests.test_bootstrap::
 
 ## Findings
 
-- [minor, judge] Credential route bypasses set_tenant_context (criterion C-4b7e8c8f): The PUT handler issues set_config('APP.CURRENT_TENANT') directly instead of set_tenant_context.
-- [minor, judge] Unspecified: PATCH target change commits mid-request (spec gap) (criterion C-3f78eec5): On a base_url/openapi_url change the PATCH commits, checks the target, then re-locks the row.
-- [major, feedback] FB-002 not addressed: not in this part: the timeout lives in egress.py (part 2). Part 1 shows create runs _check_target ...: Judged not addressed: not in this part: the timeout lives in egress.py (part 2). Part 1 shows create runs _check_target before set_tenant_context and update commits before checking, so no connection is held. Today the check runs after set_tenant_context (create) or after the FOR UPDATE (update), so a slow resolver holds a pooled connection, and resolve_host has no timeout.
+- [minor, judge] Update target check runs outside the row lock (spec gap) (criterion C-3f78eec5): In PATCH, the target check runs after the commit that releases the FOR UPDATE lock. The row is re-locked afterwards and the changes are re-derived. A concurrent writer can therefore change the row during the check. The re-derived diff covers this for the fields the request edits, but the lock is not held across the check.
+- [major, feedback] FB-002 not addressed: not in this part: the resolver timeout is in egress.py (part 2). This part only shows the target c...: Judged not addressed: not in this part: the resolver timeout is in egress.py (part 2). This part only shows the target check running before the transaction on create and after a commit on update. Today the check runs after set_tenant_context (create) or after the FOR UPDATE (update), so a slow resolver holds a pooled connection, and resolve_host has no timeout.
 
 ## Fix unit
 
-Fix unit 3 is created for these tasks:
-- F-f6ae7109 FB-002 not addressed: not in this part: the timeout lives in egress.py (part 2). Part 1 shows cre...
+Fix unit 4 is created for these tasks:
+- F-ba544c61 FB-002 not addressed: not in this part: the resolver timeout is in egress.py (part 2). This part...
 
 ## Feedback
 
-- FB-001: judged addressed, pending a PASS round: agent_key_guard.py (own semaphore, shape check); agent_principal.py: capacity.locked() -> 503 mintkey:auth_unavailable; require_agent_key_shape -> 401 auth_required; agent.py router dependency.
-- FB-002: not addressed: not in this part: the timeout lives in egress.py (part 2). Part 1 shows create runs _check_target before set_tenant_context and update commits before checking, so no connection is held.
-- FB-003: judged addressed, pending a PASS round: agent_services.py PUT credential: audit_emit(... target_id=service.id, target_type="service"); test_agent_credential_audit_event validates against schema def.
-- FB-004: judged addressed, pending a PASS round: agent_services.py: _check_display_name (1-256) in create/update models; _refuse_null validator in AgentServiceUpdate; empty or over-long display_name raises 422 via parse_agent_body.
+- FB-001: judged addressed, pending a PASS round: apps/admin-api/src/admin_api/auth/agent_principal.py: require_agent_key_shape gives 401 for a bearer of the wrong shape, and require_agent_principal gives an immediate 503 mintkey:auth_unavailable when the agent capacity is full.
+- FB-002: not addressed: not in this part: the resolver timeout is in egress.py (part 2). This part only shows the target check running before the transaction on create and after a commit on update.
+- FB-003: judged addressed, pending a PASS round: apps/admin-api/src/admin_api/api/agent_services.py: the service.credential.set audit_emit uses target_type="service" and target_id=service.id.
+- FB-004: judged addressed, pending a PASS round: apps/admin-api/src/admin_api/api/agent_services.py: _check_display_name enforces 1 to 256 characters, and AgentServiceUpdate._refuse_null refuses null fields; both give 422.
 
 ## Needs a human
 
