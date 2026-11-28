@@ -654,8 +654,8 @@ async def _put_agent_credential(
         event_type="service.credential.set",
         actor_id=principal.agent_id,
         actor_type="agent",
-        target_id=internal_id,
-        target_type="credential",
+        target_id=service.id,
+        target_type="service",
         payload={
             "service_id": service_id,
             "key_version": key_version,
