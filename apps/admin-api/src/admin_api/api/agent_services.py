@@ -230,10 +230,13 @@ async def create_agent_service(
     """Create a service owned by the calling publisher (201)."""
     body = await parse_agent_body(request, AgentServiceCreate)
 
-    await set_tenant_context(session, principal.tenant_id)
+    # The target check can wait on the resolver, so it runs before this
+    # request opens a transaction or holds a pooled connection (FB-002).
     await _check_target(body.base_url, "base_url")
     if body.openapi_url is not None:
         await _check_target(body.openapi_url, "openapi_url")
+
+    await set_tenant_context(session, principal.tenant_id)
 
     slug = body.name.lower().replace(" ", "-")
     if await _slug_exists(session, principal.tenant_id, slug):
@@ -387,23 +390,46 @@ async def _update_agent_service(
         session, principal, service_ref, for_update=True
     )
 
-    changed = [
-        field
-        for field in _UPDATE_FIELDS
-        if field in body.model_fields_set
-        and getattr(body, field) is not None
-        and getattr(body, field) != getattr(locked, field)
-    ]
+    def _changed_fields(row: Any) -> list[str]:
+        return [
+            field
+            for field in _UPDATE_FIELDS
+            if field in body.model_fields_set
+            and getattr(body, field) is not None
+            and getattr(body, field) != getattr(row, field)
+        ]
+
+    changed = _changed_fields(locked)
     if not changed:
         return JSONResponse(
             status_code=200,
             content={**service_view(locked), "credential_cleared": False},
         )
 
-    if "base_url" in changed and body.base_url is not None:
-        await _check_target(body.base_url, "base_url")
-    if "openapi_url" in changed and body.openapi_url is not None:
-        await _check_target(body.openapi_url, "openapi_url")
+    if "base_url" in changed or "openapi_url" in changed:
+        # The resolver may be slow: end this transaction, which releases the
+        # row lock and the pooled connection, before waiting on it (FB-002).
+        await session.commit()
+        if "base_url" in changed and body.base_url is not None:
+            await _check_target(body.base_url, "base_url")
+        if "openapi_url" in changed and body.openapi_url is not None:
+            await _check_target(body.openapi_url, "openapi_url")
+
+        # The check can take a while, so lock the row again and re-derive the
+        # change from the row this request is about to write.
+        await set_tenant_context(session, principal.tenant_id)
+        locked = await require_owned_service(
+            session, principal, service_ref, for_update=True
+        )
+        changed = _changed_fields(locked)
+        if not changed:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    **service_view(locked),
+                    "credential_cleared": False,
+                },
+            )
 
     clears_credential = "base_url" in changed or "auth_scheme" in changed
     credential_cleared = clears_credential and bool(
