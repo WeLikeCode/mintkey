@@ -115,3 +115,5 @@
 {"at":"2026-11-27T23:04:23Z","run":"r-20261127T2304Z-99a7","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
 {"at":"2026-11-28T00:35:19Z","attempt":1,"cost_usd":4.287813,"runs":5,"type":"plan.charged","unit":"openspec:agent-service-routes"}
 {"at":"2026-11-28T00:35:19Z","run":"r-20261128T0035Z-135b","type":"unit.dispatched","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-28T02:47:32Z","attempt":1,"cost_usd":27.906902,"runs":5,"type":"plan.charged","unit":"openspec:agent-service-routes"}
+{"at":"2026-11-28T02:47:32Z","detail":"$80.68 spent of $80.00","reason":"limit_cost","type":"plan.stopped"}
