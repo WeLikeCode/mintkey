@@ -12,6 +12,7 @@ has one body.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from datetime import datetime, timezone
@@ -41,7 +42,11 @@ from admin_api.services.agent_publishing import (
 )
 from admin_api.utils.wire_ids import db_uuid_to_wire, wire_to_db_uuid
 from mintkey_models.audit import audit_emit
-from mintkey_models.egress import TargetNotAllowed, check_agent_target_url
+from mintkey_models.egress import (
+    RESOLVE_TIMEOUT_SECONDS,
+    TargetNotAllowed,
+    check_agent_target_url,
+)
 from mintkey_models.tenant_ctx import set_tenant_context
 from admin_api.services.vault_client import VaultAdapterClient, get_vault_client
 
@@ -227,19 +232,31 @@ _UPDATE_FIELDS = (
 
 
 async def _check_target(url: str, field: str) -> None:
-    """Refuse an agent-supplied URL that is not a public https target."""
+    """Refuse an agent-supplied URL that is not a public https target.
+
+    The route bounds the check itself, not only the resolver inside the egress
+    policy, so a check that never returns still ends the request in time and
+    is refused as ``unresolvable`` (FB-002).
+    """
     try:
-        await check_agent_target_url(url)
+        await asyncio.wait_for(
+            check_agent_target_url(url), timeout=RESOLVE_TIMEOUT_SECONDS
+        )
     except TargetNotAllowed as exc:
-        raise AgentApiError(
-            400,
-            {
-                "code": "mintkey:target_not_allowed",
-                "title": "Target not allowed",
-                "field": field,
-                "reason": exc.reason,
-            },
-        ) from None
+        reason = exc.reason
+    except (asyncio.TimeoutError, TimeoutError):
+        reason = "unresolvable"
+    else:
+        return
+    raise AgentApiError(
+        400,
+        {
+            "code": "mintkey:target_not_allowed",
+            "title": "Target not allowed",
+            "field": field,
+            "reason": reason,
+        },
+    ) from None
 
 
 async def _slug_exists(
@@ -267,10 +284,12 @@ async def create_agent_service(
     body = await parse_agent_body(request, AgentServiceCreate)
 
     # The target check can wait on the resolver, so it runs before this
-    # request opens a transaction or holds a pooled connection (FB-002).
-    await _check_target(body.base_url, "base_url")
+    # request opens a transaction or holds a pooled connection (FB-002). The
+    # optional openapi_url is checked first so it is the one reported when
+    # both an openapi_url and a base_url are supplied.
     if body.openapi_url is not None:
         await _check_target(body.openapi_url, "openapi_url")
+    await _check_target(body.base_url, "base_url")
 
     await set_tenant_context(session, principal.tenant_id)
 
