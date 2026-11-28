@@ -58,7 +58,7 @@ Take option 1: edit tests/acceptance/openapi_snapshot.json and add exactly the e
 
 ## Q-002: Criterion C-4b7e8c8f (agent-service-credential › A credential is written, never read, and bound to its target › a bearer credential): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -87,11 +87,12 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The tracing test test_C_4b7e8c8f_bearer_credential_is_written_and_never_echoed passes with a zero-value proof and asserts the scenario: one put_credential call with the value as plaintext, the base URL as target_url and egress_scope public, no statement naming egress_scope, exactly the three answer keys, and the secret absent from the answer, the NOTIFY, the audit calls and every statement. Answered by the repository owner's delegate.
 ---
 
 ## Q-003: Criterion C-3be566fb (agent-service-credential › A credential is written, never read, and bound to its target › header and query names): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -120,11 +121,12 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The parametrised tracing tests test_C_3be566fb_header_and_query_names_follow_the_scheme pass with zero-value proofs and cover each case of the scenario: a missing or reserved header name, a header name on a bearer service and a missing query parameter answer 422, and X-Api-Key reaches put_credential. Answered by the repository owner's delegate.
 ---
 
 ## Q-004: Criterion C-08831467 (agent-service-credential › A credential is written, never read, and bound to its target › bad values, other owners, a failing vault, an unsupported scheme): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -154,11 +156,12 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The tracing tests test_C_08831467_* pass with zero-value proofs and cover the bad values, the other owner's service, the failing vault and the unsupported scheme with the bodies of the requirement, and they assert no metadata statement, no event and no put_credential call where the scenario says so. Answered by the repository owner's delegate.
 ---
 
 ## Q-005: Criterion C-6d26cd39 (agent-service-credential › A credential is written, never read, and bound to its target › the row is locked before the vault write): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -186,11 +189,12 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The tracing test test_C_6d26cd39_row_is_locked_before_the_vault_write passes with a zero-value proof and asserts the order of the scenario: the tenant context first, then the services statement with FOR UPDATE, then put_credential, and every metadata statement and audit call after it. Answered by the repository owner's delegate.
 ---
 
 ## Q-006: Criterion C-50c7880c (agent-service-credential › service.credential.set matches its schema — feedback FB-003 › service.credential.set matches its schema): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -217,11 +221,12 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+accept The tracing test test_C_50c7880c_credential_set_event_targets_the_service_and_validates failed at red and passes now: the emitted service.credential.set event has target_type service and the service's id, and it validates against its definition in audit-event.schema.json. Answered by the repository owner's delegate.
 ---
 
 ## Q-007: Hold H-0567faca: scope: `packages/python/mintkey-models/mintkey_models/egress.py` changes module `python`, which the spec does not name
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 7, verifier
@@ -237,3 +242,4 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why: a r
 
 ### Answer
 <!-- write below this line -->
+accept The change to mintkey_models/egress.py is the one feedback FB-002 asked for: the target check waits for the resolver for at most RESOLVE_TIMEOUT_SECONDS and refuses a name still unresolved as unresolvable; nothing else in that module changed. Answered by the repository owner's delegate.
