@@ -54,6 +54,18 @@ _AGENT_AUTH_SCHEMES = frozenset(
 
 _NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}")
 
+#: The stored column for ``display_name`` is VARCHAR(256) (004-services.yaml).
+_DISPLAY_NAME_MAX = 256
+
+
+def _check_display_name(value: str | None) -> str | None:
+    """Refuse an empty or over-long display_name before the database does."""
+    if value is None:
+        return None
+    if not value or len(value) > _DISPLAY_NAME_MAX:
+        raise ValueError("display_name must be 1 to 256 characters")
+    return value
+
 _SLUG_CONFLICT_BODY: dict[str, Any] = {
     "code": "mintkey:slug_conflict",
     "title": "Service name already in use",
@@ -160,6 +172,11 @@ class AgentServiceCreate(BaseModel):
             raise ValueError("auth_scheme is not supported for an agent service")
         return value
 
+    @field_validator("display_name")
+    @classmethod
+    def _validate_display_name(cls, value: str | None) -> str | None:
+        return _check_display_name(value)
+
 
 class AgentServiceUpdate(BaseModel):
     """The update body: set-only fields, extra keys refused (design D6)."""
@@ -172,12 +189,31 @@ class AgentServiceUpdate(BaseModel):
     description: str | None = None
     openapi_url: str | None = None
 
+    @field_validator(
+        "base_url",
+        "auth_scheme",
+        "display_name",
+        "description",
+        "openapi_url",
+    )
+    @classmethod
+    def _refuse_null(cls, value: str | None) -> str:
+        """A field present in the PATCH body must carry a value (FB-004)."""
+        if value is None:
+            raise ValueError("a PATCH field cannot be null")
+        return value
+
     @field_validator("auth_scheme")
     @classmethod
-    def _validate_auth_scheme(cls, value: str | None) -> str | None:
-        if value is not None and value not in _AGENT_AUTH_SCHEMES:
+    def _validate_auth_scheme(cls, value: str) -> str:
+        if value not in _AGENT_AUTH_SCHEMES:
             raise ValueError("auth_scheme is not supported for an agent service")
         return value
+
+    @field_validator("display_name")
+    @classmethod
+    def _validate_display_name(cls, value: str | None) -> str | None:
+        return _check_display_name(value)
 
 
 #: The order the update fields are reported in ``fields_changed``.
